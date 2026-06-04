@@ -180,14 +180,22 @@
 
 ### 4.1 圆角
 
-| Token | 值 | Tailwind | 适用 |
-|---|---|---|---|
-| `--radius-sm` | `8px` | `rounded-sm` | 输入框、小按钮 |
-| `--radius-md` | `12px` | `rounded-md` | 卡片、普通按钮、下拉菜单 |
-| `--radius-lg` | `20px` | `rounded-lg` | 弹窗、大卡片、图片 |
-| `--radius-full` | `9999px` | `rounded-full` | 头像、Badge、胶囊按钮 |
+圆角越大越温和，但不能全部拉满，有大有小才有层次。
 
-shadcn/ui 的 `--radius` 默认值设为 `12px`（对应 `--radius-md`），组件默认走这个值。整体偏圆润，风格温和。
+| Token | 范围 | 推荐值 | Tailwind | 适用 |
+|---|---|---|---|---|
+| `--radius-sm` | 8-10px | `8px` | `rounded-sm` | 按钮、标签、输入框 |
+| `--radius-md` | 12-14px | `12px` | `rounded-md` | 卡片、下拉菜单、列表项 |
+| `--radius-lg` | 16-20px | `16px` | `rounded-lg` | 弹窗、大容器、图片 |
+| `--radius-full` | — | `9999px` | `rounded-full` | 头像、Badge、胶囊按钮 |
+
+层次原则：
+- 小元素（按钮、标签、输入框）走 `--radius-sm`（8px），紧凑感
+- 中等元素（卡片、面板）走 `--radius-md`（12px），舒适感
+- 大元素（弹窗、全屏容器）走 `--radius-lg`（16px），留白感
+- 同一容器内圆角要统一，不要卡片 12px、里面的按钮 4px
+
+shadcn/ui 的 `--radius` 默认值设为 `12px`（对应 `--radius-md`），组件默认走这个值。
 
 ### 4.2 毛玻璃表面（Glass Surface）
 
@@ -217,15 +225,40 @@ Tailwind：`bg-white/70 backdrop-blur-md border border-white/15`
 
 ### 4.3 阴影
 
+温和风格的核心：扩散大、透明度低、边缘模糊，不用硬阴影。
 
 | Token | 值 | 适用 |
 |---|---|---|
-| `--shadow-sm` | `0 1px 3px rgba(74,59,50,0.06)` | 卡片静态 |
-| `--shadow-md` | `0 4px 14px rgba(74,59,50,0.08)` | 下拉菜单、hover 提升 |
-| `--shadow-lg` | `0 8px 28px rgba(74,59,50,0.12)` | Modal、弹窗 |
+| `--shadow-sm` | `0 2px 8px rgba(74,59,50,0.05)` | 卡片静态、列表项 |
+| `--shadow-md` | `0 4px 20px rgba(74,59,50,0.08)` | hover 浮起、下拉菜单 |
+| `--shadow-lg` | `0 8px 30px rgba(74,59,50,0.10)` | Modal、弹窗 |
 | `--shadow-glow` | `0 0 0 3px rgba(212,98,74,0.25)` | Primary focus ring |
+| `--shadow-glass` | `0 4px 20px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.1)` | 毛玻璃卡片、导航栏 |
+
+`--shadow-glass` 是毛玻璃专用阴影：外阴影浮起 + 内阴影模拟光泽，让玻璃质感更明显。
 
 深色主题下阴影统一加深至 `rgba(0,0,0,0.35)` 基底，色调不变。
+
+### 4.4 温和风格补充
+
+几个细节让整体更柔和：
+
+**过渡动画** — 所有交互元素统一加过渡，动起来不生硬：
+```css
+transition: all 0.2s ease;
+```
+Tailwind：`transition-all duration-200`
+
+**边框** — 用半透明边框代替实色，若有若无：
+- 浅色主题：`1px solid rgba(0, 0, 0, 0.06)`
+- 深色主题：`1px solid rgba(255, 255, 255, 0.08)`
+- 毛玻璃：`1px solid rgba(255, 255, 255, 0.15)`
+
+**留白** — padding 多给一点，元素间不要太挤：
+- 按钮内 padding 至少 `8px 16px`
+- 卡片内 padding 至少 `16px`
+- 区块间距至少 `24px`
+- 留白本身就是温和
 
 ---
 
