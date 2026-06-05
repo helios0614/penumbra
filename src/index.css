@@ -1,8 +1,12 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   /* ── 主题色：改这一行即可全局换色 ── */
-  --color-theme: #d4624a;
+  --color-theme: #F4845F;
 
   /* ── 派生主色 ── */
   --color-primary: var(--color-theme);
@@ -11,16 +15,26 @@
   --color-primary-foreground: #ffffff;
   --color-primary-subtle: color-mix(in srgb, var(--color-theme), white 92%);
 
+  /* ── AI 色：改这一行即可全局换 AI 色 ── */
+  --color-ai: #7BA7BC;
+
+  /* ── 派生 AI 色 ── */
+  --color-ai-hover: color-mix(in srgb, var(--color-ai), black 12%);
+  --color-ai-active: color-mix(in srgb, var(--color-ai), black 22%);
+  --color-ai-foreground: #ffffff;
+  --color-ai-subtle: color-mix(in srgb, var(--color-ai), white 92%);
+  --color-ai-muted: color-mix(in srgb, var(--color-ai), white 75%);
+
   /* ── 辅色 ── */
   --color-secondary: #6b8f71;
   --color-secondary-hover: color-mix(in srgb, var(--color-secondary), black 12%);
   --color-secondary-foreground: #ffffff;
   --color-secondary-subtle: #eef5ef;
 
-  /* ── 中性色 ── */
-  --color-muted: #a0998f;
+  /* ── 中性色（shadcn 约定：muted = 浅底色，muted-foreground = 次要文字） ── */
+  --color-muted: #f5f5f3;
+  --color-muted-foreground: #a0998f;
   --color-muted-strong: #6b6560;
-  --color-muted-foreground: #ffffff;
 
   /* ── 表面 ── */
   --color-background: #fafaf8;
@@ -28,6 +42,12 @@
   --color-card: #ffffff;
   --color-card-foreground: #1a1a1a;
   --color-surface-secondary: #f5f5f3;
+
+  /* ── shadcn 别名 ── */
+  --color-popover: var(--color-card);
+  --color-popover-foreground: var(--color-card-foreground);
+  --color-accent: var(--color-surface-secondary);
+  --color-accent-foreground: var(--color-foreground);
 
   /* ── 边框（半透明，柔和） ── */
   --color-border: rgba(0, 0, 0, 0.06);
@@ -37,32 +57,78 @@
 
   /* ── 语义色 ── */
   --color-success: #22c55e;
+  --color-success-foreground: #166534;
   --color-warning: #f59e0b;
+  --color-warning-foreground: #92400e;
   --color-destructive: #ef4444;
+  --color-destructive-foreground: #991b1b;
   --color-info: #3b82f6;
+  --color-info-foreground: #1e40af;
 
   --color-success-subtle: #f0fdf4;
   --color-warning-subtle: #fffbeb;
   --color-destructive-subtle: #fef2f2;
   --color-info-subtle: #eff6ff;
 
+  /* ── 扩展色板（薰衣草 / 琥珀 / 玫瑰） ── */
+  --color-lavender: #8b6bc4;
+  --color-lavender-foreground: #5b21b6;
+  --color-lavender-subtle: #f3f0ff;
+
+  --color-amber: #d4924a;
+  --color-amber-foreground: #92400e;
+  --color-amber-subtle: #fef9f0;
+
+  --color-rose: #ec4899;
+  --color-rose-foreground: #be185d;
+  --color-rose-subtle: #fdf2f8;
+
   /* ── 圆角 ── */
   --radius: 12px;
   --radius-sm: 8px;
+  --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: 16px;
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 
   /* ── 阴影：扩散大、透明度低、边缘柔和 ── */
   --shadow-sm: 0 2px 8px rgba(74, 59, 50, 0.05);
   --shadow-md: 0 4px 20px rgba(74, 59, 50, 0.08);
   --shadow-lg: 0 8px 30px rgba(74, 59, 50, 0.10);
-  --shadow-glow: 0 0 0 3px rgba(212, 98, 74, 0.25);
+  --shadow-glow: 0 0 0 3px rgba(244, 132, 95, 0.25);
   --shadow-glass: 0 4px 20px rgba(0, 0, 0, 0.08),
                   inset 0 1px 0 rgba(255, 255, 255, 0.1);
+
+  /* ── 字体 ── */
+  --font-heading: var(--font-sans);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", "Noto Sans SC", sans-serif;
+  --font-mono: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+
+  /* ── Chart ── */
+  --color-chart-1: #F4845F;
+  --color-chart-2: #6b8f71;
+  --color-chart-3: #d4924a;
+  --color-chart-4: #4a6fd4;
+  --color-chart-5: #8b6bc4;
+
+  /* ── Sidebar ── */
+  --color-sidebar: var(--color-surface-secondary);
+  --color-sidebar-foreground: var(--color-foreground);
+  --color-sidebar-primary: var(--color-primary);
+  --color-sidebar-primary-foreground: var(--color-primary-foreground);
+  --color-sidebar-accent: var(--color-accent);
+  --color-sidebar-accent-foreground: var(--color-accent-foreground);
+  --color-sidebar-border: var(--color-border);
+  --color-sidebar-ring: var(--color-ring);
 }
 
 /* ── 深色主题 ── */
 .dark {
-  --color-theme: #e07a66;
+  --color-theme: #f79e7f;
+  --color-ai: #8fbfce;
   --color-background: #111110;
   --color-foreground: #e8e8e4;
   --color-card: #1a1a18;
@@ -73,13 +139,30 @@
   --color-input: rgba(255, 255, 255, 0.08);
   --color-secondary: #7fa685;
   --color-secondary-subtle: #1a241c;
-  --color-muted: #78726a;
+  --color-muted: #242422;
+  --color-muted-foreground: #78726a;
   --color-muted-strong: #9a9490;
   --color-primary-subtle: #2a1f1c;
   --color-success-subtle: rgba(34, 197, 94, 0.12);
+  --color-success-foreground: #86efac;
   --color-warning-subtle: rgba(245, 158, 11, 0.12);
+  --color-warning-foreground: #fbbf24;
   --color-destructive-subtle: rgba(239, 68, 68, 0.12);
+  --color-destructive-foreground: #fca5a5;
   --color-info-subtle: rgba(59, 130, 246, 0.12);
+  --color-info-foreground: #93c5fd;
+
+  --color-lavender: #a78bfa;
+  --color-lavender-foreground: #c4b5fd;
+  --color-lavender-subtle: rgba(139, 107, 196, 0.12);
+
+  --color-amber: #f59e0b;
+  --color-amber-foreground: #fbbf24;
+  --color-amber-subtle: rgba(212, 146, 74, 0.12);
+
+  --color-rose: #f472b6;
+  --color-rose-foreground: #f9a8d4;
+  --color-rose-subtle: rgba(236, 72, 153, 0.12);
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.35);
@@ -87,11 +170,33 @@
                   inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-body {
-  background-color: var(--color-background);
-  color: var(--color-foreground);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", "Noto Sans SC", sans-serif;
+/* ── 毛玻璃工具类 ── */
+.glass-card {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08),
+              inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.glass-nav {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.dark .glass-card {
+  background: rgba(26, 26, 24, 0.7);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25),
+              inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.dark .glass-nav {
+  background: rgba(17, 17, 16, 0.6);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
 /* ── 全局过渡，动起来不生硬 ── */
@@ -120,3 +225,15 @@ body {
 ::-webkit-scrollbar-thumb:hover { background-color: rgba(0, 0, 0, 0.3); }
 .dark ::-webkit-scrollbar-thumb { background-color: rgba(255, 255, 255, 0.15); }
 .dark ::-webkit-scrollbar-thumb:hover { background-color: rgba(255, 255, 255, 0.3); }
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}

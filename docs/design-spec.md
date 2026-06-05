@@ -25,7 +25,7 @@
 
 ```css
 :root {
-  --color-theme: #d4624a;  /* ← 唯一需要改的变量 */
+  --color-theme: #F4845F;  /* ← 唯一需要改的变量 */
   --color-primary: var(--color-theme);
   --color-primary-hover: color-mix(in srgb, var(--color-theme), black 12%);
   --color-primary-active: color-mix(in srgb, var(--color-theme), black 22%);
@@ -89,7 +89,7 @@
 | `--color-surface-secondary` | `#242422` |
 | `--color-border` | `#2e2e2c` |
 | `--color-border-strong` | `#484844` |
-| `--color-primary` | `#e07a66` |
+| `--color-primary` | `#f79e7f` |
 | `--color-primary-hover` | `#e88d7c` |
 | `--color-primary-active` | `#d4624a` |
 | `--color-primary-subtle` | `#2a1f1c` |
@@ -174,6 +174,31 @@
 
 移动端（`<640px`）页面内容区 padding 保持 `16px`，桌面端可放宽到 `24px` 或 `32px`，通过 `sm:p-6 lg:p-8` 控制。
 
+### 3.4 布局与滚动策略
+
+**移动端优先**：先写移动端布局，再用 `sm:`、`md:`、`lg:` 断点适配大屏。
+
+**禁止页面级滚动**：页面整体不能出现 `overflow-y: auto`，滚动必须在组件内部解决。
+
+**优先滚动正文区**：典型布局是「固定顶栏 + 固定底栏 + 中间正文滚动」：
+
+```
+┌─────────────────────┐
+│   顶栏（固定）        │
+├─────────────────────┤
+│                     │
+│   正文区（可滚动）    │  ← overflow-y-auto, flex-1, min-h-0
+│                     │
+├─────────────────────┤
+│   底栏（固定）        │
+└─────────────────────┘
+```
+
+关键实现：
+- 页面容器 `h-dvh flex flex-col`（移动端用 `dvh` 避免地址栏高度跳动）
+- 顶栏/底栏 `shrink-0`
+- 正文区 `flex-1 min-h-0 overflow-y-auto`（`min-h-0` 是 flex 子元素溢出滚动的关键）
+
 ---
 
 ## 4. 圆角与阴影
@@ -232,7 +257,7 @@ Tailwind：`bg-white/70 backdrop-blur-md border border-white/15`
 | `--shadow-sm` | `0 2px 8px rgba(74,59,50,0.05)` | 卡片静态、列表项 |
 | `--shadow-md` | `0 4px 20px rgba(74,59,50,0.08)` | hover 浮起、下拉菜单 |
 | `--shadow-lg` | `0 8px 30px rgba(74,59,50,0.10)` | Modal、弹窗 |
-| `--shadow-glow` | `0 0 0 3px rgba(212,98,74,0.25)` | Primary focus ring |
+| `--shadow-glow` | `0 0 0 3px rgba(244,132,95,0.25)` | Primary focus ring |
 | `--shadow-glass` | `0 4px 20px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.1)` | 毛玻璃卡片、导航栏 |
 
 `--shadow-glass` 是毛玻璃专用阴影：外阴影浮起 + 内阴影模拟光泽，让玻璃质感更明显。
@@ -477,7 +502,7 @@ function setThemeColor(hex: string) {
 
 | 名称 | 色值 | 风格 |
 |---|---|---|
-| 珊瑚（默认） | `#d4624a` | 暖，活力 |
+| 珊瑚（默认） | `#F4845F` | 暖，活力 |
 | 琥珀 | `#d4924a` | 暖，柔和 |
 | 落日 | `#c4553a` | 暖，深沉 |
 | 森林 | `#4a8f6b` | 冷，沉稳 |
@@ -504,7 +529,7 @@ function setThemeColor(hex: string) {
 ### 8.4 深色模式联动
 
 深色模式下预设色自动切换为稍亮版本（亮度 +10~15%），保证在暗底上可读。
-例如珊瑚色 `#d4624a` → 深色下 `#e07a66`。
+例如珊瑚色 `#F4845F` → 深色下 `#f79e7f`。
 
 用户自定义的 hex 在深色模式下由前端自动提亮：
 
