@@ -19,20 +19,19 @@ function SimpleThinkInner({ content, className }: SimpleThinkProps) {
   if (!content) return null;
 
   return (
-    <div></div>
-    // <div
-    //   className={cn(
-    //     "inline-flex items-start gap-1.5 px-3 py-1.5 rounded-md",
-    //     "bg-muted/50 border border-border backdrop-blur-md",
-    //     "max-w-[280px]",
-    //     className,
-    //   )}
-    // >
-    //   <Lightbulb className="size-3 text-muted-foreground shrink-0 mt-0.5" />
-    //   <p className="text-[11px] leading-[1.5] text-muted-foreground italic line-clamp-2">
-    //     {content}
-    //   </p>
-    // </div>
+    <div
+      className={cn(
+        "inline-flex items-start gap-1.5 px-3 py-1.5 rounded-md",
+        "bg-muted/50 border border-border backdrop-blur-md",
+        "max-w-[280px]",
+        className,
+      )}
+    >
+      <Lightbulb className="size-3 text-muted-foreground shrink-0 mt-0.5" />
+      <p className="text-[11px] leading-[1.5] text-muted-foreground italic line-clamp-2">
+        {content}
+      </p>
+    </div>
   );
 }
 
