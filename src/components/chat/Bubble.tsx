@@ -1,4 +1,4 @@
-import { memo, useRef, useEffect, useState, useMemo } from "react";
+import { memo, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { MessageActions } from "./MessageActions";
@@ -8,6 +8,8 @@ import {
   parseSystemMessage,
   extractMcpToolCalls,
 } from "./system-command/parse-system-message";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Bot, User } from "lucide-react";
 import type { ChatMessage } from "./types";
 import type { McpToolCall } from "./system-command/types";
 import { format } from "date-fns";
@@ -128,10 +130,10 @@ function BubbleSegment({
   return (
     <div
       className={cn(
-        "relative rounded-md px-4 py-2.5 text-[15px] leading-[1.6] break-words overflow-hidden w-fit",
+        "relative rounded-md px-4 py-2 text-[14px] leading-[1.6] break-words overflow-hidden w-fit backdrop-blur-md",
         isUser
-          ? "bg-primary text-primary-foreground"
-          : "bg-ai-subtle/40 shadow-sm border border-ai/10",
+          ? "bg-primary/10 text-primary shadow-sm border border-primary/20"
+          : "bg-ai/10 text-ai shadow-sm border border-ai/20",
       )}
     >
       {isAssistant ? (
@@ -166,7 +168,7 @@ function SystemBubble({ message }: SystemBubbleProps) {
 
   if (commandData) {
     return (
-      <div className="flex justify-center my-2">
+      <div className="flex justify-center my-0.5">
         <SystemCommand
           data={commandData}
           toolCalls={mcpCalls.length > 0 ? mcpCalls : undefined}
@@ -210,21 +212,6 @@ function BubbleInner({
     return <SystemBubble message={message} />;
   }
 
-  // 流式过程中锁定宽度（flex-1），流式结束后恢复自适应
-  const wasStreamingRef = useRef(false);
-  const [lockWidth, setLockWidth] = useState(false);
-
-  useEffect(() => {
-    if (isStreaming) {
-      wasStreamingRef.current = true;
-      setLockWidth(true);
-    } else if (wasStreamingRef.current) {
-      // 流式刚结束，延迟一帧解除锁定，让浏览器完成最终布局
-      const id = requestAnimationFrame(() => setLockWidth(false));
-      return () => cancelAnimationFrame(id);
-    }
-  }, [isStreaming]);
-
   const rawContent =
     isStreaming && streamingContent != null
       ? streamingContent
@@ -243,36 +230,42 @@ function BubbleInner({
   return (
     <div
       className={cn(
-        "flex gap-2 max-w-full w-full group",
-        isUser ? "flex-row-reverse" : "flex-row",
+        "flex flex-col max-w-full w-full group",
+        isUser ? "items-end" : "items-start",
       )}
     >
-      {/* 气泡体 — 流式中锁定宽度，结束后自适应 */}
+      {/* 头像 + 名字 + 时间 — 同一行 */}
       <div
         className={cn(
-          "min-w-0 max-w-[85%] sm:max-w-[75%]",
-          lockWidth
-            ? "flex flex-col flex-1"
-            : "flex flex-col",
-          isUser ? "items-end" : "items-start",
+          "flex items-center gap-1.5 mb-1",
+          isUser ? "flex-row-reverse" : "flex-row",
         )}
       >
-        {/* 角色 + 时间 */}
-        <div
-          className={cn(
-            "flex items-center gap-2 mb-1",
-            isUser ? "flex-row-reverse" : "flex-row",
-          )}
-        >
-          <span className={cn("text-xs font-medium", isUser ? "text-foreground" : "text-ai")}>
-            {isUser ? "你" : "Aion"}
-          </span>
-          <span className="text-xs text-muted">{timeStr}</span>
-        </div>
+        <Avatar size="sm">
+          <AvatarFallback className={cn(isUser ? "bg-primary-subtle" : "bg-ai-subtle")}>
+            {isUser ? (
+              <User className="size-3.5 text-muted-foreground" />
+            ) : (
+              <Bot className="size-3.5 text-ai" />
+            )}
+          </AvatarFallback>
+        </Avatar>
+        <span className={cn("text-xs font-medium", isUser ? "text-primary" : "text-ai")}>
+          {isUser ? "你" : "Aion"}
+        </span>
+        <span className={cn("text-xs", isUser ? "text-primary/60" : "text-ai/60")}>{timeStr}</span>
+      </div>
 
-        {/* AI 随想 — 气泡上方 */}
+      {/* 气泡内容区 — 限宽 85% */}
+      <div className="max-w-[85%]">
+        {/* 扩展思考 */}
+        {isAssistant && message.thinking && !isStreaming && (
+          <ThinkingBlock content={message.thinking} className="mb-1 w-full" />
+        )}
+
+        {/* AI 随想 */}
         {isAssistant && message.simple_think && !isStreaming && (
-          <SimpleThink content={message.simple_think} className="mb-1.5" />
+          <SimpleThink content={message.simple_think} className="mb-1" />
         )}
 
         {/* 气泡列表 */}
@@ -295,15 +288,10 @@ function BubbleInner({
           </div>
         )}
 
-        {/* 扩展思考 — 气泡下方，可折叠 */}
-        {isAssistant && message.thinking && !isStreaming && (
-          <ThinkingBlock content={message.thinking} className="mt-2 w-full" />
-        )}
-
-        {/* 操作栏 — hover 显示 */}
+        {/* 操作栏 */}
         <div
           className={cn(
-            "flex items-center gap-0.5 mt-1",
+            "flex items-center gap-0.5",
             "opacity-0 group-hover:opacity-100 transition-opacity duration-150",
             isUser ? "flex-row-reverse" : "flex-row",
           )}

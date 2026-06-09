@@ -1,4 +1,5 @@
 export { SystemCommand } from "./SystemCommand";
+export { SystemCommandGroup } from "./SystemCommandGroup";
 export { LoadingIndicator } from "./LoadingIndicator";
 export { ResultCard } from "./ResultCard";
 export { SimpleThink, ThinkingBlock, HeartWhisper } from "./InlineIndicator";

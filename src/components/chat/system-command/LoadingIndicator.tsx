@@ -69,7 +69,7 @@ function LoadingIndicatorInner({
     <div
       className={cn(
         "inline-flex items-center gap-2.5 px-3 py-1.5 rounded-md",
-        "border backdrop-blur-sm",
+        "border backdrop-blur-md",
         "shadow-sm",
         appearance.bgClass,
         appearance.borderClass,

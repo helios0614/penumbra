@@ -19,19 +19,20 @@ function SimpleThinkInner({ content, className }: SimpleThinkProps) {
   if (!content) return null;
 
   return (
-    <div
-      className={cn(
-        "inline-flex items-start gap-1.5 px-3 py-1.5 rounded-md",
-        "bg-surface-secondary/80 border border-border/50",
-        "max-w-[280px]",
-        className,
-      )}
-    >
-      <Lightbulb className="size-3 text-muted-foreground shrink-0 mt-0.5" />
-      <p className="text-[11px] leading-[1.5] text-muted-foreground italic line-clamp-2">
-        {content}
-      </p>
-    </div>
+    <div></div>
+    // <div
+    //   className={cn(
+    //     "inline-flex items-start gap-1.5 px-3 py-1.5 rounded-md",
+    //     "bg-muted/50 border border-border backdrop-blur-md",
+    //     "max-w-[280px]",
+    //     className,
+    //   )}
+    // >
+    //   <Lightbulb className="size-3 text-muted-foreground shrink-0 mt-0.5" />
+    //   <p className="text-[11px] leading-[1.5] text-muted-foreground italic line-clamp-2">
+    //     {content}
+    //   </p>
+    // </div>
   );
 }
 
@@ -57,8 +58,8 @@ function ThinkingBlockInner({ content, className }: ThinkingBlockProps) {
   return (
     <div
       className={cn(
-        "rounded-md border border-border/60 overflow-hidden",
-        "bg-surface-secondary/50",
+        "rounded-md border border-border overflow-hidden",
+        "bg-muted/50 backdrop-blur-md",
         className,
       )}
     >
@@ -67,15 +68,15 @@ function ThinkingBlockInner({ content, className }: ThinkingBlockProps) {
         onClick={() => setExpanded(!expanded)}
         className={cn(
           "flex items-center gap-2 w-full px-3 py-2 text-left",
-          "hover:bg-surface-secondary/80 transition-all duration-200",
+          "hover:bg-muted/70 transition-all duration-200",
         )}
       >
         <Brain className="size-3.5 text-muted-foreground shrink-0" />
-        <span className="text-xs font-medium text-muted-foreground">
+        <span className="text-xs font-semibold text-muted-foreground">
           思考过程
         </span>
         {!expanded && (
-          <span className="text-[11px] text-muted-foreground/70 truncate flex-1 ml-1">
+          <span className="text-[11px] text-muted-foreground truncate flex-1 ml-1">
             {summary}
           </span>
         )}
@@ -128,9 +129,9 @@ function HeartWhisperInner({ content, className }: HeartWhisperProps) {
           onClick={() => setRevealed(true)}
           className={cn(
             "inline-flex items-center gap-1.5 px-3 py-1 rounded-full",
-            "bg-rose-subtle",
-            "border border-rose/15",
-            "text-[11px] text-rose-foreground",
+            "bg-ai/10 backdrop-blur-md",
+            "border border-ai/20",
+            "text-[11px] text-ai",
             "hover:shadow-sm transition-all duration-200",
           )}
         >
@@ -145,14 +146,14 @@ function HeartWhisperInner({ content, className }: HeartWhisperProps) {
         <div
           className={cn(
             "px-3 py-2 rounded-md",
-            "bg-rose-subtle",
-            "border border-rose/15",
+            "bg-ai/10 backdrop-blur-md",
+            "border border-ai/20",
             "shadow-sm",
           )}
         >
           <div className="flex items-center gap-1.5 mb-1.5">
-            <Heart className="size-3 text-rose-foreground fill-current" />
-            <span className="text-[11px] font-medium text-rose-foreground">
+            <Heart className="size-3 text-ai fill-current" />
+            <span className="text-[11px] font-medium text-ai">
               心声
             </span>
             <button
@@ -162,7 +163,7 @@ function HeartWhisperInner({ content, className }: HeartWhisperProps) {
               收起
             </button>
           </div>
-          <p className="text-xs leading-[1.6] text-rose-foreground whitespace-pre-wrap">
+          <p className="text-xs leading-[1.6] text-ai whitespace-pre-wrap">
             {content}
           </p>
         </div>

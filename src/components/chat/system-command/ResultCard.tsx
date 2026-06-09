@@ -62,7 +62,7 @@ function CompactResult({ data, onDismiss }: CompactResultProps) {
     <div
       className={cn(
         "group inline-flex items-center gap-2 px-3 py-1.5 rounded-md",
-        "border text-xs",
+        "border text-xs backdrop-blur-md shadow-sm",
         appearance.bgClass,
         appearance.borderClass,
       )}
@@ -112,69 +112,85 @@ interface MusicCardProps {
 function MusicCard({ meta, content }: MusicCardProps) {
   const [playing, setPlaying] = useState(false);
   const song = meta?.song ?? content;
-  const artist = meta?.artist ?? "";
+  const artist = meta?.artist ?? "未知艺术家";
+  const album = meta?.album ?? "";
 
   return (
     <div
       className={cn(
-        "flex items-center gap-3 px-3 py-2 rounded-md",
-        "bg-primary-subtle border border-primary/15",
+        "flex items-center gap-3 p-2 rounded-md",
+        "bg-ai/10 border border-ai/20 backdrop-blur-md",
         "shadow-sm",
+        "w-[85%]",
       )}
     >
-      {/* 封面占位 */}
+      {/* 封面 — 网易云风格：大圆角 + 渐变遮罩 + 中央播放按钮 */}
       <div
         className={cn(
-          "relative size-10 rounded-sm overflow-hidden shrink-0",
-          "bg-gradient-to-br from-primary/30 to-primary/10",
-          "flex items-center justify-center",
+          "relative size-14 rounded-md overflow-hidden shrink-0",
+          "bg-gradient-to-br from-ai/40 via-ai/20 to-ai-subtle",
         )}
       >
-        <Music className="size-4 text-primary/60" />
-        {/* 播放按钮覆盖层 */}
+        {/* 唱片纹理 */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="size-8 rounded-full border-2 border-ai/20 flex items-center justify-center">
+            <div className="size-3 rounded-full bg-ai/15" />
+          </div>
+        </div>
+        {/* 播放按钮 */}
         <button
           onClick={() => setPlaying(!playing)}
           className={cn(
             "absolute inset-0 flex items-center justify-center",
-            "bg-black/0 hover:bg-black/20 transition-all duration-200",
+            "bg-black/0 hover:bg-black/10 transition-all duration-200",
           )}
         >
-          {playing ? (
-            <Pause className="size-4 text-white drop-shadow" />
-          ) : (
-            <Play className="size-4 text-white drop-shadow ml-0.5" />
-          )}
+          <div
+            className={cn(
+              "size-7 rounded-full flex items-center justify-center",
+              "bg-white/90 shadow-sm",
+              "hover:scale-105 transition-transform duration-200",
+            )}
+          >
+            {playing ? (
+              <Pause className="size-3.5 text-ai" />
+            ) : (
+              <Play className="size-3.5 text-ai ml-0.5" />
+            )}
+          </div>
         </button>
       </div>
 
       {/* 歌曲信息 */}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-foreground truncate">{song}</p>
-        {artist && (
-          <p className="text-xs text-muted-foreground truncate">{artist}</p>
+      <div className="flex-1 min-w-0 py-0.5">
+        <p className="text-sm font-semibold text-foreground truncate leading-tight">
+          {song}
+        </p>
+        <p className="text-[11px] text-muted-foreground truncate mt-0.5 leading-tight">
+          {artist}{album ? ` · ${album}` : ""}
+        </p>
+
+        {/* 播放中 — 简易波形 */}
+        {playing && (
+          <div className="flex items-end gap-[2px] h-3 mt-1.5">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <span
+                key={i}
+                className="w-[2px] bg-ai rounded-full animate-pulse"
+                style={{
+                  height: `${4 + Math.random() * 8}px`,
+                  animationDelay: `${i * 150}ms`,
+                }}
+              />
+            ))}
+          </div>
         )}
       </div>
-
-      {/* 播放状态指示 */}
-      {playing && (
-        <div className="flex items-end gap-0.5 h-4">
-          {[0, 1, 2].map((i) => (
-            <span
-              key={i}
-              className="w-0.5 bg-primary rounded-full animate-pulse"
-              style={{
-                height: `${8 + Math.random() * 8}px`,
-                animationDelay: `${i * 200}ms`,
-              }}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
-// ─── MCP 工具调用卡片 ───
+// ─── MCP 工具调用卡片 — 步骤条风格 ───
 
 interface McpCardProps {
   toolCalls: McpToolCall[];
@@ -182,7 +198,7 @@ interface McpCardProps {
 }
 
 function McpCard({ toolCalls, content }: McpCardProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
 
   if (toolCalls.length === 0) {
     return (
@@ -192,11 +208,13 @@ function McpCard({ toolCalls, content }: McpCardProps) {
     );
   }
 
+  const doneCount = toolCalls.filter((c) => c.success).length;
+
   return (
     <div
       className={cn(
-        "rounded-md border border-info/15 overflow-hidden",
-        "bg-info-subtle shadow-sm",
+        "w-[85%] rounded-md overflow-hidden",
+        "bg-ai/10 border border-ai/20 backdrop-blur-md",
       )}
     >
       {/* 头部 */}
@@ -204,15 +222,12 @@ function McpCard({ toolCalls, content }: McpCardProps) {
         onClick={() => setExpanded(!expanded)}
         className={cn(
           "flex items-center gap-2 w-full px-3 py-1.5 text-left",
-          "hover:bg-info/5 transition-all duration-200",
+          "hover:bg-ai/10 transition-all duration-200",
         )}
       >
-        <Plug className="size-3.5 text-info-foreground shrink-0" />
-        <span className="text-xs font-medium text-info-foreground flex-1">
-          工具调用
-        </span>
-        <span className="text-[11px] text-muted-foreground">
-          {toolCalls.length} 个调用
+        <Plug className="size-3.5 text-foreground shrink-0" />
+        <span className="text-xs text-foreground flex-1">
+          {doneCount}/{toolCalls.length} 步完成
         </span>
         <ChevronDown
           className={cn(
@@ -222,33 +237,22 @@ function McpCard({ toolCalls, content }: McpCardProps) {
         />
       </button>
 
-      {/* 展开的工具列表 */}
+      {/* 步骤列表 */}
       {expanded && (
-        <div className="px-3 pb-2 space-y-1">
+        <div className="px-3 pb-1.5 divide-y divide-ai/8">
           {toolCalls.map((call, i) => (
-            <div
-              key={i}
-              className={cn(
-                "flex items-start gap-2 px-3 py-1.5 rounded-sm",
-                "bg-white/50 dark:bg-white/5",
-              )}
-            >
-              {/* 状态点 */}
+            <div key={i} className="flex items-start gap-2 py-1.5">
               {call.success ? (
                 <CircleCheck className="size-3.5 text-success shrink-0 mt-0.5" />
               ) : (
                 <CircleX className="size-3.5 text-destructive shrink-0 mt-0.5" />
               )}
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-mono text-foreground">
-                  {call.server}
-                  <span className="text-muted-foreground">:</span>
-                  {call.tool}
-                </p>
+              <div className="flex-1 min-w-0 text-xs leading-relaxed">
+                <span className="text-foreground font-mono">
+                  {call.server}:{call.tool}
+                </span>
                 {call.result && (
-                  <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">
-                    {call.result}
-                  </p>
+                  <span className="text-muted-foreground ml-1">→ {call.result}</span>
                 )}
               </div>
             </div>

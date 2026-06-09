@@ -1,6 +1,7 @@
 import { useRef, useEffect, useMemo, memo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Bubble } from "./Bubble";
+import { SystemCommandGroup } from "./system-command/SystemCommandGroup";
 import type { ChatMessage } from "./types";
 import { isToday, isYesterday, format } from "date-fns";
 import { zhCN } from "date-fns/locale";
@@ -28,7 +29,7 @@ function DateSeparator({ timestamp }: { timestamp: number }) {
   );
 }
 
-// ─── 分组逻辑 ───
+// ─── 日期分组 ───
 
 interface DateGroup {
   dateKey: string;
@@ -54,6 +55,37 @@ function groupByDate(messages: ChatMessage[]): DateGroup[] {
   }
 
   return groups;
+}
+
+// ─── 消息分段：连续 system 消息合并为一组 ───
+
+interface MessageSegment {
+  type: "single" | "system-group";
+  messages: ChatMessage[];
+}
+
+function segmentMessages(messages: ChatMessage[]): MessageSegment[] {
+  const segments: MessageSegment[] = [];
+  let systemBatch: ChatMessage[] = [];
+
+  for (const msg of messages) {
+    if (msg.role === "system") {
+      systemBatch.push(msg);
+    } else {
+      // 先把之前累积的系统消息推入
+      if (systemBatch.length > 0) {
+        segments.push({ type: "system-group", messages: systemBatch });
+        systemBatch = [];
+      }
+      segments.push({ type: "single", messages: [msg] });
+    }
+  }
+  // 尾部系统消息
+  if (systemBatch.length > 0) {
+    segments.push({ type: "system-group", messages: systemBatch });
+  }
+
+  return segments;
 }
 
 // ─── 消息列表 ───
@@ -89,29 +121,44 @@ function BubbleListInner({
   return (
     <ScrollArea className="flex-1 min-h-0 w-full overflow-hidden">
       <div className="px-4 py-3 max-w-[720px] mx-auto flex flex-col gap-2">
-        {dateGroups.map((group) => (
-          <div key={group.dateKey}>
-            <DateSeparator timestamp={group.timestamp} />
-            <div className="flex flex-col gap-1">
-              {group.messages.map((msg) => (
-                <Bubble
-                  key={msg.id}
-                  message={msg}
-                  isStreaming={msg.id === streamingId}
-                  streamingContent={
-                    msg.id === streamingId ? streamingContent : undefined
+        {dateGroups.map((group) => {
+          const segments = segmentMessages(group.messages);
+          return (
+            <div key={group.dateKey}>
+              <DateSeparator timestamp={group.timestamp} />
+              <div className="flex flex-col gap-1 items-start">
+                {segments.map((seg) => {
+                  if (seg.type === "system-group") {
+                    return (
+                      <SystemCommandGroup
+                        key={`sys-${seg.messages[0].id}`}
+                        messages={seg.messages}
+                      />
+                    );
                   }
-                  onRegenerate={
-                    onRegenerate
-                      ? () => onRegenerate(msg.id)
-                      : undefined
-                  }
-                  onDelete={onDelete ? () => onDelete(msg.id) : undefined}
-                />
-              ))}
+                  // single — 普通消息
+                  const msg = seg.messages[0];
+                  return (
+                    <Bubble
+                      key={msg.id}
+                      message={msg}
+                      isStreaming={msg.id === streamingId}
+                      streamingContent={
+                        msg.id === streamingId ? streamingContent : undefined
+                      }
+                      onRegenerate={
+                        onRegenerate
+                          ? () => onRegenerate(msg.id)
+                          : undefined
+                      }
+                      onDelete={onDelete ? () => onDelete(msg.id) : undefined}
+                    />
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={bottomRef} />
       </div>
     </ScrollArea>

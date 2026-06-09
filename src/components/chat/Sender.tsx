@@ -82,12 +82,12 @@ export function Sender({
       )}
     >
       <div className="max-w-[720px] mx-auto">
-        <div className="flex items-end gap-2 bg-surface-secondary rounded-lg border border-border px-3 py-2">
+        <div className="flex items-center gap-2 bg-surface-secondary rounded-lg border border-border px-3 py-2">
           {/* 附件按钮 */}
           <Button
             variant="ghost"
             size="icon-sm"
-            className="shrink-0 text-muted-foreground hover:text-foreground mb-0.5"
+            className="shrink-0 text-muted-foreground hover:text-foreground"
             disabled={disabled}
             aria-label="添加附件"
           >
@@ -106,7 +106,8 @@ export function Sender({
             className={cn(
               "flex-1 min-w-0 bg-transparent text-[15px] leading-6 text-foreground",
               "placeholder:text-muted-foreground",
-              "resize-none outline-none",
+              "resize-none outline-none focus:outline-none focus:ring-0",
+              "caret-primary",
               "max-h-[144px]", // 6 行
             )}
           />
@@ -117,7 +118,7 @@ export function Sender({
               variant="destructive"
               size="icon-sm"
               onClick={onStop}
-              className="shrink-0 rounded-full mb-0.5"
+              className="shrink-0 rounded-full"
               aria-label="停止生成"
             >
               <Square className="size-4" />
@@ -129,7 +130,7 @@ export function Sender({
               onClick={handleSubmit}
               disabled={!canSend}
               className={cn(
-                "shrink-0 rounded-full mb-0.5 transition-opacity",
+                "shrink-0 rounded-full transition-opacity",
                 !canSend && "opacity-40",
               )}
               aria-label="发送消息"

@@ -83,6 +83,9 @@
   --color-rose-foreground: #be185d;
   --color-rose-subtle: #fdf2f8;
 
+  /* ── 聊天壁纸（替换 url() 即可换壁纸） ── */
+  --chat-wallpaper: none;
+
   /* ── 圆角 ── */
   --radius: 12px;
   --radius-sm: 8px;
@@ -216,6 +219,10 @@
 }
 :focus:not(:focus-visible) {
   outline: none;
+}
+textarea:focus {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 /* ── 滚动条 ── */
