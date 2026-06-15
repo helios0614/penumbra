@@ -72,7 +72,7 @@ function CompactResult({ data, onDismiss }: CompactResultProps) {
         {data.label ?? appearance.label}
       </span>
       {data.content && (
-        <span className="text-muted-foreground truncate max-w-[200px]">
+        <span className="text-muted-foreground truncate max-w-[200px] break-words overflow-wrap-anywhere">
           {data.content}
         </span>
       )}
@@ -247,12 +247,12 @@ function McpCard({ toolCalls, content }: McpCardProps) {
               ) : (
                 <CircleX className="size-3.5 text-destructive shrink-0 mt-0.5" />
               )}
-              <div className="flex-1 min-w-0 text-xs leading-relaxed">
-                <span className="text-foreground font-mono">
+              <div className="flex-1 min-w-0 text-xs leading-relaxed break-words overflow-wrap-anywhere">
+                <span className="text-foreground font-mono whitespace-nowrap">
                   {call.server}:{call.tool}
                 </span>
                 {call.result && (
-                  <span className="text-muted-foreground ml-1">→ {call.result}</span>
+                  <span className="text-muted-foreground ml-1 break-all">→ {call.result}</span>
                 )}
               </div>
             </div>

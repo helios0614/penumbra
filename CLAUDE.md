@@ -4,13 +4,23 @@ Penumbra 是一个基于 React + Vite + Tailwind CSS + shadcn/ui 的个人助理
 
 ## UI 开发规范
 
-写任何 UI 代码前，先执行 `ui-dev` skill，阅读 `docs/design-spec.md` 和 `docs/chat-ui-reference.md`。
+写 UI 相关代码时，`ui-dev` skill 会自动激活。它会指引你遵循 `docs/design-spec.md` 和 `docs/chat-ui-reference.md` 中的规范。
 
 核心原则：
 - 优先用 shadcn 组件，在其上扩展
 - 样式严格跟 design-spec 走，颜色用 CSS 变量，间距用 Tailwind 网格
 - Tailwind class 优先，禁止无理由使用 `style={{}}`
 - 组件化拆分，一个文件不超过 300 行
+
+## 页面重构参考
+
+涉及页面重构时，原始文件参考 `/Users/remix/Desktop/AionsHome-main` 项目。
+
+**重要约束**：
+- 功能和布局可参考原项目
+- **样式、组件、规范严格按 Penumbra 的来**（`ui-dev` skill、`docs/design-spec.md`）
+- 不要复制原项目的样式代码，全部用 Penumbra 的设计系统重写
+- shadcn 组件优先，Tailwind class 优先，CSS 变量驱动
 
 ## 技术栈
 

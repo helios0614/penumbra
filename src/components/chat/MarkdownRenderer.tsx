@@ -55,7 +55,7 @@ function CodeBlock({
           )}
         </button>
       </div>
-      <pre className="bg-[#1e1e1e] text-[#d4d4d4] p-4 rounded-b-lg overflow-x-hidden text-sm leading-relaxed whitespace-pre-wrap break-words">
+      <pre className="bg-[#1e1e1e] text-[#d4d4d4] p-4 rounded-b-lg overflow-x-auto text-sm leading-relaxed whitespace-pre-wrap break-all max-w-full">
         <code className={className} {...props}>
           {children}
         </code>

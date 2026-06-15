@@ -1,16 +1,26 @@
 /**
  * SystemCommand — 系统指令统一展示组件
  *
- * 根据指令类型和状态自动选择合适的展示形式：
- * - loading  → LoadingIndicator（玻璃卡片 + 跳动圆点）
- * - success  → ResultCard（紧凑 badge / 音乐卡片 / MCP 卡片）
+ * 按交互性分层：
  * - 内联类型 → SimpleThink / ThinkingBlock / HeartWhisper
+ * - 交互型（音乐、MCP）→ 卡片
+ * - 通知型 → 行内提示
  */
 import { memo } from "react";
 import type { SystemCommandData, McpToolCall, MusicMeta } from "./types";
-import { LoadingIndicator } from "./LoadingIndicator";
 import { ResultCard } from "./ResultCard";
 import { SimpleThink, ThinkingBlock, HeartWhisper } from "./InlineIndicator";
+import { InlineNotification } from "./InlineNotification";
+
+// ─── 判断是否为交互型 ───
+
+const INTERACTIVE_TYPES = new Set(["music", "mcp"]);
+
+function isInteractive(data: SystemCommandData): boolean {
+  return INTERACTIVE_TYPES.has(data.type);
+}
+
+// ─── 组件 ───
 
 interface SystemCommandProps {
   data: SystemCommandData;
@@ -44,20 +54,13 @@ function SystemCommandInner({
     return <HeartWhisper content={data.content} className={className} />;
   }
 
-  // ─── Loading 状态 ───
+  // ─── 通知型 → 行内提示 ───
 
-  if (data.status === "loading") {
-    return (
-      <LoadingIndicator
-        type={data.type}
-        label={data.label}
-        detail={data.detail}
-        className={className}
-      />
-    );
+  if (!isInteractive(data)) {
+    return <InlineNotification data={data} className={className} />;
   }
 
-  // ─── 结果展示 ───
+  // ─── 交互型 → 卡片 ───
 
   return (
     <ResultCard

@@ -20,6 +20,11 @@ globs:
 
 读完后，确认你理解了当前任务涉及的 token 和规范条目，再动手。
 
+**页面重构场景**：如果涉及从 AionsHome-main 项目重构页面：
+- 原项目的功能和布局可参考
+- **样式、组件、规范严格按 Penumbra 来**，不要复制原项目样式代码
+- 全部用 Penumbra 的设计系统重写（shadcn + Tailwind + CSS 变量）
+
 ### 2. 优先用 shadcn 组件
 
 - 先检查 `src/components/ui/` 里有没有现成组件可以用

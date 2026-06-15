@@ -1,5 +1,6 @@
 import { useRef, useEffect, useMemo, memo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 import { Bubble } from "./Bubble";
 import { SystemCommandGroup } from "./system-command/SystemCommandGroup";
 import type { ChatMessage } from "./types";
@@ -126,33 +127,37 @@ function BubbleListInner({
           return (
             <div key={group.dateKey}>
               <DateSeparator timestamp={group.timestamp} />
-              <div className="flex flex-col gap-1 items-start">
-                {segments.map((seg) => {
+              <div className="flex flex-col items-stretch w-full overflow-hidden">
+                {segments.map((seg, segIdx) => {
                   if (seg.type === "system-group") {
                     return (
-                      <SystemCommandGroup
-                        key={`sys-${seg.messages[0].id}`}
-                        messages={seg.messages}
-                      />
+                      <div key={`sys-${seg.messages[0].id}`} className="w-full py-0.5">
+                        <SystemCommandGroup messages={seg.messages} />
+                      </div>
                     );
                   }
                   // single — 普通消息
                   const msg = seg.messages[0];
+                  // 判断是否需要加大间距（角色切换时）
+                  const prevSeg = segIdx > 0 ? segments[segIdx - 1] : null;
+                  const prevRole = prevSeg?.messages[0]?.role;
+                  const isRoleSwitch = prevRole && prevRole !== msg.role;
                   return (
-                    <Bubble
-                      key={msg.id}
-                      message={msg}
-                      isStreaming={msg.id === streamingId}
-                      streamingContent={
-                        msg.id === streamingId ? streamingContent : undefined
-                      }
-                      onRegenerate={
-                        onRegenerate
-                          ? () => onRegenerate(msg.id)
-                          : undefined
-                      }
-                      onDelete={onDelete ? () => onDelete(msg.id) : undefined}
-                    />
+                    <div key={msg.id} className={cn(isRoleSwitch ? "my-3" : "mt-1")}>
+                      <Bubble
+                        message={msg}
+                        isStreaming={msg.id === streamingId}
+                        streamingContent={
+                          msg.id === streamingId ? streamingContent : undefined
+                        }
+                        onRegenerate={
+                          onRegenerate
+                            ? () => onRegenerate(msg.id)
+                            : undefined
+                        }
+                        onDelete={onDelete ? () => onDelete(msg.id) : undefined}
+                      />
+                    </div>
                   );
                 })}
               </div>

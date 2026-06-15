@@ -130,7 +130,7 @@ function BubbleSegment({
   return (
     <div
       className={cn(
-        "relative rounded-md px-4 py-2 text-[14px] leading-[1.6] break-words overflow-hidden w-fit backdrop-blur-md",
+        "relative rounded-md px-4 py-2 text-[14px] leading-[1.6] break-words overflow-wrap-anywhere overflow-hidden min-w-0 max-w-full backdrop-blur-md",
         isUser
           ? "bg-primary/10 text-primary shadow-sm border border-primary/20"
           : "bg-ai/10 text-ai shadow-sm border border-ai/20",
@@ -168,7 +168,7 @@ function SystemBubble({ message }: SystemBubbleProps) {
 
   if (commandData) {
     return (
-      <div className="flex justify-center my-0.5">
+      <div className="w-full flex justify-center my-0.5">
         <SystemCommand
           data={commandData}
           toolCalls={mcpCalls.length > 0 ? mcpCalls : undefined}
@@ -178,7 +178,7 @@ function SystemBubble({ message }: SystemBubbleProps) {
   }
 
   return (
-    <div className="flex justify-center my-2">
+    <div className="w-full flex justify-center my-2">
       <span className="text-xs text-muted-foreground bg-surface-secondary px-3 py-1 rounded-full">
         {message.content}
       </span>
@@ -229,18 +229,17 @@ function BubbleInner({
 
   return (
     <div
+      tabIndex={-1}
       className={cn(
-        "flex flex-col max-w-full w-full group",
+        "flex flex-col max-w-full w-full group outline-none",
         isUser ? "items-end" : "items-start",
       )}
     >
-      {/* 头像 + 名字 + 时间 — 同一行 */}
-      <div
-        className={cn(
-          "flex items-center gap-1.5 mb-1",
-          isUser ? "flex-row-reverse" : "flex-row",
-        )}
-      >
+      {/* 头部信息 */}
+      <div className={cn(
+        "flex items-center gap-1.5 mb-1",
+        isUser ? "flex-row-reverse" : "flex-row",
+      )}>
         <Avatar size="sm">
           <AvatarFallback className={cn(isUser ? "bg-primary-subtle" : "bg-ai-subtle")}>
             {isUser ? (
@@ -254,6 +253,21 @@ function BubbleInner({
           {isUser ? "你" : "Aion"}
         </span>
         <span className={cn("text-xs", isUser ? "text-primary/60" : "text-ai/60")}>{timeStr}</span>
+
+        {/* 操作按钮 — hover 显示 */}
+        <div
+          className={cn(
+            "flex items-center gap-0.5 shrink-0",
+            "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150",
+          )}
+        >
+          <MessageActions
+            role={message.role}
+            content={message.content}
+            onRegenerate={isAssistant ? onRegenerate : undefined}
+            onDelete={onDelete}
+          />
+        </div>
       </div>
 
       {/* 气泡内容区 — 限宽 85% */}
@@ -288,21 +302,6 @@ function BubbleInner({
           </div>
         )}
 
-        {/* 操作栏 */}
-        <div
-          className={cn(
-            "flex items-center gap-0.5",
-            "opacity-0 group-hover:opacity-100 transition-opacity duration-150",
-            isUser ? "flex-row-reverse" : "flex-row",
-          )}
-        >
-          <MessageActions
-            role={message.role}
-            content={message.content}
-            onRegenerate={isAssistant ? onRegenerate : undefined}
-            onDelete={onDelete}
-          />
-        </div>
       </div>
     </div>
   );
