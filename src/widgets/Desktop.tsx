@@ -5,7 +5,8 @@
  */
 
 import { useState, useEffect, useMemo, Suspense } from 'react';
-import { Plus, RotateCcw, X } from 'lucide-react';
+import { Plus, RotateCcw, Settings, X } from 'lucide-react';
+import { SettingsView } from '@/components/settings/SettingsView';
 import { getAllWidgets, widgetRegistry } from './registry';
 import {
   addWidgetToLayout,
@@ -120,6 +121,7 @@ function WidgetSkeleton() {
 export function Desktop() {
   const [layout, setLayout] = useState<DesktopLayoutItem[]>([]);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [screenSize, setScreenSize] = useState<'mobile' | 'tablet' | 'desktop'>(() => {
     if (typeof window === 'undefined') return 'desktop';
     if (window.innerWidth < 640) return 'mobile';
@@ -160,59 +162,79 @@ export function Desktop() {
               <p className="text-xs text-muted-foreground">桌面小组件</p>
             </div>
             <div className="flex gap-2">
-            <button
-              onClick={() => {
-                const newLayout = resetDesktopLayout();
-                setLayout(newLayout);
-              }}
-              className="grid size-10 place-items-center rounded-full bg-white/55 text-foreground shadow-sm backdrop-blur-md transition-colors hover:bg-white/75 dark:bg-black/35 dark:hover:bg-black/50"
-              title="重置布局"
-            >
-              <RotateCcw className="size-5" />
-            </button>
-            <button
-              onClick={() => setIsPickerOpen(true)}
-              className="grid size-10 place-items-center rounded-full bg-foreground text-background shadow-sm transition-colors hover:bg-foreground/85"
-              title="添加组件"
-            >
-              <Plus className="size-5" />
-            </button>
+              <button
+                onClick={() => setIsSettingsOpen((open) => !open)}
+                className={cn(
+                  'grid size-10 place-items-center rounded-full shadow-sm transition-colors',
+                  isSettingsOpen
+                    ? 'bg-foreground text-background hover:bg-foreground/85'
+                    : 'bg-white/55 text-foreground backdrop-blur-md hover:bg-white/75 dark:bg-black/35 dark:hover:bg-black/50'
+                )}
+                title="设置"
+              >
+                <Settings className="size-5" />
+              </button>
+              {!isSettingsOpen && (
+                <>
+                  <button
+                    onClick={() => {
+                      const newLayout = resetDesktopLayout();
+                      setLayout(newLayout);
+                    }}
+                    className="grid size-10 place-items-center rounded-full bg-white/55 text-foreground shadow-sm backdrop-blur-md transition-colors hover:bg-white/75 dark:bg-black/35 dark:hover:bg-black/50"
+                    title="重置布局"
+                  >
+                    <RotateCcw className="size-5" />
+                  </button>
+                  <button
+                    onClick={() => setIsPickerOpen(true)}
+                    className="grid size-10 place-items-center rounded-full bg-foreground text-background shadow-sm transition-colors hover:bg-foreground/85"
+                    title="添加组件"
+                  >
+                    <Plus className="size-5" />
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-2 sm:px-6">
-          <div
-            style={gridStyle}
-            className={cn(
-              'mx-auto grid max-w-5xl auto-rows-[104px]',
-              'grid-cols-2 sm:grid-cols-4 lg:grid-cols-6'
-            )}
-          >
-            {layout.map((item) => {
-              const widget = widgetRegistry[item.widgetId];
-              if (!widget) return null;
+          {isSettingsOpen ? (
+            <SettingsView onBack={() => setIsSettingsOpen(false)} />
+          ) : (
+            <div
+              style={gridStyle}
+              className={cn(
+                'mx-auto grid max-w-5xl auto-rows-[104px]',
+                'grid-cols-2 sm:grid-cols-4 lg:grid-cols-6'
+              )}
+            >
+              {layout.map((item) => {
+                const widget = widgetRegistry[item.widgetId];
+                if (!widget) return null;
 
-              const WidgetComponent = widget.component;
-              const instanceId = item.instanceId || item.widgetId;
+                const WidgetComponent = widget.component;
+                const instanceId = item.instanceId || item.widgetId;
 
-              return (
-                <div
-                  key={instanceId}
-                  style={getGridStyles(item, screenSize) || undefined}
-                  className="min-h-0"
-                >
-                  <WidgetCard
-                    onRemove={() => setLayout(removeWidgetFromLayout(instanceId))}
+                return (
+                  <div
+                    key={instanceId}
+                    style={getGridStyles(item, screenSize) || undefined}
+                    className="min-h-0"
                   >
-                    <Suspense fallback={<WidgetSkeleton />}>
-                      <WidgetComponent />
-                    </Suspense>
-                  </WidgetCard>
-                </div>
-              );
-            })}
-          </div>
+                    <WidgetCard
+                      onRemove={() => setLayout(removeWidgetFromLayout(instanceId))}
+                    >
+                      <Suspense fallback={<WidgetSkeleton />}>
+                        <WidgetComponent />
+                      </Suspense>
+                    </WidgetCard>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 

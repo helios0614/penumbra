@@ -1,164 +1,165 @@
 /**
- * API 客户端 — 对接 AionsHome 后端
- * 封装 fetch 调用 + SSE 流式解析
+ * Minimal API client for the AionsHome backend.
+ *
+ * Keep request details here so components call domain helpers instead of
+ * scattering fetch calls through the UI.
  */
 
-import type {
-  Conversation,
-  ChatMessage,
-  SendMessageRequest,
-  CreateConversationRequest,
-  UpdateConversationRequest,
-  SSEEvent,
-} from "@/components/chat/types";
+const envApiBase =
+  import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_BASE ?? "";
 
-const API_BASE =
-  import.meta.env.VITE_API_BASE || "http://localhost:8000";
+export const API_BASE_URL = normalizeBaseUrl(envApiBase);
 
-// ─── 通用 fetch 封装 ───
+export const API_BASE_URL_DISPLAY =
+  API_BASE_URL || "same-origin /api (dev proxy: http://localhost:8080)";
 
-async function request<T>(
-  path: string,
-  options?: RequestInit,
-): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-    ...options,
-  });
-  if (!res.ok) {
-    throw new Error(`API ${res.status}: ${res.statusText}`);
+type JsonBody = Record<string, unknown> | unknown[] | string | number | boolean | null;
+
+export interface ApiRequestOptions
+  extends Omit<RequestInit, "body" | "credentials"> {
+  body?: BodyInit | JsonBody;
+  credentials?: RequestCredentials;
+}
+
+export class ApiError extends Error {
+  status: number;
+  data: unknown;
+
+  constructor(message: string, status: number, data?: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.data = data;
   }
-  return res.json();
 }
 
-// ─── 会话 CRUD ───
-
-export async function listConversations(): Promise<Conversation[]> {
-  return request<Conversation[]>("/api/conversations");
+export function apiGet<T>(path: string, options?: ApiRequestOptions): Promise<T> {
+  return apiRequest<T>(path, { ...options, method: "GET" });
 }
 
-export async function createConversation(
-  data?: CreateConversationRequest,
-): Promise<Conversation> {
-  return request<Conversation>("/api/conversations", {
-    method: "POST",
-    body: JSON.stringify(data ?? {}),
-  });
+export function apiPost<T>(
+  path: string,
+  body?: ApiRequestOptions["body"],
+  options?: ApiRequestOptions,
+): Promise<T> {
+  return apiRequest<T>(path, { ...options, method: "POST", body });
 }
 
-export async function updateConversation(
-  convId: string,
-  data: UpdateConversationRequest,
-): Promise<Conversation> {
-  return request<Conversation>(`/api/conversations/${convId}`, {
-    method: "PUT",
-    body: JSON.stringify(data),
-  });
+export async function apiRequest<T>(
+  path: string,
+  options: ApiRequestOptions = {},
+): Promise<T> {
+  const { body, headers: optionHeaders, ...init } = options;
+  const headers = new Headers(optionHeaders);
+
+  if (!headers.has("Accept")) {
+    headers.set("Accept", "application/json");
+  }
+
+  const requestBody = prepareBody(body, headers);
+
+  try {
+    const response = await fetch(buildApiUrl(path), {
+      ...init,
+      credentials: init.credentials ?? "include",
+      headers,
+      body: requestBody,
+    });
+
+    if (!response.ok) {
+      throw await createApiError(response);
+    }
+
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      return (await response.json()) as T;
+    }
+
+    return (await response.text()) as T;
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    throw new ApiError(
+      error instanceof Error ? error.message : "Network request failed",
+      0,
+      error,
+    );
+  }
 }
 
-export async function deleteConversation(convId: string): Promise<void> {
-  await request<void>(`/api/conversations/${convId}`, {
-    method: "DELETE",
-  });
+function normalizeBaseUrl(baseUrl: string): string {
+  return baseUrl.trim().replace(/\/+$/, "");
 }
 
-// ─── 消息 CRUD ───
+function buildApiUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
 
-export async function listMessages(
-  convId: string,
-  limit = 50,
-  before?: number,
-): Promise<ChatMessage[]> {
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (before != null) params.set("before", String(before));
-  return request<ChatMessage[]>(
-    `/api/conversations/${convId}/messages?${params}`,
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${API_BASE_URL}${normalizedPath}`;
+}
+
+function prepareBody(
+  body: ApiRequestOptions["body"],
+  headers: Headers,
+): BodyInit | undefined {
+  if (body === undefined) {
+    return undefined;
+  }
+
+  if (isBodyInit(body)) {
+    return body;
+  }
+
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  return JSON.stringify(body);
+}
+
+function isBodyInit(body: ApiRequestOptions["body"]): body is BodyInit {
+  return (
+    typeof body === "string" ||
+    body instanceof FormData ||
+    body instanceof URLSearchParams ||
+    body instanceof Blob ||
+    body instanceof ArrayBuffer ||
+    ArrayBuffer.isView(body)
   );
 }
 
-export async function deleteMessage(msgId: string): Promise<void> {
-  await request<void>(`/api/messages/${msgId}`, {
-    method: "DELETE",
-  });
-}
+async function createApiError(response: Response): Promise<ApiError> {
+  const contentType = response.headers.get("content-type") ?? "";
+  let data: unknown = undefined;
 
-export async function editMessage(
-  msgId: string,
-  content: string,
-): Promise<ChatMessage> {
-  return request<ChatMessage>(`/api/messages/${msgId}`, {
-    method: "PUT",
-    body: JSON.stringify({ content }),
-  });
-}
-
-// ─── SSE 流式解析 ───
-
-/**
- * 解析 SSE 响应流，逐事件 yield
- * 对应 AionsHome 后端 StreamingResponse 的 `data: {...}\n\n` 格式
- */
-export async function* parseSSEStream(
-  response: Response,
-): AsyncGenerator<SSEEvent> {
-  const reader = response.body!.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    // 最后一行可能不完整，保留在 buffer
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || !trimmed.startsWith("data:")) continue;
-
-      const jsonStr = trimmed.slice(5).trim();
-      if (!jsonStr || jsonStr === "[DONE]") continue;
-
-      try {
-        const event = JSON.parse(jsonStr) as SSEEvent;
-        yield event;
-        if (event.type === "done") return;
-      } catch {
-        // 跳过解析失败的行
-      }
-    }
+  try {
+    data = contentType.includes("application/json")
+      ? await response.json()
+      : await response.text();
+  } catch {
+    data = undefined;
   }
+
+  const message =
+    getErrorMessage(data) || `API ${response.status}: ${response.statusText}`;
+
+  return new ApiError(message, response.status, data);
 }
 
-// ─── 发送消息（SSE 流式）───
+function getErrorMessage(data: unknown): string | null {
+  if (!data || typeof data !== "object") {
+    return typeof data === "string" ? data : null;
+  }
 
-export function sendMessageStream(
-  convId: string,
-  data: SendMessageRequest,
-  signal?: AbortSignal,
-): Promise<Response> {
-  return fetch(`${API_BASE}/api/conversations/${convId}/send`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-    signal,
-  });
-}
-
-// ─── 重新生成（SSE 流式）───
-
-export function regenerateStream(
-  convId: string,
-  signal?: AbortSignal,
-): Promise<Response> {
-  return fetch(`${API_BASE}/api/conversations/${convId}/regenerate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    signal,
-  });
+  const record = data as Record<string, unknown>;
+  const message = record.error ?? record.message ?? record.detail;
+  return typeof message === "string" ? message : null;
 }
