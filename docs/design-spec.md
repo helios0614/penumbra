@@ -22,6 +22,7 @@
 #### 主色 Primary — 统一主题色变量
 
 所有主色变体从单一 `--color-theme` 自动派生，换主题只需改这一个值。
+派生优先使用 CSS `color-mix()`，不要在组件里手写主色 hover/active 的 hex 值。
 
 ```css
 :root {
@@ -29,7 +30,7 @@
   --color-primary: var(--color-theme);
   --color-primary-hover: color-mix(in srgb, var(--color-theme), black 12%);
   --color-primary-active: color-mix(in srgb, var(--color-theme), black 22%);
-  --color-primary-foreground: #ffffff;
+  --color-primary-foreground: #ffffff; /* 浅色默认，深色或自定义主题需按对比度切换 */
   --color-primary-subtle: color-mix(in srgb, var(--color-theme), white 92%);
 }
 ```
@@ -40,10 +41,10 @@
 | `--color-primary` | = theme | 主按钮背景、链接 |
 | `--color-primary-hover` | theme + 12% black | hover 态 |
 | `--color-primary-active` | theme + 22% black | active 态 |
-| `--color-primary-foreground` | 固定白 | 主色上的文字 |
+| `--color-primary-foreground` | 浅色默认白，必要时切换 | 主色上的文字 |
 | `--color-primary-subtle` | theme + 92% white | tag、badge 浅底 |
 
-深色主题只需覆盖 `--color-theme` 为稍亮的值（如 `#e07a66`），其余自动适配。
+深色主题只需覆盖 `--color-theme` 为稍亮的值（如 `#f79e7f`），其余主色变体自动适配。
 
 #### 辅色 Secondary
 
@@ -66,20 +67,30 @@
 
 #### 语义色 Semantic
 
-| 语义 | 背景 | 前景（文字/图标） | 用途 |
-|---|---|---|---|
-| 成功 | `#22c55e` | `#ffffff` | 操作成功、在线状态 |
-| 成功-浅 | `#f0fdf4` | `#166534` | 成功提示条 |
-| 警告 | `#f59e0b` | `#ffffff` | 闹铃、即将过期 |
-| 警告-浅 | `#fffbeb` | `#92400e` | 警告提示条 |
-| 错误 | `#ef4444` | `#ffffff` | 删除、致命错误 |
-| 错误-浅 | `#fef2f2` | `#991b1b` | 错误提示条 |
-| 信息 | `#3b82f6` | `#ffffff` | 提示、帮助 |
-| 信息-浅 | `#eff6ff` | `#1e40af` | 信息提示条 |
+语义色必须使用命名 token，组件中不要直接写 hex。Tailwind class 命名与 token 对齐，如 `text-success`、`bg-error-subtle`、`border-warning`。
+
+| Token | 浅色值 | 用途 |
+|---|---|---|
+| `--color-success` | `#22c55e` | 操作成功、在线状态 |
+| `--color-success-foreground` | `#ffffff` | 成功色上的文字/图标 |
+| `--color-success-subtle` | `#f0fdf4` | 成功提示条浅底 |
+| `--color-success-subtle-foreground` | `#166534` | 成功浅底上的文字 |
+| `--color-warning` | `#f59e0b` | 闹铃、即将过期 |
+| `--color-warning-foreground` | `#ffffff` | 警告色上的文字/图标 |
+| `--color-warning-subtle` | `#fffbeb` | 警告提示条浅底 |
+| `--color-warning-subtle-foreground` | `#92400e` | 警告浅底上的文字 |
+| `--color-error` | `#ef4444` | 删除、致命错误 |
+| `--color-error-foreground` | `#ffffff` | 错误色上的文字/图标 |
+| `--color-error-subtle` | `#fef2f2` | 错误提示条浅底 |
+| `--color-error-subtle-foreground` | `#991b1b` | 错误浅底上的文字 |
+| `--color-info` | `#3b82f6` | 提示、帮助 |
+| `--color-info-foreground` | `#ffffff` | 信息色上的文字/图标 |
+| `--color-info-subtle` | `#eff6ff` | 信息提示条浅底 |
+| `--color-info-subtle-foreground` | `#1e40af` | 信息浅底上的文字 |
 
 ### 1.2 深色主题
 
-深色主题通过在 `<html>` 上加 `dark` class 激活，变量覆盖规则：
+深色主题通过在 `<html>` 上加 `dark` class 激活。主色仍以 `--color-theme` 为唯一入口，除非可访问性测试证明对比度不足，否则不要单独覆盖 `--color-primary-hover`、`--color-primary-active`、`--color-primary-subtle`。
 
 | Token | 值 |
 |---|---|
@@ -89,16 +100,26 @@
 | `--color-surface-secondary` | `#242422` |
 | `--color-border` | `#2e2e2c` |
 | `--color-border-strong` | `#484844` |
-| `--color-primary` | `#f79e7f` |
-| `--color-primary-hover` | `#e88d7c` |
-| `--color-primary-active` | `#d4624a` |
-| `--color-primary-subtle` | `#2a1f1c` |
+| `--color-theme` | `#f79e7f` |
+| `--color-primary-foreground` | `#111110` |
 | `--color-secondary` | `#7fa685` |
+| `--color-secondary-foreground` | `#111110` |
 | `--color-secondary-subtle` | `#1a241c` |
 | `--color-muted` | `#78726a` |
 | `--color-muted-strong` | `#9a9490` |
 
-语义色的「浅」变体在深色下替换为对应低透明度底色（如 `rgba(34,197,94,0.12)`）。
+语义色的「浅」变体在深色下替换为对应低透明度底色，并保留可读前景色：
+
+| Token | 深色值 |
+|---|---|
+| `--color-success-subtle` | `rgba(34, 197, 94, 0.12)` |
+| `--color-success-subtle-foreground` | `#86efac` |
+| `--color-warning-subtle` | `rgba(245, 158, 11, 0.14)` |
+| `--color-warning-subtle-foreground` | `#fcd34d` |
+| `--color-error-subtle` | `rgba(239, 68, 68, 0.14)` |
+| `--color-error-subtle-foreground` | `#fca5a5` |
+| `--color-info-subtle` | `rgba(59, 130, 246, 0.14)` |
+| `--color-info-subtle-foreground` | `#93c5fd` |
 
 ---
 
@@ -163,7 +184,7 @@
 ### 3.2 组件之间间距
 
 | 场景 | gap | Tailwind |
----|---|---|
+|---|---|---|
 | 同级元素（按钮组、标签组） | `8px` | `gap-2` |
 | 表单字段之间 | `16px` | `gap-4` |
 | 卡片列表 | `12px` | `gap-3` |
@@ -224,7 +245,7 @@ shadcn/ui 的 `--radius` 默认值设为 `12px`（对应 `--radius-md`），组�
 
 ### 4.2 毛玻璃表面（Glass Surface）
 
-导航栏、卡片、弹框、下拉菜单等浮层统一使用毛玻璃，不使用纯色背景。
+毛玻璃用于浮在内容之上的界面层：导航栏、弹框、下拉菜单、Toast、可悬浮工具条。内容密集区域（聊天正文、设置表单、长文本卡片）优先使用 `--color-surface` 或 `--color-surface-secondary`，避免透明背景降低可读性。
 
 ```css
 .glass {
@@ -241,7 +262,7 @@ Tailwind：`bg-white/70 backdrop-blur-md border border-white/15`
 | 元素 | 背景色 | blur | 说明 |
 |---|---|---|---|
 | 顶部导航栏 | `white/60` | `blur(20px)` | 更轻，下方内容隐约透出 |
-| 卡片 | `white/70` | `blur(12px)` | 主体内容足够辨识 |
+| 悬浮卡片 | `white/70` | `blur(12px)` | 适合轻量预览、菜单面板 |
 | 弹窗/Modal | `white/80` | `blur(16px)` | 稍实，保证弹窗内容清晰 |
 | 下拉菜单 | `white/75` | `blur(12px)` | 与卡片一致 |
 | Toast | `black/80` | `blur(8px)` | 深底白字，半透明 |
@@ -257,7 +278,7 @@ Tailwind：`bg-white/70 backdrop-blur-md border border-white/15`
 | `--shadow-sm` | `0 2px 8px rgba(74,59,50,0.05)` | 卡片静态、列表项 |
 | `--shadow-md` | `0 4px 20px rgba(74,59,50,0.08)` | hover 浮起、下拉菜单 |
 | `--shadow-lg` | `0 8px 30px rgba(74,59,50,0.10)` | Modal、弹窗 |
-| `--shadow-glow` | `0 0 0 3px rgba(244,132,95,0.25)` | Primary focus ring |
+| `--shadow-glow` | `0 0 0 3px color-mix(in srgb, var(--color-theme), transparent 75%)` | Primary focus ring |
 | `--shadow-glass` | `0 4px 20px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.1)` | 毛玻璃卡片、导航栏 |
 
 `--shadow-glass` 是毛玻璃专用阴影：外阴影浮起 + 内阴影模拟光泽，让玻璃质感更明显。
@@ -268,11 +289,7 @@ Tailwind：`bg-white/70 backdrop-blur-md border border-white/15`
 
 几个细节让整体更柔和：
 
-**过渡动画** — 所有交互元素统一加过渡，动起来不生硬：
-```css
-transition: all 0.2s ease;
-```
-Tailwind：`transition-all duration-200`
+**过渡动画** — 按属性选择过渡，不默认使用 `transition-all`。颜色变化用 `transition-colors duration-150`，位移/缩放用 `transition-transform duration-200`，展开/折叠用 `duration-300`。
 
 **边框** — 用半透明边框代替实色，若有若无：
 - 浅色主题：`1px solid rgba(0, 0, 0, 0.06)`
@@ -289,7 +306,7 @@ Tailwind：`transition-all duration-200`
 
 ## 5. 组件状态
 
-所有交互元素统一使用 `transition-colors duration-150`（150ms 颜色过渡）。
+所有交互元素按变化属性选择过渡：颜色用 `transition-colors duration-150`，位移/缩放用 `transition-transform duration-200`，多个属性确实同时变化时才使用 `transition-all`。
 
 ### 5.1 按钮
 
@@ -298,7 +315,7 @@ Tailwind：`transition-all duration-200`
 | Default | 背景 `--color-primary`，文字 `--color-primary-foreground` |
 | Hover | 背景切换到 `--color-primary-hover`，`cursor: pointer` |
 | Active | 背景切换到 `--color-primary-active`，轻微 `scale-[0.98]` |
-| Focus | 外发光 `--shadow-glow`，无默认 outline |
+| Focus | 键盘导航时显示 `focus-visible` 外轮廓，可叠加 `--shadow-glow` |
 | Disabled | `opacity-50`，`cursor-not-allowed`，`pointer-events-none` |
 | Loading | 文字替换为 spinner，按钮保持原尺寸不变 |
 
@@ -312,7 +329,7 @@ Tailwind：`transition-all duration-200`
 | Hover | 边框颜色不变，`cursor: text` |
 | Focus | 边框切换到 `--color-primary`，外发光 `--shadow-glow` |
 | Disabled | `opacity-50`，背景变浅，`cursor-not-allowed` |
-| Error | 边框切换到 `--color-error`（`#ef4444`），下方显示错误文字 |
+| Error | 边框切换到 `--color-error`，下方显示错误文字 |
 
 ### 5.3 卡片
 
@@ -380,6 +397,18 @@ Tailwind：`transition-all duration-200`
 
 内容区最大宽度 `max-w-[600px]`（移动端全宽，桌面端居中），聊天页面可放宽到 `max-w-[720px]`。
 
+### 6.5 可访问性
+
+UI 默认满足键盘、触屏和低动效用户的基本需求：
+
+- 文字与背景对比度至少达到 WCAG AA：正文 4.5:1，大号文字与图标按钮 3:1。
+- 触屏可点击目标不小于 `44px × 44px`；视觉上较小的图标按钮也要通过 padding 扩大命中区域。
+- 交互元素必须可键盘访问，`Tab` 顺序与视觉顺序一致，焦点不能被弹窗或侧栏吞掉。
+- 图标按钮必须提供 `aria-label`；只有视觉 tooltip 不算可访问名称。
+- 展开/折叠、侧栏、弹窗等状态变化要同步 `aria-expanded`、`aria-controls`、`aria-modal` 等语义。
+- 遵守 `prefers-reduced-motion: reduce`：关闭非必要动画，保留即时状态变化。
+- 文本内容必须允许换行，长 URL、代码、文件名要用 `break-words` 或内部横向滚动处理，不能撑破布局。
+
 
 ---
 
@@ -433,7 +462,7 @@ import { Send, Settings, Brain } from "lucide-react";
 <TooltipProvider>
   <Tooltip>
     <TooltipTrigger asChild>
-      <Button variant="ghost" size="icon" className="size-8">
+      <Button variant="ghost" size="icon" className="size-8" aria-label="复制">
         <Copy className="size-3.5" />
       </Button>
     </TooltipTrigger>
@@ -485,8 +514,8 @@ export function WechatIcon({ className }: { className?: string }) {
 
 ### 8.1 机制
 
-系统所有主色变体从单一 CSS 变量 `--color-theme` 自动派生（通过 `color-match()`）。
-用户只需修改这一个变量，hover、active、subtle、ring 全部自动跟随变化，无需逐个覆盖。
+系统所有主色变体从单一 CSS 变量 `--color-theme` 自动派生（通过 `color-mix()`）。
+用户只需修改这一个变量，hover、active、subtle、ring 全部自动跟随变化，无需逐个覆盖。`--color-primary-foreground` 根据主题色对比度在 `#ffffff` / `#111110` 之间切换，保证按钮文字可读。
 
 ```ts
 // 运行时切换主题色

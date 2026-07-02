@@ -4,13 +4,16 @@ Penumbra 是一个基于 React + Vite + Tailwind CSS + shadcn/ui 的个人助理
 
 ## UI 开发规范
 
-写 UI 相关代码时，`ui-dev` skill 会自动激活。它会指引你遵循 `docs/design-spec.md` 和 `docs/chat-ui-reference.md` 中的规范。
+UI 开发的通用入口是 `docs/ui-development.md`，适用于人类开发者、Codex、Claude 和其他 agent。
+在 Claude 环境中，`.claude/skills/ui-dev.md` 是 Claude 专用自动触发入口；它只负责指向同一套 `docs/` 规范，不单独定义另一套标准。
 
 核心原则：
 - 优先用 shadcn 组件，在其上扩展
 - 样式严格跟 design-spec 走，颜色用 CSS 变量，间距用 Tailwind 网格
 - Tailwind class 优先，禁止无理由使用 `style={{}}`
 - 组件化拆分，一个文件不超过 300 行
+- 主色只从 `--color-theme` 派生，语义色使用命名 token，不在组件里硬编码 hex
+- UI 必须满足基础可访问性：键盘可用、图标按钮有 `aria-label`、触屏目标不小于 44px
 
 ## 页面重构参考
 
@@ -18,7 +21,7 @@ Penumbra 是一个基于 React + Vite + Tailwind CSS + shadcn/ui 的个人助理
 
 **重要约束**：
 - 功能和布局可参考原项目
-- **样式、组件、规范严格按 Penumbra 的来**（`ui-dev` skill、`docs/design-spec.md`）
+- **样式、组件、规范严格按 Penumbra 的来**（`docs/ui-development.md`、`docs/design-spec.md`）
 - 不要复制原项目的样式代码，全部用 Penumbra 的设计系统重写
 - shadcn 组件优先，Tailwind class 优先，CSS 变量驱动
 
@@ -44,8 +47,9 @@ src/
   types/         ← 共享类型定义
   assets/        ← 静态资源、自定义 SVG 图标
 docs/
-  design-spec.md        ← 视觉规范（颜色、字体、间距、圆角、阴影）
-  chat-ui-reference.md  ← 聊天组件交互参考
+  ui-development.md     ← UI 开发通用入口（所有开发者/agent 从这里开始）
+  design-spec.md        ← 视觉规范（token、字体、间距、圆角、阴影、可访问性）
+  chat-ui-reference.md  ← 聊天组件交互参考与默认实现决策
 ```
 
 ## 命令
