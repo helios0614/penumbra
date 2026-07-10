@@ -29,6 +29,7 @@ export interface CalendarProps {
   highlightToday?: boolean;
   weekStart?: 0 | 1;
   layout?: "compact" | "side";
+  embedded?: boolean;
   className?: string;
 }
 
@@ -41,6 +42,7 @@ export default function Calendar({
   highlightToday = true,
   weekStart = 1,
   layout = "compact",
+  embedded = false,
   className,
 }: CalendarProps) {
   const [internalSelected, setInternalSelected] = useState<Date | undefined>();
@@ -149,7 +151,13 @@ export default function Calendar({
   }
 
   return (
-    <div className={cn("glass-card rounded-lg p-4 select-none flex flex-col min-h-0", className)}>
+    <div
+      className={cn(
+        "select-none flex flex-col min-h-0",
+        embedded ? "rounded-[24px] bg-white/45 p-4 dark:bg-white/5" : "glass-card rounded-lg p-4",
+        className,
+      )}
+    >
       {calendarContent}
       <div className="mt-3 pt-3 border-t border-border flex flex-col flex-1 min-h-0">
         {eventPanel}

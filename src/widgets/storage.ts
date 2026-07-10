@@ -13,11 +13,11 @@ export type { DesktopLayout, DesktopLayoutItem };
  * 默认桌面布局
  */
 const DEFAULT_LAYOUT: DesktopLayout = [
-  { instanceId: 'calendar-default', widgetId: 'calendar', position: { col: 0, row: 0 } },
-  { instanceId: 'chat-default', widgetId: 'chat', position: { col: 2, row: 0 } },
-  { instanceId: 'clock-default', widgetId: 'clock', position: { col: 4, row: 0 } },
-  { instanceId: 'weather-default', widgetId: 'weather', position: { col: 5, row: 0 } },
-  { instanceId: 'music-default', widgetId: 'music', position: { col: 4, row: 1 } },
+  { instanceId: 'clock-default', widgetId: 'clock', position: { col: 0, row: 0 } },
+  { instanceId: 'weather-default', widgetId: 'weather', position: { col: 1, row: 0 } },
+  { instanceId: 'music-default', widgetId: 'music', position: { col: 2, row: 0 } },
+  { instanceId: 'calendar-default', widgetId: 'calendar', position: { col: 0, row: 1 } },
+  { instanceId: 'chat-default', widgetId: 'chat', position: { col: 2, row: 1 } },
 ];
 
 const DESKTOP_COLUMNS = 6;

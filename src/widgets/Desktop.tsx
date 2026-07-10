@@ -4,9 +4,25 @@
  * 网格布局 + 组件注册表 + 布局持久化
  */
 
-import { useState, useEffect, useMemo, Suspense } from 'react';
-import { Plus, RotateCcw, Settings, X } from 'lucide-react';
+import { useState, useEffect, useMemo, Suspense, type ComponentType } from 'react';
+import {
+  CalendarDays,
+  Check,
+  CircleCheckBig,
+  MessageSquare,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Settings,
+  StickyNote,
+  X,
+} from 'lucide-react';
 import { SettingsView } from '@/components/settings/SettingsView';
+import {
+  DesktopAppView,
+  type DesktopAppId,
+  isDesktopAppId,
+} from '@/components/apps/DesktopAppView';
 import { getAllWidgets, widgetRegistry } from './registry';
 import {
   addWidgetToLayout,
@@ -24,6 +40,24 @@ const GRID_COLUMNS = {
   tablet: 4,
   desktop: 6,
 } as const;
+
+interface DesktopAppShortcut {
+  id: DesktopAppId;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+}
+
+const DESKTOP_APPS: DesktopAppShortcut[] = [
+  { id: 'chat', label: '对话', icon: MessageSquare },
+  { id: 'calendar', label: '日历', icon: CalendarDays },
+  { id: 'todo', label: '待办', icon: CircleCheckBig },
+  { id: 'notes', label: '笔记', icon: StickyNote },
+];
+
+function getAppFromPath(pathname: string): DesktopAppId | null {
+  const match = pathname.match(/^\/app\/([^/]+)\/?$/);
+  return match && isDesktopAppId(match[1]) ? match[1] : null;
+}
 
 /**
  * 计算组件的网格样式
@@ -64,42 +98,93 @@ function getGridStyles(item: DesktopLayoutItem, screenSize: 'mobile' | 'tablet' 
 function WidgetCard({
   children,
   className,
+  isEditing,
+  onOpen,
   onRemove,
+  widgetId,
+  widgetInstanceId,
+  widgetName,
 }: {
   children: React.ReactNode;
   className?: string;
+  isEditing: boolean;
+  onOpen: () => void;
   onRemove: () => void;
+  widgetId: string;
+  widgetInstanceId: string;
+  widgetName: string;
 }) {
   return (
     <div
+      data-widget-id={widgetId}
       className={cn(
-        'group relative',
+        'widget-card group relative',
         'bg-white/70 backdrop-blur-md dark:bg-black/40',
         'border border-white/15 dark:border-white/10',
         'shadow-[0_4px_20px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.1)]',
         'rounded-[22px]',
         'transition-all duration-200',
-        'hover:shadow-[0_8px_30px_rgba(0,0,0,0.12)]',
-        'hover:-translate-y-0.5',
+        !isEditing && 'hover:shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:-translate-y-0.5',
+        isEditing && 'widget-editing ring-1 ring-primary/20',
         'h-full w-full overflow-hidden',
         'p-3',
         'select-none',
         className
       )}
     >
-      <button
-        type="button"
-        onClick={onRemove}
-        className={cn(
-          'absolute right-2 top-2 z-10 grid size-6 place-items-center rounded-full',
-          'bg-black/55 text-white opacity-0 shadow-sm backdrop-blur',
-          'transition-opacity hover:bg-black/70 group-hover:opacity-100 focus:opacity-100'
-        )}
-        title="移除组件"
-      >
-        <X className="size-3.5" />
-      </button>
-      {children}
+      {isEditing && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="absolute right-2 top-2 z-10 grid size-7 place-items-center rounded-full bg-black/65 text-white shadow-sm backdrop-blur transition-transform hover:scale-105 hover:bg-black/75"
+          title="移除组件"
+        >
+          <X className="size-4" />
+        </button>
+      )}
+      {!isEditing && (
+        <button
+          type="button"
+          onClick={onOpen}
+          className="absolute inset-0 z-[5] cursor-pointer rounded-[inherit] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-primary"
+          aria-label={`打开${widgetName}`}
+          title={`打开${widgetName}`}
+          data-testid={`widget-open-${widgetInstanceId}`}
+        />
+      )}
+      <div className={cn('h-full', !isEditing && 'pointer-events-none')} inert={!isEditing ? true : undefined}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function AppDock({ onLaunch }: { onLaunch: (appId: DesktopAppId) => void }) {
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-3 z-40 flex justify-center px-4 sm:bottom-5">
+      <span className="desktop-dock-scrim pointer-events-none absolute -bottom-3 h-28 w-full max-w-lg" />
+      <div className="pointer-events-auto relative flex items-center gap-3 rounded-[28px] border border-white/20 bg-white/25 p-2.5 shadow-[0_12px_40px_rgba(51,43,36,0.13)] backdrop-blur-2xl dark:border-white/10 dark:bg-black/35 sm:gap-4 sm:p-3">
+        {DESKTOP_APPS.map((app) => {
+          const Icon = app.icon;
+
+          return (
+            <button
+              key={app.id}
+              type="button"
+              onClick={() => onLaunch(app.id)}
+              className="desktop-app-button group relative grid size-12 place-items-center rounded-[16px] transition-transform hover:-translate-y-1 active:scale-95 sm:size-14 sm:rounded-[18px]"
+              title={`打开${app.label}`}
+              aria-label={`打开${app.label}`}
+              data-testid={`dock-app-${app.id}`}
+            >
+              <span
+                className="desktop-app-icon absolute inset-0 rounded-[inherit] transition-shadow group-hover:shadow-lg"
+              />
+              <Icon className="relative size-6 sm:size-7" />
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -122,6 +207,11 @@ export function Desktop() {
   const [layout, setLayout] = useState<DesktopLayoutItem[]>([]);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [activeApp, setActiveApp] = useState<DesktopAppId | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return getAppFromPath(window.location.pathname);
+  });
   const [screenSize, setScreenSize] = useState<'mobile' | 'tablet' | 'desktop'>(() => {
     if (typeof window === 'undefined') return 'desktop';
     if (window.innerWidth < 640) return 'mobile';
@@ -132,6 +222,18 @@ export function Desktop() {
   // 加载布局
   useEffect(() => {
     setLayout(loadDesktopLayout());
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setActiveApp(getAppFromPath(window.location.pathname));
+      setIsSettingsOpen(false);
+      setIsEditing(false);
+      setIsPickerOpen(false);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   // 监听屏幕尺寸变化
@@ -151,19 +253,53 @@ export function Desktop() {
   }), []);
 
   const widgets = useMemo(() => getAllWidgets(), []);
+  const desktopGreeting = useMemo(() => {
+    const now = new Date();
+    const hour = now.getHours();
+    const greeting = hour < 6 ? '夜深了' : hour < 12 ? '上午好' : hour < 18 ? '下午好' : '晚上好';
+    const date = now.toLocaleDateString('zh-CN', {
+      month: 'long',
+      day: 'numeric',
+      weekday: 'long',
+    });
+    return { greeting, date };
+  }, []);
+
+  const openApp = (appId: DesktopAppId) => {
+    setIsSettingsOpen(false);
+    setIsEditing(false);
+    setIsPickerOpen(false);
+    window.history.pushState({ penumbraApp: appId }, '', `/app/${appId}`);
+    setActiveApp(appId);
+  };
+
+  const closeApp = () => {
+    if (window.history.state?.penumbraApp) {
+      window.history.back();
+      return;
+    }
+
+    window.history.replaceState({}, '', '/');
+    setActiveApp(null);
+  };
 
   return (
-    <div className="h-dvh overflow-hidden bg-[linear-gradient(160deg,#f8f3ec_0%,#e7f0ef_45%,#f9fbf8_100%)] text-foreground dark:bg-[linear-gradient(160deg,#10100f_0%,#18201f_45%,#111110_100%)]">
-      <div className="flex h-full flex-col">
-        <div className="shrink-0 px-4 pb-2 pt-4 sm:px-6">
-          <div className="mx-auto flex max-w-5xl items-center justify-between">
+    <div className="desktop-wallpaper relative h-dvh overflow-hidden text-foreground">
+      <div className="desktop-wallpaper-texture pointer-events-none absolute inset-0" />
+      <div className="relative z-10 flex h-full flex-col">
+        {!activeApp && <div className="shrink-0 px-4 pb-2 pt-4 sm:px-6">
+          <div className="mx-auto flex max-w-4xl items-center justify-between">
             <div>
-              <h1 className="text-[22px] font-semibold leading-tight">Penumbra</h1>
-              <p className="text-xs text-muted-foreground">桌面小组件</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-primary/75">Penumbra</p>
+              <h1 className="mt-0.5 text-[22px] font-semibold leading-tight">{desktopGreeting.greeting}</h1>
+              <p className="mt-0.5 text-xs text-muted-foreground">{desktopGreeting.date}</p>
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => setIsSettingsOpen((open) => !open)}
+                onClick={() => {
+                  setIsSettingsOpen((open) => !open);
+                  setIsEditing(false);
+                }}
                 className={cn(
                   'grid size-10 place-items-center rounded-full shadow-sm transition-colors',
                   isSettingsOpen
@@ -174,7 +310,16 @@ export function Desktop() {
               >
                 <Settings className="size-5" />
               </button>
-              {!isSettingsOpen && (
+              {!isSettingsOpen && !isEditing && (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="grid size-10 place-items-center rounded-full bg-foreground text-background shadow-sm transition-colors hover:bg-foreground/85"
+                  title="编辑桌面"
+                >
+                  <Pencil className="size-4.5" />
+                </button>
+              )}
+              {!isSettingsOpen && isEditing && (
                 <>
                   <button
                     onClick={() => {
@@ -188,25 +333,41 @@ export function Desktop() {
                   </button>
                   <button
                     onClick={() => setIsPickerOpen(true)}
-                    className="grid size-10 place-items-center rounded-full bg-foreground text-background shadow-sm transition-colors hover:bg-foreground/85"
+                    className="grid size-10 place-items-center rounded-full bg-white/55 text-foreground shadow-sm backdrop-blur-md transition-colors hover:bg-white/75 dark:bg-black/35 dark:hover:bg-black/50"
                     title="添加组件"
                   >
                     <Plus className="size-5" />
+                  </button>
+                  <button
+                    onClick={() => setIsEditing(false)}
+                    className="grid size-10 place-items-center rounded-full bg-foreground text-background shadow-sm transition-colors hover:bg-foreground/85"
+                    title="完成编辑"
+                  >
+                    <Check className="size-5" />
                   </button>
                 </>
               )}
             </div>
           </div>
-        </div>
+        </div>}
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-2 sm:px-6">
-          {isSettingsOpen ? (
+        <div
+          className={cn(
+            'min-h-0 flex-1',
+            activeApp
+              ? 'overflow-hidden p-0 sm:px-6 sm:pb-6 sm:pt-4'
+              : 'overflow-y-auto px-4 pb-28 pt-2 sm:px-6 sm:pb-32',
+          )}
+        >
+          {activeApp ? (
+            <DesktopAppView appId={activeApp} onBack={closeApp} />
+          ) : isSettingsOpen ? (
             <SettingsView onBack={() => setIsSettingsOpen(false)} />
           ) : (
             <div
               style={gridStyle}
               className={cn(
-                'mx-auto grid max-w-5xl auto-rows-[104px]',
+                'desktop-home-grid mx-auto grid max-w-4xl auto-rows-[124px] sm:auto-rows-[116px] lg:auto-rows-[120px]',
                 'grid-cols-2 sm:grid-cols-4 lg:grid-cols-6'
               )}
             >
@@ -221,10 +382,17 @@ export function Desktop() {
                   <div
                     key={instanceId}
                     style={getGridStyles(item, screenSize) || undefined}
-                    className="min-h-0"
+                    className="min-h-0 rounded-[22px]"
                   >
                     <WidgetCard
+                      isEditing={isEditing}
+                      onOpen={() => {
+                        if (isDesktopAppId(item.widgetId)) openApp(item.widgetId);
+                      }}
                       onRemove={() => setLayout(removeWidgetFromLayout(instanceId))}
+                      widgetId={item.widgetId}
+                      widgetInstanceId={instanceId}
+                      widgetName={widget.name}
                     >
                       <Suspense fallback={<WidgetSkeleton />}>
                         <WidgetComponent />
@@ -289,6 +457,8 @@ export function Desktop() {
           </div>
         </div>
       )}
+
+      {!activeApp && !isSettingsOpen && !isPickerOpen && <AppDock onLaunch={openApp} />}
     </div>
   );
 }

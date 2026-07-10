@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
+  Check,
   CheckCircle2,
   CircleDashed,
   LogIn,
@@ -16,6 +17,11 @@ import {
   type LoginState,
 } from "@/lib/backend";
 import { cn } from "@/lib/utils";
+import {
+  applyThemeColor,
+  getStoredThemeColor,
+  THEME_COLOR_PRESETS,
+} from "@/lib/theme";
 
 interface SettingsViewProps {
   onBack?: () => void;
@@ -35,6 +41,12 @@ const loginCopy: Record<LoginState, string> = {
 
 export function SettingsView({ onBack }: SettingsViewProps) {
   const [status, setStatus] = useState<BackendStatus>(INITIAL_BACKEND_STATUS);
+  const [themeColor, setThemeColor] = useState(getStoredThemeColor);
+
+  const selectThemeColor = useCallback((color: string) => {
+    const applied = applyThemeColor(color);
+    if (applied) setThemeColor(applied);
+  }, []);
 
   const refresh = useCallback(async () => {
     setStatus((current) => ({
@@ -89,6 +101,55 @@ export function SettingsView({ onBack }: SettingsViewProps) {
               </button>
             )}
           </div>
+        </div>
+      </div>
+
+      <div className="rounded-[24px] border border-white/20 bg-white/70 p-4 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-black/35 sm:p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-foreground">主题颜色</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              桌面 App 图标、按钮和强调色会一起更新。
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            自定义
+            <input
+              type="color"
+              value={themeColor}
+              onChange={(event) => selectThemeColor(event.target.value)}
+              className="size-10 cursor-pointer rounded-xl border border-border bg-transparent p-1"
+              aria-label="自定义主题颜色"
+            />
+          </label>
+        </div>
+
+        <div className="mt-4 grid grid-cols-4 gap-3 sm:grid-cols-8">
+          {THEME_COLOR_PRESETS.map((preset) => {
+            const isSelected = preset.value.toUpperCase() === themeColor;
+
+            return (
+              <button
+                key={preset.value}
+                type="button"
+                onClick={() => selectThemeColor(preset.value)}
+                className="group flex flex-col items-center gap-1.5 text-[11px] text-muted-foreground"
+                aria-label={`使用${preset.name}主题`}
+                aria-pressed={isSelected}
+              >
+                <span
+                  className={cn(
+                    "grid size-9 place-items-center rounded-full border-2 shadow-sm transition-transform group-hover:scale-105",
+                    isSelected ? "border-foreground" : "border-white/70 dark:border-white/15",
+                  )}
+                  style={{ backgroundColor: preset.value }}
+                >
+                  {isSelected && <Check className="size-4 text-white drop-shadow-sm" />}
+                </span>
+                <span>{preset.name}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
