@@ -2,6 +2,14 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+@font-face {
+  font-family: "LXGW WenKai GB Screen";
+  src: url("../TTF-屏幕阅读版（含GB）-1/LXGWWenKaiGBScreen.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -106,7 +114,7 @@
 
   /* ── 字体 ── */
   --font-heading: var(--font-sans);
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+  --font-sans: "LXGW WenKai GB Screen", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", "Noto Sans SC", sans-serif;
   --font-mono: "SF Mono", "Fira Code", "Cascadia Code", monospace;
 
@@ -346,6 +354,135 @@
   50% { transform: rotate(0.25deg); }
 }
 
+/* ── 编辑感实验桌面：纸张底色 + 高对比排版 ── */
+.editorial-desktop {
+  background:
+    radial-gradient(circle at 82% 5%, color-mix(in srgb, var(--color-secondary), transparent 91%), transparent 30%),
+    linear-gradient(165deg, var(--color-background) 0%, color-mix(in srgb, var(--color-background), var(--color-muted) 18%) 100%);
+}
+
+.editorial-serif {
+  font-family: "Iowan Old Style", "Baskerville", "Times New Roman", "LXGW WenKai GB Screen", serif;
+}
+
+.editorial-botanical {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 20% 24%, color-mix(in srgb, var(--color-primary), transparent 42%) 0 5%, transparent 5.5%),
+    radial-gradient(ellipse at 70% 18%, color-mix(in srgb, var(--color-card), transparent 20%) 0 9%, transparent 9.5%),
+    radial-gradient(ellipse at 78% 66%, color-mix(in srgb, var(--color-secondary), transparent 28%) 0 13%, transparent 13.5%),
+    radial-gradient(ellipse at 38% 74%, color-mix(in srgb, var(--color-primary), transparent 54%) 0 11%, transparent 11.5%),
+    linear-gradient(145deg, color-mix(in srgb, var(--color-secondary), black 24%), var(--color-secondary));
+}
+
+.editorial-botanical::before,
+.editorial-botanical::after {
+  content: "";
+  position: absolute;
+  display: block;
+}
+
+.editorial-botanical::before {
+  left: 48%;
+  top: -15%;
+  width: 2px;
+  height: 145%;
+  background: color-mix(in srgb, var(--color-foreground), transparent 56%);
+  transform: rotate(27deg);
+  box-shadow: 30px 12px 0 color-mix(in srgb, var(--color-card), transparent 64%);
+}
+
+.editorial-botanical::after {
+  left: 18%;
+  top: 18%;
+  width: 42%;
+  height: 22%;
+  border-radius: 100% 0 100% 0;
+  background: color-mix(in srgb, var(--color-card), transparent 58%);
+  transform: rotate(-19deg);
+  box-shadow:
+    70px 36px 0 color-mix(in srgb, var(--color-card), transparent 66%),
+    34px 92px 0 color-mix(in srgb, var(--color-foreground), transparent 82%);
+}
+
+.editorial-photo-pair {
+  position: relative;
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 23px, var(--color-border) 24px),
+    color-mix(in srgb, var(--color-surface-secondary), var(--color-card) 48%);
+}
+
+.editorial-photo-stage {
+  position: relative;
+  width: min(100%, 480px);
+  height: 100%;
+  margin-inline: auto;
+}
+
+.editorial-photo-card {
+  position: absolute;
+  width: 42%;
+  padding: 7px 7px 13px;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
+}
+
+.editorial-photo-card .editorial-botanical {
+  height: 116px;
+}
+
+.editorial-photo-card-left {
+  left: 15%;
+  top: 12%;
+  transform: rotate(-7deg);
+}
+
+.editorial-photo-card-right {
+  right: 12%;
+  top: 8%;
+  transform: rotate(6deg);
+}
+
+.editorial-photo-tape {
+  position: absolute;
+  left: 47%;
+  top: 5%;
+  width: 62px;
+  height: 20px;
+  background: color-mix(in srgb, var(--color-primary), transparent 63%);
+  transform: translateX(-50%) rotate(-7deg);
+  opacity: 0.72;
+}
+
+.editorial-photo-seal {
+  position: absolute;
+  left: 2%;
+  bottom: 5%;
+  display: grid;
+  width: 68px;
+  height: 68px;
+  place-items: center;
+  border: 1px dashed var(--color-foreground);
+  border-radius: 999px;
+  color: var(--color-foreground);
+  font-size: 11px;
+  font-style: italic;
+  transform: rotate(-8deg);
+}
+
+@media (min-width: 640px) {
+  .editorial-photo-card .editorial-botanical {
+    height: 128px;
+  }
+}
+
+.editorial-home {
+  animation: desktop-surface-enter 0.3s ease-out both;
+}
+
 .widget-editing {
   animation: widget-edit-wiggle 0.22s ease-in-out infinite;
 }
@@ -353,6 +490,7 @@
 @media (prefers-reduced-motion: reduce) {
   .widget-editing,
   .desktop-home-grid,
+  .editorial-home,
   [data-testid="desktop-app-view"] { animation: none; }
 }
 

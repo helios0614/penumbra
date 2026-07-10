@@ -1,0 +1,5 @@
+LXGWWenKaiScreen.ttf： 在文楷完整版字库的基础上，使用 Roboto 打底补全缺失的字符。
+
+LXGWWenKaiMonoScreen.ttf： 在等宽文楷完整版字库的基础上，使用 Inconsolata 打底补全缺失的字符。
+
+带 GB 的表示以陆标字形为主，不带 GB 的为原风格文楷的半陆标字形，请按需求选择相应字体文件下载。

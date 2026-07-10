@@ -10,6 +10,7 @@ import {
   Check,
   CircleCheckBig,
   MessageSquare,
+  Newspaper,
   Pencil,
   Plus,
   RotateCcw,
@@ -295,6 +296,16 @@ export function Desktop() {
               <p className="mt-0.5 text-xs text-muted-foreground">{desktopGreeting.date}</p>
             </div>
             <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => window.location.assign('/editorial')}
+                className="inline-flex h-10 items-center gap-2 rounded-full bg-white/55 px-3 text-foreground shadow-sm backdrop-blur-md transition-colors hover:bg-white/75 dark:bg-black/35 dark:hover:bg-black/50"
+                aria-label="打开编辑感新桌面"
+                title="打开新桌面"
+              >
+                <Newspaper className="size-4.5" />
+                <span className="hidden text-xs font-medium sm:inline">新桌面</span>
+              </button>
               <button
                 onClick={() => {
                   setIsSettingsOpen((open) => !open);
