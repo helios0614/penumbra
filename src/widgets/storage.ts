@@ -15,9 +15,21 @@ export type { DesktopLayout, DesktopLayoutItem };
 const DEFAULT_LAYOUT: DesktopLayout = [
   { instanceId: 'clock-default', widgetId: 'clock', page: 0, position: { col: 0, row: 0 } },
   { instanceId: 'weather-default', widgetId: 'weather', page: 0, position: { col: 1, row: 0 } },
+  { instanceId: 'sticker-default', widgetId: 'sticker', page: 1, position: { col: 0, row: 0 } },
   { instanceId: 'music-default', widgetId: 'music', page: 1, position: { col: 2, row: 0 } },
-  { instanceId: 'calendar-default', widgetId: 'calendar', page: 1, position: { col: 0, row: 1 } },
-  { instanceId: 'chat-default', widgetId: 'chat', page: 1, position: { col: 2, row: 1 } },
+  { instanceId: 'signature-default', widgetId: 'signature', page: 1, position: { col: 0, row: 1 } },
+  { instanceId: 'calendar-default', widgetId: 'calendar', page: 1, position: { col: 0, row: 2 } },
+  { instanceId: 'chat-default', widgetId: 'chat', page: 1, position: { col: 2, row: 2 } },
+];
+
+const DESKTOP_LAYOUT_VERSION_KEY = 'penumbra-desktop-layout-version';
+const DESKTOP_LAYOUT_VERSION = 2;
+const LEGACY_DEFAULT_INSTANCE_IDS = [
+  'clock-default',
+  'weather-default',
+  'music-default',
+  'calendar-default',
+  'chat-default',
 ];
 
 const DESKTOP_COLUMNS = 4;
@@ -117,9 +129,25 @@ export function loadDesktopLayout(): DesktopLayout {
       const parsed = JSON.parse(stored);
       // 简单校验格式
       if (Array.isArray(parsed)) {
-        return normalizeLayout(parsed as DesktopLayout);
+        const normalized = normalizeLayout(parsed as DesktopLayout);
+        const storedVersion = Number(localStorage.getItem(DESKTOP_LAYOUT_VERSION_KEY) || 1);
+
+        if (storedVersion < DESKTOP_LAYOUT_VERSION) {
+          const isLegacyDefault = LEGACY_DEFAULT_INSTANCE_IDS.every((instanceId) => (
+            normalized.some((item) => item.instanceId === instanceId)
+          )) && normalized.length === LEGACY_DEFAULT_INSTANCE_IDS.length;
+          const migrated = isLegacyDefault ? normalizeLayout(DEFAULT_LAYOUT) : normalized;
+
+          saveDesktopLayout(migrated);
+          localStorage.setItem(DESKTOP_LAYOUT_VERSION_KEY, String(DESKTOP_LAYOUT_VERSION));
+          return migrated;
+        }
+
+        return normalized;
       }
     }
+
+    localStorage.setItem(DESKTOP_LAYOUT_VERSION_KEY, String(DESKTOP_LAYOUT_VERSION));
   } catch (error) {
     console.error('Failed to load desktop layout:', error);
   }
@@ -190,5 +218,10 @@ export function updateWidgetPosition(
 export function resetDesktopLayout(): DesktopLayout {
   const layout = normalizeLayout(DEFAULT_LAYOUT);
   saveDesktopLayout(layout);
+  try {
+    localStorage.setItem(DESKTOP_LAYOUT_VERSION_KEY, String(DESKTOP_LAYOUT_VERSION));
+  } catch {
+    // 版本号写入失败不影响本次重置。
+  }
   return layout;
 }

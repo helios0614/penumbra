@@ -35,5 +35,7 @@ export { CalendarWidget } from './CalendarWidget';
 export { ClockWidget } from './ClockWidget';
 export { WeatherWidget } from './WeatherWidget';
 export { MusicWidget } from './MusicWidget';
+export { StickerWidget } from './StickerWidget';
+export { SignatureWidget } from './SignatureWidget';
 export { TodoWidget } from './TodoWidget';
 export { NotesWidget } from './NotesWidget';

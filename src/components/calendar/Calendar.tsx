@@ -98,7 +98,7 @@ export default function Calendar({
         className="w-full max-w-[380px] mx-auto"
         classNames={{
           today: highlightToday
-            ? "bg-primary-subtle text-primary font-semibold data-[selected=true]:bg-primary data-[selected=true]:text-primary-foreground"
+            ? "bg-primary-subtle text-primary-ink font-semibold data-[selected=true]:bg-primary data-[selected=true]:text-primary-foreground"
             : undefined,
           outside: "text-muted-foreground opacity-40",
           button_previous: "hidden",

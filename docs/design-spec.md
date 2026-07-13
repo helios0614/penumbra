@@ -31,6 +31,7 @@
   --color-primary-hover: color-mix(in srgb, var(--color-theme), black 12%);
   --color-primary-active: color-mix(in srgb, var(--color-theme), black 22%);
   --color-primary-foreground: #ffffff; /* 浅色默认，深色或自定义主题需按对比度切换 */
+  --color-primary-ink: var(--theme-primary-ink-light); /* 浅底/玻璃上的主题色文字 */
   --color-primary-subtle: color-mix(in srgb, var(--color-theme), white 92%);
 }
 ```
@@ -42,9 +43,10 @@
 | `--color-primary-hover` | theme + 12% black | hover 态 |
 | `--color-primary-active` | theme + 22% black | active 态 |
 | `--color-primary-foreground` | 浅色默认白，必要时切换 | 主色上的文字 |
+| `--color-primary-ink` | 按对比度动态派生 | 浅色底、半透明底和 `primary/10` 上的主题色小字 |
 | `--color-primary-subtle` | theme + 92% white | tag、badge 浅底 |
 
-深色主题只需覆盖 `--color-theme` 为稍亮的值（如 `#f79e7f`），其余主色变体自动适配。
+`primary` 与 `primary-ink` 不可混用：原始主题色保留给色块、图标、边框和实心背景；主题色承担文字语义时使用 `primary-ink`。运行时会分别为浅色和深色表面派生可读版本，目标对比度为 5.5:1，为半透明玻璃和壁纸颜色波动预留余量。
 
 #### 辅色 Secondary
 
@@ -61,9 +63,11 @@
 
 | Token | 值 | 用途 |
 |---|---|---|
-| `--color-muted` | `#a0998f` | 次要文字、时间戳 |
-| `--color-muted-strong` | `#6b6560` | 需要稍强的次要文字 |
-| `--color-muted-foreground` | `#ffffff` | muted 色上的文字 |
+| `--color-muted` | `#f5f5f3` | muted 背景，不作为文字色 |
+| `--color-muted-foreground` | `#6f6963` | 说明文字、时间戳、小组件次要信息 |
+| `--color-muted-strong` | `#57524e` | 控件标签、API 信息、需要更强的次要文字 |
+
+中性文字层级固定为 `foreground → muted-strong → muted-foreground`。10–14px 的正常可读文字不得继续使用更浅的装饰灰，也不要通过“浅灰文字 + opacity”叠加制造层级；`opacity` 仅用于禁用、越界日期等明确的非活跃状态。
 
 #### 语义色 Semantic
 
@@ -105,8 +109,10 @@
 | `--color-secondary` | `#7fa685` |
 | `--color-secondary-foreground` | `#111110` |
 | `--color-secondary-subtle` | `#1a241c` |
-| `--color-muted` | `#78726a` |
-| `--color-muted-strong` | `#9a9490` |
+| `--color-muted` | `#242422` |
+| `--color-muted-foreground` | `#aaa49c` |
+| `--color-muted-strong` | `#c0bab2` |
+| `--color-primary-ink` | 按暗色表面对比度动态派生 |
 
 语义色的「浅」变体在深色下替换为对应低透明度底色，并保留可读前景色：
 
@@ -249,8 +255,8 @@ shadcn/ui 的 `--radius` 默认值设为 `12px`（对应 `--radius-md`），组�
 
 | Class | 用途 | 典型组件 |
 |---|---|---|
-| `.mist-glass` | 轻量、悬浮的普通玻璃 | 小组件、Dock、图标、浮动按钮 |
-| `.mist-glass-strong` | 需要更强可读性的玻璃 | App 外壳、设置面板、Dialog、Sheet、Popover |
+| `.mist-glass` | 轻量、悬浮的普通玻璃 | 小组件、Dock、图标、设置页轻量面板、浮动按钮 |
+| `.mist-glass-strong` | 需要更强结构边界的玻璃 | App 外壳、Dialog、Sheet、Popover |
 | `.mist-solid` | 内容密集、需要稳定对比度的表面 | 聊天正文、日历、输入框、表单和长文本 |
 
 三层表面均由 `src/index.css` 中的 CSS 变量控制，并在 `.dark` 下统一覆盖。圆角和 padding 仍由组件自己决定，材质类只负责背景、边框、模糊与阴影。
@@ -262,6 +268,18 @@ shadcn/ui 的 `--radius` 默认值设为 `12px`（对应 `--radius-md`），组�
 - 阅读、输入、长列表和高密度信息优先 `.mist-solid`。
 - 语义气泡、成功/错误提示可以保留语义色，但不再创建第四套通用玻璃材质。
 - `desktop-v2` 编辑感实验桌面是独立视觉方案，不强制使用晨雾表面系统。
+
+#### 玻璃与壁纸上的文字可读性
+
+玻璃透明度属于材质设计，不应仅因为灰字难读就整体加深设置页或桌面卡片。可读性按以下顺序处理：
+
+1. 正文与标题使用 `text-foreground`。
+2. 控件标签和重要次级信息使用 `text-muted-strong`。
+3. 普通说明文字使用 `text-muted-foreground`。
+4. 主题色小字、浅色选中态和 `bg-primary/10` 上的文字使用 `text-primary-ink`。
+5. 只有直接压在壁纸上的少量文字才允许使用局部阴影或低存在感背板。
+
+桌面 App 名称的背板必须克制，保持低透明度与小范围模糊，不能形成明显的独立按钮或大面积实色胶囊。设置页继续保持现有 `.mist-glass` 透明度；如果文字不清晰，优先调整文字 token，而不是修改整块面板材质。
 
 ### 4.3 阴影
 
@@ -337,7 +355,7 @@ shadcn/ui 的 `--radius` 默认值设为 `12px`（对应 `--radius-md`），组�
 
 | 状态 | 视觉变化 |
 |---|---|
-| Default | 颜色 `--color-primary`，无下划线 |
+| Default | 实色/稳定表面可用 `--color-primary`；浅主题底或玻璃上的小字使用 `--color-primary-ink` |
 | Hover | 下划线出现，颜色不变 |
 | Active | 颜色切换到 `--color-primary-active` |
 | Focus | 外发光 `--shadow-glow` |
@@ -396,6 +414,8 @@ shadcn/ui 的 `--radius` 默认值设为 `12px`（对应 `--radius-md`），组�
 UI 默认满足键盘、触屏和低动效用户的基本需求：
 
 - 文字与背景对比度至少达到 WCAG AA：正文 4.5:1，大号文字与图标按钮 3:1。
+- 半透明表面上的主题色小字通过 `primary-ink` 以 5.5:1 为派生目标，给壁纸透色预留对比度余量。
+- `muted-foreground` 仍是正常可读文字，不得降级为装饰灰；真正的禁用状态再单独使用透明度。
 - 触屏可点击目标不小于 `44px × 44px`；视觉上较小的图标按钮也要通过 padding 扩大命中区域。
 - 交互元素必须可键盘访问，`Tab` 顺序与视觉顺序一致，焦点不能被弹窗或侧栏吞掉。
 - 图标按钮必须提供 `aria-label`；只有视觉 tooltip 不算可访问名称。
@@ -509,12 +529,18 @@ export function WechatIcon({ className }: { className?: string }) {
 ### 8.1 机制
 
 系统所有主色变体从单一 CSS 变量 `--color-theme` 自动派生（通过 `color-mix()`）。
-用户只需修改这一个变量，hover、active、subtle、ring 全部自动跟随变化，无需逐个覆盖。`--color-primary-foreground` 根据主题色对比度在 `#ffffff` / `#111110` 之间切换，保证按钮文字可读。
+用户只需修改这一个变量，hover、active、subtle、ring 全部自动跟随变化，无需逐个覆盖。
+
+- `--color-primary-foreground` 根据主题色对比度在 `#ffffff` / `#111110` 之间切换，用于实心主题色背景上的文字。
+- `--theme-primary-ink-light` 与 `--theme-primary-ink-dark` 将主题色分别向当前主题的正文色混合，直到达到至少 5.5:1。
+- `--color-primary-ink` 在浅色/深色模式下引用对应 ink，用于浅底、玻璃、浅主题色背景上的小字。
+- 色块、图标和装饰仍使用原始 `--color-primary`，不要为了文字可读性改变用户选中的主题色本身。
 
 ```ts
 // 运行时切换主题色
 function setThemeColor(hex: string) {
   document.documentElement.style.setProperty("--color-theme", hex);
+  applyThemeInk(hex); // 同时更新 light/dark primary ink
   localStorage.setItem("penumbra-theme-color", hex);
 }
 ```
@@ -540,34 +566,29 @@ function setThemeColor(hex: string) {
 
 - 存储位置：`localStorage` 键 `penumbra-theme-color`
 - 同步到后端：可选，存入 `settings.json` 的 `theme_color` 字段，跨设备同步
-- 加载时机：`index.html` 的 `<head>` 中内联一段同步 JS，在页面渲染前就应用主题色，避免闪烁（FOUC）
+- 加载时机：`index.html` 的 `<head>` 中内联一段同步 JS，在页面渲染前应用主题色、实心前景色和 light/dark primary ink，避免闪烁（FOUC）
 
 ```html
 <script>
   const tc = localStorage.getItem("penumbra-theme-color");
-  if (tc) document.documentElement.style.setProperty("--color-theme", tc);
+  if (tc) {
+    document.documentElement.style.setProperty("--color-theme", tc);
+    applyThemeForeground(tc);
+    applyThemeInk(tc);
+  }
 </script>
 ```
 
 ### 8.4 深色模式联动
 
-深色模式下预设色自动切换为稍亮版本（亮度 +10~15%），保证在暗底上可读。
-例如珊瑚色 `#F4845F` → 深色下 `#f79e7f`。
-
-用户自定义的 hex 在深色模式下由前端自动提亮：
+深色模式可以为默认主题提供稍亮的 `--color-theme`，但用户自定义主题色本身保持不变，以保证用户选择的色块、图标和强调色一致。需要承担文字语义时，使用单独计算的 `--theme-primary-ink-dark`：
 
 ```ts
-function lightenForDark(hex: string, amount = 0.12): string {
-  // 简单实现：将 RGB 各通道向 255 靠近 amount 比例
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  const lr = Math.round(r + (255 - r) * amount);
-  const lg = Math.round(g + (255 - g) * amount);
-  const lb = Math.round(b + (255 - b) * amount);
-  return `#${[lr, lg, lb].map(c => c.toString(16).padStart(2, "0")).join("")}`;
-}
+const lightInk = getReadableThemeInk(theme, "#FAFAF8", "#1A1A1A");
+const darkInk = getReadableThemeInk(theme, "#1A1A18", "#E8E8E4");
 ```
+
+`getReadableThemeInk` 保留主题色的色相倾向，并逐步向目标正文色混合，直到达到 5.5:1；因此琥珀等偏亮主题色作为色块时保持原色，作为浅底小字时会自动变深。
 
 ### 8.5 设置 UI
 
@@ -576,3 +597,4 @@ function lightenForDark(hex: string, amount = 0.12): string {
 - 预设色板：圆形色块网格，选中态加对勾
 - 自定义输入：hex 输入框 + 实时预览色块
 - 实时生效：选择后立即预览，无需保存确认
+- 选中项如果使用浅主题色背景，文字必须是 `text-primary-ink`；实心主题色背景上的对勾或文字使用 `text-primary-foreground`

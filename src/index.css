@@ -13,6 +13,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
+:root {
+  --theme-primary-ink-light: #945541;
+  --theme-primary-ink-dark: #f4845f;
+}
+
 @theme inline {
   /* ── 主题色：改这一行即可全局换色 ── */
   --color-theme: #F4845F;
@@ -22,6 +27,7 @@
   --color-primary-hover: color-mix(in srgb, var(--color-theme), black 12%);
   --color-primary-active: color-mix(in srgb, var(--color-theme), black 22%);
   --color-primary-foreground: #ffffff;
+  --color-primary-ink: var(--theme-primary-ink-light);
   --color-primary-subtle: color-mix(in srgb, var(--color-theme), white 92%);
 
   /* ── AI 色：改这一行即可全局换 AI 色 ── */
@@ -42,8 +48,8 @@
 
   /* ── 中性色（shadcn 约定：muted = 浅底色，muted-foreground = 次要文字） ── */
   --color-muted: #f5f5f3;
-  --color-muted-foreground: #a0998f;
-  --color-muted-strong: #6b6560;
+  --color-muted-foreground: #6f6963;
+  --color-muted-strong: #57524e;
 
   /* ── 表面 ── */
   --color-background: #fafaf8;
@@ -164,8 +170,9 @@
   --color-secondary: #7fa685;
   --color-secondary-subtle: #1a241c;
   --color-muted: #242422;
-  --color-muted-foreground: #78726a;
-  --color-muted-strong: #9a9490;
+  --color-muted-foreground: #aaa49c;
+  --color-muted-strong: #c0bab2;
+  --color-primary-ink: var(--theme-primary-ink-dark);
   --color-primary-subtle: #2a1f1c;
   --color-success-subtle: rgba(34, 197, 94, 0.12);
   --color-success-foreground: #86efac;
@@ -386,8 +393,12 @@
 .desktop-app-icon {
   color: color-mix(in srgb, var(--color-foreground), var(--color-theme) 16%);
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.18), transparent 50%),
-    var(--glass-surface);
+    linear-gradient(145deg, rgba(255, 255, 255, 0.12), transparent 50%),
+    rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow:
+    0 6px 16px rgba(49, 58, 54, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.56);
 }
 
 .desktop-app-button {
@@ -471,11 +482,12 @@
 
 .dark .desktop-app-icon {
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.1) 0%, transparent 48%),
-    var(--glass-surface);
-  border-color: var(--glass-border);
-  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.16),
-              inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    linear-gradient(145deg, rgba(255, 255, 255, 0.06) 0%, transparent 48%),
+    rgba(18, 22, 21, 0.2);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 6px 16px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 @keyframes widget-edit-wiggle {
@@ -614,6 +626,25 @@
 
 .widget-editing {
   animation: widget-edit-wiggle 0.22s ease-in-out infinite;
+}
+
+/* 贴纸沿用 1×1 网格占位，但视觉上只保留居中的正方形图片。 */
+.widget-card.sticker-widget-frame {
+  width: auto;
+  max-width: 100%;
+  margin-inline: auto;
+  aspect-ratio: 1 / 1;
+  overflow: visible;
+  padding: 0;
+  border-width: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.widget-card.sticker-widget-frame:hover {
+  box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

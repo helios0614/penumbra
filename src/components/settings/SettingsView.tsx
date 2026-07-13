@@ -258,7 +258,7 @@ export function SettingsView({ onBack }: SettingsViewProps) {
             <div className="desktop-wallpaper-overlay absolute inset-0" data-preview-shade={wallpaperSettings.shade} />
             <div className="absolute inset-x-4 bottom-4 flex items-end justify-between gap-3">
               <div className="rounded-2xl border border-white/45 bg-white/45 px-3 py-2 shadow-sm backdrop-blur-xl">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">Penumbra</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary-ink">Penumbra</p>
                 <p className="mt-0.5 text-sm font-semibold text-neutral-900">桌面预览</p>
               </div>
               <span className="grid size-11 place-items-center rounded-[15px] border border-white/55 bg-white/40 text-neutral-900 shadow-sm backdrop-blur-xl">
@@ -353,7 +353,7 @@ export function SettingsView({ onBack }: SettingsViewProps) {
                   )}
                   style={{ backgroundColor: preset.value }}
                 >
-                  {isSelected && <Check className="size-4 text-white drop-shadow-sm" />}
+                  {isSelected && <Check className="size-4 text-primary-foreground drop-shadow-sm" />}
                 </span>
                 <span>{preset.name}</span>
               </button>
@@ -490,7 +490,7 @@ function SettingChoice({
             className={cn(
               "rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors",
               value === option.value
-                ? "bg-primary/15 text-primary"
+                ? "bg-primary/15 text-primary-ink"
                 : "bg-white/35 text-muted-strong hover:bg-white/60 dark:bg-white/5 dark:hover:bg-white/10",
             )}
           >

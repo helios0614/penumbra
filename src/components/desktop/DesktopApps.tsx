@@ -37,7 +37,7 @@ export function DesktopApps({
               className="desktop-shortcut group flex min-w-0 flex-col items-center text-center"
               aria-label={`打开${app.name}`}
             >
-              <span className="desktop-shortcut-tile mist-glass grid aspect-square w-full max-w-[76px] place-items-center rounded-[20px] sm:max-w-[82px]">
+              <span className="desktop-shortcut-tile mist-glass grid size-16 place-items-center rounded-[20px]">
                 <Icon className="size-7 sm:size-8" strokeWidth={1.8} />
               </span>
               <span className="desktop-shortcut-label mt-1.5 block max-w-full truncate px-1 text-[11px] font-medium sm:text-xs">
@@ -53,7 +53,7 @@ export function DesktopApps({
           className="desktop-shortcut group flex min-w-0 flex-col items-center text-center"
           aria-label="打开设置"
         >
-          <span className="desktop-shortcut-tile mist-glass grid aspect-square w-full max-w-[76px] place-items-center rounded-[20px] sm:max-w-[82px]">
+          <span className="desktop-shortcut-tile mist-glass grid size-16 place-items-center rounded-[20px]">
             <Settings className="size-7 sm:size-8" strokeWidth={1.8} />
           </span>
           <span className="desktop-shortcut-label mt-1.5 block max-w-full truncate px-1 text-[11px] font-medium sm:text-xs">

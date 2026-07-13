@@ -184,7 +184,7 @@ function WidgetCard({
   children: React.ReactNode;
   className?: string;
   isEditing: boolean;
-  onOpen: () => void;
+  onOpen?: () => void;
   onRemove: () => void;
   widgetId: string;
   widgetInstanceId: string;
@@ -199,6 +199,7 @@ function WidgetCard({
         'transition-all duration-200',
         !isEditing && 'hover:shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:-translate-y-0.5',
         isEditing && 'widget-editing ring-1 ring-primary/20',
+        widgetId === 'sticker' && 'sticker-widget-frame',
         'h-full w-full overflow-hidden',
         'p-3',
         'select-none',
@@ -215,7 +216,7 @@ function WidgetCard({
           <X className="size-4" />
         </button>
       )}
-      {!isEditing && (
+      {!isEditing && onOpen && (
         <button
           type="button"
           onClick={onOpen}
@@ -225,7 +226,10 @@ function WidgetCard({
           data-testid={`widget-open-${widgetInstanceId}`}
         />
       )}
-      <div className={cn('h-full', !isEditing && 'pointer-events-none')} inert={!isEditing ? true : undefined}>
+      <div
+        className={cn('h-full', !isEditing && onOpen && 'pointer-events-none')}
+        inert={!isEditing && onOpen ? true : undefined}
+      >
         {children}
       </div>
     </div>
@@ -540,18 +544,20 @@ export function Desktop() {
 
                         const WidgetComponent = widget.component;
                         const instanceId = item.instanceId || item.widgetId;
+                        const appId = isDesktopAppId(item.widgetId) ? item.widgetId : null;
 
                         return (
                           <div
                             key={instanceId}
-                            className="min-h-0 rounded-[22px]"
+                            className={cn(
+                              'min-h-0 rounded-[22px]',
+                              item.widgetId === 'signature' && 'h-[min(88px,100%)] self-center sm:h-[92px]',
+                            )}
                             style={getHomeGridStyles(item)}
                           >
                             <WidgetCard
                               isEditing={isEditing}
-                              onOpen={() => {
-                                if (isDesktopAppId(item.widgetId)) openApp(item.widgetId);
-                              }}
+                              onOpen={appId ? () => openApp(appId) : undefined}
                               onRemove={() => setLayout(removeWidgetFromLayout(instanceId))}
                               widgetId={item.widgetId}
                               widgetInstanceId={instanceId}
@@ -595,18 +601,20 @@ export function Desktop() {
 
                         const WidgetComponent = widget.component;
                         const instanceId = item.instanceId || item.widgetId;
+                        const appId = isDesktopAppId(item.widgetId) ? item.widgetId : null;
 
                         return (
                           <div
                             key={instanceId}
                             style={getGridStyles(item, screenSize) || undefined}
-                            className="min-h-0 rounded-[22px]"
+                            className={cn(
+                              'min-h-0 rounded-[22px]',
+                              item.widgetId === 'signature' && 'h-[min(88px,100%)] self-center sm:h-[92px]',
+                            )}
                           >
                             <WidgetCard
                               isEditing={isEditing}
-                              onOpen={() => {
-                                if (isDesktopAppId(item.widgetId)) openApp(item.widgetId);
-                              }}
+                              onOpen={appId ? () => openApp(appId) : undefined}
                               onRemove={() => setLayout(removeWidgetFromLayout(instanceId))}
                               widgetId={item.widgetId}
                               widgetInstanceId={instanceId}

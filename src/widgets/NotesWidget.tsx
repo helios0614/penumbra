@@ -63,7 +63,7 @@ export function NotesWidget() {
       <button
         className={cn(
           'mt-3 w-full py-2 rounded-md text-sm font-medium',
-          'bg-primary/10 text-primary',
+          'bg-primary/10 text-primary-ink',
           'hover:bg-primary/20 transition-colors',
           'flex items-center justify-center gap-2'
         )}

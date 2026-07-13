@@ -29,7 +29,7 @@ export function ChatWidget() {
             <button
               className={cn(
                 'px-2 py-1 rounded-md text-xs',
-                'bg-primary/10 text-primary',
+                'bg-primary/10 text-primary-ink',
                 'hover:bg-primary/20 transition-colors'
               )}
             >
@@ -38,7 +38,7 @@ export function ChatWidget() {
             <button
               className={cn(
                 'px-2 py-1 rounded-md text-xs',
-                'bg-primary/10 text-primary',
+                'bg-primary/10 text-primary-ink',
                 'hover:bg-primary/20 transition-colors'
               )}
             >

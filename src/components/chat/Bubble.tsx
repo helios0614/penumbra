@@ -132,7 +132,7 @@ function BubbleSegment({
       className={cn(
         "relative rounded-md px-4 py-2 text-[14px] leading-[1.6] break-words overflow-wrap-anywhere overflow-hidden min-w-0 max-w-full backdrop-blur-md",
         isUser
-          ? "bg-primary/10 text-primary shadow-sm border border-primary/20"
+          ? "bg-primary/10 text-primary-ink shadow-sm border border-primary/20"
           : "bg-ai/10 text-ai shadow-sm border border-ai/20",
       )}
     >

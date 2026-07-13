@@ -7,7 +7,17 @@
 
 import { lazy } from 'react';
 import type { WidgetRegistration } from './types';
-import { MessageSquare, Calendar, Clock, Music, StickyNote, Sun, CheckCircle } from 'lucide-react';
+import {
+  Calendar,
+  CheckCircle,
+  Clock,
+  MessageSquare,
+  Music,
+  Signature,
+  Sticker,
+  StickyNote,
+  Sun,
+} from 'lucide-react';
 
 /**
  * 组件注册表
@@ -58,6 +68,28 @@ export const widgetRegistry: Record<string, WidgetRegistration> = {
     description: '正在播放',
     category: 'media',
     component: lazy(() => import('./MusicWidget')),
+  },
+
+  // 贴纸 - 1x1
+  sticker: {
+    id: 'sticker',
+    name: '贴纸',
+    icon: Sticker,
+    size: { cols: 1, rows: 1 },
+    description: '装点桌面心情',
+    category: 'lifestyle',
+    component: lazy(() => import('./StickerWidget')),
+  },
+
+  // 个性签名 - 横向满行、紧凑高度
+  signature: {
+    id: 'signature',
+    name: '个性签名',
+    icon: Signature,
+    size: { cols: 4, rows: 1 },
+    description: '写下今天的一句话',
+    category: 'lifestyle',
+    component: lazy(() => import('./SignatureWidget')),
   },
 
   // 待办事项 - 2x2

@@ -32,6 +32,62 @@ function getThemeForeground(hex: string): "#FFFFFF" | "#111110" {
   return luminance > 0.64 ? "#111110" : "#FFFFFF";
 }
 
+function getRelativeLuminance(hex: string): number {
+  const channels = [hex.slice(1, 3), hex.slice(3, 5), hex.slice(5, 7)]
+    .map((channel) => Number.parseInt(channel, 16) / 255)
+    .map((channel) => (
+      channel <= 0.04045
+        ? channel / 12.92
+        : ((channel + 0.055) / 1.055) ** 2.4
+    ));
+
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
+
+function getContrastRatio(first: string, second: string): number {
+  const firstLuminance = getRelativeLuminance(first);
+  const secondLuminance = getRelativeLuminance(second);
+  return (
+    (Math.max(firstLuminance, secondLuminance) + 0.05)
+    / (Math.min(firstLuminance, secondLuminance) + 0.05)
+  );
+}
+
+function mixHex(color: string, target: string, amount: number): string {
+  const channels = [1, 3, 5].map((start) => {
+    const sourceChannel = Number.parseInt(color.slice(start, start + 2), 16);
+    const targetChannel = Number.parseInt(target.slice(start, start + 2), 16);
+    return Math.round(sourceChannel + (targetChannel - sourceChannel) * amount)
+      .toString(16)
+      .padStart(2, "0");
+  });
+
+  return `#${channels.join("")}`.toUpperCase();
+}
+
+function getReadableThemeInk(color: string, surface: string, target: string): string {
+  const minimumContrast = 5.5;
+  if (getContrastRatio(color, surface) >= minimumContrast) return color;
+
+  for (let step = 1; step <= 25; step += 1) {
+    const candidate = mixHex(color, target, step / 25);
+    if (getContrastRatio(candidate, surface) >= minimumContrast) return candidate;
+  }
+
+  return target;
+}
+
+function applyThemeInk(color: string): void {
+  document.documentElement.style.setProperty(
+    "--theme-primary-ink-light",
+    getReadableThemeInk(color, "#FAFAF8", "#1A1A1A"),
+  );
+  document.documentElement.style.setProperty(
+    "--theme-primary-ink-dark",
+    getReadableThemeInk(color, "#1A1A18", "#E8E8E4"),
+  );
+}
+
 export function applyThemeColor(value: string): string | null {
   const color = normalizeThemeColor(value);
   if (!color || typeof document === "undefined") return null;
@@ -41,6 +97,7 @@ export function applyThemeColor(value: string): string | null {
     "--color-primary-foreground",
     getThemeForeground(color),
   );
+  applyThemeInk(color);
   try {
     localStorage.setItem(THEME_COLOR_KEY, color);
   } catch {
