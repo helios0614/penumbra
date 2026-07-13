@@ -140,10 +140,10 @@ export default function Calendar({
   if (layout === "side") {
     return (
       <div className={cn("flex gap-4 min-h-0", className)}>
-        <div className="glass-card rounded-lg p-4 select-none shrink-0">
+        <div className="mist-glass rounded-lg p-4 select-none shrink-0">
           {calendarContent}
         </div>
-        <div className="glass-card rounded-lg p-4 min-w-[240px] flex-1 flex flex-col min-h-0">
+        <div className="mist-glass rounded-lg p-4 min-w-[240px] flex-1 flex flex-col min-h-0">
           {eventPanel}
         </div>
       </div>
@@ -154,7 +154,7 @@ export default function Calendar({
     <div
       className={cn(
         "select-none flex flex-col min-h-0",
-        embedded ? "rounded-[24px] bg-white/45 p-4 dark:bg-white/5" : "glass-card rounded-lg p-4",
+        embedded ? "mist-solid rounded-[24px] p-4" : "mist-glass rounded-lg p-4",
         className,
       )}
     >

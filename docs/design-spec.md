@@ -243,31 +243,25 @@
 
 shadcn/ui 的 `--radius` 默认值设为 `12px`（对应 `--radius-md`），组件默认走这个值。
 
-### 4.2 毛玻璃表面（Glass Surface）
+### 4.2 晨雾表面系统（Mist Surface）
 
-毛玻璃用于浮在内容之上的界面层：导航栏、弹框、下拉菜单、Toast、可悬浮工具条。内容密集区域（聊天正文、设置表单、长文本卡片）优先使用 `--color-surface` 或 `--color-surface-secondary`，避免透明背景降低可读性。
+全局表面只使用三个层级。组件中不要重新手写 `bg-white/70`、`backdrop-blur-md` 等组合，避免透明度和模糊强度逐渐漂移。
 
-```css
-.glass {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-}
-```
+| Class | 用途 | 典型组件 |
+|---|---|---|
+| `.mist-glass` | 轻量、悬浮的普通玻璃 | 小组件、Dock、图标、浮动按钮 |
+| `.mist-glass-strong` | 需要更强可读性的玻璃 | App 外壳、设置面板、Dialog、Sheet、Popover |
+| `.mist-solid` | 内容密集、需要稳定对比度的表面 | 聊天正文、日历、输入框、表单和长文本 |
 
-Tailwind：`bg-white/70 backdrop-blur-md border border-white/15`
-深色主题：`bg-black/40 backdrop-blur-md border border-white/10`
+三层表面均由 `src/index.css` 中的 CSS 变量控制，并在 `.dark` 下统一覆盖。圆角和 padding 仍由组件自己决定，材质类只负责背景、边框、模糊与阴影。
 
-| 元素 | 背景色 | blur | 说明 |
-|---|---|---|---|
-| 顶部导航栏 | `white/60` | `blur(20px)` | 更轻，下方内容隐约透出 |
-| 悬浮卡片 | `white/70` | `blur(12px)` | 适合轻量预览、菜单面板 |
-| 弹窗/Modal | `white/80` | `blur(16px)` | 稍实，保证弹窗内容清晰 |
-| 下拉菜单 | `white/75` | `blur(12px)` | 与卡片一致 |
-| Toast | `black/80` | `blur(8px)` | 深底白字，半透明 |
+使用原则：
 
-深色主题所有 `white` 换为 `black`，透明度适当提高（`black/50` → `black/60`）。
+- 浮在壁纸上的轻量信息优先 `.mist-glass`。
+- 弹窗和完整功能容器优先 `.mist-glass-strong`。
+- 阅读、输入、长列表和高密度信息优先 `.mist-solid`。
+- 语义气泡、成功/错误提示可以保留语义色，但不再创建第四套通用玻璃材质。
+- `desktop-v2` 编辑感实验桌面是独立视觉方案，不强制使用晨雾表面系统。
 
 ### 4.3 阴影
 

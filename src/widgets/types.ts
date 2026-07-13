@@ -45,6 +45,7 @@ export interface WidgetRegistration extends WidgetMeta {
 export interface DesktopLayoutItem {
   instanceId?: string; // 小组件实例 ID，兼容旧布局可为空
   widgetId: string;
+  page?: 0 | 1; // 0：首页，1：第二页；兼容旧布局可为空
   position: WidgetPosition;
   size?: WidgetSize; // 可选，覆盖默认尺寸
   minimized?: boolean; // 是否最小化

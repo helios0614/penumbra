@@ -79,7 +79,7 @@ export function ChatView() {
             style={{ backgroundImage: "var(--chat-wallpaper, none)" }}
           />
           {/* 毛玻璃遮罩 */}
-          <div className="absolute inset-0 bg-background/70 backdrop-blur-xl" />
+          <div className="mist-solid absolute inset-0 !border-0 !shadow-none" />
           {/* 内容层 */}
           <div className="relative flex-1 flex flex-col min-h-0">
           {/* 移动端顶栏 */}

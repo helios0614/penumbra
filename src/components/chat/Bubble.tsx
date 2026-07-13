@@ -179,7 +179,7 @@ function SystemBubble({ message }: SystemBubbleProps) {
 
   return (
     <div className="w-full flex justify-center my-2">
-      <span className="text-xs text-muted-foreground bg-surface-secondary px-3 py-1 rounded-full">
+      <span className="mist-solid rounded-full px-3 py-1 text-xs text-muted-foreground">
         {message.content}
       </span>
     </div>
@@ -284,7 +284,7 @@ function BubbleInner({
 
         {/* 气泡列表 */}
         {isLoading ? (
-          <div className="w-full rounded-lg bg-surface shadow-sm border border-border px-4 py-3">
+          <div className="mist-solid w-full rounded-lg px-4 py-3">
             <LoadingSkeleton />
           </div>
         ) : (

@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
 
 @font-face {
   font-family: "LXGW WenKai GB Screen";
@@ -50,6 +51,18 @@
   --color-card: #ffffff;
   --color-card-foreground: #1a1a1a;
   --color-surface-secondary: #f5f5f3;
+
+  /* ── 晨雾玻璃 ── */
+  --glass-surface: rgba(255, 255, 255, 0.46);
+  --glass-surface-strong: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.62);
+  --glass-highlight: rgba(255, 255, 255, 0.82);
+  --glass-shadow: 0 16px 48px rgba(49, 58, 54, 0.1),
+                  inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  --mist-solid-surface: rgba(255, 255, 255, 0.9);
+  --mist-solid-border: rgba(255, 255, 255, 0.78);
+  --mist-solid-shadow: 0 8px 26px rgba(49, 58, 54, 0.07),
+                       inset 0 1px 0 rgba(255, 255, 255, 0.9);
 
   /* ── shadcn 别名 ── */
   --color-popover: var(--color-card);
@@ -113,8 +126,8 @@
                   inset 0 1px 0 rgba(255, 255, 255, 0.1);
 
   /* ── 字体 ── */
-  --font-heading: var(--font-sans);
-  --font-sans: "LXGW WenKai GB Screen", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+  --font-heading: "LXGW WenKai GB Screen", "Noto Serif SC", serif;
+  --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", "Noto Sans SC", sans-serif;
   --font-mono: "SF Mono", "Fira Code", "Cascadia Code", monospace;
 
@@ -174,6 +187,16 @@
   --color-rose: #f472b6;
   --color-rose-foreground: #f9a8d4;
   --color-rose-subtle: rgba(236, 72, 153, 0.12);
+  --glass-surface: rgba(18, 22, 21, 0.42);
+  --glass-surface-strong: rgba(18, 22, 21, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-highlight: rgba(255, 255, 255, 0.12);
+  --glass-shadow: 0 18px 50px rgba(0, 0, 0, 0.28),
+                  inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  --mist-solid-surface: rgba(26, 28, 27, 0.92);
+  --mist-solid-border: rgba(255, 255, 255, 0.1);
+  --mist-solid-shadow: 0 10px 30px rgba(0, 0, 0, 0.24),
+                       inset 0 1px 0 rgba(255, 255, 255, 0.08);
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.35);
@@ -181,14 +204,28 @@
                   inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-/* ── 毛玻璃工具类 ── */
+/* ── 晨雾表面系统：普通玻璃 / 强玻璃 / 实色内容层 ── */
+.mist-glass,
 .glass-card {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08),
-              inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  background: var(--glass-surface);
+  backdrop-filter: blur(18px) saturate(125%);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.mist-glass-strong {
+  background: var(--glass-surface-strong);
+  backdrop-filter: blur(22px) saturate(130%);
+  -webkit-backdrop-filter: blur(22px) saturate(130%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.mist-solid {
+  background: var(--mist-solid-surface);
+  border: 1px solid var(--mist-solid-border);
+  box-shadow: var(--mist-solid-shadow);
 }
 
 .glass-nav {
@@ -196,13 +233,6 @@
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-}
-
-.dark .glass-card {
-  background: rgba(26, 26, 24, 0.7);
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25),
-              inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .dark .glass-nav {
@@ -213,10 +243,10 @@
 /* ── 手机桌面氛围背景 ── */
 .desktop-wallpaper {
   background:
-    radial-gradient(circle at 12% 10%, color-mix(in srgb, var(--color-theme), transparent 80%), transparent 31%),
-    radial-gradient(circle at 88% 18%, color-mix(in srgb, var(--color-secondary), transparent 84%), transparent 34%),
-    radial-gradient(circle at 54% 92%, color-mix(in srgb, var(--color-theme), transparent 88%), transparent 36%),
-    linear-gradient(155deg, #fbf7f1 0%, #edf4f1 48%, #f8faf7 100%);
+    radial-gradient(circle at 11% 8%, color-mix(in srgb, var(--color-theme), transparent 76%), transparent 30%),
+    radial-gradient(circle at 86% 14%, color-mix(in srgb, #a8d7d0, transparent 55%), transparent 35%),
+    radial-gradient(circle at 58% 94%, color-mix(in srgb, #f2d4c7, transparent 48%), transparent 38%),
+    linear-gradient(145deg, #fbf8f4 0%, #edf5f2 52%, #f6f8f5 100%);
 }
 
 .dark .desktop-wallpaper {
@@ -224,6 +254,36 @@
     radial-gradient(circle at 12% 10%, color-mix(in srgb, var(--color-theme), transparent 88%), transparent 31%),
     radial-gradient(circle at 88% 18%, color-mix(in srgb, var(--color-secondary), transparent 90%), transparent 34%),
     linear-gradient(155deg, #11110f 0%, #17201d 48%, #111210 100%);
+}
+
+.desktop-wallpaper-image {
+  background-color: #dfe5e1;
+  background-repeat: no-repeat;
+}
+
+.desktop-wallpaper-overlay {
+  background: transparent;
+}
+
+.desktop-wallpaper[data-wallpaper-mode="custom"] .desktop-wallpaper-overlay,
+.desktop-wallpaper-overlay[data-preview-shade="balanced"] {
+  background: linear-gradient(180deg, rgba(248, 250, 247, 0.12), rgba(235, 240, 237, 0.2));
+}
+
+.desktop-wallpaper[data-wallpaper-mode="custom"][data-wallpaper-shade="clear"] .desktop-wallpaper-overlay,
+.desktop-wallpaper-overlay[data-preview-shade="clear"] {
+  background: linear-gradient(180deg, rgba(248, 250, 247, 0.04), rgba(235, 240, 237, 0.08));
+}
+
+.desktop-wallpaper[data-wallpaper-mode="custom"][data-wallpaper-shade="soft"] .desktop-wallpaper-overlay,
+.desktop-wallpaper-overlay[data-preview-shade="soft"] {
+  background: rgba(241, 245, 242, 0.3);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+.desktop-wallpaper[data-wallpaper-mode="custom"] .desktop-wallpaper-texture {
+  opacity: 0.035;
 }
 
 .desktop-wallpaper-texture {
@@ -238,46 +298,43 @@
   opacity: 0.045;
 }
 
-/* ── 小组件表面：保持统一玻璃感，同时提供轻微类型区分 ── */
-.widget-card {
-  background: rgba(255, 255, 255, 0.72);
+.desktop-glass-control:hover {
+  background: var(--glass-surface-strong);
 }
 
-.widget-card[data-widget-id="weather"] {
+.desktop-shortcut-tile {
+  color: color-mix(in srgb, var(--color-theme), black 24%);
   background:
-    radial-gradient(circle at 12% 18%, color-mix(in srgb, var(--color-theme), transparent 83%), transparent 42%),
-    rgba(255, 255, 255, 0.75);
+    linear-gradient(145deg, rgba(255, 255, 255, 0.18), transparent 52%),
+    var(--glass-surface);
+  transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
 }
 
-.widget-card[data-widget-id="music"] {
-  background:
-    linear-gradient(118deg, color-mix(in srgb, var(--color-theme), white 91%), rgba(255, 255, 255, 0.76));
+.dark .desktop-shortcut-tile {
+  color: color-mix(in srgb, var(--color-theme), white 28%);
 }
 
-.widget-card[data-widget-id="calendar"] {
-  background:
-    linear-gradient(155deg, color-mix(in srgb, var(--color-secondary), white 94%), rgba(255, 255, 255, 0.76));
+.desktop-shortcut:hover .desktop-shortcut-tile {
+  transform: translateY(-3px);
+  background-color: var(--glass-surface-strong);
+  box-shadow: 0 16px 34px rgba(42, 50, 47, 0.14), inset 0 1px 0 var(--glass-highlight);
 }
 
-.widget-card[data-widget-id="chat"] {
-  background:
-    radial-gradient(circle at 88% 8%, color-mix(in srgb, var(--color-theme), transparent 91%), transparent 38%),
-    rgba(255, 255, 255, 0.75);
+.desktop-shortcut:active .desktop-shortcut-tile {
+  transform: translateY(-1px) scale(0.98);
 }
 
-.widget-card[data-widget-id="todo"] {
-  background: linear-gradient(150deg, color-mix(in srgb, var(--color-theme), white 95%), rgba(255, 255, 255, 0.76));
+.desktop-shortcut-label,
+.desktop-on-wallpaper {
+  text-shadow: 0 1px 8px rgba(255, 255, 255, 0.72);
 }
 
-.widget-card[data-widget-id="notes"] {
-  background: linear-gradient(150deg, color-mix(in srgb, var(--color-amber), white 94%), rgba(255, 255, 255, 0.76));
-}
-
-.dark .widget-card,
-.dark .widget-card[data-widget-id] {
-  background:
-    radial-gradient(circle at 12% 12%, color-mix(in srgb, var(--color-theme), transparent 91%), transparent 44%),
-    rgba(20, 21, 19, 0.72);
+.desktop-wallpaper[data-wallpaper-mode="custom"] .desktop-shortcut-label {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.32);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 @keyframes desktop-surface-enter {
@@ -290,26 +347,102 @@
   animation: desktop-surface-enter 0.22s ease-out both;
 }
 
+.desktop-home-pager {
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+}
+
+.desktop-home-pager::-webkit-scrollbar,
+.desktop-secondary-widgets::-webkit-scrollbar {
+  display: none;
+}
+
+.desktop-secondary-widgets {
+  overscroll-behavior-y: contain;
+  scrollbar-width: none;
+}
+
+.desktop-page-indicator {
+  pointer-events: none;
+}
+
+.desktop-page-dot {
+  pointer-events: auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-foreground), transparent 72%);
+  box-shadow: 0 1px 5px rgba(255, 255, 255, 0.64);
+  transition: width 180ms ease, background-color 180ms ease, transform 180ms ease;
+}
+
+.desktop-page-dot[data-active="true"] {
+  width: 16px;
+  background: color-mix(in srgb, var(--color-theme), black 16%);
+}
+
 /* ── 桌面 App 图标：全部从主题色派生 ── */
 .desktop-app-icon {
-  color: color-mix(in srgb, var(--color-theme), black 30%);
+  color: color-mix(in srgb, var(--color-foreground), var(--color-theme) 16%);
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.52) 0%, transparent 48%),
-    linear-gradient(
-      145deg,
-      color-mix(in srgb, var(--color-theme), transparent 82%) 0%,
-      color-mix(in srgb, var(--color-theme), transparent 60%) 100%
-    );
-  border: 1px solid color-mix(in srgb, var(--color-theme), transparent 74%);
-  box-shadow: 0 6px 16px color-mix(in srgb, var(--color-theme), transparent 86%),
-              inset 0 1px 0 rgba(255, 255, 255, 0.68),
-              inset 0 -1px 0 color-mix(in srgb, var(--color-theme), transparent 84%);
-  backdrop-filter: blur(14px) saturate(118%);
-  -webkit-backdrop-filter: blur(14px) saturate(118%);
+    linear-gradient(145deg, rgba(255, 255, 255, 0.18), transparent 50%),
+    var(--glass-surface);
 }
 
 .desktop-app-button {
-  color: color-mix(in srgb, var(--color-theme), black 30%);
+  color: color-mix(in srgb, var(--color-theme), black 24%);
+}
+
+.desktop-edit-button[data-active="true"] {
+  color: #fff;
+}
+
+.desktop-edit-button[data-active="true"] .desktop-app-icon {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.16), transparent 52%),
+    color-mix(in srgb, var(--color-theme), black 8%);
+  border-color: color-mix(in srgb, var(--color-theme), white 30%);
+  box-shadow:
+    0 9px 24px color-mix(in srgb, var(--color-theme), transparent 68%),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.desktop-edit-menu {
+  animation: desktop-surface-enter 0.18s ease-out both;
+}
+
+.desktop-edit-action {
+  display: flex;
+  min-width: 64px;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  border-radius: 14px;
+  padding: 8px 10px;
+  color: var(--color-muted-strong);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.2;
+  transition: background-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.desktop-edit-action svg {
+  color: color-mix(in srgb, var(--color-theme), black 24%);
+}
+
+.desktop-edit-action:hover {
+  color: var(--color-foreground);
+  background: rgba(255, 255, 255, 0.34);
+  transform: translateY(-1px);
+}
+
+.dark .desktop-edit-action svg {
+  color: color-mix(in srgb, var(--color-theme), white 28%);
+}
+
+.dark .desktop-edit-action:hover {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .desktop-app-mini-icon,
@@ -333,18 +466,14 @@
 .dark .desktop-app-button,
 .dark .desktop-app-mini-icon,
 .dark .desktop-app-placeholder-icon {
-  color: color-mix(in srgb, var(--color-theme), white 32%);
+  color: color-mix(in srgb, var(--color-theme), white 28%);
 }
 
 .dark .desktop-app-icon {
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.11) 0%, transparent 48%),
-    linear-gradient(
-      145deg,
-      color-mix(in srgb, var(--color-theme), transparent 87%) 0%,
-      color-mix(in srgb, var(--color-theme), transparent 68%) 100%
-    );
-  border-color: rgba(255, 255, 255, 0.15);
+    linear-gradient(145deg, rgba(255, 255, 255, 0.1) 0%, transparent 48%),
+    var(--glass-surface);
+  border-color: var(--glass-border);
   box-shadow: 0 7px 18px rgba(0, 0, 0, 0.16),
               inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }

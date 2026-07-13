@@ -28,7 +28,7 @@ export type DesktopAppId =
 interface DesktopAppMeta {
   name: string;
   description: string;
-  icon: ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string; strokeWidth?: number }>;
 }
 
 export const DESKTOP_APP_META: Record<DesktopAppId, DesktopAppMeta> = {
@@ -57,14 +57,14 @@ export function DesktopAppView({
 
   return (
     <section
-      className="mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden bg-white/55 backdrop-blur-xl dark:bg-black/30 sm:rounded-[28px] sm:border sm:border-white/20 sm:shadow-xl dark:sm:border-white/10"
+      className="mist-glass-strong mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden sm:rounded-[28px]"
       data-testid="desktop-app-view"
     >
       <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3 sm:px-5">
         <button
           type="button"
           onClick={onBack}
-          className="grid size-10 shrink-0 place-items-center rounded-full bg-white/65 text-foreground shadow-sm transition-colors hover:bg-white dark:bg-white/10 dark:hover:bg-white/15"
+          className="mist-glass grid size-10 shrink-0 place-items-center rounded-full text-foreground transition-colors hover:bg-white/75 dark:hover:bg-white/15"
           aria-label="返回桌面"
           title="返回桌面"
         >

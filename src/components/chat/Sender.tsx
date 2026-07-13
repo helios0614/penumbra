@@ -77,12 +77,12 @@ export function Sender({
   return (
     <div
       className={cn(
-        "shrink-0 border-t border-border bg-surface p-4 overflow-hidden",
+        "mist-solid shrink-0 border-t border-border p-4 overflow-hidden shadow-none",
         className,
       )}
     >
       <div className="max-w-[720px] mx-auto">
-        <div className="flex items-center gap-2 bg-surface-secondary rounded-lg border border-border px-3 py-2">
+        <div className="mist-solid flex items-center gap-2 rounded-lg px-3 py-2">
           {/* 附件按钮 */}
           <Button
             variant="ghost"

@@ -82,7 +82,7 @@ export function ConversationsList({
     <>
       <div
         className={cn(
-          "flex flex-col bg-surface border-r border-border h-full overflow-hidden",
+          "mist-solid flex flex-col border-r border-border h-full overflow-hidden shadow-none",
           className,
         )}
       >
@@ -186,7 +186,7 @@ export function ConversationsList({
                     <div
                       className={cn(
                         "absolute right-2 top-full z-20 mt-1",
-                        "bg-surface border border-border rounded-lg shadow-md p-1 min-w-[120px]",
+                        "mist-glass-strong rounded-lg p-1 min-w-[120px]",
                       )}
                       onClick={(e) => e.stopPropagation()}
                     >
