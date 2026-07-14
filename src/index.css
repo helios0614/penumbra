@@ -312,15 +312,11 @@
 }
 
 .desktop-shortcut-tile {
-  color: color-mix(in srgb, var(--color-theme), black 24%);
+  color: var(--color-theme);
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.18), transparent 52%),
     var(--glass-surface);
   transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
-}
-
-.dark .desktop-shortcut-tile {
-  color: color-mix(in srgb, var(--color-theme), white 28%);
 }
 
 .desktop-shortcut:hover .desktop-shortcut-tile {
@@ -393,7 +389,7 @@
 
 /* ── 桌面 App 图标：全部从主题色派生 ── */
 .desktop-app-icon {
-  color: color-mix(in srgb, var(--color-foreground), var(--color-theme) 16%);
+  color: var(--color-theme);
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.12), transparent 50%),
     rgba(255, 255, 255, 0.18);
@@ -404,7 +400,7 @@
 }
 
 .desktop-app-button {
-  color: color-mix(in srgb, var(--color-theme), black 24%);
+  color: var(--color-theme);
 }
 
 .desktop-edit-button[data-active="true"] {
@@ -460,7 +456,7 @@
 
 .desktop-app-mini-icon,
 .desktop-app-placeholder-icon {
-  color: color-mix(in srgb, var(--color-theme), black 42%);
+  color: var(--color-theme);
   background: color-mix(in srgb, var(--color-theme), white 78%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
@@ -475,13 +471,6 @@
   filter: blur(7px);
 }
 
-.dark .desktop-app-icon,
-.dark .desktop-app-button,
-.dark .desktop-app-mini-icon,
-.dark .desktop-app-placeholder-icon {
-  color: color-mix(in srgb, var(--color-theme), white 28%);
-}
-
 .dark .desktop-app-icon {
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.06) 0%, transparent 48%),
@@ -490,6 +479,22 @@
   box-shadow:
     0 6px 16px rgba(0, 0, 0, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.chat-user-meta {
+  color: color-mix(in srgb, var(--color-theme), black 24%);
+}
+
+.dark .chat-user-meta {
+  color: color-mix(in srgb, var(--color-theme), white 28%);
+}
+
+.chat-ai-meta {
+  color: color-mix(in srgb, var(--color-ai), black 24%);
+}
+
+.dark .chat-ai-meta {
+  color: color-mix(in srgb, var(--color-ai), white 28%);
 }
 
 @keyframes widget-edit-wiggle {

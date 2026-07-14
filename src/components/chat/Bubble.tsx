@@ -182,7 +182,7 @@ function BubbleSegment({
       className={cn(
         "relative rounded-md px-4 py-2 text-[14px] leading-[1.6] break-words overflow-wrap-anywhere overflow-hidden min-w-0 max-w-full backdrop-blur-md",
         isUser
-          ? "bg-primary/10 text-primary-ink shadow-sm border border-primary/20"
+          ? "bg-primary/10 text-primary shadow-sm border border-primary/20"
           : "bg-ai/10 text-ai shadow-sm border border-ai/20",
       )}
     >
@@ -253,13 +253,13 @@ function BubbleInner({
       {/* 头部信息 */}
       <div className={cn(
         "flex items-center gap-1.5 mb-1",
-        isUser ? "flex-row-reverse" : "flex-row",
+        isUser ? "chat-user-meta flex-row-reverse" : "chat-ai-meta flex-row",
       )}>
         <MessageAvatar isUser={isUser} hasHeartWhisper={hasHeartWhisper} />
-        <span className={cn("text-xs font-medium", isUser ? "text-primary" : "text-ai")}>
+        <span className="text-xs font-medium">
           {isUser ? "你" : "Aion"}
         </span>
-        <span className={cn("text-xs", isUser ? "text-primary/60" : "text-ai/60")}>{timeStr}</span>
+        <span className="text-xs opacity-60">{timeStr}</span>
 
         {/* 操作按钮 — hover 显示 */}
         <div
