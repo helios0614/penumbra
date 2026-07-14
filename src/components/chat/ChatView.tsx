@@ -107,6 +107,7 @@ export function ChatView() {
           ) : (
             <BubbleList
               messages={chat.messages}
+              heartWhisperMessageIds={chat.heartWhisperMessageIds}
               streamingId={chat.streamingId}
               streamingContent={chat.streamingContent}
               onRegenerate={chat.regenerate}

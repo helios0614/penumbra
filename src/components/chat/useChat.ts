@@ -1,9 +1,18 @@
-import { useState, useCallback, useRef } from "react";
-import type { ChatMessage, SendMessageRequest } from "./types";
-import { MOCK_MESSAGES, MOCK_STREAMING_TEXT } from "./mock-data";
+import { useState, useCallback, useMemo, useRef } from "react";
+import type {
+  ChatMessage,
+  HeartWhisperEvent,
+  SendMessageRequest,
+} from "./types";
+import {
+  MOCK_HEART_WHISPERS,
+  MOCK_MESSAGES,
+  MOCK_STREAMING_TEXT,
+} from "./mock-data";
 
 export function useChat(convId: string | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [heartWhispers, setHeartWhispers] = useState<HeartWhisperEvent[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState("");
@@ -17,6 +26,7 @@ export function useChat(convId: string | null) {
     // 模拟加载延迟
     await new Promise((r) => setTimeout(r, 100));
     setMessages(MOCK_MESSAGES[id] ?? []);
+    setHeartWhispers(MOCK_HEART_WHISPERS[id] ?? []);
     setLoadingMessages(false);
   }, []);
 
@@ -24,6 +34,7 @@ export function useChat(convId: string | null) {
   const switchConversation = useCallback(
     async (id: string | null) => {
       setMessages([]);
+      setHeartWhispers([]);
       setStreamingId(null);
       setStreamingContent("");
       if (id) {
@@ -190,10 +201,17 @@ export function useChat(convId: string | null) {
   // 删除消息
   const removeMessage = useCallback((msgId: string) => {
     setMessages((prev) => prev.filter((m) => m.id !== msgId));
+    setHeartWhispers((prev) => prev.filter((item) => item.msg_id !== msgId));
   }, []);
+
+  const heartWhisperMessageIds = useMemo(
+    () => new Set(heartWhispers.map((item) => item.msg_id)),
+    [heartWhispers],
+  );
 
   return {
     messages,
+    heartWhisperMessageIds,
     isStreaming,
     streamingId,
     streamingContent,

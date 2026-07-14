@@ -93,6 +93,7 @@ function segmentMessages(messages: ChatMessage[]): MessageSegment[] {
 
 interface BubbleListProps {
   messages: ChatMessage[];
+  heartWhisperMessageIds?: ReadonlySet<string>;
   streamingId?: string | null;
   streamingContent?: string;
   onRegenerate?: (msgId: string) => void;
@@ -101,6 +102,7 @@ interface BubbleListProps {
 
 function BubbleListInner({
   messages,
+  heartWhisperMessageIds = new Set<string>(),
   streamingId,
   streamingContent,
   onRegenerate,
@@ -131,7 +133,7 @@ function BubbleListInner({
                 {segments.map((seg, segIdx) => {
                   if (seg.type === "system-group") {
                     return (
-                      <div key={`sys-${seg.messages[0].id}`} className="w-full py-0.5">
+                      <div key={`sys-${seg.messages[0].id}`} className="w-full py-1.5">
                         <SystemCommandGroup messages={seg.messages} />
                       </div>
                     );
@@ -146,6 +148,7 @@ function BubbleListInner({
                     <div key={msg.id} className={cn(isRoleSwitch ? "my-3" : "mt-1")}>
                       <Bubble
                         message={msg}
+                        hasHeartWhisper={heartWhisperMessageIds.has(msg.id)}
                         isStreaming={msg.id === streamingId}
                         streamingContent={
                           msg.id === streamingId ? streamingContent : undefined

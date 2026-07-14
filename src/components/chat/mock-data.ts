@@ -1,7 +1,11 @@
 /**
  * Mock 数据 — 用于样式预览，不依赖后端
  */
-import type { Conversation, ChatMessage } from "./types";
+import type {
+  Conversation,
+  ChatMessage,
+  HeartWhisperEvent,
+} from "./types";
 
 const now = Date.now() / 1000;
 
@@ -175,22 +179,15 @@ export const MOCK_MESSAGES: Record<string, ChatMessage[]> = {
       role: "assistant",
       content: "好的，我来帮你搜索音乐和附近的餐厅~",
       created_at: now - 1100,
-      attachments: [],
+      attachments: [
+        {
+          type: "music",
+          id: "mock_track_1",
+          name: "Fly Me To The Moon",
+          artist: "Frank Sinatra",
+        },
+      ],
       simple_think: "主人想放松一下呢，推荐点轻爵士吧~",
-      thinking: "",
-      mcp_tool_calls: [],
-      cache_region: "",
-      is_carryover: 0,
-    },
-    // 音乐搜索结果
-    {
-      id: "sys_music",
-      conv_id: "conv_4",
-      role: "system",
-      content: "🎵 Fly Me To The Moon — Frank Sinatra",
-      created_at: now - 1050,
-      attachments: [],
-      simple_think: "",
       thinking: "",
       mcp_tool_calls: [],
       cache_region: "",
@@ -201,7 +198,7 @@ export const MOCK_MESSAGES: Record<string, ChatMessage[]> = {
       id: "sys_poi",
       conv_id: "conv_4",
       role: "system",
-      content: "📍 找到 5 家附近餐厅",
+      content: "Aion 搜索了你周边的餐饮美食信息 · 找到 5 家附近餐厅",
       created_at: now - 1000,
       attachments: [],
       simple_think: "",
@@ -217,7 +214,7 @@ export const MOCK_MESSAGES: Record<string, ChatMessage[]> = {
       content: "音乐已经为你准备好了 🎶 Fly Me To The Moon，经典的爵士曲目，非常适合放松。\n\n附近找到了几家不错的餐厅，你有兴趣的话可以看看。",
       created_at: now - 950,
       attachments: [],
-      simple_think: "",
+      simple_think: "主人想放松一下呢，轻爵士和附近的小餐厅应该很适合今晚的心情。",
       thinking:
         "用户想放松，我推荐了经典的爵士标准曲。POI 搜索返回了 5 家餐厅，距离都在 1km 以内。考虑到用户可能是想边听音乐边享受美食，我把两个结果整合在一起回复。",
       mcp_tool_calls: [],
@@ -243,7 +240,7 @@ export const MOCK_MESSAGES: Record<string, ChatMessage[]> = {
       id: "sys_reminder",
       conv_id: "conv_4",
       role: "system",
-      content: "🔔 已设置提醒：明天 09:00 开会",
+      content: "已设置提醒 · 明天 09:00 开会",
       created_at: now - 550,
       attachments: [],
       simple_think: "",
@@ -257,7 +254,7 @@ export const MOCK_MESSAGES: Record<string, ChatMessage[]> = {
       id: "sys_memory",
       conv_id: "conv_4",
       role: "system",
-      content: "🧠 已记住：用户喜欢爵士乐和轻音乐",
+      content: "已写入记忆 · 用户喜欢爵士乐和轻音乐",
       created_at: now - 540,
       attachments: [],
       simple_think: "",
@@ -271,7 +268,7 @@ export const MOCK_MESSAGES: Record<string, ChatMessage[]> = {
       id: "sys_todo",
       conv_id: "conv_4",
       role: "system",
-      content: "📝 已记录待办：明天上午 9 点开会",
+      content: "已记录待办 · 明天上午 9 点开会",
       created_at: now - 530,
       attachments: [],
       simple_think: "",
@@ -311,7 +308,7 @@ export const MOCK_MESSAGES: Record<string, ChatMessage[]> = {
       id: "sys_mcp",
       conv_id: "conv_4",
       role: "system",
-      content: "🔌 MCP: github:get_notifications — 获取到 3 条通知",
+      content: "Aion 调用了远程工具",
       created_at: now - 250,
       attachments: [],
       simple_think: "",
@@ -342,19 +339,18 @@ export const MOCK_MESSAGES: Record<string, ChatMessage[]> = {
       cache_region: "",
       is_carryover: 0,
     },
-    // 心声
+  ],
+};
+
+// HEART 是独立 SSE 事件，通过 msg_id 关联 AI 回复，不混入 system 消息流。
+export const MOCK_HEART_WHISPERS: Record<string, HeartWhisperEvent[]> = {
+  conv_4: [
     {
-      id: "sys_heart",
-      conv_id: "conv_4",
-      role: "system",
-      content: "💕 今天和主人聊了好多，好开心",
+      type: "heart_whisper",
+      id: "heart_1",
+      msg_id: "msg_26",
+      content: "今天和主人聊了好多，好开心",
       created_at: now - 150,
-      attachments: [],
-      simple_think: "",
-      thinking: "",
-      mcp_tool_calls: [],
-      cache_region: "",
-      is_carryover: 0,
     },
   ],
 };

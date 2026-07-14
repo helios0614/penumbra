@@ -16,16 +16,39 @@ export interface Conversation {
 
 // ─── 消息 ───
 
+export interface MusicAttachment {
+  type: "music";
+  id: string | number;
+  name: string;
+  artist: string;
+  album?: string;
+  audio_url?: string;
+}
+
+export type ChatAttachment =
+  | string
+  | MusicAttachment
+  | Record<string, unknown>;
+
+export interface McpToolCall {
+  server: string;
+  tool: string;
+  args?: string | Record<string, unknown>;
+  result?: string;
+  error?: string;
+  success: boolean;
+}
+
 export interface ChatMessage {
   id: string; // "msg_{timestamp}"
   conv_id: string;
   role: "user" | "assistant" | "system";
   content: string;
   created_at: number;
-  attachments: string[];
+  attachments: ChatAttachment[];
   simple_think: string; // AI 随想
   thinking: string; // Claude 扩展思考
-  mcp_tool_calls: object[];
+  mcp_tool_calls: McpToolCall[];
   cache_region: string; // "freeze" | "slide" | ""
   is_carryover: number; // 1 = 从上个会话继承
 }
@@ -64,6 +87,14 @@ export interface SSEEvent {
   id?: string;
   content?: string;
   [key: string]: unknown;
+}
+
+export interface HeartWhisperEvent {
+  type: "heart_whisper";
+  id: string;
+  msg_id: string;
+  content: string;
+  created_at: number;
 }
 
 // ─── 创建会话请求 ───

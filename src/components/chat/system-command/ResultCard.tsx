@@ -1,185 +1,75 @@
 /**
- * 系统指令结果卡片
- * 指令执行完成后的展示：紧凑 badge 式 + 富卡片式（音乐、MCP）
+ * 需要用户交互或查看详情的结构化能力卡片。
+ * 普通 system 结果不在这里做类型猜测。
  */
 import { memo, useState } from "react";
-import {
-  Music,
-  Brain,
-  AlarmClock,
-  Bell,
-  Eye,
-  CheckSquare,
-  CheckCircle2,
-  Trash2,
-  Camera,
-  MapPin,
-  Locate,
-  Monitor,
-  Plug,
-  ChevronDown,
-  Play,
-  Pause,
-  X,
-  CircleDot,
-  CircleCheck,
-  CircleX,
-} from "lucide-react";
+import { ChevronDown, Pause, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { SystemCommandData, McpToolCall, MusicMeta } from "./types";
-import { COMMAND_APPEARANCE } from "./appearance";
-
-// ─── 图标映射 ───
-
-const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
-  Music,
-  Brain,
-  AlarmClock,
-  Bell,
-  Eye,
-  CheckSquare,
-  CheckCircle2,
-  Trash2,
-  Camera,
-  MapPin,
-  Locate,
-  Monitor,
-  Plug,
-};
-
-// ─── 紧凑 badge 式结果 ───
-
-interface CompactResultProps {
-  data: SystemCommandData;
-  onDismiss?: () => void;
-}
-
-function CompactResult({ data, onDismiss }: CompactResultProps) {
-  const appearance = COMMAND_APPEARANCE[data.type];
-  const Icon = ICON_MAP[appearance.icon] ?? CircleDot;
-
-  return (
-    <div
-      className={cn(
-        "group inline-flex items-center gap-2 px-3 py-1.5 rounded-md",
-        "border text-xs backdrop-blur-md shadow-sm",
-        appearance.bgClass,
-        appearance.borderClass,
-      )}
-    >
-      <Icon className={cn("size-3.5 shrink-0", appearance.textClass)} />
-      <span className={cn("font-medium", appearance.textClass)}>
-        {data.label ?? appearance.label}
-      </span>
-      {data.content && (
-        <span className="text-muted-foreground truncate max-w-[200px] break-words overflow-wrap-anywhere">
-          {data.content}
-        </span>
-      )}
-
-      {/* 状态指示 */}
-      {data.status === "success" && (
-        <CircleCheck className="size-3 text-success shrink-0" />
-      )}
-      {data.status === "error" && (
-        <CircleX className="size-3 text-destructive shrink-0" />
-      )}
-
-      {/* 关闭按钮 */}
-      {onDismiss && (
-        <button
-          onClick={onDismiss}
-          className={cn(
-            "ml-0.5 p-0.5 rounded-sm opacity-0 group-hover:opacity-100",
-            "text-muted-foreground hover:text-foreground",
-            "transition-all duration-200",
-          )}
-        >
-          <X className="size-3" />
-        </button>
-      )}
-    </div>
-  );
-}
+import type { McpToolCall, MusicAttachment } from "../types";
 
 // ─── 音乐卡片 ───
 
-interface MusicCardProps {
-  meta?: MusicMeta;
-  content: string;
+interface MusicResultCardProps {
+  attachment: MusicAttachment;
 }
 
-function MusicCard({ meta, content }: MusicCardProps) {
+function MusicResultCardInner({ attachment }: MusicResultCardProps) {
   const [playing, setPlaying] = useState(false);
-  const song = meta?.song ?? content;
-  const artist = meta?.artist ?? "未知艺术家";
-  const album = meta?.album ?? "";
 
   return (
     <div
       className={cn(
-        "flex items-center gap-3 p-2 rounded-md",
-        "bg-ai/10 border border-ai/20 backdrop-blur-md",
-        "shadow-sm",
-        "w-[85%]",
+        "flex w-full max-w-[480px] items-center gap-3 rounded-md p-2.5",
+        "border border-ai/20 bg-ai/10",
       )}
     >
-      {/* 封面 — 网易云风格：大圆角 + 渐变遮罩 + 中央播放按钮 */}
       <div
         className={cn(
-          "relative size-14 rounded-md overflow-hidden shrink-0",
+          "relative size-14 shrink-0 overflow-hidden rounded-md",
           "bg-gradient-to-br from-ai/40 via-ai/20 to-ai-subtle",
         )}
       >
-        {/* 唱片纹理 */}
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="size-8 rounded-full border-2 border-ai/20 flex items-center justify-center">
+          <div className="flex size-8 items-center justify-center rounded-full border-2 border-ai/20">
             <div className="size-3 rounded-full bg-ai/15" />
           </div>
         </div>
-        {/* 播放按钮 */}
         <button
-          onClick={() => setPlaying(!playing)}
-          className={cn(
-            "absolute inset-0 flex items-center justify-center",
-            "bg-black/0 hover:bg-black/10 transition-all duration-200",
-          )}
+          type="button"
+          onClick={() => setPlaying((current) => !current)}
+          aria-label={
+            playing ? `暂停 ${attachment.name}` : `播放 ${attachment.name}`
+          }
+          className="absolute inset-0 flex items-center justify-center bg-black/0 transition-all duration-200 hover:bg-black/10"
         >
-          <div
-            className={cn(
-              "size-7 rounded-full flex items-center justify-center",
-              "bg-white/90 shadow-sm",
-              "hover:scale-105 transition-transform duration-200",
-            )}
-          >
+          <span className="flex size-7 items-center justify-center rounded-full bg-white/90 shadow-sm transition-transform duration-200 hover:scale-105">
             {playing ? (
               <Pause className="size-3.5 text-ai" />
             ) : (
-              <Play className="size-3.5 text-ai ml-0.5" />
+              <Play className="ml-0.5 size-3.5 text-ai" />
             )}
-          </div>
+          </span>
         </button>
       </div>
 
-      {/* 歌曲信息 */}
-      <div className="flex-1 min-w-0 py-0.5">
-        <p className="text-sm font-semibold text-foreground truncate leading-tight">
-          {song}
+      <div className="min-w-0 flex-1 py-0.5">
+        <p className="truncate text-sm font-semibold leading-tight text-foreground">
+          {attachment.name}
         </p>
-        <p className="text-[11px] text-muted-foreground truncate mt-0.5 leading-tight">
-          {artist}{album ? ` · ${album}` : ""}
+        <p className="mt-0.5 truncate text-[11px] leading-tight text-muted-foreground">
+          {attachment.artist}
+          {attachment.album ? ` · ${attachment.album}` : ""}
         </p>
 
-        {/* 播放中 — 简易波形 */}
         {playing && (
-          <div className="flex items-end gap-[2px] h-3 mt-1.5">
-            {[0, 1, 2, 3, 4].map((i) => (
+          <div className="mt-1.5 flex h-3 items-end gap-[2px]">
+            {[5, 10, 7, 12, 8].map((height, index) => (
               <span
-                key={i}
-                className="w-[2px] bg-ai rounded-full animate-pulse"
+                key={index}
+                className="w-[2px] animate-pulse rounded-full bg-ai"
                 style={{
-                  height: `${4 + Math.random() * 8}px`,
-                  animationDelay: `${i * 150}ms`,
+                  height: `${height}px`,
+                  animationDelay: `${index * 150}ms`,
                 }}
               />
             ))}
@@ -190,69 +80,59 @@ function MusicCard({ meta, content }: MusicCardProps) {
   );
 }
 
-// ─── MCP 工具调用卡片 — 步骤条风格 ───
+export const MusicResultCard = memo(MusicResultCardInner);
 
-interface McpCardProps {
+// ─── MCP 工具调用 ───
+
+interface McpResultCardProps {
   toolCalls: McpToolCall[];
-  content: string;
 }
 
-function McpCard({ toolCalls, content }: McpCardProps) {
+function McpResultCardInner({ toolCalls }: McpResultCardProps) {
   const [expanded, setExpanded] = useState(true);
-
-  if (toolCalls.length === 0) {
-    return (
-      <CompactResult
-        data={{ type: "mcp", status: "success", content }}
-      />
-    );
-  }
-
-  const doneCount = toolCalls.filter((c) => c.success).length;
+  const doneCount = toolCalls.filter((call) => call.success).length;
 
   return (
-    <div
-      className={cn(
-        "w-[85%] rounded-md overflow-hidden",
-        "bg-ai/10 border border-ai/20 backdrop-blur-md",
-      )}
-    >
-      {/* 头部 */}
+    <div className="w-full max-w-[480px] overflow-hidden rounded-md border border-ai/20 bg-ai/10">
       <button
-        onClick={() => setExpanded(!expanded)}
-        className={cn(
-          "flex items-center gap-2 w-full px-3 py-1.5 text-left",
-          "hover:bg-ai/10 transition-all duration-200",
-        )}
+        type="button"
+        onClick={() => setExpanded((current) => !current)}
+        aria-expanded={expanded}
+        className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left transition-colors duration-200 hover:bg-ai/10"
       >
-        <Plug className="size-3.5 text-foreground shrink-0" />
-        <span className="text-xs text-foreground flex-1">
-          {doneCount}/{toolCalls.length} 步完成
+        <span className="flex-1 text-xs font-medium text-muted-strong">
+          {doneCount === toolCalls.length
+            ? `已完成 ${toolCalls.length} 项工具操作`
+            : `${doneCount}/${toolCalls.length} 项工具操作已完成`}
         </span>
         <ChevronDown
           className={cn(
-            "size-3.5 text-muted-foreground transition-all duration-200 shrink-0",
+            "size-3.5 shrink-0 text-muted-foreground transition-transform duration-200",
             expanded && "rotate-180",
           )}
         />
       </button>
 
-      {/* 步骤列表 */}
       {expanded && (
-        <div className="px-3 pb-1.5 divide-y divide-ai/8">
-          {toolCalls.map((call, i) => (
-            <div key={i} className="flex items-start gap-2 py-1.5">
-              {call.success ? (
-                <CircleCheck className="size-3.5 text-success shrink-0 mt-0.5" />
-              ) : (
-                <CircleX className="size-3.5 text-destructive shrink-0 mt-0.5" />
-              )}
-              <div className="flex-1 min-w-0 text-xs leading-relaxed break-words overflow-wrap-anywhere">
-                <span className="text-foreground font-mono whitespace-nowrap">
+        <div className="divide-y divide-ai/8 px-3 pb-2">
+          {toolCalls.map((call, index) => (
+            <div key={`${call.server}:${call.tool}:${index}`} className="flex items-start gap-3 py-2">
+              <span
+                className={cn(
+                  "mt-0.5 shrink-0 text-[11px] font-medium",
+                  call.success ? "text-success" : "text-destructive",
+                )}
+              >
+                {call.success ? "完成" : "失败"}
+              </span>
+              <div className="min-w-0 flex-1 break-words text-xs leading-relaxed overflow-wrap-anywhere">
+                <p className="break-all font-mono text-[11px] text-muted-strong">
                   {call.server}:{call.tool}
-                </span>
-                {call.result && (
-                  <span className="text-muted-foreground ml-1 break-all">→ {call.result}</span>
+                </p>
+                {(call.result || call.error) && (
+                  <p className="mt-0.5 break-all text-muted-foreground">
+                    {call.result ?? call.error}
+                  </p>
                 )}
               </div>
             </div>
@@ -263,33 +143,4 @@ function McpCard({ toolCalls, content }: McpCardProps) {
   );
 }
 
-// ─── 主组件 ───
-
-interface ResultCardProps {
-  data: SystemCommandData;
-  toolCalls?: McpToolCall[];
-  musicMeta?: MusicMeta;
-  onDismiss?: () => void;
-}
-
-function ResultCardInner({
-  data,
-  toolCalls,
-  musicMeta,
-  onDismiss,
-}: ResultCardProps) {
-  // 音乐 → 富卡片
-  if (data.type === "music") {
-    return <MusicCard meta={musicMeta} content={data.content} />;
-  }
-
-  // MCP → 可展开卡片
-  if (data.type === "mcp" && toolCalls && toolCalls.length > 0) {
-    return <McpCard toolCalls={toolCalls} content={data.content} />;
-  }
-
-  // 其他 → 紧凑 badge
-  return <CompactResult data={data} onDismiss={onDismiss} />;
-}
-
-export const ResultCard = memo(ResultCardInner);
+export const McpResultCard = memo(McpResultCardInner);

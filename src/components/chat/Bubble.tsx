@@ -1,17 +1,19 @@
-import { memo, useMemo } from "react";
+import { memo } from "react";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { MessageActions } from "./MessageActions";
-import { SystemCommand } from "./system-command/SystemCommand";
 import { SimpleThink, ThinkingBlock } from "./system-command/InlineIndicator";
-import {
-  parseSystemMessage,
-  extractMcpToolCalls,
-} from "./system-command/parse-system-message";
+import { getMusicAttachments } from "./system-command/message-capabilities";
+import { MusicResultCard } from "./system-command/ResultCard";
+import { SystemMessageLine } from "./system-command/SystemMessageLine";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Bot, User } from "lucide-react";
 import type { ChatMessage } from "./types";
-import type { McpToolCall } from "./system-command/types";
 import { format } from "date-fns";
 
 /**
@@ -110,6 +112,54 @@ function StreamingCursor() {
   );
 }
 
+// ─── 消息头像 ───
+
+interface MessageAvatarProps {
+  isUser: boolean;
+  hasHeartWhisper?: boolean;
+}
+
+function MessageAvatar({ isUser, hasHeartWhisper }: MessageAvatarProps) {
+  const avatar = (
+    <Avatar size="sm">
+      <AvatarFallback className={cn(isUser ? "bg-primary-subtle" : "bg-ai-subtle")}>
+        {isUser ? (
+          <User className="size-3.5 text-muted-foreground" />
+        ) : (
+          <Bot className="size-3.5 text-ai" />
+        )}
+      </AvatarFallback>
+    </Avatar>
+  );
+
+  if (isUser || !hasHeartWhisper) return avatar;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            role="img"
+            aria-label="这条回复包含心声"
+            className="relative inline-flex shrink-0"
+          />
+        }
+      >
+        {avatar}
+        <span
+          aria-hidden="true"
+          className={cn(
+            "absolute bottom-0 right-0 size-2.5 rounded-full",
+            "bg-ai ring-2 ring-[var(--mist-solid-surface)]",
+            "animate-in fade-in-0 zoom-in-50 duration-500 motion-reduce:animate-none",
+          )}
+        />
+      </TooltipTrigger>
+      <TooltipContent>这条回复包含心声</TooltipContent>
+    </Tooltip>
+  );
+}
+
 // ─── 单个气泡段落 ───
 
 interface BubbleSegmentProps {
@@ -148,48 +198,11 @@ function BubbleSegment({
   );
 }
 
-// ─── 系统消息（独立组件，避免 hooks 条件调用） ───
-
-interface SystemBubbleProps {
-  message: ChatMessage;
-}
-
-function SystemBubble({ message }: SystemBubbleProps) {
-  const commandData = useMemo(
-    () => parseSystemMessage(message.content),
-    [message.content],
-  );
-  const mcpCalls = useMemo(() => {
-    if (message.mcp_tool_calls?.length) {
-      return message.mcp_tool_calls as McpToolCall[];
-    }
-    return extractMcpToolCalls(message.content);
-  }, [message.mcp_tool_calls, message.content]);
-
-  if (commandData) {
-    return (
-      <div className="w-full flex justify-center my-0.5">
-        <SystemCommand
-          data={commandData}
-          toolCalls={mcpCalls.length > 0 ? mcpCalls : undefined}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="w-full flex justify-center my-2">
-      <span className="mist-solid rounded-full px-3 py-1 text-xs text-muted-foreground">
-        {message.content}
-      </span>
-    </div>
-  );
-}
-
 // ─── 单条消息气泡 ───
 
 interface BubbleProps {
   message: ChatMessage;
+  hasHeartWhisper?: boolean;
   isStreaming?: boolean;
   streamingContent?: string;
   onRegenerate?: () => void;
@@ -198,6 +211,7 @@ interface BubbleProps {
 
 function BubbleInner({
   message,
+  hasHeartWhisper,
   isStreaming,
   streamingContent,
   onRegenerate,
@@ -209,7 +223,7 @@ function BubbleInner({
 
   // 系统消息走独立组件
   if (isSystem) {
-    return <SystemBubble message={message} />;
+    return <SystemMessageLine content={message.content} />;
   }
 
   const rawContent =
@@ -226,6 +240,7 @@ function BubbleInner({
 
   // 按 \n\n 拆分为多个气泡
   const chunks = isLoading ? [] : splitIntoChunks(displayContent);
+  const musicAttachments = getMusicAttachments(message);
 
   return (
     <div
@@ -240,15 +255,7 @@ function BubbleInner({
         "flex items-center gap-1.5 mb-1",
         isUser ? "flex-row-reverse" : "flex-row",
       )}>
-        <Avatar size="sm">
-          <AvatarFallback className={cn(isUser ? "bg-primary-subtle" : "bg-ai-subtle")}>
-            {isUser ? (
-              <User className="size-3.5 text-muted-foreground" />
-            ) : (
-              <Bot className="size-3.5 text-ai" />
-            )}
-          </AvatarFallback>
-        </Avatar>
+        <MessageAvatar isUser={isUser} hasHeartWhisper={hasHeartWhisper} />
         <span className={cn("text-xs font-medium", isUser ? "text-primary" : "text-ai")}>
           {isUser ? "你" : "Aion"}
         </span>
@@ -274,12 +281,12 @@ function BubbleInner({
       <div className="max-w-[85%]">
         {/* 扩展思考 */}
         {isAssistant && message.thinking && !isStreaming && (
-          <ThinkingBlock content={message.thinking} className="mb-1 w-full" />
+          <ThinkingBlock content={message.thinking} className="mb-1.5 w-full" />
         )}
 
         {/* AI 随想 */}
         {isAssistant && message.simple_think && !isStreaming && (
-          <SimpleThink content={message.simple_think} className="mb-1" />
+          <SimpleThink content={message.simple_think} className="mb-1.5" />
         )}
 
         {/* 气泡列表 */}
@@ -297,6 +304,17 @@ function BubbleInner({
                 content={chunk}
                 isStreaming={!!isStreaming}
                 showCursor={i === chunks.length - 1}
+              />
+            ))}
+          </div>
+        )}
+
+        {isAssistant && !isStreaming && musicAttachments.length > 0 && (
+          <div className="mt-1.5 flex flex-col items-start gap-1.5">
+            {musicAttachments.map((attachment) => (
+              <MusicResultCard
+                key={`${attachment.id}:${attachment.name}`}
+                attachment={attachment}
               />
             ))}
           </div>
