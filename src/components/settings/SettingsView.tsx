@@ -18,7 +18,10 @@ import {
 } from "@/lib/backend";
 import { cn } from "@/lib/utils";
 import {
+  AI_COLOR_PRESETS,
+  applyAiColor,
   applyThemeColor,
+  getStoredAiColor,
   getStoredThemeColor,
   THEME_COLOR_PRESETS,
 } from "@/lib/theme";
@@ -50,6 +53,7 @@ const loginCopy: Record<LoginState, string> = {
 export function SettingsView({ onBack }: SettingsViewProps) {
   const [status, setStatus] = useState<BackendStatus>(INITIAL_BACKEND_STATUS);
   const [themeColor, setThemeColor] = useState(getStoredThemeColor);
+  const [aiColor, setAiColor] = useState(getStoredAiColor);
   const [wallpaperSettings, setWallpaperSettings] = useState(getStoredWallpaperSettings);
   const [wallpaperPreview, setWallpaperPreview] = useState<string | null>(null);
   const [hasCustomWallpaper, setHasCustomWallpaper] = useState(false);
@@ -61,6 +65,11 @@ export function SettingsView({ onBack }: SettingsViewProps) {
   const selectThemeColor = useCallback((color: string) => {
     const applied = applyThemeColor(color);
     if (applied) setThemeColor(applied);
+  }, []);
+
+  const selectAiColor = useCallback((color: string) => {
+    const applied = applyAiColor(color);
+    if (applied) setAiColor(applied);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -347,6 +356,62 @@ export function SettingsView({ onBack }: SettingsViewProps) {
                   style={{ backgroundColor: preset.value }}
                 >
                   {isSelected && <Check className="size-4 text-primary-foreground drop-shadow-sm" />}
+                </span>
+                <span>{preset.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mist-glass rounded-[24px] p-4 sm:p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <SettingsSectionHeading
+            title="AI 主题色"
+            description="AI 头像、名称、消息气泡和思考状态会一起更新。"
+          />
+          <div className="flex items-center gap-3">
+            <div
+              className="flex max-w-48 items-start gap-2 rounded-xl border border-ai/20 bg-ai/10 px-3 py-2 text-ai shadow-sm"
+              aria-label="AI 气泡颜色预览"
+            >
+              <span className="mt-1 size-1.5 shrink-0 rounded-full bg-current" />
+              <span className="text-xs font-medium leading-relaxed">你好，我是 Aion</span>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              自定义
+              <input
+                type="color"
+                value={aiColor}
+                onChange={(event) => selectAiColor(event.target.value)}
+                className="size-10 cursor-pointer rounded-xl border border-border bg-transparent p-1"
+                aria-label="自定义 AI 主题色"
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-4 gap-3 sm:grid-cols-8">
+          {AI_COLOR_PRESETS.map((preset) => {
+            const isSelected = preset.value.toUpperCase() === aiColor;
+
+            return (
+              <button
+                key={preset.value}
+                type="button"
+                onClick={() => selectAiColor(preset.value)}
+                className="group flex flex-col items-center gap-1.5 text-[11px] text-muted-foreground"
+                aria-label={`使用${preset.name} AI 主题`}
+                aria-pressed={isSelected}
+              >
+                <span
+                  className={cn(
+                    "grid size-9 place-items-center rounded-full border-2 shadow-sm transition-transform group-hover:scale-105",
+                    isSelected ? "border-foreground" : "border-white/70 dark:border-white/15",
+                  )}
+                  style={{ backgroundColor: preset.value }}
+                >
+                  {isSelected && <Check className="size-4 text-ai-foreground drop-shadow-sm" />}
                 </span>
                 <span>{preset.name}</span>
               </button>

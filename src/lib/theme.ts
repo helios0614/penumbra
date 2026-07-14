@@ -1,4 +1,5 @@
 export const THEME_COLOR_KEY = "penumbra-theme-color";
+export const AI_COLOR_KEY = "penumbra-ai-color";
 
 export interface ThemeColorPreset {
   name: string;
@@ -16,7 +17,19 @@ export const THEME_COLOR_PRESETS: ThemeColorPreset[] = [
   { name: "玫瑰", value: "#C44A6B" },
 ];
 
+export const AI_COLOR_PRESETS: ThemeColorPreset[] = [
+  { name: "云蓝", value: "#7BA7BC" },
+  { name: "青瓷", value: "#5F9E91" },
+  { name: "鸢尾", value: "#7D73B5" },
+  { name: "暮紫", value: "#956C9F" },
+  { name: "海蓝", value: "#527FA8" },
+  { name: "松绿", value: "#5C8A72" },
+  { name: "暖杏", value: "#C98663" },
+  { name: "石墨", value: "#6B7175" },
+];
+
 export const DEFAULT_THEME_COLOR = THEME_COLOR_PRESETS[0].value;
+export const DEFAULT_AI_COLOR = AI_COLOR_PRESETS[0].value;
 
 export function normalizeThemeColor(value: string): string | null {
   const normalized = value.trim();
@@ -106,11 +119,37 @@ export function applyThemeColor(value: string): string | null {
   return color;
 }
 
+export function applyAiColor(value: string): string | null {
+  const color = normalizeThemeColor(value);
+  if (!color || typeof document === "undefined") return null;
+
+  document.documentElement.style.setProperty("--ai-theme-color", color);
+  document.documentElement.style.setProperty(
+    "--ai-theme-foreground",
+    getThemeForeground(color),
+  );
+  try {
+    localStorage.setItem(AI_COLOR_KEY, color);
+  } catch {
+    // 存储受限时仍保留本次页面内的 AI 颜色预览。
+  }
+  return color;
+}
+
 export function getStoredThemeColor(): string {
   if (typeof window === "undefined") return DEFAULT_THEME_COLOR;
   try {
     return normalizeThemeColor(localStorage.getItem(THEME_COLOR_KEY) ?? "") ?? DEFAULT_THEME_COLOR;
   } catch {
     return DEFAULT_THEME_COLOR;
+  }
+}
+
+export function getStoredAiColor(): string {
+  if (typeof window === "undefined") return DEFAULT_AI_COLOR;
+  try {
+    return normalizeThemeColor(localStorage.getItem(AI_COLOR_KEY) ?? "") ?? DEFAULT_AI_COLOR;
+  } catch {
+    return DEFAULT_AI_COLOR;
   }
 }

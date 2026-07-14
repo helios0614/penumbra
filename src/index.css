@@ -16,6 +16,8 @@
 :root {
   --theme-primary-ink-light: #945541;
   --theme-primary-ink-dark: #f4845f;
+  --ai-theme-color: #7BA7BC;
+  --ai-theme-foreground: #ffffff;
 }
 
 @theme inline {
@@ -31,12 +33,12 @@
   --color-primary-subtle: color-mix(in srgb, var(--color-theme), white 92%);
 
   /* ── AI 色：改这一行即可全局换 AI 色 ── */
-  --color-ai: #7BA7BC;
+  --color-ai: var(--ai-theme-color);
 
   /* ── 派生 AI 色 ── */
   --color-ai-hover: color-mix(in srgb, var(--color-ai), black 12%);
   --color-ai-active: color-mix(in srgb, var(--color-ai), black 22%);
-  --color-ai-foreground: #ffffff;
+  --color-ai-foreground: var(--ai-theme-foreground);
   --color-ai-subtle: color-mix(in srgb, var(--color-ai), white 92%);
   --color-ai-muted: color-mix(in srgb, var(--color-ai), white 75%);
 
@@ -158,7 +160,7 @@
 /* ── 深色主题 ── */
 .dark {
   --color-theme: #f79e7f;
-  --color-ai: #8fbfce;
+  --ai-theme-color: #8fbfce;
   --color-background: #111110;
   --color-foreground: #e8e8e4;
   --color-card: #1a1a18;
