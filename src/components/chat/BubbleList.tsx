@@ -24,7 +24,7 @@ function DateSeparator({ timestamp }: { timestamp: number }) {
   return (
     <div className="flex items-center gap-3 my-2">
       <div className="flex-1 h-px bg-border" />
-      <span className="text-xs text-muted shrink-0">{label}</span>
+      <span className="shrink-0 text-xs text-muted-foreground/70">{label}</span>
       <div className="flex-1 h-px bg-border" />
     </div>
   );

@@ -6,7 +6,7 @@
 
 ## 1. 颜色系统
 
-所有颜色通过 `@theme` 块中的 CSS 变量定义，Tailwind 通过 `var(--color-xxx)` 引用。
+所有颜色通过 `@theme` 块中的 CSS 变量定义，Tailwind 通过 `var(--color-xxx)` 引用。不要使用 `@theme inline`，否则语义颜色会被编译成固定浅色值，导致 `.dark` 与运行时主题色无法覆盖。
 
 ### 1.1 浅色主题
 
@@ -94,7 +94,7 @@
 
 ### 1.2 深色主题
 
-深色主题通过在 `<html>` 上加 `dark` class 激活。主色仍以 `--color-theme` 为唯一入口，除非可访问性测试证明对比度不足，否则不要单独覆盖 `--color-primary-hover`、`--color-primary-active`、`--color-primary-subtle`。
+深色主题通过在 `<html>` 上加 `dark` class 激活。应用支持 `light`、`dark`、`system` 三种外观模式，默认跟随系统；模式会在首屏绘制前解析，避免切换时出现浅色闪烁。主色仍以 `--color-theme` 为唯一入口，除非可访问性测试证明对比度不足，否则不要单独覆盖 `--color-primary-hover` 或 `--color-primary-active`。
 
 | Token | 值 |
 |---|---|
@@ -108,7 +108,7 @@
 | `--color-primary-foreground` | `#111110` |
 | `--color-secondary` | `#7fa685` |
 | `--color-secondary-foreground` | `#111110` |
-| `--color-secondary-subtle` | `#1a241c` |
+| `--color-secondary-subtle` | 当前辅色的 14% 透明混合 |
 | `--color-muted` | `#242422` |
 | `--color-muted-foreground` | `#aaa49c` |
 | `--color-muted-strong` | `#c0bab2` |
@@ -277,9 +277,11 @@ shadcn/ui 的 `--radius` 默认值设为 `12px`（对应 `--radius-md`），组�
 2. 控件标签和重要次级信息使用 `text-muted-strong`。
 3. 普通说明文字使用 `text-muted-foreground`。
 4. 主题色小字、浅色选中态和 `bg-primary/10` 上的文字使用 `text-primary-ink`。
-5. 只有直接压在壁纸上的少量文字才允许使用局部阴影或低存在感背板。
+5. 只有直接压在壁纸上的少量文字才允许使用局部阴影或低存在感背板，并统一使用 `.desktop-on-wallpaper`，不要写死 `text-black`、`text-white` 或 `text-foreground`。
 
 桌面 App 名称的背板必须克制，保持低透明度与小范围模糊，不能形成明显的独立按钮或大面积实色胶囊。设置页继续保持现有 `.mist-glass` 透明度；如果文字不清晰，优先调整文字 token，而不是修改整块面板材质。
+
+壁纸文字通过 `data-wallpaper-text` 独立于界面明暗模式控制：`auto` 随界面主题、`dark` 强制黑字、`light` 强制白字。该选择同时作用于桌面 App 名称、签名、装饰线和分页指示，并保存在 `penumbra-wallpaper-settings` 中。
 
 ### 4.3 阴影
 
@@ -437,7 +439,7 @@ import { Send, Settings, Brain } from "lucide-react";
 
 // 用法
 <Send className="size-4" />
-<Settings className="size-5 text-muted" />
+<Settings className="size-5 text-muted-foreground" />
 ```
 
 选择理由：
@@ -463,9 +465,9 @@ import { Send, Settings, Brain } from "lucide-react";
 | 场景 | 颜色规则 | Tailwind |
 |---|---|---|
 | 默认 | 跟随父元素文字色 | 不加 color class |
-| 次要 | `--color-muted` | `text-muted` |
+| 次要 | `--color-muted-foreground` | `text-muted-foreground` |
 | 主色强调 | `--color-primary` | `text-primary` |
-| 可点击图标按钮 | 默认 muted，hover 切 primary | `text-muted hover:text-primary` |
+| 可点击图标按钮 | 默认 muted foreground，hover 切 primary | `text-muted-foreground hover:text-primary` |
 | 语义色 | success / warning / destructive / info | `text-success` 等 |
 
 ### 7.4 图标按钮规范
@@ -581,6 +583,14 @@ function setThemeColor(hex: string) {
 
 ### 8.4 深色模式联动
 
+外观模式存储在 `localStorage` 的 `penumbra-theme-mode` 键中：
+
+- `light`：始终使用浅色主题
+- `dark`：始终使用深色主题
+- `system`：监听 `prefers-color-scheme`，随设备设置实时切换
+
+`index.html` 在加载应用代码前同步解析模式并更新 `<html class="dark">` 与 `color-scheme`；应用启动后继续监听系统主题和跨标签页存储变化。
+
 深色模式可以为默认主题提供稍亮的 `--color-theme`，但用户自定义主题色本身保持不变，以保证用户选择的色块、图标和强调色一致。需要承担文字语义时，使用单独计算的 `--theme-primary-ink-dark`：
 
 ```ts
@@ -592,8 +602,9 @@ const darkInk = getReadableThemeInk(theme, "#1A1A18", "#E8E8E4");
 
 ### 8.5 设置 UI
 
-在设置页面提供「主题色」选项：
+在设置页面提供「界面外观」和「主题色」选项：
 
+- 外观切换：跟随系统 / 浅色 / 深色，选择后立即生效并持久化
 - 预设色板：圆形色块网格，选中态加对勾
 - 自定义输入：hex 输入框 + 实时预览色块
 - 实时生效：选择后立即预览，无需保存确认

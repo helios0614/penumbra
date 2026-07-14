@@ -158,7 +158,7 @@ export function ConversationsList({
                       <span className="text-xs text-muted-foreground truncate max-w-[140px]">
                         {conv.message_count} 条消息
                       </span>
-                      <span className="text-xs text-muted shrink-0 ml-2">
+                      <span className="ml-2 shrink-0 text-xs text-muted-foreground/70">
                         {timeAgo}
                       </span>
                     </div>

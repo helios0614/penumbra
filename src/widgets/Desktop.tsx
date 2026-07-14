@@ -17,6 +17,7 @@ import {
   CalendarDays,
   Check,
   CircleCheckBig,
+  Contrast,
   MessageSquare,
   Newspaper,
   Pencil,
@@ -43,7 +44,10 @@ import { cn } from '@/lib/utils';
 import {
   getCustomWallpaper,
   getStoredWallpaperSettings,
+  resolveWallpaperTextTone,
+  saveWallpaperSettings,
   WALLPAPER_CHANGE_EVENT,
+  type WallpaperTextTone,
 } from '@/lib/wallpaper';
 
 // 网格配置
@@ -243,14 +247,18 @@ function AppDock({
   onLaunch,
   onOpenEditorial,
   onResetLayout,
+  onToggleWallpaperText,
   onToggleEditing,
+  wallpaperTextTone,
 }: {
   isEditing: boolean;
   onAddWidget: () => void;
   onLaunch: (appId: DesktopAppId) => void;
   onOpenEditorial: () => void;
   onResetLayout: () => void;
+  onToggleWallpaperText: () => void;
   onToggleEditing: () => void;
+  wallpaperTextTone: Exclude<WallpaperTextTone, 'auto'>;
 }) {
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-3 z-40 flex justify-center px-4 sm:bottom-5">
@@ -277,6 +285,16 @@ function AppDock({
             >
               <Plus className="size-4.5" />
               <span>组件</span>
+            </button>
+            <button
+              type="button"
+              onClick={onToggleWallpaperText}
+              className="desktop-edit-action"
+              aria-label={`切换为${wallpaperTextTone === 'light' ? '黑色' : '白色'}桌面文字`}
+              title={`当前${wallpaperTextTone === 'light' ? '白字' : '黑字'}，点击切换`}
+            >
+              <Contrast className="size-4.5" />
+              <span>{wallpaperTextTone === 'light' ? '白字' : '黑字'}</span>
             </button>
             <button
               type="button"
@@ -488,11 +506,22 @@ export function Desktop() {
     setActiveApp(null);
   };
 
+  const toggleWallpaperTextTone = () => {
+    const currentTone = resolveWallpaperTextTone(wallpaperSettings.textTone);
+    const nextSettings = {
+      ...getStoredWallpaperSettings(),
+      textTone: currentTone === 'light' ? 'dark' : 'light',
+    } satisfies typeof wallpaperSettings;
+    setWallpaperSettings(nextSettings);
+    saveWallpaperSettings(nextSettings);
+  };
+
   return (
     <div
       className="desktop-wallpaper relative h-dvh overflow-hidden text-foreground"
       data-wallpaper-mode={wallpaperUrl ? 'custom' : 'ambient'}
       data-wallpaper-shade={wallpaperSettings.shade}
+      data-wallpaper-text={wallpaperSettings.textTone}
     >
       {wallpaperUrl && (
         <div
@@ -744,7 +773,9 @@ export function Desktop() {
           onLaunch={openApp}
           onOpenEditorial={() => window.location.assign('/editorial')}
           onResetLayout={() => setLayout(resetDesktopLayout())}
+          onToggleWallpaperText={toggleWallpaperTextTone}
           onToggleEditing={() => setIsEditing((editing) => !editing)}
+          wallpaperTextTone={resolveWallpaperTextTone(wallpaperSettings.textTone)}
         />
       )}
     </div>

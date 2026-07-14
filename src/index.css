@@ -14,13 +14,14 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  color-scheme: light;
   --theme-primary-ink-light: #945541;
   --theme-primary-ink-dark: #f4845f;
   --ai-theme-color: #7BA7BC;
   --ai-theme-foreground: #ffffff;
 }
 
-@theme inline {
+@theme {
   /* ── 主题色：改这一行即可全局换色 ── */
   --color-theme: #F4845F;
 
@@ -159,8 +160,11 @@
 
 /* ── 深色主题 ── */
 .dark {
+  color-scheme: dark;
   --color-theme: #f79e7f;
   --ai-theme-color: #8fbfce;
+  --ai-theme-foreground: #111110;
+  --color-primary-foreground: #111110;
   --color-background: #111110;
   --color-foreground: #e8e8e4;
   --color-card: #1a1a18;
@@ -170,12 +174,15 @@
   --color-border-strong: rgba(255, 255, 255, 0.15);
   --color-input: rgba(255, 255, 255, 0.08);
   --color-secondary: #7fa685;
-  --color-secondary-subtle: #1a241c;
+  --color-secondary-foreground: #111110;
+  --color-secondary-subtle: color-mix(in srgb, var(--color-secondary), transparent 86%);
   --color-muted: #242422;
   --color-muted-foreground: #aaa49c;
   --color-muted-strong: #c0bab2;
   --color-primary-ink: var(--theme-primary-ink-dark);
-  --color-primary-subtle: #2a1f1c;
+  --color-primary-subtle: color-mix(in srgb, var(--color-theme), transparent 86%);
+  --color-ai-subtle: color-mix(in srgb, var(--color-ai), transparent 84%);
+  --color-ai-muted: color-mix(in srgb, var(--color-ai), transparent 68%);
   --color-success-subtle: rgba(34, 197, 94, 0.12);
   --color-success-foreground: #86efac;
   --color-warning-subtle: rgba(245, 158, 11, 0.12);
@@ -250,6 +257,40 @@
 }
 
 /* ── 手机桌面氛围背景 ── */
+.desktop-wallpaper,
+.desktop-wallpaper-preview {
+  --wallpaper-foreground: #1a1a1a;
+  --wallpaper-text-shadow: 0 1px 8px rgba(255, 255, 255, 0.78);
+  --wallpaper-dot-shadow: 0 1px 5px rgba(255, 255, 255, 0.64);
+  --wallpaper-label-surface: rgba(255, 255, 255, 0.32);
+  --wallpaper-label-ring: rgba(255, 255, 255, 0.16);
+}
+
+.dark .desktop-wallpaper,
+.dark .desktop-wallpaper-preview {
+  --wallpaper-foreground: #ffffff;
+  --wallpaper-text-shadow: 0 1px 8px rgba(0, 0, 0, 0.78);
+  --wallpaper-dot-shadow: 0 1px 5px rgba(0, 0, 0, 0.62);
+  --wallpaper-label-surface: rgba(10, 12, 11, 0.34);
+  --wallpaper-label-ring: rgba(0, 0, 0, 0.16);
+}
+
+:is(.desktop-wallpaper, .desktop-wallpaper-preview)[data-wallpaper-text="dark"] {
+  --wallpaper-foreground: #1a1a1a;
+  --wallpaper-text-shadow: 0 1px 8px rgba(255, 255, 255, 0.78);
+  --wallpaper-dot-shadow: 0 1px 5px rgba(255, 255, 255, 0.64);
+  --wallpaper-label-surface: rgba(255, 255, 255, 0.32);
+  --wallpaper-label-ring: rgba(255, 255, 255, 0.16);
+}
+
+:is(.desktop-wallpaper, .desktop-wallpaper-preview)[data-wallpaper-text="light"] {
+  --wallpaper-foreground: #ffffff;
+  --wallpaper-text-shadow: 0 1px 8px rgba(0, 0, 0, 0.78);
+  --wallpaper-dot-shadow: 0 1px 5px rgba(0, 0, 0, 0.62);
+  --wallpaper-label-surface: rgba(10, 12, 11, 0.34);
+  --wallpaper-label-ring: rgba(0, 0, 0, 0.16);
+}
+
 .desktop-wallpaper {
   background:
     radial-gradient(circle at 11% 8%, color-mix(in srgb, var(--color-theme), transparent 76%), transparent 30%),
@@ -289,6 +330,21 @@
   background: rgba(241, 245, 242, 0.3);
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
+}
+
+.dark .desktop-wallpaper[data-wallpaper-mode="custom"] .desktop-wallpaper-overlay,
+.dark .desktop-wallpaper-overlay[data-preview-shade="balanced"] {
+  background: linear-gradient(180deg, rgba(10, 12, 11, 0.1), rgba(10, 12, 11, 0.24));
+}
+
+.dark .desktop-wallpaper[data-wallpaper-mode="custom"][data-wallpaper-shade="clear"] .desktop-wallpaper-overlay,
+.dark .desktop-wallpaper-overlay[data-preview-shade="clear"] {
+  background: linear-gradient(180deg, rgba(10, 12, 11, 0.03), rgba(10, 12, 11, 0.08));
+}
+
+.dark .desktop-wallpaper[data-wallpaper-mode="custom"][data-wallpaper-shade="soft"] .desktop-wallpaper-overlay,
+.dark .desktop-wallpaper-overlay[data-preview-shade="soft"] {
+  background: rgba(10, 12, 11, 0.3);
 }
 
 .desktop-wallpaper[data-wallpaper-mode="custom"] .desktop-wallpaper-texture {
@@ -331,13 +387,14 @@
 
 .desktop-shortcut-label,
 .desktop-on-wallpaper {
-  text-shadow: 0 1px 8px rgba(255, 255, 255, 0.72);
+  color: var(--wallpaper-foreground);
+  text-shadow: var(--wallpaper-text-shadow);
 }
 
 .desktop-wallpaper[data-wallpaper-mode="custom"] .desktop-shortcut-label {
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.32);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.16);
+  background: var(--wallpaper-label-surface);
+  box-shadow: 0 0 0 3px var(--wallpaper-label-ring);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
@@ -377,8 +434,8 @@
   width: 6px;
   height: 6px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--color-foreground), transparent 72%);
-  box-shadow: 0 1px 5px rgba(255, 255, 255, 0.64);
+  background: color-mix(in srgb, var(--wallpaper-foreground), transparent 72%);
+  box-shadow: var(--wallpaper-dot-shadow);
   transition: width 180ms ease, background-color 180ms ease, transform 180ms ease;
 }
 
@@ -459,6 +516,12 @@
   color: var(--color-theme);
   background: color-mix(in srgb, var(--color-theme), white 78%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.dark .desktop-app-mini-icon,
+.dark .desktop-app-placeholder-icon {
+  background: color-mix(in srgb, var(--color-theme), transparent 82%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .desktop-dock-scrim {
@@ -670,9 +733,20 @@
 }
 
 .signature-wallpaper-text {
-  text-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.62),
-    0 4px 14px rgba(0, 0, 0, 0.34);
+  text-shadow: var(--wallpaper-text-shadow);
+}
+
+.signature-wallpaper-rule {
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--wallpaper-foreground), transparent 54%),
+    color-mix(in srgb, var(--wallpaper-foreground), transparent 76%),
+    transparent
+  );
+}
+
+.signature-wallpaper-input::placeholder {
+  color: color-mix(in srgb, var(--wallpaper-foreground), transparent 42%);
 }
 
 @media (prefers-reduced-motion: reduce) {

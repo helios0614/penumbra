@@ -17,7 +17,7 @@ export function WeatherWidget() {
       case 'sunny':
         return <Sun className="size-8 text-primary" />;
       case 'cloudy':
-        return <Cloud className="size-8 text-muted" />;
+        return <Cloud className="size-8 text-muted-foreground" />;
       case 'rainy':
         return <CloudRain className="size-8 text-blue-400" />;
       default:

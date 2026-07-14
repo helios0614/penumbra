@@ -10,12 +10,14 @@ export type WallpaperMode = "ambient" | "custom";
 export type WallpaperFit = "cover" | "contain";
 export type WallpaperPosition = "top" | "center" | "bottom";
 export type WallpaperShade = "clear" | "balanced" | "soft";
+export type WallpaperTextTone = "auto" | "dark" | "light";
 
 export interface WallpaperSettings {
   mode: WallpaperMode;
   fit: WallpaperFit;
   position: WallpaperPosition;
   shade: WallpaperShade;
+  textTone: WallpaperTextTone;
 }
 
 export const DEFAULT_WALLPAPER_SETTINGS: WallpaperSettings = {
@@ -23,6 +25,7 @@ export const DEFAULT_WALLPAPER_SETTINGS: WallpaperSettings = {
   fit: "cover",
   position: "center",
   shade: "balanced",
+  textTone: "auto",
 };
 
 function isWallpaperMode(value: unknown): value is WallpaperMode {
@@ -41,6 +44,16 @@ function isWallpaperShade(value: unknown): value is WallpaperShade {
   return value === "clear" || value === "balanced" || value === "soft";
 }
 
+function isWallpaperTextTone(value: unknown): value is WallpaperTextTone {
+  return value === "auto" || value === "dark" || value === "light";
+}
+
+export function resolveWallpaperTextTone(tone: WallpaperTextTone): Exclude<WallpaperTextTone, "auto"> {
+  if (tone !== "auto") return tone;
+  if (typeof document === "undefined") return "dark";
+  return document.documentElement.classList.contains("dark") ? "light" : "dark";
+}
+
 export function getStoredWallpaperSettings(): WallpaperSettings {
   if (typeof window === "undefined") return DEFAULT_WALLPAPER_SETTINGS;
 
@@ -53,6 +66,7 @@ export function getStoredWallpaperSettings(): WallpaperSettings {
       fit: isWallpaperFit(parsed.fit) ? parsed.fit : DEFAULT_WALLPAPER_SETTINGS.fit,
       position: isWallpaperPosition(parsed.position) ? parsed.position : DEFAULT_WALLPAPER_SETTINGS.position,
       shade: isWallpaperShade(parsed.shade) ? parsed.shade : DEFAULT_WALLPAPER_SETTINGS.shade,
+      textTone: isWallpaperTextTone(parsed.textTone) ? parsed.textTone : DEFAULT_WALLPAPER_SETTINGS.textTone,
     };
   } catch {
     return DEFAULT_WALLPAPER_SETTINGS;

@@ -42,7 +42,7 @@ function MusicResultCardInner({ attachment }: MusicResultCardProps) {
           }
           className="absolute inset-0 flex items-center justify-center bg-black/0 transition-all duration-200 hover:bg-black/10"
         >
-          <span className="flex size-7 items-center justify-center rounded-full bg-white/90 shadow-sm transition-transform duration-200 hover:scale-105">
+          <span className="flex size-7 items-center justify-center rounded-full border border-border bg-card/90 text-card-foreground shadow-sm transition-transform duration-200 hover:scale-105">
             {playing ? (
               <Pause className="size-3.5 text-ai" />
             ) : (

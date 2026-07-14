@@ -4,7 +4,10 @@ import {
   CheckCircle2,
   CircleDashed,
   Image as ImageIcon,
+  Monitor,
+  Moon,
   RefreshCw,
+  Sun,
   Trash2,
   Upload,
   XCircle,
@@ -21,9 +24,12 @@ import {
   AI_COLOR_PRESETS,
   applyAiColor,
   applyThemeColor,
+  applyThemeMode,
   getStoredAiColor,
   getStoredThemeColor,
+  getStoredThemeMode,
   THEME_COLOR_PRESETS,
+  type ThemeMode,
 } from "@/lib/theme";
 import {
   getCustomWallpaper,
@@ -37,6 +43,17 @@ import {
 interface SettingsViewProps {
   onBack?: () => void;
 }
+
+const themeModeOptions = [
+  { value: "system", label: "跟随系统", description: "随设备外观自动切换", icon: Monitor },
+  { value: "light", label: "浅色", description: "保持明亮的晨雾界面", icon: Sun },
+  { value: "dark", label: "深色", description: "保持低亮度的夜间界面", icon: Moon },
+] satisfies Array<{
+  value: ThemeMode;
+  label: string;
+  description: string;
+  icon: typeof Monitor;
+}>;
 
 const connectionCopy: Record<ConnectionState, string> = {
   checking: "连接中",
@@ -54,6 +71,7 @@ export function SettingsView({ onBack }: SettingsViewProps) {
   const [status, setStatus] = useState<BackendStatus>(INITIAL_BACKEND_STATUS);
   const [themeColor, setThemeColor] = useState(getStoredThemeColor);
   const [aiColor, setAiColor] = useState(getStoredAiColor);
+  const [themeMode, setThemeMode] = useState(getStoredThemeMode);
   const [wallpaperSettings, setWallpaperSettings] = useState(getStoredWallpaperSettings);
   const [wallpaperPreview, setWallpaperPreview] = useState<string | null>(null);
   const [hasCustomWallpaper, setHasCustomWallpaper] = useState(false);
@@ -70,6 +88,10 @@ export function SettingsView({ onBack }: SettingsViewProps) {
   const selectAiColor = useCallback((color: string) => {
     const applied = applyAiColor(color);
     if (applied) setAiColor(applied);
+  }, []);
+
+  const selectThemeMode = useCallback((mode: ThemeMode) => {
+    setThemeMode(applyThemeMode(mode));
   }, []);
 
   const refresh = useCallback(async () => {
@@ -209,6 +231,48 @@ export function SettingsView({ onBack }: SettingsViewProps) {
       </div>
 
       <div className="mist-glass rounded-[24px] p-4 sm:p-5">
+        <SettingsSectionHeading
+          title="界面外观"
+          description="选择固定外观，或根据设备的浅色与深色设置自动切换。"
+        />
+        <div className="mt-4 grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="界面外观">
+          {themeModeOptions.map((option) => {
+            const Icon = option.icon;
+            const isSelected = themeMode === option.value;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={isSelected}
+                onClick={() => selectThemeMode(option.value)}
+                className={cn(
+                  "flex min-h-20 items-center gap-3 rounded-2xl border p-3 text-left transition-all",
+                  isSelected
+                    ? "border-primary/45 bg-primary/12 text-foreground shadow-sm"
+                    : "border-border-strong/60 bg-background/25 text-muted-strong hover:bg-background/45",
+                )}
+              >
+                <span
+                  className={cn(
+                    "grid size-10 shrink-0 place-items-center rounded-xl",
+                    isSelected ? "bg-primary text-primary-foreground" : "bg-surface-secondary text-muted-strong",
+                  )}
+                >
+                  <Icon className="size-5" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold">{option.label}</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">{option.description}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mist-glass rounded-[24px] p-4 sm:p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <SettingsSectionHeading
             title="桌面背景"
@@ -250,9 +314,10 @@ export function SettingsView({ onBack }: SettingsViewProps) {
         <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(250px,0.75fr)]">
           <div
             className={cn(
-              "relative min-h-48 overflow-hidden rounded-[20px] border border-white/35 bg-surface-secondary shadow-inner",
+              "desktop-wallpaper-preview relative min-h-48 overflow-hidden rounded-[20px] border border-border-strong/60 bg-surface-secondary shadow-inner",
               !wallpaperPreview && "desktop-wallpaper",
             )}
+            data-wallpaper-text={wallpaperSettings.textTone}
             style={wallpaperPreview ? {
               backgroundImage: `url(${JSON.stringify(wallpaperPreview)})`,
               backgroundPosition: wallpaperSettings.position,
@@ -261,11 +326,11 @@ export function SettingsView({ onBack }: SettingsViewProps) {
           >
             <div className="desktop-wallpaper-overlay absolute inset-0" data-preview-shade={wallpaperSettings.shade} />
             <div className="absolute inset-x-4 bottom-4 flex items-end justify-between gap-3">
-              <div className="rounded-2xl border border-white/45 bg-white/45 px-3 py-2 shadow-sm backdrop-blur-xl">
+              <div className="rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-3 py-2 shadow-sm backdrop-blur-xl">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary-ink">Penumbra</p>
-                <p className="mt-0.5 text-sm font-semibold text-neutral-900">桌面预览</p>
+                <p className="desktop-on-wallpaper mt-0.5 text-sm font-semibold">桌面预览</p>
               </div>
-              <span className="grid size-11 place-items-center rounded-[15px] border border-white/55 bg-white/40 text-neutral-900 shadow-sm backdrop-blur-xl">
+              <span className="desktop-on-wallpaper grid size-11 place-items-center rounded-[15px] border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] shadow-sm backdrop-blur-xl">
                 <ImageIcon className="size-5" />
               </span>
             </div>
@@ -310,6 +375,16 @@ export function SettingsView({ onBack }: SettingsViewProps) {
               value={wallpaperSettings.shade}
               options={[{ value: "clear", label: "清晰" }, { value: "balanced", label: "平衡" }, { value: "soft", label: "柔和" }]}
               onChange={(value) => updateWallpaperSettings({ shade: value as WallpaperSettings["shade"] })}
+            />
+            <SettingChoice
+              label="桌面文字"
+              value={wallpaperSettings.textTone}
+              options={[
+                { value: "auto", label: "自动" },
+                { value: "dark", label: "黑色" },
+                { value: "light", label: "白色" },
+              ]}
+              onChange={(value) => updateWallpaperSettings({ textTone: value as WallpaperSettings["textTone"] })}
             />
           </div>
         </div>
