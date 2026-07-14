@@ -71,17 +71,8 @@ export function ChatView() {
           className="hidden md:flex w-[280px] shrink-0"
         />
 
-        {/* 主区域 — 毛玻璃覆盖，底层预留壁纸位 */}
+        {/* 主区域直接透出 App 外壳的晨雾玻璃与桌面壁纸 */}
         <div className="relative flex-1 flex flex-col min-w-0 w-0 overflow-hidden">
-          {/* 壁纸层 — 替换 url() 即可换壁纸 */}
-          <div
-            className="absolute inset-0 bg-cover bg-center"
-            style={{ backgroundImage: "var(--chat-wallpaper, none)" }}
-          />
-          {/* 毛玻璃遮罩 */}
-          <div className="mist-solid absolute inset-0 !border-0 !shadow-none" />
-          {/* 内容层 */}
-          <div className="relative flex-1 flex flex-col min-h-0">
           {/* 移动端顶栏 */}
           <div className="shrink-0 flex items-center gap-2 px-4 py-3 border-b border-border md:hidden">
             <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
@@ -129,7 +120,6 @@ export function ChatView() {
             onStop={chat.stopStreaming}
             isStreaming={chat.isStreaming}
           />
-          </div>
         </div>
       </div>
     </TooltipProvider>

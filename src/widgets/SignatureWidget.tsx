@@ -28,29 +28,29 @@ export function SignatureWidget() {
   };
 
   return (
-    <div className="relative flex h-full items-center overflow-hidden rounded-[14px] px-1">
+    <div className="group/signature relative flex h-full items-center px-2 sm:px-4">
       <span
-        className="pointer-events-none absolute -left-1 -top-8 font-heading text-[88px] leading-none text-primary/10"
+        className="pointer-events-none absolute -left-0.5 -top-6 font-heading text-[76px] leading-none text-primary/16 sm:left-1"
         aria-hidden="true"
       >
         “
       </span>
       <span
-        className="pointer-events-none absolute inset-y-2 left-[52px] w-px bg-gradient-to-b from-transparent via-border-strong to-transparent"
+        className="pointer-events-none absolute bottom-2 left-14 right-[18%] h-px bg-gradient-to-r from-white/46 via-white/24 to-transparent sm:left-[74px]"
         aria-hidden="true"
       />
 
-      <div className="relative grid size-10 shrink-0 place-items-center rounded-full border border-primary/18 bg-primary/10 text-primary-ink">
+      <div className="relative grid size-9 shrink-0 place-items-center text-white drop-shadow-md sm:size-10">
         <Quote className="size-4" strokeWidth={1.7} aria-hidden="true" />
         <Sparkles className="absolute -right-1 -top-1 size-3 text-primary" strokeWidth={1.8} aria-hidden="true" />
       </div>
 
-      <div className="relative min-w-0 flex-1 pl-5 pr-2 sm:pr-4">
+      <div className="relative min-w-0 flex-1 pl-4 pr-2 sm:pl-5 sm:pr-4">
         <div className="mb-0.5 flex items-center gap-2">
-          <span className="font-mono text-[8px] font-semibold uppercase tracking-[0.2em] text-muted-strong">
+          <span className="signature-wallpaper-text font-mono text-[8px] font-semibold uppercase tracking-[0.22em] text-white">
             Personal note
           </span>
-          <span className="h-px flex-1 bg-border" aria-hidden="true" />
+          <span className="h-px flex-1 bg-gradient-to-r from-white/38 to-transparent" aria-hidden="true" />
         </div>
         <input
           type="text"
@@ -58,14 +58,14 @@ export function SignatureWidget() {
           onChange={(event) => updateSignature(event.target.value)}
           maxLength={64}
           placeholder="写下一句今天的签名…"
-          className="block w-full border-0 bg-transparent p-0 font-heading text-lg leading-tight text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:outline-none sm:text-xl"
+          className="signature-wallpaper-text block w-full border-0 bg-transparent p-0 font-heading text-lg leading-tight text-white placeholder:text-white/58 focus:outline-none focus-visible:outline-none sm:text-xl"
           aria-label="个性签名"
         />
       </div>
 
-      <div className="relative hidden shrink-0 items-center gap-2 border-l border-border pl-4 pr-1 sm:flex">
-        <span className="font-mono text-[8px] uppercase tracking-[0.18em] text-muted-foreground">Be yourself</span>
-        <PencilLine className="size-3.5 text-muted-strong" strokeWidth={1.6} aria-hidden="true" />
+      <div className="relative hidden shrink-0 items-center gap-2 px-1 sm:flex">
+        <span className="signature-wallpaper-text font-mono text-[8px] uppercase tracking-[0.18em] text-white">Be yourself</span>
+        <PencilLine className="size-3.5 text-white drop-shadow-md" strokeWidth={1.6} aria-hidden="true" />
       </div>
     </div>
   );

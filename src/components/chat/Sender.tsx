@@ -77,7 +77,7 @@ export function Sender({
   return (
     <div
       className={cn(
-        "mist-solid shrink-0 border-t border-border p-4 overflow-hidden shadow-none",
+        "mist-glass shrink-0 border-x-0 border-b-0 border-t border-border p-4 overflow-hidden shadow-none",
         className,
       )}
     >
@@ -140,10 +140,6 @@ export function Sender({
           )}
         </div>
 
-        {/* 提示文字 */}
-        <p className="text-xs text-muted-foreground mt-2 text-center">
-          Enter 发送，Shift+Enter 换行
-        </p>
       </div>
     </div>
   );

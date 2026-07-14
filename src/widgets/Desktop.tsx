@@ -200,6 +200,7 @@ function WidgetCard({
         !isEditing && 'hover:shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:-translate-y-0.5',
         isEditing && 'widget-editing ring-1 ring-primary/20',
         widgetId === 'sticker' && 'sticker-widget-frame',
+        widgetId === 'signature' && 'signature-widget-frame',
         'h-full w-full overflow-hidden',
         'p-3',
         'select-none',
@@ -551,7 +552,7 @@ export function Desktop() {
                             key={instanceId}
                             className={cn(
                               'min-h-0 rounded-[22px]',
-                              item.widgetId === 'signature' && 'h-[min(88px,100%)] self-center sm:h-[92px]',
+                              item.widgetId === 'signature' && 'h-[min(72px,100%)] self-center sm:h-[76px]',
                             )}
                             style={getHomeGridStyles(item)}
                           >
@@ -609,7 +610,7 @@ export function Desktop() {
                             style={getGridStyles(item, screenSize) || undefined}
                             className={cn(
                               'min-h-0 rounded-[22px]',
-                              item.widgetId === 'signature' && 'h-[min(88px,100%)] self-center sm:h-[92px]',
+                              item.widgetId === 'signature' && 'h-[min(72px,100%)] self-center sm:h-[76px]',
                             )}
                           >
                             <WidgetCard

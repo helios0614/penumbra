@@ -1,13 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import {
   Check,
   CheckCircle2,
   CircleDashed,
   Image as ImageIcon,
-  LogIn,
   RefreshCw,
-  Server,
-  SlidersHorizontal,
   Trash2,
   Upload,
   XCircle,
@@ -181,8 +178,8 @@ export function SettingsView({ onBack }: SettingsViewProps) {
               onClick={refresh}
               disabled={isChecking}
               className={cn(
-                "inline-flex h-10 items-center gap-2 rounded-full bg-foreground px-4 text-sm font-medium text-background shadow-sm",
-                "transition hover:bg-foreground/85 disabled:cursor-not-allowed disabled:opacity-60",
+                "inline-flex h-10 items-center gap-2 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm",
+                "transition-colors hover:bg-primary-hover active:bg-primary-active disabled:cursor-not-allowed disabled:opacity-60",
               )}
             >
               <RefreshCw className={cn("size-4", isChecking && "animate-spin")} />
@@ -192,7 +189,7 @@ export function SettingsView({ onBack }: SettingsViewProps) {
               <button
                 type="button"
                 onClick={onBack}
-                className="mist-glass grid size-10 place-items-center rounded-full text-foreground transition-colors hover:bg-white/75 dark:hover:bg-white/15"
+                className="grid size-10 place-items-center rounded-full border border-border-strong/50 bg-background/35 text-foreground shadow-sm transition-colors hover:bg-background/55"
                 title="返回桌面"
               >
                 <XCircle className="size-5" />
@@ -204,19 +201,17 @@ export function SettingsView({ onBack }: SettingsViewProps) {
 
       <div className="mist-glass rounded-[24px] p-4 sm:p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-foreground">桌面背景</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              使用 Penumbra 氛围背景，或者选择一张保存在当前设备上的图片。
-            </p>
-          </div>
-          <div className="mist-glass inline-flex self-start rounded-full p-1">
+          <SettingsSectionHeading
+            title="桌面背景"
+            description="使用 Penumbra 氛围背景，或者选择一张保存在当前设备上的图片。"
+          />
+          <div className="inline-flex self-start rounded-full border border-border-strong/50 bg-background/25 p-1 shadow-sm">
             <button
               type="button"
               onClick={() => selectWallpaperMode("ambient")}
               className={cn(
                 "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-                wallpaperSettings.mode === "ambient" ? "bg-foreground text-background" : "text-muted-strong hover:bg-white/35 dark:hover:bg-white/10",
+                wallpaperSettings.mode === "ambient" ? "bg-primary text-primary-foreground" : "text-muted-strong hover:bg-white/35 dark:hover:bg-white/10",
               )}
             >
               氛围背景
@@ -226,7 +221,7 @@ export function SettingsView({ onBack }: SettingsViewProps) {
               onClick={() => selectWallpaperMode("custom")}
               className={cn(
                 "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-                wallpaperSettings.mode === "custom" ? "bg-foreground text-background" : "text-muted-strong hover:bg-white/35 dark:hover:bg-white/10",
+                wallpaperSettings.mode === "custom" ? "bg-primary text-primary-foreground" : "text-muted-strong hover:bg-white/35 dark:hover:bg-white/10",
               )}
             >
               自定义壁纸
@@ -273,7 +268,7 @@ export function SettingsView({ onBack }: SettingsViewProps) {
                 type="button"
                 onClick={() => wallpaperInputRef.current?.click()}
                 disabled={isSavingWallpaper}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-foreground px-3 text-xs font-medium text-background disabled:opacity-50"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary-hover active:bg-primary-active disabled:opacity-50"
               >
                 <Upload className="size-4" />
                 {hasCustomWallpaper ? "替换图片" : "选择图片"}
@@ -282,7 +277,7 @@ export function SettingsView({ onBack }: SettingsViewProps) {
                 type="button"
                 onClick={clearWallpaper}
                 disabled={!hasCustomWallpaper || isSavingWallpaper}
-                className="mist-solid inline-flex h-10 items-center justify-center gap-2 rounded-xl px-3 text-xs font-medium text-foreground disabled:opacity-40"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-border-strong/50 bg-background/35 px-3 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-background/55 disabled:opacity-40"
               >
                 <Trash2 className="size-4" />
                 移除
@@ -315,12 +310,10 @@ export function SettingsView({ onBack }: SettingsViewProps) {
 
       <div className="mist-glass rounded-[24px] p-4 sm:p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-foreground">主题颜色</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              桌面 App 图标、按钮和强调色会一起更新。
-            </p>
-          </div>
+          <SettingsSectionHeading
+            title="主题颜色"
+            description="桌面 App 图标、按钮和强调色会一起更新。"
+          />
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             自定义
             <input
@@ -364,19 +357,16 @@ export function SettingsView({ onBack }: SettingsViewProps) {
 
       <div className="grid gap-3 md:grid-cols-3">
         <StatusPanel
-          icon={<Server className="size-5" />}
           label="后端连接状态"
           value={connectionCopy[status.connection]}
           tone={status.connection}
         />
         <StatusPanel
-          icon={<LogIn className="size-5" />}
           label="登录状态"
           value={loginCopy[status.login]}
           tone={status.login === "logged-in" ? "connected" : status.login === "logged-out" ? "failed" : "checking"}
         />
         <StatusPanel
-          icon={<CircleDashed className="size-5" />}
           label="检测接口"
           value={status.endpoint}
           tone="checking"
@@ -385,8 +375,11 @@ export function SettingsView({ onBack }: SettingsViewProps) {
       </div>
 
       <div className="mist-glass rounded-[24px] p-4 sm:p-5">
-        <div className="flex flex-col gap-2">
-          <span className="text-sm font-medium text-foreground">当前 API Base URL</span>
+        <div className="flex flex-col gap-3">
+          <SettingsSectionHeading
+            title="当前 API Base URL"
+            description="后端请求当前使用的基础地址。"
+          />
           <code className="overflow-x-auto rounded-xl bg-surface-secondary px-3 py-2 text-xs text-muted-strong">
             {status.apiBaseUrl}
           </code>
@@ -413,13 +406,11 @@ export function SettingsView({ onBack }: SettingsViewProps) {
 }
 
 function StatusPanel({
-  icon,
   label,
   value,
   tone,
   mono,
 }: {
-  icon: ReactNode;
   label: string;
   value: string;
   tone: ConnectionState;
@@ -430,9 +421,11 @@ function StatusPanel({
   return (
     <div className="mist-glass rounded-[22px] p-4">
       <div className="flex items-start justify-between gap-3">
-        <div className="grid size-10 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
-          {icon}
-        </div>
+        <SettingsSectionHeading
+          title={label}
+          description={value}
+          descriptionClassName={cn(mono && "font-mono")}
+        />
         <Icon
           className={cn(
             "size-5 shrink-0",
@@ -442,15 +435,6 @@ function StatusPanel({
           )}
         />
       </div>
-      <p className="mt-4 text-xs text-muted-foreground">{label}</p>
-      <p
-        className={cn(
-          "mt-1 truncate text-base font-semibold text-foreground",
-          mono && "font-mono text-sm",
-        )}
-      >
-        {value}
-      </p>
     </div>
   );
 }
@@ -458,11 +442,29 @@ function StatusPanel({
 function PlaceholderSection({ title }: { title: string }) {
   return (
     <div className="mist-glass rounded-[22px] border-dashed border-border-strong p-4">
-      <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-        <SlidersHorizontal className="size-4 text-muted-foreground" />
-        {title}
-      </div>
-      <p className="mt-2 text-xs text-muted-foreground">预留区块，后续按确认接口接入。</p>
+      <SettingsSectionHeading
+        title={title}
+        description="预留区块，后续按确认接口接入。"
+      />
+    </div>
+  );
+}
+
+function SettingsSectionHeading({
+  title,
+  description,
+  descriptionClassName,
+}: {
+  title: string;
+  description: string;
+  descriptionClassName?: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-sm font-semibold text-foreground">{title}</p>
+      <p className={cn("mt-1 truncate text-xs text-muted-foreground", descriptionClassName)}>
+        {description}
+      </p>
     </div>
   );
 }

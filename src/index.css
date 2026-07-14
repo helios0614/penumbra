@@ -647,6 +647,27 @@
   box-shadow: none;
 }
 
+/* 签名直接落在壁纸上，不使用卡片或衬底。 */
+.widget-card.signature-widget-frame {
+  overflow: visible;
+  padding: 0;
+  border-width: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.widget-card.signature-widget-frame:hover {
+  box-shadow: none;
+}
+
+.signature-wallpaper-text {
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.62),
+    0 4px 14px rgba(0, 0, 0, 0.34);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .widget-editing,
   .desktop-home-grid,

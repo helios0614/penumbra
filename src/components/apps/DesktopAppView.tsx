@@ -10,6 +10,7 @@ import {
   LoaderCircle,
   StickyNote,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const Calendar = lazy(() => import("@/components/calendar/Calendar"));
 const ChatView = lazy(() =>
@@ -57,7 +58,10 @@ export function DesktopAppView({
 
   return (
     <section
-      className="mist-glass-strong mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden sm:rounded-[28px]"
+      className={cn(
+        "mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden sm:rounded-[28px]",
+        appId === "chat" ? "mist-glass" : "mist-glass-strong",
+      )}
       data-testid="desktop-app-view"
     >
       <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3 sm:px-5">
