@@ -32,6 +32,30 @@ Wire DTO 只存在于 `src/domain/conversation` 边界。mapper 将 snake_case �
 
 Conversation Domain 不拥有 available models、readiness、active API config、provider config、provider routing、fallback、message state、streaming 或 WebSocket 状态。Runtime Domain 拥有 available models 与按 `modelKey` 查询的 readiness；模型 registry、provider routing 和 fallback 继续由后端拥有。
 
+### Chat Setup Application Layer（S3B）
+
+Chat Setup 是 Conversation Domain 与 Runtime Domain 之上的 application composition，不定义新的后端 DTO，也不拥有任何一个领域的 wire contract。它只把 `Conversation`、`AvailableModel[]` 和 `ChatReadiness` 组合为 UI 可消费的安全 ViewModel。
+
+- 有 conversation 时，当前模型的唯一事实来源是 `conversation.modelKey`；readiness 必须按该 key 请求，响应中的 `modelKey` 必须与它完全一致。
+- conversation model 与 readiness model 不一致属于 application composition contract error。前端不得静默采用 readiness model、自动重新请求或改写 conversation。
+- bootstrap 没有持久化 conversation；当前模型来自不传 `model` 参数的 readiness response `modelKey`，代表服务端默认启动模型。
+- 禁止从 available models 第一项推断默认模型，也禁止在前端硬编码服务端默认模型。
+- available models 保持 Runtime Domain 顺序，不排序、不去重；选中状态只按 key 精确匹配。
+- 历史或 bootstrap model 不在 available models 时仍保留原始 key，并以该 key 作为安全 label fallback；未知 model 不自动替换，所有 model options 均不选中。
+- readiness reason 与 `setupActionRequired` 直接进入最小 ViewModel；`ready=false` 是正常业务状态，不转为异常，也不在本层重新判断 endpoint、secret、auth mode、provider 或 provider health。
+- 本层不读取 Settings 或 active API config，不拥有 provider routing、fallback、secret、endpoint、raw readiness 或 raw DTO，也不请求 messages。
+- 本阶段只提供普通 TypeScript 纯组合函数和异步 load service，不接入现有 Chat mock、React hook、可见 UI 或全局状态。
+
+模型变更 command 延后到真实 conversation selection 与 Chat Setup UI 接入阶段。后续边界固定为：
+
+```text
+updateConversation(id, { modelKey: nextModelKey })
+  -> 获取 nextModelKey 的 readiness
+  -> 重新组合 Chat Setup ViewModel
+```
+
+update 成功与 readiness refresh 之间不是原子操作；在出现真实调用方前不提前实现未使用的 mutation command。
+
 **AionsHome 权威来源**：`docs/aionhome-runtime-model.md`、`docs/aionhome-refactor-master-plan.md` 及相关领域实现和 contract tests。
 
 ## 2. Message DTO
