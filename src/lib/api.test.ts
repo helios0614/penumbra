@@ -23,11 +23,11 @@ describe("API transport", () => {
     );
 
     await expect(
-      apiGet<{ connected: boolean }>("/api/settings", { timeoutMs: 0 }),
+      apiGet<{ connected: boolean }>("/api/session", { timeoutMs: 0 }),
     ).resolves.toEqual({ connected: true });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/settings",
+      "/api/session",
       expect.objectContaining({
         credentials: "include",
         method: "GET",
@@ -79,7 +79,7 @@ describe("API transport", () => {
       }),
     );
 
-    const request = apiGet("/api/settings", { timeoutMs: 0 });
+    const request = apiGet("/api/session", { timeoutMs: 0 });
 
     await expect(request).rejects.toBeInstanceOf(ApiError);
     await expect(request).rejects.toMatchObject({

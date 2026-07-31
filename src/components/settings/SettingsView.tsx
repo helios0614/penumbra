@@ -58,12 +58,12 @@ const themeModeOptions = [
 const connectionCopy: Record<ConnectionState, string> = {
   checking: "连接中",
   connected: "已连接",
-  failed: "连接失败",
+  failed: "后端不可达",
 };
 
 const loginCopy: Record<LoginState, string> = {
   "logged-in": "已登录",
-  "logged-out": "未登录",
+  "logged-out": "后端可达但未登录",
   unknown: "未知",
 };
 

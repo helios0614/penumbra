@@ -100,6 +100,15 @@
 - 在部署契约确认前，不增加由 Penumbra 自行维护的 Bearer token 方案。
 - 401/403 应映射为认证状态，不能与网络不可达混为一类。
 
+### Runtime 安全读取边界
+
+- Penumbra 已通过 domain client 接入 `GET /api/session`、`GET /api/models` 和 `GET /api/chat/readiness`。
+- `/api/session` 的 HTTP 401 表示后端可达但未认证；network/timeout 表示当前不可达，其他 HTTP 错误表示后端可达但服务异常。
+- `/api/models` 仅消费 `key/provider`；后端尚无独立 label，因此 mapper 暂时使用 `label = key`。
+- readiness 只表示当前后端规则下本地配置是否齐备，不代表 provider 在线、凭据有效、余额充足或 provider healthy。
+- `/api/settings` 不再作为普通前端连接探针。raw wire DTO 必须先经过校验与 mapper，不能进入 React 组件。
+- readiness reason 是 HTTP 200 下的业务状态，不得与 transport error、contract error 或认证状态混合。
+
 **AionsHome 权威来源**：`aion-chat/main.py`、`aion-chat/auth.py`、部署配置和未来部署契约；Penumbra transport 事实见 `src/lib/runtime-config.ts` 与 `src/lib/api.ts`。
 
 ## 10. Provider config 与 secret

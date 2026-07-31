@@ -25,12 +25,12 @@ Foundation
 
 Settings
 - Settings Domain Audit：已完成
-- Safe Settings Read Contract：待实施
-- Penumbra Settings/Runtime Read Layer：待实施
+- Safe Settings Read Contract：已完成（AionHome）
+- Penumbra Settings/Runtime Read Layer：已完成
 - Provider Administration：延后
 
 Chat
-- Chat Setup：等待安全 read layer
+- Chat Setup：等待 UI/Conversation 接入
 - Chat domain client、DTO、mapper：待实施
 - Conversation/message 只读状态：待实施
 - WebSocket 基础同步：待实施
@@ -42,6 +42,8 @@ Chat
 ```
 
 当前 Penumbra 已有 Chat、Calendar、Todo 和 Settings 的部分 UI 外壳，但 Chat/Conversation 仍由 mock 驱动，Calendar/Todo 尚未接入后端业务状态，Settings 只接入后端连通性检查。UI 存在不代表领域已完成迁移。
+
+> Runtime read client 与安全 backend probe 已完成；Chat Setup UI 尚未实施。
 
 ## Settings Domain Audit
 

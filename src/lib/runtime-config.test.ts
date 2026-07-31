@@ -12,13 +12,13 @@ describe("runtime config URL resolution", () => {
     expect(normalizeBaseUrl("  https://api.example.com/root///  ")).toBe(
       "https://api.example.com/root",
     );
-    expect(resolveHttpUrl("https://api.example.com/root/", "/settings")).toBe(
-      "https://api.example.com/root/settings",
+    expect(resolveHttpUrl("https://api.example.com/root/", "/session")).toBe(
+      "https://api.example.com/root/session",
     );
-    expect(resolveHttpUrl("/gateway/", "api/settings")).toBe(
-      "/gateway/api/settings",
+    expect(resolveHttpUrl("/gateway/", "api/session")).toBe(
+      "/gateway/api/session",
     );
-    expect(resolveHttpUrl("", "api/settings")).toBe("/api/settings");
+    expect(resolveHttpUrl("", "api/session")).toBe("/api/session");
   });
 
   it("keeps absolute HTTP URLs independent of the configured base", () => {
