@@ -21,9 +21,16 @@
 ```text
 Foundation
 - PR8A Runtime config + HTTP transport：已完成
-- PR8B Penumbra architecture / migration / contracts docs：已完成
+- PR8B Architecture / migration / contracts docs：已完成
+
+Settings
+- Settings Domain Audit：已完成
+- Safe Settings Read Contract：待实施
+- Penumbra Settings/Runtime Read Layer：待实施
+- Provider Administration：延后
 
 Chat
+- Chat Setup：等待安全 read layer
 - Chat domain client、DTO、mapper：待实施
 - Conversation/message 只读状态：待实施
 - WebSocket 基础同步：待实施
@@ -36,21 +43,80 @@ Chat
 
 当前 Penumbra 已有 Chat、Calendar、Todo 和 Settings 的部分 UI 外壳，但 Chat/Conversation 仍由 mock 驱动，Calendar/Todo 尚未接入后端业务状态，Settings 只接入后端连通性检查。UI 存在不代表领域已完成迁移。
 
+## Settings Domain Audit
+
+状态：**已完成**
+
+详细审计见：[Settings Domain Audit — 2026-07-31](./audits/settings-domain-audit-2026-07-31.md)。
+
+稳定决策：
+
+- 旧 Settings 是跨领域配置管理页，不是单一领域，不整体迁移。
+- Penumbra 不建立覆盖旧 `/api/settings` 所有字段的巨型 `Settings` DTO。
+- Settings 能力拆分为：
+
+  - device-local appearance；
+  - backend/session status；
+  - Chat setup/readiness；
+  - provider administration；
+  - Chat runtime advanced；
+  - Persona/Identity；
+  - 独立 integration 设置入口。
+
+- 全局 active API config 不等于 conversation model。
+- Chat 的模型事实来源是 conversation 的 `model`。
+- Provider routing 和 fallback 继续由后端负责，Penumbra 不复制这些规则。
+- Chat 首批只依赖：
+
+  - session/authentication state；
+  - backend reachability；
+  - available models；
+  - conversation model；
+  - provider readiness；
+  - setup-required state。
+
+- Temperature、thinking、cache、TTS、ASR、Memory、Location 等不阻塞首个文本聊天闭环。
+- 当前多个 Settings endpoint 会向浏览器返回完整 secret，不能直接成为 Penumbra 的安全读取契约。
+- 前端 mapper 丢弃 secret 不能解决数据已经进入浏览器的问题。
+- 当前没有旧配置具备直接删除条件。
+- Legacy `custom_*`、Gemini fallback 等只能隐藏或延后，退出条件由后端确认。
+
+### 路线调整
+
+1. AionsHome 新增安全的 session/readiness/provider summary 契约及契约测试。
+2. Penumbra 实现 Settings/Runtime read client、DTO 和 mapper。
+3. Chat setup 接入模型目录、conversation model 和 setup-required 状态。
+4. 实施 Chat domain client、message/conversation DTO 与 mapper。
+5. Provider CRUD、secret replacement 和高级运行配置分别在后续小 PR 迁移。
+
+> 完整 Settings 页面不是 Chat 的前置条件。Chat 可以在安全 read layer 和最小 setup 能力完成后继续实施。
+
+### 明确不做
+
+- 不复制旧 Settings 长表单。
+- 不让普通 UI 获取完整 provider secret。
+- 不在前端复制 provider routing 或 fallback。
+- 不合并 conversation model、active API config 和 provider readiness。
+- 不在首个 Chat 阶段迁移全部高级配置和 integrations。
+
 ## 3. 推荐迁移顺序
 
 1. 文档和基础设施收口。
-2. Chat domain client、DTO、mapper。
-3. Conversation/message 只读状态。
-4. WebSocket conversation/message 同步。
-5. Chat 展示模型。
-6. 文本聊天闭环。
-7. Regenerate 与 upload。
-8. Schedule/Todo。
-9. Settings。
-10. Memory。
-11. Activity。
-12. Location/POI。
-13. 其他复杂领域。
+2. Safe Settings Read Contract。
+3. Penumbra Settings/Runtime Read Layer。
+4. Chat setup。
+5. Chat domain client、DTO、mapper。
+6. Conversation/message 只读状态。
+7. WebSocket conversation/message 同步。
+8. Chat 展示模型。
+9. 文本聊天闭环。
+10. Regenerate 与 upload。
+11. Schedule/Todo。
+12. Provider administration 与其他高级 Settings。
+13. Memory。
+14. Activity。
+15. Location/POI。
+16. 其他复杂领域。
 
 此顺序可根据真实依赖、后端契约成熟度和风险调整，但不得把所有领域塞进一个 PR。
 
@@ -67,7 +133,7 @@ Chat
 | Message | `aion-chat/static/chat.html`、message API/DTO contract | 气泡 UI 可复用；类型过窄且数据为 mock | 直接复用现有 Penumbra UI；adapter/mapper 转换 | P0 |
 | WebSocket | `aion-chat/static/common.js`、`aion-chat/static/chat.html`、`aion-chat/ws.py` | 已有 URL resolution，尚无领域 event consumer | 共享 transport 负责连接、重连和分发；领域 adapter/mapper 转换业务事件；不复制领域底层 transport | P0 |
 | Upload | `aion-chat/static/chat.html`、`aion-chat/routes/files.py` | 有附件按钮和 upload URL resolution，未上传 | domain client 重写；adapter/mapper 转换；延后 | P1 |
-| Settings/provider config | `aion-chat/static/settings.html`、`aion-chat/routes/settings.py` | 有本地外观设置和后端状态检查，无 provider 配置 | 直接复用现有 Penumbra UI；adapter/mapper 转换；合并入口 | P1 |
+| Settings/provider config | `aion-chat/static/settings.html`、`aion-chat/routes/settings.py` | 有本地外观设置和后端状态检查；领域审计已完成；无安全 read layer 或 provider 配置 | 直接复用现有 Penumbra UI；domain client 重写；adapter/mapper 转换；高级管理延后 | P0（安全只读层）/ P1（管理） |
 | Schedule/Todo | `aion-chat/static/schedule.html`、schedule routes/runtime | Calendar UI 可复用；Todo 为静态数据，均未接后端 | 直接复用现有 Penumbra UI；domain client 重写；adapter/mapper 转换 | P1 |
 | Memory | `aion-chat/static/memory.html`、memory routes/runtime | 未接真实数据 | domain client 重写；adapter/mapper 转换；UI 重做 | P2 |
 | Activity | `aion-chat/static/activity-logs.html`、activity routes/runtime | 未接入 | domain client 重写；adapter/mapper 转换；UI 重做 | P2 |
