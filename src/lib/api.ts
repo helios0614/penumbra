@@ -5,31 +5,54 @@
  * scattering fetch calls through the UI.
  */
 
-const envApiBase =
-  import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_BASE ?? "";
+import { resolveHttpUrl, runtimeConfig } from "@/lib/runtime-config";
 
-export const API_BASE_URL = normalizeBaseUrl(envApiBase);
+export const API_BASE_URL = runtimeConfig.apiBaseUrl;
+export const UPLOAD_URL = runtimeConfig.uploadUrl;
+export const WEBSOCKET_URL = runtimeConfig.websocketUrl;
 
 export const API_BASE_URL_DISPLAY =
-  API_BASE_URL || "same-origin /api (dev proxy: http://localhost:8080)";
+  API_BASE_URL || "same-origin";
 
-type JsonBody = Record<string, unknown> | unknown[] | string | number | boolean | null;
+type JsonBody =
+  | Record<string, unknown>
+  | unknown[]
+  | string
+  | number
+  | boolean
+  | null;
 
 export interface ApiRequestOptions
-  extends Omit<RequestInit, "body" | "credentials"> {
+  extends Omit<RequestInit, "body" | "credentials" | "signal"> {
   body?: BodyInit | JsonBody;
   credentials?: RequestCredentials;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }
 
-export class ApiError extends Error {
-  status: number;
-  data: unknown;
+export type ApiErrorCode =
+  | "HTTP_ERROR"
+  | "NETWORK_ERROR"
+  | "ABORTED"
+  | "TIMEOUT"
+  | "INVALID_RESPONSE";
 
-  constructor(message: string, status: number, data?: unknown) {
+export class ApiError extends Error {
+  readonly status: number;
+  readonly data: unknown;
+  readonly code: ApiErrorCode;
+
+  constructor(
+    message: string,
+    status: number,
+    data?: unknown,
+    code: ApiErrorCode = status > 0 ? "HTTP_ERROR" : "NETWORK_ERROR",
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.data = data;
+    this.code = code;
   }
 }
 
@@ -49,8 +72,15 @@ export async function apiRequest<T>(
   path: string,
   options: ApiRequestOptions = {},
 ): Promise<T> {
-  const { body, headers: optionHeaders, ...init } = options;
+  const {
+    body,
+    headers: optionHeaders,
+    signal: callerSignal,
+    timeoutMs = runtimeConfig.requestTimeoutMs,
+    ...init
+  } = options;
   const headers = new Headers(optionHeaders);
+  const abortContext = createAbortContext(callerSignal, timeoutMs);
 
   if (!headers.has("Accept")) {
     headers.set("Accept", "application/json");
@@ -59,30 +89,42 @@ export async function apiRequest<T>(
   const requestBody = prepareBody(body, headers);
 
   try {
-    const response = await fetch(buildApiUrl(path), {
+    const response = await fetch(resolveHttpUrl(API_BASE_URL, path), {
       ...init,
       credentials: init.credentials ?? "include",
       headers,
       body: requestBody,
+      signal: abortContext.signal,
     });
 
+    const data = await parseResponseBody(response);
+
     if (!response.ok) {
-      throw await createApiError(response);
+      throw createApiError(response, data);
     }
 
-    if (response.status === 204) {
-      return undefined as T;
-    }
-
-    const contentType = response.headers.get("content-type") ?? "";
-    if (contentType.includes("application/json")) {
-      return (await response.json()) as T;
-    }
-
-    return (await response.text()) as T;
+    return data as T;
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;
+    }
+
+    if (abortContext.abortKind === "timeout") {
+      throw new ApiError(
+        `Request timed out after ${timeoutMs}ms`,
+        0,
+        error,
+        "TIMEOUT",
+      );
+    }
+
+    if (abortContext.abortKind === "caller") {
+      throw new ApiError(
+        "Request aborted",
+        0,
+        callerSignal?.reason ?? error,
+        "ABORTED",
+      );
     }
 
     throw new ApiError(
@@ -90,20 +132,9 @@ export async function apiRequest<T>(
       0,
       error,
     );
+  } finally {
+    abortContext.cleanup();
   }
-}
-
-function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.trim().replace(/\/+$/, "");
-}
-
-function buildApiUrl(path: string): string {
-  if (/^https?:\/\//i.test(path)) {
-    return path;
-  }
-
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${API_BASE_URL}${normalizedPath}`;
 }
 
 function prepareBody(
@@ -136,18 +167,38 @@ function isBodyInit(body: ApiRequestOptions["body"]): body is BodyInit {
   );
 }
 
-async function createApiError(response: Response): Promise<ApiError> {
-  const contentType = response.headers.get("content-type") ?? "";
-  let data: unknown = undefined;
-
-  try {
-    data = contentType.includes("application/json")
-      ? await response.json()
-      : await response.text();
-  } catch {
-    data = undefined;
+async function parseResponseBody(response: Response): Promise<unknown> {
+  if (response.status === 204 || response.status === 205) {
+    return undefined;
   }
 
+  const text = await response.text();
+  if (!text.trim()) {
+    return undefined;
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!isJsonContentType(contentType)) {
+    return text;
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    if (!response.ok) {
+      return text;
+    }
+
+    throw new ApiError(
+      "API returned invalid JSON",
+      response.status,
+      text,
+      "INVALID_RESPONSE",
+    );
+  }
+}
+
+function createApiError(response: Response, data: unknown): ApiError {
   const message =
     getErrorMessage(data) || `API ${response.status}: ${response.statusText}`;
 
@@ -162,4 +213,64 @@ function getErrorMessage(data: unknown): string | null {
   const record = data as Record<string, unknown>;
   const message = record.error ?? record.message ?? record.detail;
   return typeof message === "string" ? message : null;
+}
+
+function isJsonContentType(contentType: string): boolean {
+  return (
+    contentType.includes("application/json") || contentType.includes("+json")
+  );
+}
+
+interface AbortContext {
+  readonly signal: AbortSignal;
+  readonly abortKind: "caller" | "timeout" | null;
+  cleanup(): void;
+}
+
+function createAbortContext(
+  callerSignal: AbortSignal | undefined,
+  timeoutMs: number,
+): AbortContext {
+  const controller = new AbortController();
+  let abortKind: AbortContext["abortKind"] = null;
+
+  const abortFromCaller = () => {
+    if (controller.signal.aborted) {
+      return;
+    }
+
+    abortKind = "caller";
+    controller.abort(callerSignal?.reason);
+  };
+
+  if (callerSignal?.aborted) {
+    abortFromCaller();
+  } else {
+    callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
+  }
+
+  const timeoutId =
+    Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? globalThis.setTimeout(() => {
+          if (controller.signal.aborted) {
+            return;
+          }
+
+          abortKind = "timeout";
+          controller.abort();
+        }, timeoutMs)
+      : undefined;
+
+  return {
+    signal: controller.signal,
+    get abortKind() {
+      return abortKind;
+    },
+    cleanup() {
+      if (timeoutId !== undefined) {
+        globalThis.clearTimeout(timeoutId);
+      }
+      callerSignal?.removeEventListener("abort", abortFromCaller);
+    },
+  };
 }

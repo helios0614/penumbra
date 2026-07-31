@@ -1,31 +1,41 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv, type ProxyOptions } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
-const AION_HOME_FASTAPI = "http://127.0.0.1:8080";
-const AION_HOME_WS = "ws://127.0.0.1:8080";
+export default defineConfig(({ mode }) => {
+  const environment = loadEnv(mode, process.cwd());
+  const apiProxyTarget = environment.VITE_DEV_PROXY_TARGET?.trim();
+  const websocketProxyTarget =
+    environment.VITE_DEV_WS_PROXY_TARGET?.trim() || apiProxyTarget;
+  const proxy: Record<string, ProxyOptions> = {};
 
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
-  },
-  server: {
-    port: 3000,
-    proxy: {
-      "/api": {
-        target: AION_HOME_FASTAPI,
-        changeOrigin: true,
-        secure: false,
+  if (apiProxyTarget) {
+    proxy["/api"] = {
+      target: apiProxyTarget,
+      changeOrigin: true,
+      secure: false,
+    };
+  }
+
+  if (websocketProxyTarget) {
+    proxy["/ws"] = {
+      target: websocketProxyTarget,
+      ws: true,
+      changeOrigin: true,
+    };
+  }
+
+  return {
+    plugins: [react(), tailwindcss()],
+    resolve: {
+      alias: {
+        "@": path.resolve(__dirname, "./src"),
       },
-      "/ws": {
-        target: AION_HOME_WS,
-        ws: true,
-        changeOrigin: true,
-      },
     },
-  },
+    server: {
+      port: 3000,
+      ...(Object.keys(proxy).length > 0 ? { proxy } : {}),
+    },
+  };
 });

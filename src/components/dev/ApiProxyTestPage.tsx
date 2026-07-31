@@ -75,7 +75,7 @@ export function ApiProxyTestPage() {
             <dt className="text-muted-foreground">Vite route</dt>
             <dd className="font-mono">{TEST_ENDPOINT}</dd>
             <dt className="text-muted-foreground">Backend target</dt>
-            <dd className="font-mono">http://127.0.0.1:8080</dd>
+            <dd>Configured by the Vite environment</dd>
             <dt className="text-muted-foreground">Client base</dt>
             <dd className="font-mono">{API_BASE_URL_DISPLAY}</dd>
           </dl>
