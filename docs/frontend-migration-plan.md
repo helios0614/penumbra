@@ -30,8 +30,10 @@ Settings
 - Provider Administration：延后
 
 Chat
-- Chat Setup：等待 UI/Conversation 接入
-- Chat domain client、DTO、mapper：待实施
+- Runtime Read Layer：已完成
+- Conversation Domain Foundation：已完成（真实后端没有单条详情 endpoint；已实现 list/create/update/delete）
+- Chat Setup ViewModel/UI：等待 Conversation + Runtime 组合
+- Message Domain：待实施
 - Conversation/message 只读状态：待实施
 - WebSocket 基础同步：待实施
 - Message view model：待实施

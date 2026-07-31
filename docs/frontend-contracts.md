@@ -13,6 +13,25 @@
 - 客户端状态必须能通过服务端 ID、snapshot、重新加载结果或明确的 event 规则对账。
 - WebSocket 连接状态只说明传输是否在线，不能代替业务状态。
 
+### Conversation Domain（S3A）
+
+当前 AionHome conversation HTTP 契约如下：
+
+| Method | Path | Request | Response |
+|---|---|---|---|
+| `GET` | `/api/conversations` | 无 | 按后端 `updated_at DESC` 顺序返回裸数组；列表项含 `id/title/model/created_at/updated_at/message_count` |
+| `POST` | `/api/conversations` | `{ title?: string, model?: string }` | `id/title/model/created_at/updated_at`；不含 `message_count` |
+| `PUT` | `/api/conversations/{conv_id}` | `{ title?: string|null, model?: string|null }` | `{ ok: true }` |
+| `DELETE` | `/api/conversations/{conv_id}` | 无 | `{ ok: true }` |
+
+后端没有单个 conversation 详情 endpoint。时间字段是 Unix 秒数；ID、标题和模型是非空数据库列，列表的 `message_count` 是非 carryover user/assistant message 数量。当前契约没有 pinned 或 archived 字段。PUT 中 null 与省略字段都不会更新持久化值；不存在 ID 的 PUT/DELETE 当前仍返回成功，不能由前端假设 404。
+
+Wire DTO 只存在于 `src/domain/conversation` 边界。mapper 将 snake_case 转换成 camelCase domain model：`model -> modelKey`、`created_at -> createdAt`、`updated_at -> updatedAt`，列表额外映射 `message_count -> messageCount`；raw DTO 不进入 React 组件。
+
+`conversation.model` 是当前 conversation 模型的事实来源。历史或未知 model key 必须忠实保留，前端不自动替换为默认模型。创建请求不提供 model 时，由后端拥有默认语义；前端不复制 `DEFAULT_MODEL`。
+
+Conversation Domain 不拥有 available models、readiness、active API config、provider config、provider routing、fallback、message state、streaming 或 WebSocket 状态。Runtime Domain 拥有 available models 与按 `modelKey` 查询的 readiness；模型 registry、provider routing 和 fallback 继续由后端拥有。
+
 **AionsHome 权威来源**：`docs/aionhome-runtime-model.md`、`docs/aionhome-refactor-master-plan.md` 及相关领域实现和 contract tests。
 
 ## 2. Message DTO
