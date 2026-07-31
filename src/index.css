@@ -18,7 +18,7 @@
   --theme-primary-ink-light: #945541;
   --theme-primary-ink-dark: #f4845f;
   --ai-theme-color: #7BA7BC;
-  --ai-theme-foreground: #ffffff;
+  --ai-theme-foreground: #111110;
 }
 
 @theme {
@@ -558,6 +558,30 @@
 
 .dark .chat-ai-meta {
   color: color-mix(in srgb, var(--color-ai), white 28%);
+}
+
+/* 代码块沿用 AI 实色；语法层级只改变字重/透明度，避免与自定义 AI 色冲突。 */
+.ai-code-block .hljs-comment,
+.ai-code-block .hljs-quote {
+  color: color-mix(in srgb, var(--color-ai-foreground), transparent 38%);
+  font-style: italic;
+}
+
+.ai-code-block .hljs-keyword,
+.ai-code-block .hljs-selector-tag,
+.ai-code-block .hljs-literal,
+.ai-code-block .hljs-title,
+.ai-code-block .hljs-section {
+  color: var(--color-ai-foreground);
+  font-weight: 650;
+}
+
+.ai-code-block .hljs-string,
+.ai-code-block .hljs-number,
+.ai-code-block .hljs-attr,
+.ai-code-block .hljs-variable,
+.ai-code-block .hljs-template-variable {
+  color: color-mix(in srgb, var(--color-ai-foreground), transparent 14%);
 }
 
 @keyframes widget-edit-wiggle {

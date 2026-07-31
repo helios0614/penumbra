@@ -25,7 +25,7 @@ function CodeBlock({
   if (!className?.includes("language-")) {
     return (
       <code
-        className="bg-surface-secondary text-foreground px-1.5 py-0.5 rounded-sm text-[13px] font-mono"
+        className="rounded-sm border border-ai/20 bg-ai/15 px-1.5 py-0.5 font-mono text-[13px] text-current"
         {...props}
       >
         {children}
@@ -34,12 +34,12 @@ function CodeBlock({
   }
 
   return (
-    <div className="relative group my-2">
-      <div className="flex items-center justify-between bg-[#1e1e1e] text-muted-foreground text-xs px-4 py-2 rounded-t-lg">
+    <div className="ai-code-block group relative my-2 overflow-hidden rounded-lg border border-ai-foreground/15 bg-ai shadow-sm">
+      <div className="flex items-center justify-between border-b border-ai-foreground/15 bg-ai-active px-4 py-2 text-xs text-ai-foreground/70">
         <span>{className.replace("language-", "")}</span>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+          className="flex items-center gap-1 rounded-sm px-1 py-0.5 text-ai-foreground/70 transition-colors hover:bg-ai-foreground/10 hover:text-ai-foreground"
           aria-label="复制代码"
         >
           {copied ? (
@@ -55,7 +55,7 @@ function CodeBlock({
           )}
         </button>
       </div>
-      <pre className="bg-[#1e1e1e] text-[#d4d4d4] p-4 rounded-b-lg overflow-x-auto text-sm leading-relaxed whitespace-pre-wrap break-all max-w-full">
+      <pre className="m-0 max-w-full overflow-x-auto whitespace-pre-wrap break-all bg-ai p-4 text-sm leading-relaxed text-ai-foreground">
         <code className={className} {...props}>
           {children}
         </code>

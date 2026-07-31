@@ -133,6 +133,12 @@ function getContrastRatio(first: string, second: string): number {
   );
 }
 
+function getHighContrastForeground(hex: string): "#FFFFFF" | "#111110" {
+  return getContrastRatio(hex, "#111110") >= getContrastRatio(hex, "#FFFFFF")
+    ? "#111110"
+    : "#FFFFFF";
+}
+
 function mixHex(color: string, target: string, amount: number): string {
   const channels = [1, 3, 5].map((start) => {
     const sourceChannel = Number.parseInt(color.slice(start, start + 2), 16);
@@ -193,7 +199,7 @@ export function applyAiColor(value: string): string | null {
   document.documentElement.style.setProperty("--ai-theme-color", color);
   document.documentElement.style.setProperty(
     "--ai-theme-foreground",
-    getThemeForeground(color),
+    getHighContrastForeground(color),
   );
   try {
     localStorage.setItem(AI_COLOR_KEY, color);
