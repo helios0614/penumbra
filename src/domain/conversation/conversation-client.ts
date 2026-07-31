@@ -4,8 +4,9 @@ import type {
 } from "@/domain/conversation/conversation-dto";
 import {
   mapConversation,
+  mapDeleteConversationResponse,
   mapConversationList,
-  mapConversationMutationResponse,
+  mapUpdateConversationResponse,
 } from "@/domain/conversation/conversation-mappers";
 import type {
   Conversation,
@@ -53,7 +54,7 @@ export async function updateConversation(
   if (input.title !== undefined) body.title = input.title;
   if (input.modelKey !== undefined) body.model = input.modelKey;
 
-  return mapConversationMutationResponse(
+  return mapUpdateConversationResponse(
     await apiRequest<unknown>(conversationPath(conversationId), {
       ...options,
       method: "PUT",
@@ -66,7 +67,7 @@ export async function deleteConversation(
   conversationId: string,
   options?: ApiRequestOptions,
 ): Promise<ConversationMutationResult> {
-  return mapConversationMutationResponse(
+  return mapDeleteConversationResponse(
     await apiRequest<unknown>(conversationPath(conversationId), {
       ...options,
       method: "DELETE",

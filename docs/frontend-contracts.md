@@ -20,15 +20,15 @@
 | Method | Path | Request | Response |
 |---|---|---|---|
 | `GET` | `/api/conversations` | 无 | 按后端 `updated_at DESC` 顺序返回裸数组；列表项含 `id/title/model/created_at/updated_at/message_count` |
-| `POST` | `/api/conversations` | `{ title?: string, model?: string }` | `id/title/model/created_at/updated_at`；不含 `message_count` |
+| `POST` | `/api/conversations` | JSON object `{ title?: string, model?: string }`；`{}` 合法 | `id/title/model/created_at/updated_at`；不含 `message_count` |
 | `PUT` | `/api/conversations/{conv_id}` | `{ title?: string|null, model?: string|null }` | `{ ok: true }` |
 | `DELETE` | `/api/conversations/{conv_id}` | 无 | `{ ok: true }` |
 
-后端没有单个 conversation 详情 endpoint。时间字段是 Unix 秒数；ID、标题和模型是非空数据库列，列表的 `message_count` 是非 carryover user/assistant message 数量。当前契约没有 pinned 或 archived 字段。PUT 中 null 与省略字段都不会更新持久化值；不存在 ID 的 PUT/DELETE 当前仍返回成功，不能由前端假设 404。
+后端没有单个 conversation 详情 endpoint。时间字段是 Unix 秒数；ID、标题和模型是非空数据库列，列表的 `message_count` 是非 carryover user/assistant message 数量。当前契约没有 pinned 或 archived 字段。创建时省略字段会使用服务端标题和模型默认值。PUT 中 null 与省略字段都不会更新持久化值；不存在 ID 的 PUT/DELETE 当前仍返回成功，不能由前端假设 404。conversation create/update/delete 还会触发既有 WebSocket 广播与 Markdown 导出维护，delete 会级联删除 messages；这些副作用仍由后端拥有，Conversation Domain client 不复制或消费它们。
 
 Wire DTO 只存在于 `src/domain/conversation` 边界。mapper 将 snake_case 转换成 camelCase domain model：`model -> modelKey`、`created_at -> createdAt`、`updated_at -> updatedAt`，列表额外映射 `message_count -> messageCount`；raw DTO 不进入 React 组件。
 
-`conversation.model` 是当前 conversation 模型的事实来源。历史或未知 model key 必须忠实保留，前端不自动替换为默认模型。创建请求不提供 model 时，由后端拥有默认语义；前端不复制 `DEFAULT_MODEL`。
+`conversation.model` 是当前 conversation 模型的事实来源。conversation create/update 当前不按 model registry 校验 model；历史或未知 model key 必须忠实保留，前端不自动替换为默认模型。创建请求不提供 model 时，由后端拥有默认语义；前端不复制 `DEFAULT_MODEL`。
 
 Conversation Domain 不拥有 available models、readiness、active API config、provider config、provider routing、fallback、message state、streaming 或 WebSocket 状态。Runtime Domain 拥有 available models 与按 `modelKey` 查询的 readiness；模型 registry、provider routing 和 fallback 继续由后端拥有。
 

@@ -23,6 +23,10 @@ export type UpdateConversationRequestDto = {
   model?: string | null;
 };
 
-export type ConversationMutationResponseDto = {
+export type UpdateConversationResponseDto = {
+  ok: true;
+};
+
+export type DeleteConversationResponseDto = {
   ok: true;
 };

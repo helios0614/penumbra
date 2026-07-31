@@ -6,7 +6,9 @@ import {
   deleteConversation,
   listConversations,
   mapConversation,
+  mapDeleteConversationResponse,
   mapConversationList,
+  mapUpdateConversationResponse,
   updateConversation,
 } from "@/domain/conversation";
 
@@ -63,6 +65,37 @@ describe("conversation mappers", () => {
     }
     expect(error).toBeInstanceOf(ConversationContractError);
     expect(String(error)).not.toContain(secret);
+  });
+
+  it("validates update and delete acknowledgements independently and drops extras", () => {
+    expect(mapUpdateConversationResponse({ ok: true, ignored: "update" }))
+      .toEqual({ ok: true });
+    expect(mapDeleteConversationResponse({ ok: true, ignored: "delete" }))
+      .toEqual({ ok: true });
+
+    for (const payload of [undefined, null, [], {}, { ok: false }, { ok: 1 }]) {
+      expect(() => mapUpdateConversationResponse(payload))
+        .toThrow(ConversationContractError);
+      expect(() => mapDeleteConversationResponse(payload))
+        .toThrow(ConversationContractError);
+    }
+  });
+
+  it("validates create response fields without requiring list-only message_count", () => {
+    expect(mapConversation(conversation("created", "historical-model")))
+      .toMatchObject({ id: "created", modelKey: "historical-model" });
+
+    const valid = conversation();
+    for (const payload of [
+      null,
+      { ...valid, id: undefined },
+      { ...valid, title: null },
+      { ...valid, model: 1 },
+      { ...valid, created_at: Number.POSITIVE_INFINITY },
+      { ...valid, updated_at: "20.5" },
+    ]) {
+      expect(() => mapConversation(payload)).toThrow(ConversationContractError);
+    }
   });
 });
 

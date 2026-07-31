@@ -1,7 +1,8 @@
 import type {
   ConversationDto,
   ConversationListItemDto,
-  ConversationMutationResponseDto,
+  DeleteConversationResponseDto,
+  UpdateConversationResponseDto,
 } from "@/domain/conversation/conversation-dto";
 import {
   ConversationContractError,
@@ -26,14 +27,23 @@ export function mapConversationList(payload: unknown): ConversationSummary[] {
   });
 }
 
-export function mapConversationMutationResponse(
+export function mapUpdateConversationResponse(
   payload: unknown,
 ): ConversationMutationResult {
-  if (!isRecord(payload) || payload.ok !== true) {
-    throw contractError("conversation mutation response");
-  }
+  const dto: UpdateConversationResponseDto = parseAcknowledgement(
+    payload,
+    "conversation update response",
+  );
+  return { ok: dto.ok };
+}
 
-  const dto: ConversationMutationResponseDto = { ok: payload.ok };
+export function mapDeleteConversationResponse(
+  payload: unknown,
+): ConversationMutationResult {
+  const dto: DeleteConversationResponseDto = parseAcknowledgement(
+    payload,
+    "conversation delete response",
+  );
   return { ok: dto.ok };
 }
 
@@ -79,6 +89,17 @@ function toConversation(dto: ConversationDto): Conversation {
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
   };
+}
+
+function parseAcknowledgement(
+  payload: unknown,
+  contract: string,
+): { ok: true } {
+  if (!isRecord(payload) || payload.ok !== true) {
+    throw contractError(contract);
+  }
+
+  return { ok: payload.ok };
 }
 
 function contractError(contract: string): ConversationContractError {
