@@ -36,19 +36,19 @@ Chat
 - Message Domain Foundation：已完成
 - Message History Application：已完成
 - Streaming Transport / SSE Framing：已完成
-- Chat Execution Client / Event Contract：待实施
+- Chat Execution Client / Event Contract：已完成
 - Realtime Reconciliation：待实施
 - Chat UI Migration：待实施
 - Chat Setup UI：待实施
 - 模型变更 command：待真实 Conversation selection 接入
-- Regenerate：延后
+- Regenerate UI / 旧消息删除编排：延后（execution client 已完成）
 - Upload：延后
 - Stop/cancel：等待后端契约确认
 ```
 
 当前 Penumbra 已有 Chat、Calendar、Todo 和 Settings 的部分 UI 外壳，但 Chat/Conversation 仍由 mock 驱动，Calendar/Todo 尚未接入后端业务状态，Settings 只接入后端连通性检查。UI 存在不代表领域已完成迁移。
 
-> Runtime read client、安全 backend probe、Conversation/Message Domain Foundation、Chat Setup Application Layer、Message History Application 与 Streaming Transport / SSE Framing 已完成；Chat Execution Client / Event Contract、Realtime Reconciliation 和 Chat UI 接入尚未实施。
+> Runtime read client、安全 backend probe、Conversation/Message Domain Foundation、Chat Setup Application Layer、Message History Application、Streaming Transport / SSE Framing 与 Chat Execution Client / Event Contract 已完成；Realtime Reconciliation、Chat UI 接入、optimistic state 与持久化对账尚未实施。
 
 ## Settings Domain Audit
 

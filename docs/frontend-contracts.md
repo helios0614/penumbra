@@ -162,7 +162,7 @@ streaming UTF-8 decode
         ↓
 SseDataFrame { data: string }
         ↓
-Chat event validation（S4D2，尚未实施）
+Chat event validation（S4D2）
 ```
 
 - `openApiStream` 与现有 JSON transport 共享 runtime base URL、path/query resolution、method/body/header 构造、`credentials: "include"`、timeout、caller `AbortSignal`、network error、HTTP error 和 `ApiError` 语义；raw `Response` 与底层 request context 保持 transport internal。
@@ -177,11 +177,84 @@ Chat event validation（S4D2，尚未实施）
 - raw SSE data 不写入 error、error cause、日志或 console；framing/data error 不得包含 prompt、message content、secret、Authorization、provider endpoint 或 debug payload。
 - SSE/stream 事件顺序不得自行调整；同名 SSE 与 WebSocket event 也不得混为同一 payload。command marker 如需隐藏，只能在显示层过滤，前端不得通过解析 command 文本执行业务命令或重新实现 command grammar。
 
-当前 Chat send/regenerate 的 request DTO、event union、duplicate JSON、持久化对账与 UI 状态均属于 S4D2 或更后阶段，本节不把这些能力标记为完成。
+Chat send/regenerate 的 request DTO、event union 与 duplicate JSON 由 S4D2 在本层之上实现；持久化对账与 UI 状态仍属于更后阶段。
 
 **AionsHome 权威来源**：`aion-chat/routes/chat.py`、`aion-chat/static/chat.html`、`docs/command-parser-contract.md` 和相关 command contract tests。
 
-## 5. SSE 与 WebSocket 对账
+## 5. Chat Execution Client / Event Contract（S4D2）
+
+Chat Execution Application 位于 Streaming Transport 与未来 Chat ViewModel / orchestration 之间。它只表示一个 send 或 regenerate HTTP 请求的请求契约、响应分支与临时执行事件，不创建或修改 persistent `Message`。
+
+```text
+openApiStream
+  -> content-type discrimination
+      -> text/event-stream -> parseSseStream -> parseSseJsonData -> mapChatExecutionEvent
+      -> application/json  -> bounded JSON reader -> duplicate acknowledgement
+```
+
+### Request contract
+
+send 使用 `POST /api/conversations/{encodedConversationId}/send`。只发送调用者显式提供的可选字段，不复制后端默认值：
+
+```ts
+type SendMessageRequestDto = {
+  content: string;
+  context_limit?: number;
+  attachments?: string[];
+  whisper_mode?: boolean;
+  fast_mode?: boolean;
+  temperature?: number | null;
+  thinking_effort?: string | null;
+  carryover_messages?: Record<string, unknown>[];
+  client_msg_id?: string | null;
+};
+```
+
+后端 Pydantic 默认值依次为 `context_limit=30`、`attachments=[]`、`whisper_mode=false`、`fast_mode=false`、`temperature=null`、`thinking_effort=null`、`carryover_messages=[]`、`client_msg_id=null`。client 不 trim 或改写 content，不拒绝空字符串，不自动生成 client message ID，不解释 attachment MIME/capability，也不复制 prompt/provider 行为。number 只做 finite 校验，attachment item 必须是 string，carryover item 必须是可安全序列化并递归复制的普通 JSON object；错误不包含 content、attachment URL 或 raw carryover。
+
+regenerate 使用 `POST /api/conversations/{encodedConversationId}/regenerate`，没有 JSON body。可选 query 为 `context_limit`、`whisper_mode`、`fast_mode`、`temperature`、`thinking_effort`；未提供字段省略，显式 `false`、`0` 和空字符串保留，显式 null 省略以表达后端 `None`。client 不接收 target message ID/model，不删除旧 assistant，也不编排 legacy 的 delete-then-regenerate 行为。
+
+### Response contract
+
+- media type 大小写不敏感，并在比较前去除 `charset` 等参数和空格。send 只接受 `text/event-stream` 或 `application/json`；regenerate 只接受 `text/event-stream`。缺失或其他类型是安全的 `ChatExecutionContractError`，未读 body 会被取消。
+- send 的 JSON 成功分支只接受 `{ ok: true, msg_id: non-empty string, duplicate: true }`。它投影为 `{ kind: "duplicate", userMessageId }`，额外字段丢弃。duplicate acknowledgement 不是 Message，不表示 assistant 已生成、持久化或可从 history 读取，也不自动 refresh history。
+- duplicate JSON 使用同一个 managed response body、fatal UTF-8 decoder 和 64 KiB 上限；malformed JSON、非法 UTF-8、超限和 shape mismatch 均不保留 raw body，不发起第二次请求。timeout/caller abort 继续保持共享 `ApiError` 语义。
+- SSE 返回 `{ kind: "stream", events }`。`events` 是单请求、无 React 依赖、按抵达顺序懒消费的 `AsyncIterable<ChatExecutionEvent>`；提前停止会沿 parser/transport 取消读取并释放 reader/timer/listener。
+
+当前 direct send/regenerate SSE wire catalog 精确为：
+
+| Wire type | Safe application projection |
+|---|---|
+| `start` | `start { assistantMessageId: id }` |
+| `chunk` | `chunk { content }` |
+| `mcp_loading` | `mcp-loading { messageId: msg_id, tools }` |
+| `heart_whisper` | `heart-whisper { id, messageId: msg_id, content, createdAt: created_at }` |
+| `toy_command` | `toy-command { messageId: msg_id, commands: string[] }` |
+| `cam_check` | `camera-check { conversationId: conv_id, modelKey: model_key, messageId: msg_id }` |
+| `cam_offline` | `camera-offline` |
+| `poi_search` | `poi-search { conversationId: conv_id, categories: string[], messageId: msg_id }` |
+| `activity_check` | `activity-check { conversationId: conv_id, count: n, messageId: msg_id }` |
+| `music` | `music { messageId: msg_id, cards: JsonValue[] }` |
+| `debug` | 最小 `debug-summary`，见下文 |
+
+direct SSE 没有公开 `done`。后台 task 在内部 queue 写入的 `done` 只让 response generator 结束，不会转发。`location_check` 当前只经 WebSocket 广播；thinking 编码在普通 chunk marker 中；usage 只可能位于 debug，不存在独立 thinking/usage 事件。S4D2 不加入 `mcp_tool_start`、`mcp_tool_done` 或 `mcp_tool_calls`。
+
+所有已知事件都逐字段验证；ID 要求非空 string，其他 string 不擅自 trim，number 必须 finite，array/object 递归复制，extra fields 丢弃。已知 type 的 malformed payload 抛不含原始 event 的 `ChatExecutionContractError`，不得降级为 unknown。未知 string type 投影为 `{ type: "unknown", rawType }`，只保留 type、不保留 payload，并允许后续 frame 继续消费；缺失或非 string type 仍是 contract error。
+
+debug 的公开 allowlist 只有 `messageId <- msg_id`、`modelKey <- model`、`hasError <- has_error`，以及 usage 中 finite 的 `prompt_tokens/completion_tokens/total_tokens`，分别映射成 `promptTokens/completionTokens/totalTokens`；usage 可为 null，缺失的 allowlisted token count 映射为 null。`error_text` 不公开。`api_payload`、`api_format`、prompt/recall/quick-note 内容、raw request/provider response、Authorization、secret、provider endpoint、完整 error object 和未知 debug 字段全部丢弃，不进入 event、contract error 或日志。
+
+生命周期语义严格限定如下：
+
+- `start` 只表示后端为当前 assistant generation 分配了 message ID，且流式执行已开始；不表示 assistant 已持久化、history 已可读或生成必然成功。
+- `chunk` 只表示 provider/后处理管道输出的一段原始增量；不表示最终 Message content、command 成功、thinking 已清洗或 assistant 已落库。
+- iterator 自然结束/transport EOF 只表示当前 HTTP response body 已结束；不产生 `completed` 或伪造的持久化事件，不表示 assistant commit、WS 送达、history 更新或 provider 正常完成。
+- caller abort、timeout 或 consumer 提前停止只停止本地请求和后续读取并释放资源。AionHome 的生成在独立后台 task 中继续；client 不提供 `cancelGeneration`，也不承诺停止 provider、阻止持久化、撤销 command 或取消其他 side effect。
+
+Chat Execution 不调用 `loadInitialMessageHistory`、`loadOlderMessageHistory`、`refreshLatestMessageHistory` 或 `reloadMessageHistoryFromScratch`，不创建 optimistic Message、不连接 WebSocket、不读取 Settings/conversation list，也不修改 `MessageHistoryState`。未来 S4E/S4F 的高层编排应在 transport EOF 或 WS 通知后，通过相同 ID 的 WS `msg_created` 或 HTTP latest refresh 确认持久化事实，再用 persistent Message 替换临时展示。
+
+**AionsHome 权威来源**：`aion-chat/routes/chat.py::MsgCreate`、`send_message`、`regenerate_message` 及其 queue/SSE generator；旧 `static/chat.html` 只用于核对兼容差异。
+
+## 6. SSE 与 WebSocket 对账
 
 以下关系当前仍需后端契约确认：
 
@@ -194,17 +267,17 @@ Chat event validation（S4D2，尚未实施）
 
 **AionsHome 权威来源**：`docs/ws-event-contract.md`、`docs/chat-message-dto-contract.md`、`aion-chat/static/chat.html` 和 `aion-chat/routes/chat.py`。
 
-## 6. Regenerate
+## 7. Regenerate
 
 - 当前旧前端行为是先删除旧 assistant message，再调用 regenerate。
 - 该 side effect 顺序不得擅自修改。
-- Regenerate 应独立于首个 send PR 实施。
-- 实施前需要契约测试覆盖删除成功、删除或 regenerate 失败，以及重新生成后的持久化结果。
+- S4D2 已提供不带 delete side effect 的 regenerate execution client；它不接收 target message ID，也不修改 Message History。
+- legacy UI 的 delete-then-regenerate 编排仍延后；接入前需要覆盖删除成功、删除或 regenerate 失败，以及重新生成后的持久化结果。
 - UI 不能在 regenerate 失败时伪造旧消息仍存在或新消息已持久化。
 
 **AionsHome 权威来源**：`aion-chat/static/chat.html` 的现有交互、`aion-chat/routes/chat.py` 的 delete/regenerate endpoints，以及 message persistence contract tests。
 
-## 7. Stop/cancel
+## 8. Stop/cancel
 
 - 当前未确认真实的服务端停止生成接口。
 - `AbortController` 只能证明前端停止等待或读取响应，不能证明后端停止生成、持久化或执行副作用。
@@ -214,7 +287,7 @@ Chat event validation（S4D2，尚未实施）
 
 **AionsHome 权威来源**：Chat send route、stream persistence 行为及后续新增的 stop/cancel contract；当前状态为待后端确认。
 
-## 8. Carryover 和 prompt 顺序
+## 9. Carryover 和 prompt 顺序
 
 - 旧前端存在 carryover 筛选与 `localStorage` 行为，并在新 conversation 首次发送时提交 `carryover_messages`。
 - 这涉及 prompt 输入顺序、去重、持久化和上下文所有权。
@@ -224,7 +297,7 @@ Chat event validation（S4D2，尚未实施）
 
 **AionsHome 权威来源**：`docs/aionhome-runtime-model.md`、`docs/aionhome-refactor-master-plan.md`、`docs/chat-message-dto-contract.md`、`aion-chat/static/chat.html` 和 `aion-chat/routes/chat.py`。
 
-## 9. WebSocket
+## 10. WebSocket
 
 - 不改变 event type、payload 和 timing。
 - transport 只负责连接、鉴权上下文、重连、订阅和分发。
@@ -235,7 +308,7 @@ Chat event validation（S4D2，尚未实施）
 
 **AionsHome 权威来源**：`docs/ws-event-contract.md`、`aion-chat/ws.py`、`aion-chat/main.py` 及 WebSocket contract/snapshot tests。
 
-## 10. Authentication 与部署
+## 11. Authentication 与部署
 
 - 当前 web 前端请求使用 cookie/session。
 - PR8A HTTP transport 使用 `credentials: "include"`。
@@ -255,7 +328,7 @@ Chat event validation（S4D2，尚未实施）
 
 **AionsHome 权威来源**：`aion-chat/main.py`、`aion-chat/auth.py`、部署配置和未来部署契约；Penumbra transport 事实见 `src/lib/runtime-config.ts` 与 `src/lib/api.ts`。
 
-## 11. Provider config 与 secret
+## 12. Provider config 与 secret
 
 - API provider 配置仍是有效业务能力。
 - legacy `custom_*` 和 Gemini fallback 尚不能由 Penumbra 删除。
@@ -266,7 +339,7 @@ Chat event validation（S4D2，尚未实施）
 
 **AionsHome 权威来源**：`aion-chat/routes/settings.py`、`aion-chat/static/settings.html`、provider 配置实现和相关 contract tests。
 
-## 12. Upload
+## 13. Upload
 
 - 当前上传 endpoint 为 `/api/upload`。
 - 必须使用 PR8A 的 upload URL resolution，不在 Chat 组件或 upload client 中手拼 base URL。
@@ -278,17 +351,17 @@ Chat event validation（S4D2，尚未实施）
 
 **AionsHome 权威来源**：`aion-chat/routes/files.py`、`aion-chat/static/chat.html` 及未来 upload contract tests；Penumbra URL 解析事实见 `src/lib/runtime-config.ts`。
 
-## 13. 待确认事项的处理
+## 14. 待确认事项的处理
 
 SSE/WS 权威关系、stop/cancel、carryover 所有权、production 部署、secret response 和其他未确认项，在后端给出实现或 contract test 前都保持“待确认”。后续任务应记录确认结果及其 AionsHome 来源，不得把临时前端行为升级为默认契约。
 
-## 14. 未决契约状态
+## 15. 未决契约状态
 
 | 契约 | 状态 | 说明 |
 |---|---|---|
 | Send 使用流式 HTTP response body | `Confirmed` | 当前实现已确认。 |
 | Streaming Transport / SSE Framing | `Completed (S4D1)` | 共享 request lifecycle、managed byte stream、增量 UTF-8 decode 与纯 data framing 已实施。 |
-| Chat Execution Client / Event Contract | `Pending (S4D2)` | send/regenerate DTO、Chat event validation 与 duplicate JSON 尚未实施。 |
+| Chat Execution Client / Event Contract | `Completed (S4D2)` | send/regenerate request mapping、双 media type、duplicate acknowledgement、安全 Chat event projection 与单请求 iterator 已实施。 |
 | SSE/WS 权威关系 | `Pending backend confirmation` | 去重与最终权威规则待确认。 |
 | Stop/cancel | `Pending backend confirmation` | 尚无已确认的服务端停止契约。 |
 | Carryover 所有权 | `Pending backend confirmation` | 前后端职责与迁移方式待确认。 |
