@@ -147,14 +147,37 @@ type MessageHistoryState = {
 
 未来 SSE / WebSocket 只能触发 latest refresh、reload，或由临时 Chat ViewModel 表达流式状态；SSE/WS payload 不直接成为 Message History。明确的 message delete/update realtime reconciliation 与 `file_synced` 策略属于后续阶段。
 
-## 4. Send stream
+## 4. Streaming Transport / SSE Framing（S4D1）
 
-- 当前发送接口通过流式 HTTP response body 返回事件。
-- stream adapter 必须使用增量 decoder 和缓冲区处理分片边界。
-- 不得假设一个 network chunk、文本行或 `reader.read()` 结果就是完整 JSON。
-- SSE/stream 事件顺序不得自行调整；同名 SSE 与 WebSocket event 也不得混为同一 payload。
-- command marker 如需隐藏，只能在显示层过滤。
-- 前端不得通过解析 command 文本执行业务命令或重新实现 command grammar。
+Streaming Transport 位于 runtime HTTP config 与未来 Chat Execution Client 之间，只负责共享请求生命周期、流式 byte body 和 SSE framing。它不属于 Message Domain，也不产生 persistent `Message`、streaming assistant state、optimistic message 或任何 Chat event。
+
+```text
+Runtime API config
+        ↓
+Shared API request lifecycle
+        ↓
+ReadableStream<Uint8Array>
+        ↓
+streaming UTF-8 decode
+        ↓
+SseDataFrame { data: string }
+        ↓
+Chat event validation（S4D2，尚未实施）
+```
+
+- `openApiStream` 与现有 JSON transport 共享 runtime base URL、path/query resolution、method/body/header 构造、`credentials: "include"`、timeout、caller `AbortSignal`、network error、HTTP error 和 `ApiError` 语义；raw `Response` 与底层 request context 保持 transport internal。
+- 成功结果只公开 `contentType` 与 managed byte stream。调用方可以先判断 `text/event-stream` 或普通 JSON，再选择 mapper；本层不实现 `/send` duplicate JSON 分支。
+- SSE framing 的公开事实只有 `SseDataFrame { data: string }`。`event`、`id`、reconnect cursor、Chat `type`、music/MCP/thinking/debug 等业务语义均不由本层定义。
+- parser 不能假设一个 network chunk、文本行或 `reader.read()` 结果就是一个 event。它支持 LF/CRLF、frame 跨 chunk、单 chunk 多 frame、注释/未知字段、多条 `data:` line 与空 data；多条 data line 使用 `\n` 连接，`data:\n\n` 必须产出空字符串。
+- byte stream 必须使用同一个 `TextDecoder` 的 `decode(chunk, { stream: true })` 增量解码，并在 EOF flush；中文或 emoji 的 UTF-8 bytes 跨 chunk 时不得损坏。
+- EOF 只表示当前 transport 已关闭，不表示 assistant message 已持久化、后台 task 已完成或副作用成功。已经以空行结束的 frame 正常产出；EOF 后只余空白时正常结束；仍有未以空行结束的非空 frame 时抛不含 payload 的 `SseFramingError`，不得把截断 JSON 当作正常完成。
+- caller abort、timeout、network failure、HTTP failure 与 SSE framing failure 保持可区分。abort 或 reader cancel 只停止当前客户端请求/读取；当前后端生成 task 独立运行，不存在停止 provider、后台生成、持久化或副作用的承诺。
+- 完整读取、提前停止、abort、timeout 与异常路径都必须清除 timer/listener，并 cancel 或释放 reader lock。parser 按抵达顺序懒产出 frame，不缓存完整 frame history。
+- `parseSseJsonData` 只做 `JSON.parse` 并以不含 raw data 的 `SseDataError` 表示 malformed JSON；它不验证 Chat event type，也不因未知业务 event 报错。
+- raw SSE data 不写入 error、error cause、日志或 console；framing/data error 不得包含 prompt、message content、secret、Authorization、provider endpoint 或 debug payload。
+- SSE/stream 事件顺序不得自行调整；同名 SSE 与 WebSocket event 也不得混为同一 payload。command marker 如需隐藏，只能在显示层过滤，前端不得通过解析 command 文本执行业务命令或重新实现 command grammar。
+
+当前 Chat send/regenerate 的 request DTO、event union、duplicate JSON、持久化对账与 UI 状态均属于 S4D2 或更后阶段，本节不把这些能力标记为完成。
 
 **AionsHome 权威来源**：`aion-chat/routes/chat.py`、`aion-chat/static/chat.html`、`docs/command-parser-contract.md` 和相关 command contract tests。
 
@@ -264,6 +287,8 @@ SSE/WS 权威关系、stop/cancel、carryover 所有权、production 部署、se
 | 契约 | 状态 | 说明 |
 |---|---|---|
 | Send 使用流式 HTTP response body | `Confirmed` | 当前实现已确认。 |
+| Streaming Transport / SSE Framing | `Completed (S4D1)` | 共享 request lifecycle、managed byte stream、增量 UTF-8 decode 与纯 data framing 已实施。 |
+| Chat Execution Client / Event Contract | `Pending (S4D2)` | send/regenerate DTO、Chat event validation 与 duplicate JSON 尚未实施。 |
 | SSE/WS 权威关系 | `Pending backend confirmation` | 去重与最终权威规则待确认。 |
 | Stop/cancel | `Pending backend confirmation` | 尚无已确认的服务端停止契约。 |
 | Carryover 所有权 | `Pending backend confirmation` | 前后端职责与迁移方式待确认。 |

@@ -22,12 +22,22 @@ type JsonBody =
   | boolean
   | null;
 
+export type ApiQuery = Readonly<
+  Record<string, string | number | boolean | null | undefined>
+> | URLSearchParams;
+
 export interface ApiRequestOptions
   extends Omit<RequestInit, "body" | "credentials" | "signal"> {
   body?: BodyInit | JsonBody;
   credentials?: RequestCredentials;
+  query?: ApiQuery;
   signal?: AbortSignal;
   timeoutMs?: number;
+}
+
+export interface ApiStreamResponse {
+  readonly contentType: string;
+  readonly body: ReadableStream<Uint8Array>;
 }
 
 export type ApiErrorCode =
@@ -56,6 +66,13 @@ export class ApiError extends Error {
   }
 }
 
+export class StreamContractError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StreamContractError";
+  }
+}
+
 export function apiGet<T>(path: string, options?: ApiRequestOptions): Promise<T> {
   return apiRequest<T>(path, { ...options, method: "GET" });
 }
@@ -72,9 +89,78 @@ export async function apiRequest<T>(
   path: string,
   options: ApiRequestOptions = {},
 ): Promise<T> {
+  const request = await requestApiResponse(path, options, "application/json");
+
+  try {
+    const data = await parseResponseBody(request.response);
+
+    if (!request.response.ok) {
+      throw createApiError(request.response, data);
+    }
+
+    return data as T;
+  } catch (error) {
+    throw request.toApiError(error);
+  } finally {
+    request.cleanup();
+  }
+}
+
+/**
+ * Opens a successful streaming API response without exposing the raw Response.
+ * The caller can inspect contentType before choosing an SSE or JSON body mapper.
+ */
+export async function openApiStream(
+  path: string,
+  options: ApiRequestOptions = {},
+): Promise<ApiStreamResponse> {
+  const request = await requestApiResponse(
+    path,
+    options,
+    "text/event-stream, application/json",
+  );
+
+  try {
+    if (!request.response.ok) {
+      const data = await parseResponseBody(request.response);
+      throw createApiError(request.response, data);
+    }
+
+    if (!request.response.body) {
+      throw new StreamContractError("API streaming response has no body");
+    }
+
+    return Object.freeze({
+      contentType: request.response.headers.get("content-type") ?? "",
+      body: createManagedApiBody(request.response.body, request),
+    });
+  } catch (error) {
+    request.cleanup();
+
+    if (error instanceof StreamContractError) {
+      throw error;
+    }
+
+    throw request.toApiError(error);
+  }
+}
+
+interface ApiResponseRequest {
+  readonly response: Response;
+  readonly signal: AbortSignal;
+  toApiError(error: unknown): ApiError;
+  cleanup(): void;
+}
+
+async function requestApiResponse(
+  path: string,
+  options: ApiRequestOptions,
+  defaultAccept: string,
+): Promise<ApiResponseRequest> {
   const {
     body,
     headers: optionHeaders,
+    query,
     signal: callerSignal,
     timeoutMs = runtimeConfig.requestTimeoutMs,
     ...init
@@ -83,13 +169,13 @@ export async function apiRequest<T>(
   const abortContext = createAbortContext(callerSignal, timeoutMs);
 
   if (!headers.has("Accept")) {
-    headers.set("Accept", "application/json");
+    headers.set("Accept", defaultAccept);
   }
 
   const requestBody = prepareBody(body, headers);
 
   try {
-    const response = await fetch(resolveHttpUrl(API_BASE_URL, path), {
+    const response = await fetch(resolveRequestUrl(path, query), {
       ...init,
       credentials: init.credentials ?? "include",
       headers,
@@ -97,44 +183,182 @@ export async function apiRequest<T>(
       signal: abortContext.signal,
     });
 
-    const data = await parseResponseBody(response);
+    let cleanedUp = false;
 
-    if (!response.ok) {
-      throw createApiError(response, data);
-    }
+    return {
+      response,
+      signal: abortContext.signal,
+      toApiError(error) {
+        return normalizeApiError(
+          error,
+          abortContext,
+          callerSignal,
+          timeoutMs,
+        );
+      },
+      cleanup() {
+        if (cleanedUp) {
+          return;
+        }
 
-    return data as T;
+        cleanedUp = true;
+        abortContext.cleanup();
+      },
+    };
   } catch (error) {
-    if (error instanceof ApiError) {
-      throw error;
-    }
+    abortContext.cleanup();
+    throw normalizeApiError(error, abortContext, callerSignal, timeoutMs);
+  }
+}
 
-    if (abortContext.abortKind === "timeout") {
-      throw new ApiError(
-        `Request timed out after ${timeoutMs}ms`,
-        0,
-        error,
-        "TIMEOUT",
-      );
-    }
+function resolveRequestUrl(path: string, query: ApiQuery | undefined): string {
+  const resolvedUrl = resolveHttpUrl(API_BASE_URL, path);
+  if (!query) {
+    return resolvedUrl;
+  }
 
-    if (abortContext.abortKind === "caller") {
-      throw new ApiError(
-        "Request aborted",
-        0,
-        callerSignal?.reason ?? error,
-        "ABORTED",
-      );
+  const params = new URLSearchParams();
+  if (query instanceof URLSearchParams) {
+    query.forEach((value, key) => params.append(key, value));
+  } else {
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== null && value !== undefined) {
+        params.append(key, String(value));
+      }
     }
+  }
 
-    throw new ApiError(
-      error instanceof Error ? error.message : "Network request failed",
+  const queryString = params.toString();
+  if (!queryString) {
+    return resolvedUrl;
+  }
+
+  const hashIndex = resolvedUrl.indexOf("#");
+  const urlWithoutHash =
+    hashIndex >= 0 ? resolvedUrl.slice(0, hashIndex) : resolvedUrl;
+  const hash = hashIndex >= 0 ? resolvedUrl.slice(hashIndex) : "";
+  const separator = urlWithoutHash.includes("?")
+    ? urlWithoutHash.endsWith("?") || urlWithoutHash.endsWith("&")
+      ? ""
+      : "&"
+    : "?";
+
+  return `${urlWithoutHash}${separator}${queryString}${hash}`;
+}
+
+function normalizeApiError(
+  error: unknown,
+  abortContext: AbortContext,
+  callerSignal: AbortSignal | undefined,
+  timeoutMs: number,
+): ApiError {
+  if (error instanceof ApiError) {
+    return error;
+  }
+
+  if (abortContext.abortKind === "timeout") {
+    return new ApiError(
+      `Request timed out after ${timeoutMs}ms`,
       0,
       error,
+      "TIMEOUT",
     );
-  } finally {
-    abortContext.cleanup();
   }
+
+  if (abortContext.abortKind === "caller") {
+    return new ApiError(
+      "Request aborted",
+      0,
+      callerSignal?.reason ?? error,
+      "ABORTED",
+    );
+  }
+
+  return new ApiError(
+    error instanceof Error ? error.message : "Network request failed",
+    0,
+    error,
+  );
+}
+
+function createManagedApiBody(
+  source: ReadableStream<Uint8Array>,
+  request: ApiResponseRequest,
+): ReadableStream<Uint8Array> {
+  const reader = source.getReader();
+  let streamController: ReadableStreamDefaultController<Uint8Array> | null =
+    null;
+  let settled = false;
+
+  const finish = () => {
+    request.signal.removeEventListener("abort", abortReading);
+    request.cleanup();
+    reader.releaseLock();
+  };
+
+  const abortReading = () => {
+    if (settled) {
+      return;
+    }
+
+    settled = true;
+    streamController?.error(request.toApiError(request.signal.reason));
+    const cancellation = reader.cancel(
+      new DOMException("API stream reading aborted", "AbortError"),
+    );
+    void cancellation.then(finish, finish);
+  };
+
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController = controller;
+      request.signal.addEventListener("abort", abortReading, { once: true });
+      if (request.signal.aborted) {
+        abortReading();
+      }
+    },
+    async pull(controller) {
+      if (settled) {
+        return;
+      }
+
+      try {
+        const result = await reader.read();
+        if (settled) {
+          return;
+        }
+
+        if (result.done) {
+          settled = true;
+          controller.close();
+          finish();
+          return;
+        }
+
+        controller.enqueue(result.value);
+      } catch (error) {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        controller.error(request.toApiError(error));
+        finish();
+      }
+    },
+    async cancel(reason) {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      try {
+        await reader.cancel(reason);
+      } finally {
+        finish();
+      }
+    },
+  });
 }
 
 function prepareBody(

@@ -35,6 +35,20 @@ describe("API transport", () => {
     );
   });
 
+  it("uses the shared query builder without changing an existing query", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+    await apiGet("/api/items?existing=1", {
+      query: { model: "a b", enabled: true, omitted: undefined },
+      timeoutMs: 0,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/items?existing=1&model=a+b&enabled=true",
+      expect.any(Object),
+    );
+  });
+
   it("serializes JSON request bodies without changing explicit headers", async () => {
     fetchMock.mockResolvedValue(
       new Response("", { headers: { "content-type": "text/plain" } }),
@@ -104,6 +118,17 @@ describe("API transport", () => {
       status: 503,
       message: "Service unavailable",
       data: "Service unavailable",
+    });
+  });
+
+  it("preserves network failure semantics", async () => {
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+
+    await expect(apiGet("/offline", { timeoutMs: 0 })).rejects.toMatchObject({
+      name: "ApiError",
+      code: "NETWORK_ERROR",
+      status: 0,
+      message: "Failed to fetch",
     });
   });
 
