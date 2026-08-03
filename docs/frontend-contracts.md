@@ -299,12 +299,19 @@ Chat Execution 不调用 `loadInitialMessageHistory`、`loadOlderMessageHistory`
 
 ## 10. WebSocket
 
-- 不改变 event type、payload 和 timing。
-- transport 只负责连接、鉴权上下文、重连、订阅和分发。
-- 业务 event 必须通过领域 adapter 转换后再进入状态层。
-- Chat、Theater 等领域不可仅因共用 `/ws` 就合并业务状态机。
-- Theater 发出的入站 `tts_state`，以及 `tts_chunk`、`tts_done` 等具有独立状态或副作用的事件，必须保持各自语义。
-- 重连策略不得把“已连接”解释为业务数据已同步。
+- S4E1 只连接浏览器 endpoint `/ws`。URL 复用 `runtime-config`：HTTP base 转为 `ws://`，HTTPS base 转为 `wss://`，并保留 host、port 和 base path；不连接 `/ws/android-push`，不添加 push token、session query 或另一套 WebSocket 环境配置。
+- 浏览器 WebSocket 没有 fetch 的 `credentials: "include"` 选项，也不能由应用设置任意 `Authorization` header。`/ws` 的 session cookie 只能由浏览器在 handshake 中按 origin、domain/path、SameSite、Secure 与部署条件自动携带；Penumbra 不读取、保存、打印或手工构造 cookie。
+- 通用 WebSocket transport 是无 React 依赖的单次连接：只创建一个 socket，等待 open，保持消息抵达顺序，支持 open timeout、caller abort、显式 close 与 consumer 提前停止，并在结束时清理 listener、timer、等待者和未消费队列。它不暴露原始 WebSocket，不创建全局 singleton，不自动重连。
+- `closed` 保留服务端 close `code/reason/wasClean` 和 `initiatedLocally`。reason 是不可信字符串，不进入日志。1008 是 policy/authentication 相关 close 信息，但 S4E1 不据此改写 session、登录或 UI 状态；1000 也只表示 socket close，不表示 history 已同步。
+- AionHome manager 当前发送 JSON text。非 string 的 Blob、ArrayBuffer 或 binary view 由 Realtime 层安全拒绝；malformed JSON 抛 `RealtimeDataError`，错误不包含 raw data，且不会向 console 打印 payload。
+- `RealtimeEvent` 只投影 `msg_created/msg_updated/msg_deleted`、`conv_created/conv_updated/conv_deleted` 与 `file_synced` 的稳定 message/conversation ID。extra fields 全部丢弃，不保留 raw object。
+- `msg_created.data` 由不同持久化写入点临时组装，不是完整 HTTP history DTO；role、content、attachments、thinking、MCP、TTS 等字段不被当作可靠快照，也不会映射成 Message Domain 对象。WebSocket notification 只表示某项持久化事实可能已变化。
+- 未知非空 string event type（包括当前未由 S4E1 消费的 capability、execution、debug、pong 和其他领域事件）安全映射为 `{ type: "unknown", rawType }`，不保留 payload，且后续事件可以继续消费。已知 event 若缺少稳定 ID 则抛 `RealtimeContractError`，不能降级成 unknown。
+- 旧 web client 没有维持 `/ws` 所必需的应用层 heartbeat。后端支持 inbound `{type:"ping"}` 并回复 `pong`，主要服务 Android push；这不等于 Penumbra 必须定时发送 ping。`tts_state` 会改变服务端 runtime TTS state，属于后续独立能力，不在 S4E1 提供任意 outbound command API。
+- 当前后端没有 event ID、sequence、replay 或 reconnect cursor。S4E1 不实现 backoff、jitter、network/visibility listener、session refresh、reconnect marker 或 replay；未来重连必须与 S4E2 的 HTTP authority refresh/reload 一起设计，不能只恢复 socket 就宣称数据已恢复。
+- HTTP history、SSE 与 WebSocket 仍是三套时间边界：HTTP history 是可重读的持久化最终事实，SSE 是当前请求临时增量，WebSocket 是提交后的变化通知或失效提示。未来可以按 `SSE start.assistantMessageId ↔ WS message-created.messageId` 关联，但不能合并两套 event union，也不能据此生成 completed event。
+- S4E1 不调用或修改 Message History 的 initial/older/latest/reload 操作，不调用 Conversation client 或 Chat Execution，不创建 optimistic/streaming state，也不接 Chat mock/UI。refresh latest、按 ID remove/refetch、`file_synced` authority reload 与 reconnect 后重建事实均属于 S4E2。
+- Chat、Theater 等领域不可仅因共用 `/ws` 就合并业务状态机。Theater 的入站 `tts_state` 以及 `tts_chunk`、`tts_done` 等事件继续保持独立语义。
 
 **AionsHome 权威来源**：`docs/ws-event-contract.md`、`aion-chat/ws.py`、`aion-chat/main.py` 及 WebSocket contract/snapshot tests。
 
@@ -362,6 +369,7 @@ SSE/WS 权威关系、stop/cancel、carryover 所有权、production 部署、se
 | Send 使用流式 HTTP response body | `Confirmed` | 当前实现已确认。 |
 | Streaming Transport / SSE Framing | `Completed (S4D1)` | 共享 request lifecycle、managed byte stream、增量 UTF-8 decode 与纯 data framing 已实施。 |
 | Chat Execution Client / Event Contract | `Completed (S4D2)` | send/regenerate request mapping、双 media type、duplicate acknowledgement、安全 Chat event projection 与单请求 iterator 已实施。 |
+| WebSocket Transport / Event Contract | `Completed (S4E1)` | runtime `/ws` URL、单连接 lifecycle、安全 JSON decode、稳定 ID projection、unknown marker 与 close metadata 已实施；无自动重连或 History mutation。 |
 | SSE/WS 权威关系 | `Pending backend confirmation` | 去重与最终权威规则待确认。 |
 | Stop/cancel | `Pending backend confirmation` | 尚无已确认的服务端停止契约。 |
 | Carryover 所有权 | `Pending backend confirmation` | 前后端职责与迁移方式待确认。 |

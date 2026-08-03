@@ -43,6 +43,12 @@ describe("runtime config URL resolution", () => {
     expect(
       resolveWebSocketUrl("/ws", "", "https://app.example.com"),
     ).toBe("wss://app.example.com/ws");
+    expect(
+      resolveWebSocketUrl("/ws", "http://api.example.com/base/"),
+    ).toBe("ws://api.example.com/base/ws");
+    expect(
+      resolveWebSocketUrl("ws/", "https://api.example.com/base///"),
+    ).toBe("wss://api.example.com/base/ws/");
   });
 
   it("resolves relative upload and WebSocket paths from the API base", () => {

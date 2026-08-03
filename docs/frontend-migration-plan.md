@@ -32,12 +32,15 @@ Settings
 Chat
 - Runtime Read Layer：已完成
 - Conversation Domain Foundation：已完成（真实后端没有单条详情 endpoint；已实现 list/create/update/delete）
+- Conversation CRUD contract hardening：已完成
 - Chat Setup Application Layer：已完成
 - Message Domain Foundation：已完成
 - Message History Application：已完成
 - Streaming Transport / SSE Framing：已完成
 - Chat Execution Client / Event Contract：已完成
-- Realtime Reconciliation：待实施
+- WebSocket Transport / Event Contract：已完成
+- Realtime Reconciliation Application：待实施
+- Settings Shell / Safe Basics：待实施
 - Chat UI Migration：待实施
 - Chat Setup UI：待实施
 - 模型变更 command：待真实 Conversation selection 接入
@@ -48,7 +51,7 @@ Chat
 
 当前 Penumbra 已有 Chat、Calendar、Todo 和 Settings 的部分 UI 外壳，但 Chat/Conversation 仍由 mock 驱动，Calendar/Todo 尚未接入后端业务状态，Settings 只接入后端连通性检查。UI 存在不代表领域已完成迁移。
 
-> Runtime read client、安全 backend probe、Conversation/Message Domain Foundation、Chat Setup Application Layer、Message History Application、Streaming Transport / SSE Framing 与 Chat Execution Client / Event Contract 已完成；Realtime Reconciliation、Chat UI 接入、optimistic state 与持久化对账尚未实施。
+> Runtime read client、安全 backend probe、Conversation/Message Domain Foundation、Conversation CRUD hardening、Chat Setup Application Layer、Message History Application、Streaming Transport / SSE Framing、Chat Execution Client / Event Contract 与 WebSocket Transport / Event Contract 已完成；Realtime Reconciliation、Chat UI 接入、optimistic state 与持久化对账尚未实施。
 
 ## Settings Domain Audit
 
@@ -138,7 +141,7 @@ Chat
 | Chat | `aion-chat/static/chat.html`、`aion-chat/routes/chat.py` | UI 原型存在，发送与流式回复仍为 mock | 直接复用现有 Penumbra UI；domain client 重写；adapter/mapper 转换 | P0 |
 | Conversation | `aion-chat/static/chat.html`、conversation API | 列表、新建、重命名、删除均为本地 mock | domain client 重写；adapter/mapper 转换 | P0 |
 | Message | `aion-chat/static/chat.html`、message API/DTO contract | Message Domain Foundation 与 Message History Application 已完成；React hook、ViewModel 与 UI 接入待实施 | 直接复用现有 Penumbra UI；adapter/mapper 转换 | P0 |
-| WebSocket | `aion-chat/static/common.js`、`aion-chat/static/chat.html`、`aion-chat/ws.py` | 已有 URL resolution，尚无领域 event consumer | 共享 transport 负责连接、重连和分发；领域 adapter/mapper 转换业务事件；不复制领域底层 transport | P0 |
+| WebSocket | `aion-chat/static/common.js`、`aion-chat/static/chat.html`、`aion-chat/ws.py` | S4E1 单连接 transport 与安全 event projection 已完成；S4E2 对账待实施 | 共享 transport 负责单次连接和分发；领域 adapter/mapper 转换业务事件；自动重连必须与 HTTP authority reconciliation 一起设计 | P0 |
 | Upload | `aion-chat/static/chat.html`、`aion-chat/routes/files.py` | 有附件按钮和 upload URL resolution，未上传 | domain client 重写；adapter/mapper 转换；延后 | P1 |
 | Settings/provider config | `aion-chat/static/settings.html`、`aion-chat/routes/settings.py` | 有本地外观设置和后端状态检查；领域审计已完成；无安全 read layer 或 provider 配置 | 直接复用现有 Penumbra UI；domain client 重写；adapter/mapper 转换；高级管理延后 | P0（安全只读层）/ P1（管理） |
 | Schedule/Todo | `aion-chat/static/schedule.html`、schedule routes/runtime | Calendar UI 可复用；Todo 为静态数据，均未接后端 | 直接复用现有 Penumbra UI；domain client 重写；adapter/mapper 转换 | P1 |
