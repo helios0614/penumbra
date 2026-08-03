@@ -114,7 +114,40 @@ HTTP history、SSE 与 WebSocket 是三个不同时间边界：history 是可重
 
 **AionsHome 权威来源**：`docs/chat-message-dto-contract.md`、`aion-chat/routes/chat.py`、`aion-chat/database.py` 及 `aion-chat/tests/contract/test_chat_message_dto_contract.py`。
 
-## 3. Send stream
+## 3. Message History Application（S4C）
+
+Message History Application 位于 Message Domain 与未来 React hook / Chat ViewModel 之间，只拥有某一 conversation 已经通过 HTTP 读取的持久化 `Message[]`。它不重新定义 wire DTO，不直接调用 transport，也不拥有 loading、error、选中 conversation、滚动位置、optimistic message、SSE chunk、streaming assistant、client message ID、发送请求或 WebSocket 连接。
+
+```ts
+type OlderPageStatus = "maybe-more" | "exhausted" | "stalled";
+
+type MessageHistoryState = {
+  readonly conversationId: string;
+  readonly messages: readonly Message[];
+  readonly pageSize: number;
+  readonly oldestCursor: number | null;
+  readonly olderPageStatus: OlderPageStatus;
+};
+```
+
+- `maybe-more` 只表示当前结果不足以证明耗尽、仍可尝试更早请求，不表示服务端确认存在下一页。
+- `exhausted` 只在初始页为空、请求页为空或小于 page size、或没有可用 oldest cursor 时使用。
+- `stalled` 表示请求成功但没有新增服务端 message ID，或合并后的最老 timestamp 没有严格早于本次 `before`。它阻止 timestamp cursor 无限循环，不表示后端确认历史完整。
+- `oldestCursor` 始终来自当前 messages 最老的 `createdAt`；空历史为 `null`，Unix timestamp `0` 是有效值。前端不使用 message ID cursor，也不对 timestamp 减一、减毫秒或添加 epsilon。
+- persistent message 的唯一合并身份是服务端 `message.id`。不同 ID 即使 content、role 与 timestamp 完全相同也不合并；相同 ID 使用本次 incoming 服务端 payload 更新。
+- incoming page 自身重复 ID 时，最后一次出现的 payload 生效，并按各 ID 最后出现位置维持稳定页内顺序。
+- 合并结果按 `createdAt ASC` 保持旧到新；相同 timestamp 保持稳定插入顺序，不用 ID 字典序伪造服务端全局第二排序键。
+- older merge 以 `older page + existing messages` 为插入基线；只有 page 达到 page size、至少加入一个新 ID 且 oldest cursor 严格前进时才继续保持 `maybe-more`。
+- latest refresh 是有限最新窗口，不是全量 snapshot。它更新同 ID、加入新 ID 并保留已经加载的旧页；response omission 不代表 delete，空 latest page 也不清空现有 history。
+- reload from scratch 明确重新调用 initial load，并丢弃当前已加载页；这是本层提供的权威重建入口。
+- 所有纯合并与 load 操作都不修改输入 state、数组或 Domain Message；未被更新的 Message 对象可以安全复用，公开 messages 数组由 application 新建。
+- conversation mismatch、非法 application state 或非法 page size 使用不包含 message content / 完整 state 的 `MessageHistoryContractError`。`ApiError`、`MessageContractError`、network、timeout 与 abort 不包装，保持原类型传播。
+
+当前后端 `created_at < before` 在同 timestamp 边界可能漏项，且没有 cursor/has-more metadata。前端不能通过猜测 timestamp 修复这一限制，也不能声称当前分页无遗漏。
+
+未来 SSE / WebSocket 只能触发 latest refresh、reload，或由临时 Chat ViewModel 表达流式状态；SSE/WS payload 不直接成为 Message History。明确的 message delete/update realtime reconciliation 与 `file_synced` 策略属于后续阶段。
+
+## 4. Send stream
 
 - 当前发送接口通过流式 HTTP response body 返回事件。
 - stream adapter 必须使用增量 decoder 和缓冲区处理分片边界。
@@ -125,7 +158,7 @@ HTTP history、SSE 与 WebSocket 是三个不同时间边界：history 是可重
 
 **AionsHome 权威来源**：`aion-chat/routes/chat.py`、`aion-chat/static/chat.html`、`docs/command-parser-contract.md` 和相关 command contract tests。
 
-## 4. SSE 与 WebSocket 对账
+## 5. SSE 与 WebSocket 对账
 
 以下关系当前仍需后端契约确认：
 
@@ -138,7 +171,7 @@ HTTP history、SSE 与 WebSocket 是三个不同时间边界：history 是可重
 
 **AionsHome 权威来源**：`docs/ws-event-contract.md`、`docs/chat-message-dto-contract.md`、`aion-chat/static/chat.html` 和 `aion-chat/routes/chat.py`。
 
-## 5. Regenerate
+## 6. Regenerate
 
 - 当前旧前端行为是先删除旧 assistant message，再调用 regenerate。
 - 该 side effect 顺序不得擅自修改。
@@ -148,7 +181,7 @@ HTTP history、SSE 与 WebSocket 是三个不同时间边界：history 是可重
 
 **AionsHome 权威来源**：`aion-chat/static/chat.html` 的现有交互、`aion-chat/routes/chat.py` 的 delete/regenerate endpoints，以及 message persistence contract tests。
 
-## 6. Stop/cancel
+## 7. Stop/cancel
 
 - 当前未确认真实的服务端停止生成接口。
 - `AbortController` 只能证明前端停止等待或读取响应，不能证明后端停止生成、持久化或执行副作用。
@@ -158,7 +191,7 @@ HTTP history、SSE 与 WebSocket 是三个不同时间边界：history 是可重
 
 **AionsHome 权威来源**：Chat send route、stream persistence 行为及后续新增的 stop/cancel contract；当前状态为待后端确认。
 
-## 7. Carryover 和 prompt 顺序
+## 8. Carryover 和 prompt 顺序
 
 - 旧前端存在 carryover 筛选与 `localStorage` 行为，并在新 conversation 首次发送时提交 `carryover_messages`。
 - 这涉及 prompt 输入顺序、去重、持久化和上下文所有权。
@@ -168,7 +201,7 @@ HTTP history、SSE 与 WebSocket 是三个不同时间边界：history 是可重
 
 **AionsHome 权威来源**：`docs/aionhome-runtime-model.md`、`docs/aionhome-refactor-master-plan.md`、`docs/chat-message-dto-contract.md`、`aion-chat/static/chat.html` 和 `aion-chat/routes/chat.py`。
 
-## 8. WebSocket
+## 9. WebSocket
 
 - 不改变 event type、payload 和 timing。
 - transport 只负责连接、鉴权上下文、重连、订阅和分发。
@@ -179,7 +212,7 @@ HTTP history、SSE 与 WebSocket 是三个不同时间边界：history 是可重
 
 **AionsHome 权威来源**：`docs/ws-event-contract.md`、`aion-chat/ws.py`、`aion-chat/main.py` 及 WebSocket contract/snapshot tests。
 
-## 9. Authentication 与部署
+## 10. Authentication 与部署
 
 - 当前 web 前端请求使用 cookie/session。
 - PR8A HTTP transport 使用 `credentials: "include"`。
@@ -199,7 +232,7 @@ HTTP history、SSE 与 WebSocket 是三个不同时间边界：history 是可重
 
 **AionsHome 权威来源**：`aion-chat/main.py`、`aion-chat/auth.py`、部署配置和未来部署契约；Penumbra transport 事实见 `src/lib/runtime-config.ts` 与 `src/lib/api.ts`。
 
-## 10. Provider config 与 secret
+## 11. Provider config 与 secret
 
 - API provider 配置仍是有效业务能力。
 - legacy `custom_*` 和 Gemini fallback 尚不能由 Penumbra 删除。
@@ -210,7 +243,7 @@ HTTP history、SSE 与 WebSocket 是三个不同时间边界：history 是可重
 
 **AionsHome 权威来源**：`aion-chat/routes/settings.py`、`aion-chat/static/settings.html`、provider 配置实现和相关 contract tests。
 
-## 11. Upload
+## 12. Upload
 
 - 当前上传 endpoint 为 `/api/upload`。
 - 必须使用 PR8A 的 upload URL resolution，不在 Chat 组件或 upload client 中手拼 base URL。
@@ -222,11 +255,11 @@ HTTP history、SSE 与 WebSocket 是三个不同时间边界：history 是可重
 
 **AionsHome 权威来源**：`aion-chat/routes/files.py`、`aion-chat/static/chat.html` 及未来 upload contract tests；Penumbra URL 解析事实见 `src/lib/runtime-config.ts`。
 
-## 12. 待确认事项的处理
+## 13. 待确认事项的处理
 
 SSE/WS 权威关系、stop/cancel、carryover 所有权、production 部署、secret response 和其他未确认项，在后端给出实现或 contract test 前都保持“待确认”。后续任务应记录确认结果及其 AionsHome 来源，不得把临时前端行为升级为默认契约。
 
-## 13. 未决契约状态
+## 14. 未决契约状态
 
 | 契约 | 状态 | 说明 |
 |---|---|---|
