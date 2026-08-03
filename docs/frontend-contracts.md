@@ -1,6 +1,6 @@
 # Penumbra 前端契约摘要
 
-> 最后更新：2026-07-31
+> 最后更新：2026-08-03
 
 导航：[架构原则](./penumbra-architecture.md) · [迁移路线图](./frontend-migration-plan.md) · [前端契约](./frontend-contracts.md)
 
@@ -58,14 +58,59 @@ update 成功与 readiness refresh 之间不是原子操作；在出现真实调
 
 **AionsHome 权威来源**：`docs/aionhome-runtime-model.md`、`docs/aionhome-refactor-master-plan.md` 及相关领域实现和 contract tests。
 
-## 2. Message DTO
+## 2. Message Domain（S4B）
 
-- `role` 不限于 `user`、`assistant`、`system`；现有数据和内部链路还可能出现 `cam_user`、`cam_log`、`cam_trigger` 等扩展 role。
-- `attachments`、`keywords`、`mcp_tool_calls` 可能是 JSON 字符串，也可能已经是数组。
-- 历史消息 DTO 与 WebSocket `msg_updated` payload 可能不同。例如当前历史列表会解析 `mcp_tool_calls`，而 `msg_updated` 可能仍返回 DB string。
-- mapper 必须容忍空字段、旧数据和不同返回形态；是否容忍坏 JSON 应按具体 endpoint 的后端事实处理，不能擅自统一语义。
-- raw DTO 类型与 normalized domain type 必须区分。UI 只能依赖 normalized type 或 view model。
-- normalized type 不得反向改变持久化字段、role、`cache_region`、`is_carryover` 或可选字段语义。
+Message Domain 只表示后端已经持久化、能够通过 HTTP history 再次读取的消息事实。它不表示当前请求中的 SSE chunk、正在生成的 assistant 内容、optimistic user message、loading/streaming 状态、WebSocket event、发送请求的 `client_msg_id`、分页 UI 状态或 conversation `message_count`。
+
+```text
+GET /api/conversations/{conv_id}/messages
+  -> history wire DTO
+  -> runtime validation / mapper
+  -> persistent Message domain model
+```
+
+History endpoint 契约：
+
+- Method/path 为 `GET /api/conversations/{conv_id}/messages`，conversation ID 作为单个 path segment URL encode。
+- `limit` 是可省略的 integer；服务端默认 `50`，最小 `1`，最大 `500`。client 省略未提供的 limit，不复制默认值。
+- `before` 是可省略的 finite Unix seconds number。显式 `before=0` 仍编码；client 不修复服务端当前 `if before` 的 truthy 行为。
+- response 是裸 JSON 数组。SQL 先取最新消息，再在响应前 reverse，所以 wire 最终顺序为旧到新；client 不 reverse、不排序、不去重。
+- response 没有 wrapper、`hasMore`、`has_more`、`nextCursor` 或 `next_cursor`。client 不推断下一页，也不发明 message-ID cursor。
+- conversation 不存在与 conversation 存在但没有消息都会成功返回 `[]`；空数组不是 404。
+- HTTP history 不包含尚未提交的 assistant 内容；send 过程中已经提交的 user message 可能被读到。
+
+History wire item 的当前字段为：
+
+```ts
+type MessageDto = {
+  id: string;
+  conv_id: string;
+  role: string;
+  content: string;
+  created_at: number;
+  simple_think: string | null;
+  is_carryover: 0 | 1 | null;
+  attachments: JsonValue[];
+  thinking: string | null;
+  mcp_tool_calls: JsonValue[];
+  cache_region: string | null;
+  voice?: MessageVoiceDto;
+};
+```
+
+`simple_think`、`thinking`、`cache_region` 和 `is_carryover` 所在数据库列没有 `NOT NULL` 约束，因此 domain 保留真实 null；carryover 只把 `0/1/null` 映射成 `false/true/null`，不对其他值做 truthy coercion。时间字段保持 Unix seconds，不转换单位。
+
+后端 history route 对 DB 中的 attachments 与 `mcp_tool_calls` JSON string 执行 `json.loads`，并把 DB `NULL`、空串和空数组表示归一成 `[]`；当前持久化写入与 contract tests 将成功 shape 约束为数组，但 route 本身没有额外检查解析后的顶层类型。这两个字段只有数组顶层契约，没有稳定 item schema；domain 将 item 保留为递归 JSON value，不猜 attachment URL/music union，也不解释 MCP 工具语义。未知但合法的 JSON 字段必须保留，raw object 必须递归复制。坏 JSON 仍可能使当前后端 route 失败；成功响应中的错误顶层类型或非 JSON nested value 是前端 contract mismatch，不能静默变成空数组。
+
+可选 voice 是已经持久化的 capability；无 voice 时 wire 完全省略该字段，domain 使用 `null`，不得制造空 voice。完整 projection 为 `audio_id/msg_id/provider/voice_id/url/duration/favorited/created_at/updated_at`；`duration` 可为 null，`favorited` 是 boolean，其余时间为 Unix seconds number。
+
+后端对 message role 没有枚举约束。domain 必须保留 `rawRole`，并另提供稳定 `roleKind`：`user/assistant/system` 原样分类，`cam_trigger/cam_user/cam_log` 分类为 `hidden-runtime`，其余 role 分类为 `unknown`。未知 role 不拒绝、不改写成 assistant；最终 UI 展示策略不由本阶段决定。
+
+raw snake_case DTO 只存在于 `src/domain/message` 内部边界，不由领域 barrel 导出，也不进入组件。mapper 只投影公开字段、递归复制 JSON capability、丢弃额外 secret/config/raw payload，并用不包含原始 payload 的 `MessageContractError` 报告 contract mismatch。HTTP 401/422/500 与 network/timeout/abort 继续保持共享 transport 的 `ApiError` 语义。
+
+HTTP history、SSE 与 WebSocket 是三个不同时间边界：history 是可重读的持久化最终事实，SSE 是当前请求的原始增量，WebSocket 是持久化后的变化通知。SSE 拼接内容不保证等于最终持久化 Message，因此 `streamingContent/status/isStreaming` 等字段不得进入 Message Domain。WebSocket payload 与 HTTP history DTO 也不能共用未经验证的 wire mapper。
+
+前端 Message mapper 与后端 Prompt History Projection 是两套独立边界：前者忠实读取持久化事实；后者决定下一轮如何向 AI provider 表达这些事实。本阶段不把 system role 改成 user/assistant，不处理系统通知格式，也不修改 command、MCP、Camera、Schedule 或其他 prompt 回注逻辑。
 
 **AionsHome 权威来源**：`docs/chat-message-dto-contract.md`、`aion-chat/routes/chat.py`、`aion-chat/database.py` 及 `aion-chat/tests/contract/test_chat_message_dto_contract.py`。
 
@@ -190,5 +235,5 @@ SSE/WS 权威关系、stop/cancel、carryover 所有权、production 部署、se
 | Stop/cancel | `Pending backend confirmation` | 尚无已确认的服务端停止契约。 |
 | Carryover 所有权 | `Pending backend confirmation` | 前后端职责与迁移方式待确认。 |
 | Production 部署方式 | `Pending backend confirmation` | 同源反代或跨域部署待确认。 |
-| Message DTO mapper | `Pending migration` | raw DTO 差异已知，Penumbra mapper 尚未实施。 |
+| Message DTO mapper | `Completed (S4B)` | HTTP history wire DTO、runtime validation、persistent Message mapper 与 read client 已实施；history state/pagination 尚未实施。 |
 | WebSocket event type/payload/timing | `Do not change` | 迁移期间保持现有契约。 |
