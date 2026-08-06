@@ -22,6 +22,7 @@
 Foundation
 - PR8A Runtime config + HTTP transport：已完成
 - PR8B Architecture / migration / contracts docs：已完成
+- Local–Remote Backend Dev Bridge：已完成
 
 Settings
 - Settings Domain Audit：已完成
