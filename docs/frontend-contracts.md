@@ -343,6 +343,17 @@ S4E2 服务一次只处理一个 plan，不拥有连接或并发控制。未来 
 - `/api/settings` 不再作为普通前端连接探针。raw wire DTO 必须先经过校验与 mapper，不能进入 React 组件。
 - readiness reason 是 HTTP 200 下的业务状态，不得与 transport error、contract error 或认证状态混合。
 
+### Settings Safe Basics Integration（S5A）
+
+- Settings 安全概览只调用 `GET /api/session`、`GET /api/models` 和 `GET /api/chat/readiness`，三个请求经现有 Runtime Domain 与通用 HTTP transport 并行发起。
+- 页面是只读安全概览，当前 Penumbra Settings 的背景、透明度、色彩、圆角、阴影、间距和响应式布局是实现基准；S5A 不进行全局视觉重构。
+- 旧 `/api/settings` 不属于本层 allowlist，不得用作探针、fallback 或聚合读取；Provider secret、endpoint、cookie、Authorization 和完整 config 不得进入 application read model 或页面文本。
+- `/api/models` 的后端顺序必须保留。列表第一项不是默认模型、当前模型或 bootstrap model，页面不得据此推断或写入选择。
+- `ChatReadiness` 是后端对 bootstrap/current model 的事实投影；前端不重新计算 readiness。其 `modelKey` 即使不在 models 列表中也必须作为 unknown model 保留并展示。
+- `idle/loading/success/error`、retry、AbortController 和旧请求竞态保护属于 React/controller 层，不进入 Runtime Domain 或 `SettingsOverview` application model，也不持久缓存或轮询。
+- Settings Overview 不读取 Conversation 或 Message，不调用 Chat Execution，不消费 SSE，不连接 WebSocket，也不触发 Realtime Reconciliation。
+- Provider Administration、secret management、TTS/ASR、Memory、Camera、Location、MCP、Schedule 与高级模型参数留待后续独立迁移，不因安全概览完成而视为已接入。
+
 **AionsHome 权威来源**：`aion-chat/main.py`、`aion-chat/auth.py`、部署配置和未来部署契约；Penumbra transport 事实见 `src/lib/runtime-config.ts` 与 `src/lib/api.ts`。
 
 ## 12. Provider config 与 secret
@@ -381,6 +392,7 @@ SSE/WS 权威关系、stop/cancel、carryover 所有权、production 部署、se
 | Chat Execution Client / Event Contract | `Completed (S4D2)` | send/regenerate request mapping、双 media type、duplicate acknowledgement、安全 Chat event projection 与单请求 iterator 已实施。 |
 | WebSocket Transport / Event Contract | `Completed (S4E1)` | runtime `/ws` URL、单连接 lifecycle、安全 JSON decode、稳定 ID projection、unknown marker 与 close metadata 已实施；无自动重连或 History mutation。 |
 | Realtime Reconciliation Application | `Completed (S4E2)` | event-to-plan、current-conversation latest refresh、ID delete、file/reconnect scratch reload、conversation invalidation、result authority/scope 与 SSE/WS ID correlation 已实施；无 connection、queue、React 或 streaming state。 |
+| Settings Safe Basics Integration | `Completed (S5A)` | Session、models 与 bootstrap readiness 已通过 application read model 接入现有 Settings；含安全 error summary、loading、empty、retry、abort 与 stale-request 防护，无旧 `/api/settings` 或写操作。 |
 | Message update reconciliation | `Backend contract gap` | WS 仅提供 ID 且 HTTP 无单 Message GET；latest refresh 无法保证较早消息已权威更新，结果保持 `latest-window-only`。 |
 | SSE/WS 权威关系 | `Pending backend confirmation` | 去重与最终权威规则待确认。 |
 | Stop/cancel | `Pending backend confirmation` | 尚无已确认的服务端停止契约。 |

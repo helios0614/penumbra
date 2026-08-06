@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import {
   Check,
-  CheckCircle2,
-  CircleDashed,
   Image as ImageIcon,
   Monitor,
   Moon,
@@ -12,13 +10,8 @@ import {
   Upload,
   XCircle,
 } from "lucide-react";
-import {
-  INITIAL_BACKEND_STATUS,
-  checkBackendStatus,
-  type BackendStatus,
-  type ConnectionState,
-  type LoginState,
-} from "@/lib/backend";
+import { SettingsSafeBasics } from "@/components/settings/SettingsSafeBasics";
+import { useSettingsOverview } from "@/components/settings/useSettingsOverview";
 import { cn } from "@/lib/utils";
 import {
   AI_COLOR_PRESETS,
@@ -55,20 +48,8 @@ const themeModeOptions = [
   icon: typeof Monitor;
 }>;
 
-const connectionCopy: Record<ConnectionState, string> = {
-  checking: "连接中",
-  connected: "已连接",
-  failed: "后端不可达",
-};
-
-const loginCopy: Record<LoginState, string> = {
-  "logged-in": "已登录",
-  "logged-out": "后端可达但未登录",
-  unknown: "未知",
-};
-
 export function SettingsView({ onBack }: SettingsViewProps) {
-  const [status, setStatus] = useState<BackendStatus>(INITIAL_BACKEND_STATUS);
+  const { state: overviewState, retry: reloadOverview } = useSettingsOverview();
   const [themeColor, setThemeColor] = useState(getStoredThemeColor);
   const [aiColor, setAiColor] = useState(getStoredAiColor);
   const [themeMode, setThemeMode] = useState(getStoredThemeMode);
@@ -93,20 +74,6 @@ export function SettingsView({ onBack }: SettingsViewProps) {
   const selectThemeMode = useCallback((mode: ThemeMode) => {
     setThemeMode(applyThemeMode(mode));
   }, []);
-
-  const refresh = useCallback(async () => {
-    setStatus((current) => ({
-      ...current,
-      connection: "checking",
-      login: "unknown",
-      message: undefined,
-    }));
-    setStatus(await checkBackendStatus());
-  }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
 
   useEffect(() => {
     let disposed = false;
@@ -188,7 +155,8 @@ export function SettingsView({ onBack }: SettingsViewProps) {
     }
   }, [updateWallpaperSettings]);
 
-  const isChecking = status.connection === "checking";
+  const isOverviewLoading =
+    overviewState.status === "idle" || overviewState.status === "loading";
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8">
@@ -200,21 +168,26 @@ export function SettingsView({ onBack }: SettingsViewProps) {
             </p>
             <h2 className="mt-1 text-xl font-semibold text-foreground">设置</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              后端连接状态和基础配置入口。
+              设备外观偏好与安全只读运行状态。
             </p>
           </div>
           <div className="flex shrink-0 gap-2">
             <button
               type="button"
-              onClick={refresh}
-              disabled={isChecking}
+              onClick={reloadOverview}
+              disabled={isOverviewLoading}
               className={cn(
                 "inline-flex h-10 items-center gap-2 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm",
                 "transition-colors hover:bg-primary-hover active:bg-primary-active disabled:cursor-not-allowed disabled:opacity-60",
               )}
             >
-              <RefreshCw className={cn("size-4", isChecking && "animate-spin")} />
-              重新检测连接
+              <RefreshCw
+                className={cn(
+                  "size-4",
+                  isOverviewLoading && "animate-spin motion-reduce:animate-none",
+                )}
+              />
+              {isOverviewLoading ? "正在加载" : "重新加载"}
             </button>
             {onBack && (
               <button
@@ -222,6 +195,7 @@ export function SettingsView({ onBack }: SettingsViewProps) {
                 onClick={onBack}
                 className="grid size-10 place-items-center rounded-full border border-border-strong/50 bg-background/35 text-foreground shadow-sm transition-colors hover:bg-background/55"
                 title="返回桌面"
+                aria-label="返回桌面"
               >
                 <XCircle className="size-5" />
               </button>
@@ -495,85 +469,10 @@ export function SettingsView({ onBack }: SettingsViewProps) {
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
-        <StatusPanel
-          label="后端连接状态"
-          value={connectionCopy[status.connection]}
-          tone={status.connection}
-        />
-        <StatusPanel
-          label="登录状态"
-          value={loginCopy[status.login]}
-          tone={status.login === "logged-in" ? "connected" : status.login === "logged-out" ? "failed" : "checking"}
-        />
-        <StatusPanel
-          label="检测接口"
-          value={status.endpoint}
-          tone="checking"
-          mono
-        />
-      </div>
-
-      <div className="mist-glass rounded-[24px] p-4 sm:p-5">
-        <div className="flex flex-col gap-3">
-          <SettingsSectionHeading
-            title="当前 API Base URL"
-            description="后端请求当前使用的基础地址。"
-          />
-          <code className="overflow-x-auto rounded-xl bg-surface-secondary px-3 py-2 text-xs text-muted-strong">
-            {status.apiBaseUrl}
-          </code>
-          {status.checkedAt && (
-            <span className="text-xs text-muted-foreground">
-              最近检测：{new Date(status.checkedAt).toLocaleString()}
-            </span>
-          )}
-          {status.message && (
-            <span className="text-xs text-muted-foreground">
-              返回信息：{status.message}
-            </span>
-          )}
-        </div>
-      </div>
+      <SettingsSafeBasics state={overviewState} onRetry={reloadOverview} />
 
       <div className="grid gap-3 md:grid-cols-3">
-        <PlaceholderSection title="模型设置" />
-        <PlaceholderSection title="Chat 设置" />
         <PlaceholderSection title="日历设置" />
-      </div>
-    </div>
-  );
-}
-
-function StatusPanel({
-  label,
-  value,
-  tone,
-  mono,
-}: {
-  label: string;
-  value: string;
-  tone: ConnectionState;
-  mono?: boolean;
-}) {
-  const Icon = tone === "connected" ? CheckCircle2 : tone === "failed" ? XCircle : CircleDashed;
-
-  return (
-    <div className="mist-glass rounded-[22px] p-4">
-      <div className="flex items-start justify-between gap-3">
-        <SettingsSectionHeading
-          title={label}
-          description={value}
-          descriptionClassName={cn(mono && "font-mono")}
-        />
-        <Icon
-          className={cn(
-            "size-5 shrink-0",
-            tone === "connected" && "text-success",
-            tone === "failed" && "text-destructive",
-            tone === "checking" && "text-muted-foreground",
-          )}
-        />
       </div>
     </div>
   );

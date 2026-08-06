@@ -27,6 +27,8 @@ Settings
 - Settings Domain Audit：已完成
 - Safe Settings Read Contract：已完成（AionHome）
 - Penumbra Settings/Runtime Read Layer：已完成
+- Settings Safe Basics Integration：已完成
+- Settings UI Refinement：待实施
 - Provider Administration：延后
 
 Chat
@@ -40,7 +42,8 @@ Chat
 - Chat Execution Client / Event Contract：已完成
 - WebSocket Transport / Event Contract：已完成
 - Realtime Reconciliation Application：已完成
-- Settings Shell / Safe Basics：待实施
+- Settings Safe Basics Integration：已完成
+- Settings UI Refinement：待实施
 - Chat UI Migration：待实施
 - Chat Setup UI：待实施
 - 模型变更 command：待真实 Conversation selection 接入
@@ -49,9 +52,26 @@ Chat
 - Stop/cancel：等待后端契约确认
 ```
 
-当前 Penumbra 已有 Chat、Calendar、Todo 和 Settings 的部分 UI 外壳，但 Chat/Conversation 仍由 mock 驱动，Calendar/Todo 尚未接入后端业务状态，Settings 只接入后端连通性检查。UI 存在不代表领域已完成迁移。
+S5A 完成后的增量里程碑：
 
-> Runtime read client、安全 backend probe、Conversation/Message Domain Foundation、Conversation CRUD hardening、Chat Setup Application Layer、Message History Application、Streaming Transport / SSE Framing、Chat Execution Client / Event Contract、WebSocket Transport / Event Contract 与 Realtime Reconciliation Application 已完成；Settings Shell、Chat UI 接入及 optimistic/streaming composition 尚未实施。
+```text
+Runtime Read Layer：已完成
+Conversation Domain Foundation：已完成
+Chat Setup Application Layer：已完成
+Message Domain Foundation：已完成
+Message History Application：已完成
+Streaming Transport / SSE Framing：已完成
+Chat Execution Client / Event Contract：已完成
+WebSocket Transport / Event Contract：已完成
+Realtime Reconciliation Application：已完成
+Settings Safe Basics Integration：已完成
+Settings UI Refinement：待实施
+Chat UI Migration：待实施
+```
+
+当前 Penumbra 已有 Chat、Calendar、Todo 和 Settings 的部分 UI 外壳，但 Chat/Conversation 仍由 mock 驱动，Calendar/Todo 尚未接入后端业务状态。Settings 已接入安全只读的 Session、models 与 Chat readiness，Provider/TTS/Memory 等完整设置仍未迁移。UI 存在不代表领域已完成迁移。
+
+> Runtime read client、Conversation/Message Domain Foundation、Conversation CRUD hardening、Chat Setup Application Layer、Message History Application、Streaming Transport / SSE Framing、Chat Execution Client / Event Contract、WebSocket Transport / Event Contract、Realtime Reconciliation Application 与 Settings Safe Basics Integration 已完成；Settings UI Refinement、Chat UI 接入及 optimistic/streaming composition 尚未实施。
 
 Backend blocker：**Message update reconciliation**。当前 WS 只提供 message/conversation ID，HTTP 没有单 Message GET；较早消息更新无法由有限 latest window 保证完整对账。S4E2 将该结果保持为 `latest-window-only`，不以 WS payload、伪造单条 fetch 或自动分页全部历史规避此契约缺口。
 
@@ -145,7 +165,7 @@ Backend blocker：**Message update reconciliation**。当前 WS 只提供 messag
 | Message | `aion-chat/static/chat.html`、message API/DTO contract | Message Domain Foundation 与 Message History Application 已完成；React hook、ViewModel 与 UI 接入待实施 | 直接复用现有 Penumbra UI；adapter/mapper 转换 | P0 |
 | WebSocket | `aion-chat/static/common.js`、`aion-chat/static/chat.html`、`aion-chat/ws.py` | S4E1 单连接 transport 与安全 event projection、S4E2 Realtime Reconciliation 已完成 | 共享 transport 负责单次连接和分发；reconciliation application 负责 HTTP authority 策略；未来 coordinator 负责串行化与连接策略 | P0 |
 | Upload | `aion-chat/static/chat.html`、`aion-chat/routes/files.py` | 有附件按钮和 upload URL resolution，未上传 | domain client 重写；adapter/mapper 转换；延后 | P1 |
-| Settings/provider config | `aion-chat/static/settings.html`、`aion-chat/routes/settings.py` | 有本地外观设置和后端状态检查；领域审计已完成；无安全 read layer 或 provider 配置 | 直接复用现有 Penumbra UI；domain client 重写；adapter/mapper 转换；高级管理延后 | P0（安全只读层）/ P1（管理） |
+| Settings/provider config | `aion-chat/static/settings.html`、`aion-chat/routes/settings.py` | 已有本地外观设置与 Session/models/readiness 安全只读概览；无 provider 配置管理 | 直接复用现有 Penumbra UI；安全 read layer 已完成；高级管理延后 | P0（安全只读层已完成）/ P1（管理） |
 | Schedule/Todo | `aion-chat/static/schedule.html`、schedule routes/runtime | Calendar UI 可复用；Todo 为静态数据，均未接后端 | 直接复用现有 Penumbra UI；domain client 重写；adapter/mapper 转换 | P1 |
 | Memory | `aion-chat/static/memory.html`、memory routes/runtime | 未接真实数据 | domain client 重写；adapter/mapper 转换；UI 重做 | P2 |
 | Activity | `aion-chat/static/activity-logs.html`、activity routes/runtime | 未接入 | domain client 重写；adapter/mapper 转换；UI 重做 | P2 |
