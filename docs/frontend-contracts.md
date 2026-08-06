@@ -1,6 +1,6 @@
 # Penumbra 前端契约摘要
 
-> 最后更新：2026-08-03
+> 最后更新：2026-08-06
 
 导航：[架构原则](./penumbra-architecture.md) · [迁移路线图](./frontend-migration-plan.md) · [前端契约](./frontend-contracts.md)
 
@@ -57,6 +57,34 @@ updateConversation(id, { modelKey: nextModelKey })
 update 成功与 readiness refresh 之间不是原子操作；在出现真实调用方前不提前实现未使用的 mutation command。
 
 **AionsHome 权威来源**：`docs/aionhome-runtime-model.md`、`docs/aionhome-refactor-master-plan.md` 及相关领域实现和 contract tests。
+
+### Chat Workspace Read Model & Controller（S6A）
+
+Chat Workspace 位于 Chat Setup、Conversation Domain 与 Message History Application 之上，为未来 Chat 页面组合一次 bootstrap setup、真实 conversation list、当前前端 selection 和所选 conversation 的初始持久化 history。它不定义新的 wire DTO，也不直接调用 transport 或 `fetch`。
+
+```ts
+type ChatWorkspaceSnapshot = {
+  readonly setup: ChatSetupViewModel;
+  readonly conversations: readonly ConversationSummary[];
+  readonly selectedConversationId: string | null;
+  readonly selectedConversation: ConversationSummary | null;
+  readonly history: MessageHistoryState | null;
+};
+```
+
+- 现有 Chat Setup 的公开 bootstrap loader 只组合 models 与 bootstrap readiness，不读取 conversation list 或 session；Workspace 对它只调用一次，并通过 Conversation Domain 对真实列表只调用一次。Workspace 不拆开重复请求 models/readiness，也不借用 Settings Overview。
+- `setup` 是一次 bootstrap Chat Setup 结果，与 conversation selection 分离；它不从 models 第一项推断模型。conversation 的模型事实仍由 `selectedConversation.modelKey` 提供。conversation switch 不重新请求 setup、list、session、models 或 readiness。
+- Snapshot 只包含成功读取的 application 数据，不包含 loading、error、pending、retry、streaming、sending、realtime、scroll 或 toast 状态，也不复制第二份 `Message[]`。Domain Message 尚未映射成现有 Chat UI 的 mock `ChatMessage`。
+- selection 是前端 UI policy，不是后端 default conversation。为保持当前 Penumbra Chat 的用户可见行为，初次加载先采用存在于列表中的 `preferredConversationId`，否则采用后端原顺序的第一项；这不改变后端 `updated_at DESC` 顺序，也不使用 model、`messageCount` 或 mock ID 推导选择。
+- 重新 bootstrap 时优先保持仍存在的 current selection；若已删除，则重新应用 preferred/第一项策略。空列表不创建 conversation，selection 与 history 都为 null。无 selection 时不请求 history。
+- 有 selection 时只调用一次 `loadInitialMessageHistory`。selected ID、selected Conversation 与 `history.conversationId` 必须一致；任何内部不一致以不含 ID、message content 或 raw state 的 `ChatWorkspaceContractError` 拒绝。
+- conversation switch 只对真实列表内的目标 ID 请求一次 initial history，不重新加载 Chat Setup 或 conversation list，不预加载相邻 conversation。未知 ID 在 HTTP 前拒绝，不回退第一项，也不创建临时 conversation。
+- switch 请求期间 controller 保留完整旧 Snapshot；目标 history 成功后 selected ID、selected Conversation 与 history 一次性原子替换。失败时保留旧 Snapshot，只公开安全 UI error。标题、选中项与消息 history 因而始终属于同一 conversation。
+- React controller 为 bootstrap 与 switch 分别维护 AbortController 和递增 request generation。retry、快速 A→B→C、abort、unmount 和 Strict Mode 下的 stale success/error 都不能覆盖更新选择；abort 不作为普通 UI error。
+- `useChatWorkspace` 只公开 controller state、bootstrap retry、`selectConversation(id)` 与 switch retry。它不公开 send、regenerate、stop、older pagination、latest refresh、realtime connection、streaming text 或 optimistic message。
+- Chat Workspace 不依赖 Chat Execution、SSE、WebSocket、Realtime Reconciliation 或 Settings。本阶段不修改现有 Chat page/view、`useChat`、mock conversations/messages 或视觉；S6B 再实现 presentation mapping 与只读页面接入。
+
+**AionsHome 权威来源**：`aion-chat/routes/chat.py` 中 conversation list 与 initial history 的当前读取语义；Penumbra composition 事实见 `src/application/chat-setup`、`src/domain/conversation` 与 `src/application/message-history`。
 
 ## 2. Message Domain（S4B）
 
@@ -393,10 +421,11 @@ SSE/WS 权威关系、stop/cancel、carryover 所有权、production 部署、se
 | WebSocket Transport / Event Contract | `Completed (S4E1)` | runtime `/ws` URL、单连接 lifecycle、安全 JSON decode、稳定 ID projection、unknown marker 与 close metadata 已实施；无自动重连或 History mutation。 |
 | Realtime Reconciliation Application | `Completed (S4E2)` | event-to-plan、current-conversation latest refresh、ID delete、file/reconnect scratch reload、conversation invalidation、result authority/scope 与 SSE/WS ID correlation 已实施；无 connection、queue、React 或 streaming state。 |
 | Settings Safe Basics Integration | `Completed (S5A)` | Session、models 与 bootstrap readiness 已通过 application read model 接入现有 Settings；含安全 error summary、loading、empty、retry、abort 与 stale-request 防护，无旧 `/api/settings` 或写操作。 |
+| Chat Workspace Read Model & Controller | `Completed (S6A)` | 一次 bootstrap setup、真实 conversation list、前端 selection 与 initial persisted history 已组合；含 atomic switch、retry、abort 与 stale-request 防护，无现有 Chat UI、Execution、SSE、WebSocket、Reconciliation 或 Settings 耦合。 |
 | Message update reconciliation | `Backend contract gap` | WS 仅提供 ID 且 HTTP 无单 Message GET；latest refresh 无法保证较早消息已权威更新，结果保持 `latest-window-only`。 |
 | SSE/WS 权威关系 | `Pending backend confirmation` | 去重与最终权威规则待确认。 |
 | Stop/cancel | `Pending backend confirmation` | 尚无已确认的服务端停止契约。 |
 | Carryover 所有权 | `Pending backend confirmation` | 前后端职责与迁移方式待确认。 |
 | Production 部署方式 | `Pending backend confirmation` | 同源反代或跨域部署待确认。 |
-| Message DTO mapper | `Completed (S4B)` | HTTP history wire DTO、runtime validation、persistent Message mapper 与 read client 已实施；history state/pagination 尚未实施。 |
+| Message DTO mapper | `Completed (S4B/S4C)` | HTTP history wire DTO、runtime validation、persistent Message mapper、read client 与 history state/pagination application 已实施；older pagination 尚未接入 Chat controller/UI。 |
 | WebSocket event type/payload/timing | `Do not change` | 迁移期间保持现有契约。 |
