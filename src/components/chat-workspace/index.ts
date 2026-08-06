@@ -18,3 +18,4 @@ export {
 export type {
   UseChatWorkspaceResult,
 } from "@/components/chat-workspace/useChatWorkspace";
+export * from "@/components/chat-workspace/presentation";

@@ -3,6 +3,7 @@ import {
   useRef,
   useCallback,
   useEffect,
+  useId,
   type KeyboardEvent,
   type ChangeEvent,
 } from "react";
@@ -11,11 +12,12 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface SenderProps {
-  onSend: (content: string) => void;
+  onSend?: (content: string) => void;
   onStop?: () => void;
   isStreaming?: boolean;
   disabled?: boolean;
   placeholder?: string;
+  statusMessage?: string;
   className?: string;
 }
 
@@ -25,10 +27,12 @@ export function Sender({
   isStreaming,
   disabled,
   placeholder = "输入消息…",
+  statusMessage,
   className,
 }: SenderProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const statusId = useId();
 
   // 自动增高
   const autoResize = useCallback(() => {
@@ -45,7 +49,7 @@ export function Sender({
 
   const handleSubmit = useCallback(() => {
     const trimmed = value.trim();
-    if (!trimmed || disabled) return;
+    if (!trimmed || disabled || !onSend) return;
     onSend(trimmed);
     setValue("");
     // 重置高度
@@ -72,7 +76,7 @@ export function Sender({
     [],
   );
 
-  const canSend = value.trim().length > 0 && !disabled;
+  const canSend = value.trim().length > 0 && !disabled && onSend !== undefined;
 
   return (
     <div
@@ -102,6 +106,7 @@ export function Sender({
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             disabled={disabled}
+            aria-describedby={statusMessage ? statusId : undefined}
             rows={1}
             className={cn(
               "flex-1 min-w-0 bg-transparent text-[15px] leading-6 text-foreground",
@@ -118,6 +123,7 @@ export function Sender({
               variant="destructive"
               size="icon-sm"
               onClick={onStop}
+              disabled={disabled || !onStop}
               className="shrink-0 rounded-full"
               aria-label="停止生成"
             >
@@ -139,6 +145,15 @@ export function Sender({
             </Button>
           )}
         </div>
+
+        {statusMessage && (
+          <p
+            id={statusId}
+            className="mt-2 text-center text-xs text-muted-foreground"
+          >
+            {statusMessage}
+          </p>
+        )}
 
       </div>
     </div>

@@ -1,15 +1,14 @@
-import { useRef, useEffect, useMemo, memo } from "react";
+import { format, isToday, isYesterday } from "date-fns";
+import { zhCN } from "date-fns/locale";
+import { memo, useEffect, useMemo, useRef } from "react";
+
+import type { ChatMessageViewModel } from "@/components/chat-workspace/presentation";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+
 import { Bubble } from "./Bubble";
-import { SystemCommandGroup } from "./system-command/SystemCommandGroup";
-import type { ChatMessage } from "./types";
-import { isToday, isYesterday, format } from "date-fns";
-import { zhCN } from "date-fns/locale";
 
-// ─── 时间分组标记 ───
-
-function DateSeparator({ timestamp }: { timestamp: number }) {
+function DateSeparator({ timestamp }: { readonly timestamp: number }) {
   const date = new Date(timestamp * 1000);
   let label: string;
 
@@ -22,151 +21,81 @@ function DateSeparator({ timestamp }: { timestamp: number }) {
   }
 
   return (
-    <div className="flex items-center gap-3 my-2">
-      <div className="flex-1 h-px bg-border" />
+    <div className="my-2 flex items-center gap-3">
+      <div className="h-px flex-1 bg-border" />
       <span className="shrink-0 text-xs text-muted-foreground/70">{label}</span>
-      <div className="flex-1 h-px bg-border" />
+      <div className="h-px flex-1 bg-border" />
     </div>
   );
 }
 
-// ─── 日期分组 ───
-
 interface DateGroup {
-  dateKey: string;
-  timestamp: number;
-  messages: ChatMessage[];
+  readonly dateKey: string;
+  readonly timestamp: number;
+  readonly messages: ChatMessageViewModel[];
 }
 
-function groupByDate(messages: ChatMessage[]): DateGroup[] {
+function groupByDate(messages: readonly ChatMessageViewModel[]): DateGroup[] {
   const groups: DateGroup[] = [];
   let currentKey = "";
   let currentGroup: DateGroup | null = null;
 
-  for (const msg of messages) {
-    const date = new Date(msg.created_at * 1000);
-    const key = format(date, "yyyy-MM-dd");
+  for (const message of messages) {
+    const key = format(new Date(message.createdAt * 1000), "yyyy-MM-dd");
 
     if (key !== currentKey) {
-      currentGroup = { dateKey: key, timestamp: msg.created_at, messages: [] };
+      currentGroup = {
+        dateKey: key,
+        timestamp: message.createdAt,
+        messages: [],
+      };
       groups.push(currentGroup);
       currentKey = key;
     }
-    currentGroup!.messages.push(msg);
+    currentGroup!.messages.push(message);
   }
 
   return groups;
 }
 
-// ─── 消息分段：连续 system 消息合并为一组 ───
-
-interface MessageSegment {
-  type: "single" | "system-group";
-  messages: ChatMessage[];
-}
-
-function segmentMessages(messages: ChatMessage[]): MessageSegment[] {
-  const segments: MessageSegment[] = [];
-  let systemBatch: ChatMessage[] = [];
-
-  for (const msg of messages) {
-    if (msg.role === "system") {
-      systemBatch.push(msg);
-    } else {
-      // 先把之前累积的系统消息推入
-      if (systemBatch.length > 0) {
-        segments.push({ type: "system-group", messages: systemBatch });
-        systemBatch = [];
-      }
-      segments.push({ type: "single", messages: [msg] });
-    }
-  }
-  // 尾部系统消息
-  if (systemBatch.length > 0) {
-    segments.push({ type: "system-group", messages: systemBatch });
-  }
-
-  return segments;
-}
-
-// ─── 消息列表 ───
-
 interface BubbleListProps {
-  messages: ChatMessage[];
-  heartWhisperMessageIds?: ReadonlySet<string>;
-  streamingId?: string | null;
-  streamingContent?: string;
-  onRegenerate?: (msgId: string) => void;
-  onDelete?: (msgId: string) => void;
+  readonly conversationId: string;
+  readonly messages: readonly ChatMessageViewModel[];
 }
 
-function BubbleListInner({
-  messages,
-  heartWhisperMessageIds = new Set<string>(),
-  streamingId,
-  streamingContent,
-  onRegenerate,
-  onDelete,
-}: BubbleListProps) {
+function BubbleListInner({ conversationId, messages }: BubbleListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const lastMessageId = messages[messages.length - 1]?.id ?? null;
 
-  // 新消息自动滚动到底部
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, streamingContent]);
+    bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+  }, [conversationId, lastMessageId, messages.length]);
 
   const dateGroups = useMemo(() => groupByDate(messages), [messages]);
 
-  if (messages.length === 0) {
-    return null;
-  }
-
   return (
-    <ScrollArea className="flex-1 min-h-0 w-full overflow-hidden">
-      <div className="px-4 py-3 max-w-[720px] mx-auto flex flex-col gap-2">
-        {dateGroups.map((group) => {
-          const segments = segmentMessages(group.messages);
-          return (
-            <div key={group.dateKey}>
-              <DateSeparator timestamp={group.timestamp} />
-              <div className="flex flex-col items-stretch w-full overflow-hidden">
-                {segments.map((seg, segIdx) => {
-                  if (seg.type === "system-group") {
-                    return (
-                      <div key={`sys-${seg.messages[0].id}`} className="w-full py-1.5">
-                        <SystemCommandGroup messages={seg.messages} />
-                      </div>
-                    );
-                  }
-                  // single — 普通消息
-                  const msg = seg.messages[0];
-                  // 判断是否需要加大间距（角色切换时）
-                  const prevSeg = segIdx > 0 ? segments[segIdx - 1] : null;
-                  const prevRole = prevSeg?.messages[0]?.role;
-                  const isRoleSwitch = prevRole && prevRole !== msg.role;
-                  return (
-                    <div key={msg.id} className={cn(isRoleSwitch ? "my-3" : "mt-1")}>
-                      <Bubble
-                        message={msg}
-                        hasHeartWhisper={heartWhisperMessageIds.has(msg.id)}
-                        isStreaming={msg.id === streamingId}
-                        streamingContent={
-                          msg.id === streamingId ? streamingContent : undefined
-                        }
-                        onRegenerate={
-                          onRegenerate
-                            ? () => onRegenerate(msg.id)
-                            : undefined
-                        }
-                        onDelete={onDelete ? () => onDelete(msg.id) : undefined}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
+    <ScrollArea className="min-h-0 w-full flex-1 overflow-hidden">
+      <div className="mx-auto flex max-w-[720px] flex-col gap-2 px-4 py-3">
+        {dateGroups.map((group) => (
+          <div key={group.dateKey}>
+            <DateSeparator timestamp={group.timestamp} />
+            <div className="flex w-full flex-col items-stretch overflow-hidden">
+              {group.messages.map((message, index) => {
+                const previous = group.messages[index - 1];
+                const isRoleSwitch = previous && previous.kind !== message.kind;
+
+                return (
+                  <div
+                    key={message.id}
+                    className={cn(isRoleSwitch ? "my-3" : "mt-1")}
+                  >
+                    <Bubble message={message} />
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
+          </div>
+        ))}
         <div ref={bottomRef} />
       </div>
     </ScrollArea>

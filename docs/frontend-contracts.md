@@ -82,9 +82,44 @@ type ChatWorkspaceSnapshot = {
 - switch 请求期间 controller 保留完整旧 Snapshot；目标 history 成功后 selected ID、selected Conversation 与 history 一次性原子替换。失败时保留旧 Snapshot，只公开安全 UI error。标题、选中项与消息 history 因而始终属于同一 conversation。
 - React controller 为 bootstrap 与 switch 分别维护 AbortController 和递增 request generation。retry、快速 A→B→C、abort、unmount 和 Strict Mode 下的 stale success/error 都不能覆盖更新选择；abort 不作为普通 UI error。
 - `useChatWorkspace` 只公开 controller state、bootstrap retry、`selectConversation(id)` 与 switch retry。它不公开 send、regenerate、stop、older pagination、latest refresh、realtime connection、streaming text 或 optimistic message。
-- Chat Workspace 不依赖 Chat Execution、SSE、WebSocket、Realtime Reconciliation 或 Settings。本阶段不修改现有 Chat page/view、`useChat`、mock conversations/messages 或视觉；S6B 再实现 presentation mapping 与只读页面接入。
+- Chat Workspace 不依赖 Chat Execution、SSE、WebSocket、Realtime Reconciliation 或 Settings。S6A 本身没有修改当时的 Chat page/view、`useChat` 或 mock；S6B 的可见页面接入边界见下一节。
 
 **AionsHome 权威来源**：`aion-chat/routes/chat.py` 中 conversation list 与 initial history 的当前读取语义；Penumbra composition 事实见 `src/application/chat-setup`、`src/domain/conversation` 与 `src/application/message-history`。
+
+### Chat Read-Only UI Integration（S6B）
+
+Chat 页面现在只通过 `useChatWorkspace()` 读取真实 conversation list、前端 selection 与所选 conversation 的 initial persistent history。production `ChatView` 不再 import `useChat`、`useConversations` 或 mock conversations/messages；旧 mock 文件与 hooks 可以暂留用于后续 cleanup，但不得再次成为 production Chat 的事实来源。HTTP history 是本阶段 BubbleList 的唯一 persistent Message 来源。
+
+UI 不直接消费 snake_case DTO，也不把 Domain `Message` 塞入旧 mock `ChatMessage`。presentation boundary 位于 `src/components/chat-workspace/presentation`，当前公开结构为：
+
+```ts
+type ChatConversationItemViewModel = {
+  readonly id: string;
+  readonly title: string;
+  readonly subtitle: string | null;
+  readonly modelKey: string | null;
+  readonly updatedAt: number | null;
+  readonly isSelected: boolean;
+  readonly isPending: boolean;
+};
+
+type ChatMessageViewModel =
+  | { readonly kind: "user"; readonly id: string; readonly content: string; readonly createdAt: number; readonly attachments: readonly ChatAttachmentViewModel[] }
+  | { readonly kind: "assistant"; readonly id: string; readonly content: string; readonly createdAt: number; readonly thinking: string | null; readonly simpleThink: string | null; readonly attachments: readonly ChatAttachmentViewModel[] }
+  | { readonly kind: "system"; readonly id: string; readonly content: string; readonly createdAt: number }
+  | { readonly kind: "unknown"; readonly id: string; readonly rawRole: string; readonly content: string; readonly createdAt: number };
+```
+
+- conversation mapper 保持后端列表顺序，标题为空时只使用固定 UI fallback，不写回 Domain；subtitle 只使用真实 `messageCount`，不伪造 preview、unread 或 online。header 的模型只来自 selected conversation `modelKey`，不使用 models 第一项或 readiness model 覆盖。
+- `user` 显示用户气泡；`assistant` 显示知远气泡；`system` 使用带“系统消息”文字标签和图标的中性样式，不使用 assistant 头像；`unknown` 使用带“暂不支持的消息类型”标签的中性样式，并只保留经过字符、长度与敏感词约束的安全 `rawRole`。unknown 不投影为 assistant，也不把内容解释为系统指令。
+- `hidden-runtime` 明确由 message presenter 返回 `null`；当前已知 `cam_trigger/cam_user/cam_log` 不进入可见 BubbleList。Domain Message 与 History 保持不变，隐藏数量不冒充可见消息数。
+- assistant 的 `thinking/simpleThink` 只复用现有纯文本轻量展示，不做 thinking UI 重构。Domain attachments 缺少稳定 item schema，因此不猜 MIME、URL 或图片；presentation 丢弃 raw capability，只为每个 item 生成不含原对象的“附件暂不支持”占位。music、MCP、voice、command 与其他 capability rendering 延后。
+- user 与 unknown content 按纯文本显示；assistant 继续使用现有 `react-markdown` 默认安全 URL/HTML 策略，不启用 `rehypeRaw` 或 `dangerouslySetInnerHTML`。长标题、model key、消息和 unknown role label 使用 truncate、break-all 或 break-words 控制溢出。
+- idle/loading 使用稳定双栏 skeleton 与 `aria-busy`；bootstrap error 只展示 controller 的安全分类摘要和 retry；unauthenticated 不自动登录；空列表不创建 conversation；ready/no-selection 不请求或伪造 history；空或仅 hidden-runtime 的 history 使用稳定 empty state。
+- conversation switch 直接调用 `selectConversation(id)`。pending item 只显示局部 spinner，旧 selected item、header 与 history 保持一致；成功后由 controller 原子替换；失败保留旧 workspace 并调用 `retryConversationSwitch()`。UI 不提前高亮目标、不清空旧 history，也不使用 timer 模拟。
+- initial history 与 conversation 成功切换后，BubbleList 只在 conversation ID、最后可见 message ID 或可见长度变化时滚动到底部；不在每次 render 强制滚动。本阶段不实现 load older、scroll anchor 或 per-conversation scroll memory。
+- Sender 保留原布局但 textarea、附件按钮和发送按钮均 disabled，并显示“发送功能将在下一阶段接入”。Welcome 快捷发送不进入 production Chat；页面不调用旧 mock send，不创建 optimistic message，也不提供 regenerate、stop 或 mutation。
+- S6B 不调用 Chat Execution，不打开或消费 SSE，不连接 WebSocket，不运行 Realtime Reconciliation，也不读取 Settings Overview。send/streaming composition、realtime coordination、load older、conversation CRUD、model mutation 与 capability rendering 都保持后续阶段。
 
 ## 2. Message Domain（S4B）
 
@@ -421,7 +456,8 @@ SSE/WS 权威关系、stop/cancel、carryover 所有权、production 部署、se
 | WebSocket Transport / Event Contract | `Completed (S4E1)` | runtime `/ws` URL、单连接 lifecycle、安全 JSON decode、稳定 ID projection、unknown marker 与 close metadata 已实施；无自动重连或 History mutation。 |
 | Realtime Reconciliation Application | `Completed (S4E2)` | event-to-plan、current-conversation latest refresh、ID delete、file/reconnect scratch reload、conversation invalidation、result authority/scope 与 SSE/WS ID correlation 已实施；无 connection、queue、React 或 streaming state。 |
 | Settings Safe Basics Integration | `Completed (S5A)` | Session、models 与 bootstrap readiness 已通过 application read model 接入现有 Settings；含安全 error summary、loading、empty、retry、abort 与 stale-request 防护，无旧 `/api/settings` 或写操作。 |
-| Chat Workspace Read Model & Controller | `Completed (S6A)` | 一次 bootstrap setup、真实 conversation list、前端 selection 与 initial persisted history 已组合；含 atomic switch、retry、abort 与 stale-request 防护，无现有 Chat UI、Execution、SSE、WebSocket、Reconciliation 或 Settings 耦合。 |
+| Chat Workspace Read Model & Controller | `Completed (S6A)` | 一次 bootstrap setup、真实 conversation list、前端 selection 与 initial persisted history 已组合；含 atomic switch、retry、abort 与 stale-request 防护；controller 本身不拥有 UI、Execution、SSE、WebSocket、Reconciliation 或 Settings。 |
+| Chat Read-Only UI Integration | `Completed (S6B)` | production Chat 已通过 presentation model 读取真实 Workspace；含 loading/error/empty、atomic switch UI、system/unknown 中性展示、hidden-runtime 过滤与 disabled Sender；无 send、Execution、SSE、WebSocket、Reconciliation、load older 或 capability rendering。 |
 | Message update reconciliation | `Backend contract gap` | WS 仅提供 ID 且 HTTP 无单 Message GET；latest refresh 无法保证较早消息已权威更新，结果保持 `latest-window-only`。 |
 | SSE/WS 权威关系 | `Pending backend confirmation` | 去重与最终权威规则待确认。 |
 | Stop/cancel | `Pending backend confirmation` | 尚无已确认的服务端停止契约。 |

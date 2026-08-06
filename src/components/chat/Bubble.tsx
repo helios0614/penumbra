@@ -1,82 +1,27 @@
+import { format } from "date-fns";
+import { Bot, CircleHelp, Info, Paperclip, User } from "lucide-react";
 import { memo } from "react";
+
+import type { ChatMessageViewModel } from "@/components/chat-workspace/presentation";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { MessageActions } from "./MessageActions";
 import { SimpleThink, ThinkingBlock } from "./system-command/InlineIndicator";
-import { getMusicAttachments } from "./system-command/message-capabilities";
-import { MusicResultCard } from "./system-command/ResultCard";
-import { SystemMessageLine } from "./system-command/SystemMessageLine";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { Bot, User } from "lucide-react";
-import type { ChatMessage } from "./types";
-import { format } from "date-fns";
 
-/**
- * 流式状态下剥离未闭合的 Markdown 结构，避免 DOM 跳变。
- */
-function stripIncompleteMarkdown(src: string): string {
-  let s = src;
-
-  // 未闭合的代码块：奇数个 ``` → 截断
-  const fences = s.match(/^```/gm);
-  if (fences && fences.length % 2 !== 0) {
-    const lastFenceIdx = s.lastIndexOf("```");
-    const afterFence = s.slice(lastFenceIdx + 3);
-    const langMatch = afterFence.match(/^[^\n]*/);
-    const textAfter = langMatch
-      ? afterFence.slice(langMatch[0].length).trimStart()
-      : afterFence;
-    s = s.slice(0, lastFenceIdx) + (textAfter ? "\n" + textAfter : "");
-  }
-
-  // 未闭合的表格行
-  const lines = s.split("\n");
-  let lastTableLine = -1;
-  for (let i = lines.length - 1; i >= 0; i--) {
-    if (/^\s*\|/.test(lines[i])) {
-      lastTableLine = i;
-    } else if (lastTableLine >= 0) {
-      break;
-    }
-  }
-  if (lastTableLine >= 0) {
-    const pipeCount = (lines[lastTableLine].match(/\|/g) ?? []).length;
-    if (pipeCount < 2) {
-      lines.splice(lastTableLine);
-      s = lines.join("\n");
-    }
-  }
-
-  // 尾部悬挂的列表标记
-  s = s.replace(/\n[-*+]\s*$/, "");
-  s = s.replace(/\n\d+\.\s*$/, "");
-
-  return s;
-}
-
-/**
- * 按 \n\n 拆分消息为多个气泡段落。
- * 代码块内部的 \n\n 不拆（通过 fence 计数判断）。
- */
 function splitIntoChunks(content: string): string[] {
-  if (!content) return [];
+  if (!content) return [""];
 
   const parts: string[] = [];
   let current = "";
   let fenceOpen = false;
 
   for (const line of content.split("\n")) {
-    // 跟踪代码块开关
     if (/^```/.test(line)) {
       fenceOpen = !fenceOpen;
     }
 
-    // 空行 + 非代码块内 = 拆分点
     if (line === "" && !fenceOpen) {
       if (current) {
         parts.push(current);
@@ -89,237 +34,154 @@ function splitIntoChunks(content: string): string[] {
   }
 
   if (current) parts.push(current);
-  return parts;
+  return parts.length > 0 ? parts : [""];
 }
 
-// ─── 加载骨架 ───
+function MessageAvatar({ kind }: { kind: "user" | "assistant" }) {
+  const isUser = kind === "user";
 
-function LoadingSkeleton() {
   return (
-    <div className="flex flex-col gap-1.5 py-1">
-      <div className="h-3.5 w-24 bg-muted/40 rounded animate-pulse" />
-      <div className="h-3.5 w-40 bg-muted/40 rounded animate-pulse [animation-delay:150ms]" />
-      <div className="h-3.5 w-16 bg-muted/40 rounded animate-pulse [animation-delay:300ms]" />
-    </div>
-  );
-}
-
-// ─── 流式光标 ───
-
-function StreamingCursor() {
-  return (
-    <span className="inline-block w-0.5 h-4 bg-primary animate-pulse ml-0.5 align-text-bottom" />
-  );
-}
-
-// ─── 消息头像 ───
-
-interface MessageAvatarProps {
-  isUser: boolean;
-  hasHeartWhisper?: boolean;
-}
-
-function MessageAvatar({ isUser, hasHeartWhisper }: MessageAvatarProps) {
-  const avatar = (
     <Avatar size="sm">
       <AvatarFallback className={cn(isUser ? "bg-primary-subtle" : "bg-ai-subtle")}>
         {isUser ? (
-          <User className="size-3.5 text-muted-foreground" />
+          <User className="size-3.5 text-muted-foreground" aria-hidden="true" />
         ) : (
-          <Bot className="size-3.5 text-ai" />
+          <Bot className="size-3.5 text-ai" aria-hidden="true" />
         )}
       </AvatarFallback>
     </Avatar>
   );
-
-  if (isUser || !hasHeartWhisper) return avatar;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            role="img"
-            aria-label="这条回复包含心声"
-            className="relative inline-flex shrink-0"
-          />
-        }
-      >
-        {avatar}
-        <span
-          aria-hidden="true"
-          className={cn(
-            "absolute bottom-0 right-0 size-2.5 rounded-full",
-            "bg-ai ring-2 ring-[var(--mist-solid-surface)]",
-            "animate-in fade-in-0 zoom-in-50 duration-500 motion-reduce:animate-none",
-          )}
-        />
-      </TooltipTrigger>
-      <TooltipContent>这条回复包含心声</TooltipContent>
-    </Tooltip>
-  );
-}
-
-// ─── 单个气泡段落 ───
-
-interface BubbleSegmentProps {
-  isUser: boolean;
-  isAssistant: boolean;
-  content: string;
-  isStreaming: boolean;
-  showCursor: boolean;
 }
 
 function BubbleSegment({
-  isUser,
-  isAssistant,
+  kind,
   content,
-  isStreaming,
-  showCursor,
-}: BubbleSegmentProps) {
+}: {
+  readonly kind: "user" | "assistant";
+  readonly content: string;
+}) {
+  const isUser = kind === "user";
+
   return (
     <div
       className={cn(
-        "relative rounded-md px-4 py-2 text-[14px] leading-[1.6] break-words overflow-wrap-anywhere overflow-hidden min-w-0 max-w-full backdrop-blur-md",
+        "relative min-h-9 min-w-0 max-w-full overflow-hidden rounded-md border px-4 py-2",
+        "overflow-wrap-anywhere break-words text-[14px] leading-[1.6] shadow-sm backdrop-blur-md",
         isUser
-          ? "bg-primary/10 text-primary shadow-sm border border-primary/20"
-          : "bg-ai/10 text-ai shadow-sm border border-ai/20",
+          ? "border-primary/20 bg-primary/10 text-primary"
+          : "border-ai/20 bg-ai/10 text-ai",
       )}
     >
-      {isAssistant ? (
-        <>
-          <MarkdownRenderer content={content} />
-          {showCursor && isStreaming && <StreamingCursor />}
-        </>
-      ) : (
+      {isUser ? (
         <span className="whitespace-pre-wrap">{content}</span>
+      ) : (
+        <MarkdownRenderer content={content} />
       )}
     </div>
   );
 }
 
-// ─── 单条消息气泡 ───
+function NeutralMessage({
+  message,
+}: {
+  readonly message: Extract<ChatMessageViewModel, { kind: "system" | "unknown" }>;
+}) {
+  const isUnknown = message.kind === "unknown";
+  const Icon = isUnknown ? CircleHelp : Info;
 
-interface BubbleProps {
-  message: ChatMessage;
-  hasHeartWhisper?: boolean;
-  isStreaming?: boolean;
-  streamingContent?: string;
-  onRegenerate?: () => void;
-  onDelete?: () => void;
+  return (
+    <div
+      className="mx-auto flex w-full max-w-[620px] items-start gap-2 rounded-lg border border-border/80 bg-surface-secondary/65 px-3 py-2.5 text-muted-strong"
+      role="note"
+    >
+      <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold uppercase tracking-[0.08em]">
+          <span>{isUnknown ? "暂不支持的消息类型" : "系统消息"}</span>
+          {isUnknown && (
+            <code className="max-w-full break-all rounded bg-background/45 px-1.5 py-0.5 font-mono normal-case tracking-normal">
+              {message.rawRole}
+            </code>
+          )}
+          <span className="font-normal normal-case tracking-normal opacity-65">
+            {format(new Date(message.createdAt * 1000), "HH:mm")}
+          </span>
+        </div>
+        <p className="mt-1 min-h-5 whitespace-pre-wrap break-words text-xs leading-[1.6]">
+          {message.content}
+        </p>
+      </div>
+    </div>
+  );
 }
 
-function BubbleInner({
-  message,
-  hasHeartWhisper,
-  isStreaming,
-  streamingContent,
-  onRegenerate,
-  onDelete,
-}: BubbleProps) {
-  const isUser = message.role === "user";
-  const isAssistant = message.role === "assistant";
-  const isSystem = message.role === "system";
+interface BubbleProps {
+  readonly message: ChatMessageViewModel;
+}
 
-  // 系统消息走独立组件
-  if (isSystem) {
-    return <SystemMessageLine content={message.content} />;
+function BubbleInner({ message }: BubbleProps) {
+  if (message.kind === "system" || message.kind === "unknown") {
+    return <NeutralMessage message={message} />;
   }
 
-  const rawContent =
-    isStreaming && streamingContent != null
-      ? streamingContent
-      : message.content;
-
-  // 流式状态下剥离未闭合 Markdown
-  const displayContent =
-    isStreaming && rawContent ? stripIncompleteMarkdown(rawContent) : rawContent;
-
-  const isLoading = isStreaming && !streamingContent;
-  const timeStr = format(new Date(message.created_at * 1000), "HH:mm");
-
-  // 按 \n\n 拆分为多个气泡
-  const chunks = isLoading ? [] : splitIntoChunks(displayContent);
-  const musicAttachments = getMusicAttachments(message);
+  const isUser = message.kind === "user";
+  const chunks = splitIntoChunks(message.content);
+  const time = format(new Date(message.createdAt * 1000), "HH:mm");
 
   return (
     <div
       tabIndex={-1}
       className={cn(
-        "flex flex-col max-w-full w-full group outline-none",
+        "group flex w-full max-w-full flex-col outline-none",
         isUser ? "items-end" : "items-start",
       )}
     >
-      {/* 头部信息 */}
-      <div className={cn(
-        "flex items-center gap-1.5 mb-1",
-        isUser ? "chat-user-meta flex-row-reverse" : "chat-ai-meta flex-row",
-      )}>
-        <MessageAvatar isUser={isUser} hasHeartWhisper={hasHeartWhisper} />
-        <span className="text-xs font-medium">
-          {isUser ? "你" : "Aion"}
-        </span>
-        <span className="text-xs opacity-60">{timeStr}</span>
-
-        {/* 操作按钮 — hover 显示 */}
-        <div
-          className={cn(
-            "flex items-center gap-0.5 shrink-0",
-            "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150",
-          )}
-        >
-          <MessageActions
-            role={message.role}
-            content={message.content}
-            onRegenerate={isAssistant ? onRegenerate : undefined}
-            onDelete={onDelete}
-          />
+      <div
+        className={cn(
+          "mb-1 flex items-center gap-1.5",
+          isUser ? "chat-user-meta flex-row-reverse" : "chat-ai-meta flex-row",
+        )}
+      >
+        <MessageAvatar kind={message.kind} />
+        <span className="text-xs font-medium">{isUser ? "你" : "知远"}</span>
+        <span className="text-xs opacity-60">{time}</span>
+        <div className="shrink-0 opacity-0 transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100">
+          <MessageActions role={message.kind} content={message.content} />
         </div>
       </div>
 
-      {/* 气泡内容区 — 限宽 85% */}
-      <div className="max-w-[85%]">
-        {/* 扩展思考 */}
-        {isAssistant && message.thinking && !isStreaming && (
+      <div className="min-w-0 max-w-[85%]">
+        {message.kind === "assistant" && message.thinking && (
           <ThinkingBlock content={message.thinking} className="mb-1.5 w-full" />
         )}
 
-        {/* AI 随想 */}
-        {isAssistant && message.simple_think && !isStreaming && (
-          <SimpleThink content={message.simple_think} className="mb-1.5" />
+        {message.kind === "assistant" && message.simpleThink && (
+          <SimpleThink content={message.simpleThink} className="mb-1.5" />
         )}
 
-        {/* 气泡列表 */}
-        {isLoading ? (
-          <div className="mist-solid w-full rounded-lg px-4 py-3">
-            <LoadingSkeleton />
-          </div>
-        ) : (
-          <div className="flex flex-col gap-1 items-start">
-            {chunks.map((chunk, i) => (
-              <BubbleSegment
-                key={i}
-                isUser={isUser}
-                isAssistant={isAssistant}
-                content={chunk}
-                isStreaming={!!isStreaming}
-                showCursor={i === chunks.length - 1}
-              />
+        <div className="flex min-w-0 flex-col items-start gap-1">
+          {chunks.map((chunk, index) => (
+            <BubbleSegment
+              key={`${message.id}:${index}`}
+              kind={message.kind}
+              content={chunk}
+            />
+          ))}
+        </div>
+
+        {message.attachments.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1.5" aria-label="消息附件">
+            {message.attachments.map((attachment, index) => (
+              <span
+                key={`${message.id}:attachment:${index}`}
+                className="inline-flex max-w-full items-center gap-1 rounded-md border border-border/80 bg-surface-secondary/70 px-2 py-1 text-[11px] text-muted-strong"
+              >
+                <Paperclip className="size-3 shrink-0" aria-hidden="true" />
+                {attachment.label}
+              </span>
             ))}
           </div>
         )}
-
-        {isAssistant && !isStreaming && musicAttachments.length > 0 && (
-          <div className="mt-1.5 flex flex-col items-start gap-1.5">
-            {musicAttachments.map((attachment) => (
-              <MusicResultCard
-                key={`${attachment.id}:${attachment.name}`}
-                attachment={attachment}
-              />
-            ))}
-          </div>
-        )}
-
       </div>
     </div>
   );
