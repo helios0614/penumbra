@@ -254,16 +254,26 @@ Chat Execution 不调用 `loadInitialMessageHistory`、`loadOlderMessageHistory`
 
 **AionsHome 权威来源**：`aion-chat/routes/chat.py::MsgCreate`、`send_message`、`regenerate_message` 及其 queue/SSE generator；旧 `static/chat.html` 只用于核对兼容差异。
 
-## 6. SSE 与 WebSocket 对账
+## 6. Realtime Reconciliation Application（S4E2）
 
-以下关系当前仍需后端契约确认：
+Realtime Reconciliation 位于已经映射完成的 `RealtimeEvent` 与 HTTP Message History 之间。它把单个 WS notification 投影为明确 plan，再只对当前 `MessageHistoryState` 执行有限操作并返回带 authority/scope 的结果。WS notification 不是完整 `Message`，HTTP history 仍是可重读的持久化事实来源。
 
-- SSE 与 WebSocket 可能同时描述同一条 message。
-- 客户端必须基于服务端 ID 和明确规则去重。
-- 在权威关系确认前，不得凭时间、角色或文本内容去重。
-- 重连后应以服务端 snapshot 或重新加载结果恢复，不以本地 event history 猜测。
-- 不通过“收到下一条 assistant message”推断 camera、activity、location、MCP 或其他活动已完成。
-- optimistic message、SSE placeholder、WebSocket persisted message 的替换关系应由 Chat adapter 集中处理。
+- `message-created` 计划为 `refresh-latest-history / expected-authoritative`。当前 conversation 通过 `refreshLatestMessageHistory` 读取最终 Message；不得直接从 WS payload 创建 Message。结果 authority 为 `authoritative`，表示已按提交后的通知刷新当前 latest window，不表示 SSE content 与持久化 content 相同。
+- `message-updated` 计划为 `refresh-latest-history / latest-window-only`。当前 WS 只有 message ID，HTTP 又没有单 Message GET；目标可能是 latest window 之外的较早消息，因此 latest refresh 只是 best effort，结果必须保留 `latest-window-only`，不得宣称目标已权威更新、自动分页全部历史、猜测 content 或伪造单条 fetch。
+- `message-deleted` 计划为 `remove-message`。提交后的稳定 conversation/message ID 允许当前 History 严格按 server message ID 本地删除；不存在 ID 是幂等 no-op。删除不按 content、timestamp 或 role 匹配，不生成 tombstone，不请求 HTTP，并保留 page size 与 older-page knowledge。
+- `file-synced` 计划为 `reload-history / file-synced`。文件同步可能批量重建消息且没有逐条通知，因此当前窗口必须通过 `reloadMessageHistoryFromScratch` 重载，并明确丢弃此前加载的早期页。
+- caller-managed reconnect 计划为 `reload-history / reconnect`。后端没有 event ID、sequence、replay 或 reconnect cursor，socket 重新连接不能证明中间事件未丢失；S4E2 只用 HTTP 重建当前 latest window，不创建 socket、backoff 或 replay 状态。
+- conversation created/updated/deleted 只产生 conversation-list invalidation；它们不修改或清空 `MessageHistoryState`，即使当前 conversation 被删除也不自动导航或改变 selection。
+- unknown event 只产生带安全 `rawType` 的 ignore plan，不保留或解释 payload。
+- message/file 事件属于其他 conversation 时，不请求 HTTP、不切换 state conversation，也不修改当前 state；result 保留 plan 中的目标 conversation 和 `other-conversation` scope，供未来 coordinator 标记其他 conversation 有变化。
+
+Reconciliation result 显式包含 plan、应用动作、引用级 `historyChanged`、authority、scope 与 `conversationInvalidated`。`authoritative` 只描述本次明确动作：created 的 latest refresh、已提交 delete 的本地应用、或 file/reconnect 后重建的 latest window；它不是对所有未加载历史的全局完整性证明。
+
+SSE `start.assistantMessageId` 与 WS `message-created.messageId` 只在 message ID 和 conversation ID 都完全相等时关联。该判断仅表示“收到了对应 SSE generation ID 的持久化创建通知”；它不生成 Message、completed event 或发送成功结论，也不自动 refresh。未来 send coordinator 仍需读取 HTTP latest history，并集中管理 optimistic/streaming 展示。
+
+S4E2 服务一次只处理一个 plan，不拥有连接或并发控制。未来 coordinator 必须串行化同一 conversation 的 reconciliation，防止多个 create/update refresh 乱序，保证较旧请求不能覆盖较新结果，并让 `file-synced`/reconnect scratch reload 覆盖此前排队的 latest refresh。本阶段不提前引入 queue、debounce、batching、request cancellation、mutable controller 或 store。
+
+**Backend contract gap — Message update reconciliation**：当前 WS `msg_updated` 仅提供 message/conversation ID，HTTP 没有单 Message GET。较早消息的更新无法由有限 latest window 保证完整对账；该限制由 plan/result 与文档持续表达，前端不通过全量自动分页或猜测 payload 伪造修复。
 
 **AionsHome 权威来源**：`docs/ws-event-contract.md`、`docs/chat-message-dto-contract.md`、`aion-chat/static/chat.html` 和 `aion-chat/routes/chat.py`。
 
@@ -309,8 +319,8 @@ Chat Execution 不调用 `loadInitialMessageHistory`、`loadOlderMessageHistory`
 - 未知非空 string event type（包括当前未由 S4E1 消费的 capability、execution、debug、pong 和其他领域事件）安全映射为 `{ type: "unknown", rawType }`，不保留 payload，且后续事件可以继续消费。已知 event 若缺少稳定 ID 则抛 `RealtimeContractError`，不能降级成 unknown。
 - 旧 web client 没有维持 `/ws` 所必需的应用层 heartbeat。后端支持 inbound `{type:"ping"}` 并回复 `pong`，主要服务 Android push；这不等于 Penumbra 必须定时发送 ping。`tts_state` 会改变服务端 runtime TTS state，属于后续独立能力，不在 S4E1 提供任意 outbound command API。
 - 当前后端没有 event ID、sequence、replay 或 reconnect cursor。S4E1 不实现 backoff、jitter、network/visibility listener、session refresh、reconnect marker 或 replay；未来重连必须与 S4E2 的 HTTP authority refresh/reload 一起设计，不能只恢复 socket 就宣称数据已恢复。
-- HTTP history、SSE 与 WebSocket 仍是三套时间边界：HTTP history 是可重读的持久化最终事实，SSE 是当前请求临时增量，WebSocket 是提交后的变化通知或失效提示。未来可以按 `SSE start.assistantMessageId ↔ WS message-created.messageId` 关联，但不能合并两套 event union，也不能据此生成 completed event。
-- S4E1 不调用或修改 Message History 的 initial/older/latest/reload 操作，不调用 Conversation client 或 Chat Execution，不创建 optimistic/streaming state，也不接 Chat mock/UI。refresh latest、按 ID remove/refetch、`file_synced` authority reload 与 reconnect 后重建事实均属于 S4E2。
+- HTTP history、SSE 与 WebSocket 仍是三套时间边界：HTTP history 是可重读的持久化最终事实，SSE 是当前请求临时增量，WebSocket 是提交后的变化通知或失效提示。S4E2 可按 `SSE start.assistantMessageId ↔ WS message-created.messageId` 和 conversation ID 做纯关联，但不合并两套 event union，也不据此生成 completed event。
+- S4E1 transport 不调用或修改 Message History，不调用 Conversation client 或 Chat Execution，不创建 optimistic/streaming state，也不接 Chat mock/UI。S4E2 只消费映射完成的 event，不调用 `openRealtimeEvents` 或持有 connection。
 - Chat、Theater 等领域不可仅因共用 `/ws` 就合并业务状态机。Theater 的入站 `tts_state` 以及 `tts_chunk`、`tts_done` 等事件继续保持独立语义。
 
 **AionsHome 权威来源**：`docs/ws-event-contract.md`、`aion-chat/ws.py`、`aion-chat/main.py` 及 WebSocket contract/snapshot tests。
@@ -370,6 +380,8 @@ SSE/WS 权威关系、stop/cancel、carryover 所有权、production 部署、se
 | Streaming Transport / SSE Framing | `Completed (S4D1)` | 共享 request lifecycle、managed byte stream、增量 UTF-8 decode 与纯 data framing 已实施。 |
 | Chat Execution Client / Event Contract | `Completed (S4D2)` | send/regenerate request mapping、双 media type、duplicate acknowledgement、安全 Chat event projection 与单请求 iterator 已实施。 |
 | WebSocket Transport / Event Contract | `Completed (S4E1)` | runtime `/ws` URL、单连接 lifecycle、安全 JSON decode、稳定 ID projection、unknown marker 与 close metadata 已实施；无自动重连或 History mutation。 |
+| Realtime Reconciliation Application | `Completed (S4E2)` | event-to-plan、current-conversation latest refresh、ID delete、file/reconnect scratch reload、conversation invalidation、result authority/scope 与 SSE/WS ID correlation 已实施；无 connection、queue、React 或 streaming state。 |
+| Message update reconciliation | `Backend contract gap` | WS 仅提供 ID 且 HTTP 无单 Message GET；latest refresh 无法保证较早消息已权威更新，结果保持 `latest-window-only`。 |
 | SSE/WS 权威关系 | `Pending backend confirmation` | 去重与最终权威规则待确认。 |
 | Stop/cancel | `Pending backend confirmation` | 尚无已确认的服务端停止契约。 |
 | Carryover 所有权 | `Pending backend confirmation` | 前后端职责与迁移方式待确认。 |
