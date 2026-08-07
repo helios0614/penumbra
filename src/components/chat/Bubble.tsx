@@ -11,6 +11,8 @@ import { MessageActions } from "./MessageActions";
 import { SimpleThink, ThinkingBlock } from "./system-command/InlineIndicator";
 
 function splitIntoChunks(content: string): string[] {
+  // TODO(markdown-chunking): 当前逻辑只跟踪 ``` fence，并在 Markdown 解析前按空行拆分。
+  // 改进时需同时保留“一段一个气泡”的 UI；本轮仅记录技术债，不调整现有分块行为。
   if (!content) return [""];
 
   const parts: string[] = [];
@@ -171,7 +173,12 @@ function BubbleInner({ message }: BubbleProps) {
           <SimpleThink content={message.simpleThink} className="mb-1.5" />
         )}
 
-        <div className="flex min-w-0 flex-col items-start gap-1">
+        <div
+          className={cn(
+            "flex min-w-0 flex-col gap-1",
+            isUser ? "items-end" : "items-start",
+          )}
+        >
           {chunks.map((chunk, index) => (
             <BubbleSegment
               key={`${message.id}:${index}`}

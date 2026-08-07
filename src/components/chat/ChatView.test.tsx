@@ -116,6 +116,21 @@ describe("ChatWorkspaceView ready states", () => {
     expect(html).not.toContain(hiddenContent);
   });
 
+  it("right-aligns user message segments with different widths", () => {
+    const selected = conversation("conv_a", "会话 A");
+    const html = render(ready(snapshot(
+      [selected],
+      selected,
+      history("conv_a", [
+        message("user_1", "user", "user", "短消息\n\n这是一段更长的用户消息", 1),
+      ]),
+    )));
+
+    expect(html).toContain("短消息");
+    expect(html).toContain("这是一段更长的用户消息");
+    expect(html).toContain('class="flex min-w-0 flex-col gap-1 items-end"');
+  });
+
   it("keeps old selection, header, and history during a pending atomic switch", () => {
     const selected = conversation("conv_a", "会话 A");
     const target = conversation("conv_b", "会话 B");

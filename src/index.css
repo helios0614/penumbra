@@ -659,15 +659,6 @@
   overflow-x: auto;
 }
 
-.markdown-preview hr {
-  /* Make hr in markdown preview more subtle */
-  margin: 0.5rem 0;
-  border: none;
-  border-top: 1px solid currentColor;
-  opacity: 0.2;
-  height: 1px;
-}
-
 @keyframes widget-edit-wiggle {
   0%, 100% { transform: rotate(-0.25deg); }
   50% { transform: rotate(0.25deg); }
