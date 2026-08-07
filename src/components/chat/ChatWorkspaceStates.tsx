@@ -1,9 +1,13 @@
-import { LoaderCircle, MessageCircle, RefreshCw, TriangleAlert } from "lucide-react";
+import { ArrowLeft, LoaderCircle, MessageCircle, RefreshCw, TriangleAlert } from "lucide-react";
 
 import type { ChatWorkspaceSafeUiError } from "@/components/chat-workspace";
 import { Button } from "@/components/ui/button";
 
-export function ChatWorkspaceLoading() {
+export function ChatWorkspaceLoading({
+  onBack,
+}: {
+  readonly onBack?: () => void;
+}) {
   return (
     <div
       className="flex min-h-0 w-full flex-1 overflow-hidden"
@@ -25,7 +29,8 @@ export function ChatWorkspaceLoading() {
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex min-h-14 shrink-0 items-center border-b border-border px-4">
+        <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/10 px-3 backdrop-blur-xl sm:px-4">
+          {onBack && <ChatBackButton onBack={onBack} />}
           <SkeletonLine className="w-36" />
         </div>
         <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-muted-foreground">
@@ -48,9 +53,11 @@ export function ChatWorkspaceLoading() {
 export function ChatWorkspaceError({
   error,
   onRetry,
+  onBack,
 }: {
   readonly error: ChatWorkspaceSafeUiError;
   readonly onRetry: () => void;
+  readonly onBack?: () => void;
 }) {
   const title = getErrorTitle(error.code);
 
@@ -62,8 +69,9 @@ export function ChatWorkspaceError({
         </div>
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex min-h-14 shrink-0 items-center border-b border-border px-4 text-sm font-medium text-foreground">
-          Penumbra
+        <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/10 px-3 text-sm font-semibold text-foreground backdrop-blur-xl sm:px-4">
+          {onBack && <ChatBackButton onBack={onBack} />}
+          <span className="min-w-0 flex-1 truncate">Penumbra</span>
         </div>
         <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto p-5">
           <div
@@ -128,6 +136,22 @@ export function ChatWorkspaceEmpty({
   );
 }
 
+function ChatBackButton({ onBack }: { readonly onBack: () => void }) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-lg"
+      className="rounded-xl border border-border-strong/50 bg-background/25 text-foreground shadow-sm hover:border-primary/30 hover:bg-primary/10 active:bg-primary/15"
+      onClick={onBack}
+      aria-label="返回桌面"
+      title="返回桌面"
+    >
+      <ArrowLeft className="size-4.5" aria-hidden="true" />
+    </Button>
+  );
+}
+
 function SkeletonLine({ className }: { readonly className?: string }) {
   return (
     <div
@@ -152,4 +176,3 @@ function getErrorTitle(code: ChatWorkspaceSafeUiError["code"]): string {
       return "无法加载会话";
   }
 }
-

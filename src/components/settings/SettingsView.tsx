@@ -8,8 +8,9 @@ import {
   Sun,
   Trash2,
   Upload,
-  XCircle,
+  X,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { SettingsSafeBasics } from "@/components/settings/SettingsSafeBasics";
 import { useSettingsOverview } from "@/components/settings/useSettingsOverview";
 import { cn } from "@/lib/utils";
@@ -161,8 +162,8 @@ export function SettingsView({ onBack }: SettingsViewProps) {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8">
       <div className="mist-glass rounded-[24px] p-4 sm:p-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
+        <div className="relative">
+          <div className="min-w-0 pr-24">
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
               Settings
             </p>
@@ -171,34 +172,37 @@ export function SettingsView({ onBack }: SettingsViewProps) {
               设备外观偏好与安全只读运行状态。
             </p>
           </div>
-          <div className="flex shrink-0 gap-2">
-            <button
+          <div className="absolute right-0 top-0 flex gap-2">
+            <Button
               type="button"
               onClick={reloadOverview}
               disabled={isOverviewLoading}
-              className={cn(
-                "inline-flex h-10 items-center gap-2 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm",
-                "transition-colors hover:bg-primary-hover active:bg-primary-active disabled:cursor-not-allowed disabled:opacity-60",
-              )}
+              variant="ghost"
+              size="icon-lg"
+              className="rounded-xl border border-border-strong/50 bg-background/25 text-foreground shadow-sm hover:border-primary/30 hover:bg-primary/10 hover:text-primary active:bg-primary/15"
+              aria-label={isOverviewLoading ? "正在重新加载设置状态" : "重新加载设置状态"}
+              title={isOverviewLoading ? "正在重新加载" : "重新加载"}
             >
               <RefreshCw
                 className={cn(
                   "size-4",
                   isOverviewLoading && "animate-spin motion-reduce:animate-none",
                 )}
+                aria-hidden="true"
               />
-              {isOverviewLoading ? "正在加载" : "重新加载"}
-            </button>
+            </Button>
             {onBack && (
-              <button
+              <Button
                 type="button"
                 onClick={onBack}
-                className="grid size-10 place-items-center rounded-full border border-border-strong/50 bg-background/35 text-foreground shadow-sm transition-colors hover:bg-background/55"
+                variant="ghost"
+                size="icon-lg"
+                className="rounded-xl border border-border-strong/50 bg-background/25 text-foreground shadow-sm hover:border-primary/30 hover:bg-primary/10 hover:text-primary active:bg-primary/15"
                 title="返回桌面"
                 aria-label="返回桌面"
               >
-                <XCircle className="size-5" />
-              </button>
+                <X className="size-4" aria-hidden="true" />
+              </Button>
             )}
           </div>
         </div>

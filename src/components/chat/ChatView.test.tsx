@@ -84,28 +84,33 @@ describe("ChatWorkspaceView ready states", () => {
     expect(html).toContain("发送功能将在下一阶段接入");
   });
 
-  it("renders selected persistent user/assistant/system/unknown history and hides runtime messages", () => {
+  it("renders selected persistent history while keeping raw model metadata out of the header", () => {
     const selected = conversation("conv_a", "真实标题", {
       modelKey: "provider/model-with-a-very-long-key",
     });
     const hiddenContent = "fake-hidden-runtime-payload";
-    const html = render(ready(snapshot(
-      [selected],
-      selected,
-      history("conv_a", [
-        message("user_1", "user", "user", "用户内容", 0),
-        message("assistant_1", "assistant", "assistant", "**知远内容**", 1, {
-          simpleThink: "简单想法",
-          thinking: "扩展思考",
-        }),
-        message("system_1", "system", "system", "系统内容", 2),
-        message("hidden_1", "cam_trigger", "hidden-runtime", hiddenContent, 3),
-        message("unknown_1", "future_role", "unknown", "<b>未知内容</b>", 4),
-      ]),
-    )));
+    const html = render(
+      ready(snapshot(
+        [selected],
+        selected,
+        history("conv_a", [
+          message("user_1", "user", "user", "用户内容", 0),
+          message("assistant_1", "assistant", "assistant", "**知远内容**", 1, {
+            simpleThink: "简单想法",
+            thinking: "扩展思考",
+          }),
+          message("system_1", "system", "system", "系统内容", 2),
+          message("hidden_1", "cam_trigger", "hidden-runtime", hiddenContent, 3),
+          message("unknown_1", "future_role", "unknown", "<b>未知内容</b>", 4),
+        ]),
+      )),
+      vi.fn(),
+    );
 
     expect(html).toContain("真实标题");
-    expect(html).toContain("provider/model-with-a-very-long-key");
+    expect(html).not.toContain("provider/model-with-a-very-long-key");
+    expect(html).toContain('aria-label="返回桌面"');
+    expect(html).toContain("h-14");
     expect(html).toContain("用户内容");
     expect(html).toContain("知远内容");
     expect(html).toContain("系统消息");
@@ -197,6 +202,7 @@ describe("ChatWorkspaceView ready states", () => {
     )));
 
     expect(html).toContain("发送功能将在下一阶段接入");
+    expect(html.match(/发送功能将在下一阶段接入/g)).toHaveLength(1);
     expect(html).toMatch(/<textarea[^>]*disabled/);
     expect(html).toMatch(/aria-label="发送消息"[^>]*disabled|disabled=""[^>]*aria-label="发送消息"/);
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -258,7 +264,10 @@ describe("ChatWorkspaceView ready states", () => {
   });
 });
 
-function render(state: ChatWorkspaceControllerState): string {
+function render(
+  state: ChatWorkspaceControllerState,
+  onBack?: () => void,
+): string {
   const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
   const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
   const html = renderToStaticMarkup(
@@ -267,6 +276,7 @@ function render(state: ChatWorkspaceControllerState): string {
       onRetry={vi.fn()}
       onSelectConversation={vi.fn()}
       onRetryConversationSwitch={vi.fn()}
+      onBack={onBack}
     />,
   );
   expect(consoleError).not.toHaveBeenCalled();

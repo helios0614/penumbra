@@ -81,7 +81,7 @@ export function Sender({
   return (
     <div
       className={cn(
-        "mist-glass shrink-0 border-x-0 border-b-0 border-t border-border p-4 overflow-hidden shadow-none",
+        "shrink-0 overflow-hidden border-x-0 border-b-0 border-t border-border bg-background/10 p-4 shadow-none backdrop-blur-xl",
         className,
       )}
     >

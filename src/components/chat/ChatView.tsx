@@ -1,4 +1,4 @@
-import { LoaderCircle, Menu, RefreshCw } from "lucide-react";
+import { ArrowLeft, LoaderCircle, Menu, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
 import type { ChatWorkspaceControllerState } from "@/components/chat-workspace";
@@ -28,8 +28,10 @@ import { Sender } from "./Sender";
 const READ_ONLY_SENDER_MESSAGE = "发送功能将在下一阶段接入";
 const READINESS_UNAVAILABLE_SENDER_MESSAGE =
   "当前仅支持查看历史，发送服务尚未就绪";
+const CHAT_HEADER_ACTION_CLASS =
+  "rounded-xl border border-border-strong/50 bg-background/25 text-foreground shadow-sm hover:border-primary/30 hover:bg-primary/10 active:bg-primary/15";
 
-export function ChatView() {
+export function ChatView({ onBack }: { readonly onBack?: () => void }) {
   const workspace = useChatWorkspace();
 
   return (
@@ -38,6 +40,7 @@ export function ChatView() {
       onRetry={workspace.retry}
       onSelectConversation={workspace.selectConversation}
       onRetryConversationSwitch={workspace.retryConversationSwitch}
+      onBack={onBack}
     />
   );
 }
@@ -47,6 +50,7 @@ export interface ChatWorkspaceViewProps {
   readonly onRetry: () => void;
   readonly onSelectConversation: (conversationId: string) => void;
   readonly onRetryConversationSwitch: () => void;
+  readonly onBack?: () => void;
 }
 
 export function ChatWorkspaceView({
@@ -54,13 +58,14 @@ export function ChatWorkspaceView({
   onRetry,
   onSelectConversation,
   onRetryConversationSwitch,
+  onBack,
 }: ChatWorkspaceViewProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
 
   if (state.status === "idle" || state.status === "loading") {
     return (
       <TooltipProvider delay={300}>
-        <ChatWorkspaceLoading />
+        <ChatWorkspaceLoading onBack={onBack} />
       </TooltipProvider>
     );
   }
@@ -68,7 +73,7 @@ export function ChatWorkspaceView({
   if (state.status === "error") {
     return (
       <TooltipProvider delay={300}>
-        <ChatWorkspaceError error={state.error} onRetry={onRetry} />
+        <ChatWorkspaceError error={state.error} onRetry={onRetry} onBack={onBack} />
       </TooltipProvider>
     );
   }
@@ -101,14 +106,34 @@ export function ChatWorkspaceView({
         />
 
         <div className="relative flex w-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3 md:hidden">
+          <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/10 px-3 text-foreground backdrop-blur-xl sm:px-4">
+            {onBack && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-lg"
+                className={CHAT_HEADER_ACTION_CLASS}
+                onClick={onBack}
+                aria-label="返回桌面"
+                title="返回桌面"
+              >
+                <ArrowLeft className="size-4.5" aria-hidden="true" />
+              </Button>
+            )}
+
             <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
               <SheetTrigger
                 render={
-                  <Button variant="ghost" size="icon-sm" aria-label="会话列表" />
+                  <Button
+                    variant="ghost"
+                    size="icon-lg"
+                    className={`${CHAT_HEADER_ACTION_CLASS} md:hidden`}
+                    aria-label="会话列表"
+                    title="会话列表"
+                  />
                 }
               >
-                <Menu className="size-5" aria-hidden="true" />
+                <Menu className="size-4.5" aria-hidden="true" />
               </SheetTrigger>
               <SheetContent side="left" className="w-[280px] p-0">
                 <SheetTitle className="sr-only">会话列表</SheetTitle>
@@ -120,28 +145,17 @@ export function ChatWorkspaceView({
               </SheetContent>
             </Sheet>
 
-            <HeaderCopy
-              title={selectedConversation?.title ?? "Penumbra"}
-              modelKey={selectedConversation?.modelKey ?? null}
-              compact
-            />
-          </div>
-
-          <div className="hidden min-h-14 shrink-0 items-center border-b border-border px-4 md:flex">
-            <HeaderCopy
-              title={selectedConversation?.title ?? "Penumbra"}
-              modelKey={selectedConversation?.modelKey ?? null}
-            />
+            <HeaderCopy title={selectedConversation?.title ?? "Penumbra"} />
             {pendingConversationId && (
               <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" role="status">
                 <LoaderCircle
                   className="size-3.5 animate-spin motion-reduce:animate-none"
                   aria-hidden="true"
                 />
-                正在切换会话
+                <span className="hidden sm:inline">正在切换会话</span>
               </span>
             )}
-          </div>
+          </header>
 
           {switchError && (
             <div
@@ -177,7 +191,6 @@ export function ChatWorkspaceView({
           <Sender
             disabled
             placeholder={senderMessage}
-            statusMessage={senderMessage}
           />
         </div>
       </div>
@@ -187,21 +200,12 @@ export function ChatWorkspaceView({
 
 function HeaderCopy({
   title,
-  modelKey,
-  compact = false,
 }: {
   readonly title: string;
-  readonly modelKey: string | null;
-  readonly compact?: boolean;
 }) {
   return (
-    <div className="min-w-0">
-      <p className="truncate text-sm font-medium text-foreground">{title}</p>
-      <p
-        className={`break-all text-[11px] leading-4 text-muted-foreground ${compact ? "line-clamp-1" : ""}`}
-      >
-        {modelKey ?? "未指定模型"}
-      </p>
+    <div className="min-w-0 flex-1">
+      <p className="truncate text-sm font-semibold text-foreground">{title}</p>
     </div>
   );
 }

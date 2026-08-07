@@ -64,28 +64,30 @@ export function DesktopAppView({
       )}
       data-testid="desktop-app-view"
     >
-      <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3 sm:px-5">
-        <button
-          type="button"
-          onClick={onBack}
-          className="mist-glass grid size-10 shrink-0 place-items-center rounded-full text-foreground transition-colors hover:bg-white/75 dark:hover:bg-white/15"
-          aria-label="返回桌面"
-          title="返回桌面"
-        >
-          <ArrowLeft className="size-5" />
-        </button>
-        <span className="desktop-app-mini-icon grid size-10 shrink-0 place-items-center rounded-[14px]">
-          <Icon className="size-5" />
-        </span>
-        <div className="min-w-0">
-          <h1 className="truncate text-base font-semibold text-foreground">{app.name}</h1>
-          <p className="truncate text-xs text-muted-foreground">{app.description}</p>
-        </div>
-      </header>
+      {appId !== "chat" && (
+        <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3 sm:px-5">
+          <button
+            type="button"
+            onClick={onBack}
+            className="mist-glass grid size-10 shrink-0 place-items-center rounded-full text-foreground transition-colors hover:bg-white/75 dark:hover:bg-white/15"
+            aria-label="返回桌面"
+            title="返回桌面"
+          >
+            <ArrowLeft className="size-5" />
+          </button>
+          <span className="desktop-app-mini-icon grid size-10 shrink-0 place-items-center rounded-[14px]">
+            <Icon className="size-5" />
+          </span>
+          <div className="min-w-0">
+            <h1 className="truncate text-base font-semibold text-foreground">{app.name}</h1>
+            <p className="truncate text-xs text-muted-foreground">{app.description}</p>
+          </div>
+        </header>
+      )}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <Suspense fallback={<AppLoading />}>
-          {appId === "chat" && <ChatView />}
+          {appId === "chat" && <ChatView onBack={onBack} />}
           {appId === "calendar" && (
             <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
               <Calendar embedded className="mx-auto w-full max-w-xl" />
