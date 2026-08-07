@@ -34,7 +34,19 @@ function splitIntoChunks(content: string): string[] {
   }
 
   if (current) parts.push(current);
-  return parts.length > 0 ? parts : [""];
+
+  // 过滤掉只会渲染为空的内容（如单独的 ---）
+  // 这些内容在 MarkdownRenderer 中会被渲染为空，但外层 BubbleSegment 仍会占据空间
+  const filteredParts = parts.filter(chunk => {
+    const trimmed = chunk.trim();
+    // 单独的 thematic break 或只包含空格的 chunk
+    if (trimmed === "---" || trimmed === "***" || trimmed === "___" || trimmed === "") {
+      return false;
+    }
+    return true;
+  });
+
+  return filteredParts.length > 0 ? filteredParts : [""];
 }
 
 function MessageAvatar({ kind }: { kind: "user" | "assistant" }) {

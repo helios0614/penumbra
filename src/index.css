@@ -584,6 +584,90 @@
   color: color-mix(in srgb, var(--color-ai-foreground), transparent 14%);
 }
 
+/* Markdown preview within code blocks - nested content styling */
+.markdown-preview {
+  /* 确保正常的文本流和换行，脱离代码块排版规则 */
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  box-sizing: border-box;
+
+  /* 恢复正常正文字体，不继承代码块的 monospace */
+  font-family: var(--font-family-base, system-ui, -apple-system, sans-serif);
+
+  /* 紧凑的垂直排版 - 适合嵌入式预览 */
+  /* 标题紧凑间距 */
+  & h1 {
+    margin-top: 0.5rem;
+    margin-bottom: 0.25rem;
+  }
+  & h2 {
+    margin-top: 0.4rem;
+    margin-bottom: 0.2rem;
+  }
+  & h3 {
+    margin-top: 0.3rem;
+    margin-bottom: 0.15rem;
+  }
+  & h4, & h5, & h6 {
+    margin-top: 0.25rem;
+    margin-bottom: 0.1rem;
+  }
+
+  /* 段落紧凑间距 */
+  & p {
+    margin-top: 0.25rem;
+    margin-bottom: 0.25rem;
+  }
+
+  /* 引用紧凑间距 */
+  & blockquote {
+    margin-top: 0.25rem;
+    margin-bottom: 0.25rem;
+  }
+
+  /* 列表紧凑间距 */
+  & ul, & ol {
+    margin-top: 0.25rem;
+    margin-bottom: 0.25rem;
+  }
+  & li {
+    margin-top: 0.1rem;
+    margin-bottom: 0.1rem;
+  }
+
+  /* 避免顶部和底部额外留白 */
+  & > :first-child {
+    margin-top: 0;
+  }
+  & > :last-child {
+    margin-bottom: 0;
+  }
+
+  /* 继承颜色，适应不同主题 */
+  color: inherit;
+}
+
+.markdown-preview .ai-code-block {
+  /* 确保嵌套代码块不溢出，保持正常代码块行为 */
+  max-width: 100%;
+  /* 嵌套代码块保持代码排版规则，不继承 preview 的文本流 */
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.markdown-preview hr {
+  /* Make hr in markdown preview more subtle */
+  margin: 0.5rem 0;
+  border: none;
+  border-top: 1px solid currentColor;
+  opacity: 0.2;
+  height: 1px;
+}
+
 @keyframes widget-edit-wiggle {
   0%, 100% { transform: rotate(-0.25deg); }
   50% { transform: rotate(0.25deg); }

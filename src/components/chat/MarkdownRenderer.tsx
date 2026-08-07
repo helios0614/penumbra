@@ -5,24 +5,63 @@ import rehypeHighlight from "rehype-highlight";
 import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// ─── 辅助函数 ───
+
+/**
+ * 从 ReactNode 中提取纯文本内容
+ * 解决 rehype-highlight 转换后 children 成为 React elements 的问题
+ */
+function getNodeText(node: React.ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') {
+    return String(node);
+  }
+
+  if (Array.isArray(node)) {
+    return node.map(getNodeText).join('');
+  }
+
+  if (node && typeof node === 'object' && 'props' in node) {
+    const element = node as React.ReactElement<{ children?: React.ReactNode }>;
+    const props = element.props;
+    if (props.children) {
+      return getNodeText(props.children);
+    }
+  }
+
+  return '';
+}
+
 // ─── 代码块（带复制按钮）───
+
+interface CodeBlockProps extends React.HTMLAttributes<HTMLElement> {
+  children?: React.ReactNode;
+  previewMarkdownCode?: boolean; // 控制是否递归渲染 Markdown 代码块
+}
 
 function CodeBlock({
   className,
   children,
+  previewMarkdownCode = true,
   ...props
-}: React.HTMLAttributes<HTMLElement> & { children?: React.ReactNode }) {
+}: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
-  const code = String(children).replace(/\n$/, "");
+
+  // 提取原始代码文本，避免 [object Object] 问题
+  const rawCode = getNodeText(children).replace(/\n$/, '');
 
   const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(code);
+    navigator.clipboard.writeText(rawCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }, [code]);
+  }, [rawCode]);
+
+  // Extract language from className (e.g., "hljs language-markdown" -> "markdown")
+  const languageMatch = className && /language-([\w-]+)/.exec(className);
+  const language = languageMatch?.[1] || "";
+  const displayLanguage = language === "markdown" || language === "md" ? "Markdown" : language || "Code";
 
   // 内联代码（没有 language-xxx class）
-  if (!className?.includes("language-")) {
+  if (!language) {
     return (
       <code
         className="rounded-sm border border-ai/20 bg-ai/15 px-1.5 py-0.5 font-mono text-[13px] text-current"
@@ -33,10 +72,45 @@ function CodeBlock({
     );
   }
 
+  // Markdown code block - render nested Markdown preview (仅在允许递归时)
+  const shouldPreviewMarkdown = (language === "markdown" || language === "md") && previewMarkdownCode;
+
+  if (shouldPreviewMarkdown) {
+    return (
+      <div className="ai-code-block group relative my-2 overflow-hidden rounded-lg border border-ai-foreground/15 bg-ai shadow-sm">
+        <div className="flex items-center justify-between border-b border-ai-foreground/15 bg-ai-active px-4 py-2 text-xs text-ai-foreground/70">
+          <span>{displayLanguage}</span>
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1 rounded-sm px-1 py-0.5 text-ai-foreground/70 transition-colors hover:bg-ai-foreground/10 hover:text-ai-foreground"
+            aria-label="复制代码"
+          >
+            {copied ? (
+              <>
+                <Check className="size-3" />
+                <span>已复制</span>
+              </>
+            ) : (
+              <>
+                <Copy className="size-3" />
+                <span>复制</span>
+              </>
+            )}
+          </button>
+        </div>
+        <div className="bg-ai p-4 text-sm text-ai-foreground">
+          <div className="markdown-preview">
+            <MarkdownRenderer content={rawCode} previewMarkdownCode={false} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="ai-code-block group relative my-2 overflow-hidden rounded-lg border border-ai-foreground/15 bg-ai shadow-sm">
       <div className="flex items-center justify-between border-b border-ai-foreground/15 bg-ai-active px-4 py-2 text-xs text-ai-foreground/70">
-        <span>{className.replace("language-", "")}</span>
+        <span>{displayLanguage}</span>
         <button
           onClick={handleCopy}
           className="flex items-center gap-1 rounded-sm px-1 py-0.5 text-ai-foreground/70 transition-colors hover:bg-ai-foreground/10 hover:text-ai-foreground"
@@ -69,9 +143,10 @@ function CodeBlock({
 interface MarkdownRendererProps {
   content: string;
   className?: string;
+  previewMarkdownCode?: boolean; // 控制是否预览 Markdown 代码块，默认 true
 }
 
-function MarkdownRendererInner({ content, className }: MarkdownRendererProps) {
+function MarkdownRendererInner({ content, className, previewMarkdownCode = true }: MarkdownRendererProps) {
   return (
     <div
       className={cn(
@@ -98,8 +173,8 @@ function MarkdownRendererInner({ content, className }: MarkdownRendererProps) {
         "[&_table]:w-full [&_table]:my-2",
         "[&_th]:text-left [&_th]:py-1.5 [&_th]:px-2 [&_th]:border-b [&_th]:border-border",
         "[&_td]:py-1.5 [&_td]:px-2 [&_td]:border-b [&_td]:border-border",
-        // 分割线
-        "[&_hr]:my-4 [&_hr]:border-border",
+        // 分割线 - minimal styling, low profile
+        "[&_hr]:my-2 [&_hr]:border-0 [&_hr]:border-t [&_hr]:border-border/40 [&_hr]:h-px",
         // 图片
         "[&_img]:max-w-full [&_img]:rounded-lg [&_img]:my-2",
         className,
@@ -109,7 +184,8 @@ function MarkdownRendererInner({ content, className }: MarkdownRendererProps) {
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
         components={{
-          code: CodeBlock as React.ComponentType<React.HTMLAttributes<HTMLElement>>,
+          code: (props: any) => <CodeBlock {...props} previewMarkdownCode={previewMarkdownCode} />,
+          hr: () => null, // 不渲染 <hr>，避免空白块
         }}
       >
         {content}
