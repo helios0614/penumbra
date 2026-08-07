@@ -5,6 +5,7 @@ import {
   type ChatSetupStatus,
   type ChatSetupViewModel,
   type CreateChatSetupViewModelInput,
+  type CreateUnavailableChatSetupViewModelInput,
 } from "@/application/chat-setup/chat-setup-types";
 
 const chatSetupStatuses: ReadonlySet<ChatSetupStatus> = new Set([
@@ -50,6 +51,44 @@ export function createChatSetupViewModel(
     })),
     status: readiness.reason,
     setupActionRequired: readiness.setupActionRequired,
+    readiness: {
+      kind: "available",
+      value: {
+        ready: readiness.ready,
+        modelKey: readiness.modelKey,
+        reason: readiness.reason,
+        setupActionRequired: readiness.setupActionRequired,
+      },
+    },
+  };
+}
+
+export function createUnavailableChatSetupViewModel(
+  input: CreateUnavailableChatSetupViewModelInput,
+): ChatSetupViewModel {
+  assertUnavailableChatSetupInput(input);
+
+  const { conversation, availableModels, reason } = input;
+  const modelKey = conversation?.modelKey ?? null;
+  const selectedModel = modelKey === null
+    ? undefined
+    : availableModels.find((model) => model.key === modelKey);
+
+  return {
+    conversationId: conversation?.id ?? null,
+    conversationTitle: conversation?.title ?? null,
+    modelKey,
+    modelLabel: selectedModel?.label ?? modelKey,
+    modelKnown: selectedModel !== undefined,
+    models: availableModels.map((model) => ({
+      key: model.key,
+      label: model.label,
+      provider: model.provider,
+      selected: modelKey !== null && model.key === modelKey,
+    })),
+    status: "readiness-unavailable",
+    setupActionRequired: true,
+    readiness: { kind: "unavailable", reason },
   };
 }
 
@@ -93,6 +132,27 @@ function assertChatSetupInput(
   }
 }
 
+function assertUnavailableChatSetupInput(
+  input: CreateUnavailableChatSetupViewModelInput,
+): asserts input is CreateUnavailableChatSetupViewModelInput {
+  if (!isRecord(input)) {
+    throw incompleteInputError();
+  }
+
+  const { conversation, availableModels, reason } = input;
+  if (conversation !== null) {
+    assertChatSetupConversation(conversation);
+  }
+
+  if (
+    !Array.isArray(availableModels) ||
+    !availableModels.every(isAvailableModel) ||
+    !isSafeReadinessReason(reason)
+  ) {
+    throw incompleteInputError();
+  }
+}
+
 function isAvailableModel(
   value: unknown,
 ): value is CreateChatSetupViewModelInput["availableModels"][number] {
@@ -108,6 +168,19 @@ function isChatSetupStatus(value: unknown): value is ChatSetupStatus {
   return (
     typeof value === "string" &&
     chatSetupStatuses.has(value as ChatSetupStatus)
+  );
+}
+
+function isSafeReadinessReason(
+  value: unknown,
+): value is CreateUnavailableChatSetupViewModelInput["reason"] {
+  return (
+    value === "not-found" ||
+    value === "network" ||
+    value === "timeout" ||
+    value === "service" ||
+    value === "contract" ||
+    value === "unknown"
   );
 }
 

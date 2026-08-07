@@ -1,6 +1,6 @@
 # Penumbra 前端迁移路线图
 
-> 最后更新：2026-08-06
+> 最后更新：2026-08-07
 
 导航：[架构原则](./penumbra-architecture.md) · [迁移路线图](./frontend-migration-plan.md) · [前端契约](./frontend-contracts.md)
 
@@ -53,6 +53,8 @@ Chat
 - Settings Safe Basics Integration：已完成
 - Chat Workspace Read Model & Controller：已完成
 - Chat Read-Only UI Integration：已完成
+- Read-Only Workspace / Readiness Decoupling：已完成（S6B.1）
+- Deployed Chat Readiness Contract：后端契约/部署缺口（S6C blocker）
 - Chat Send & Streaming Composition：待实施
 - Chat Realtime Coordination：待实施
 - Chat Capability / Regenerate 收尾：待实施
@@ -69,15 +71,18 @@ Chat
 Local–Remote Backend Dev Bridge：已完成
 Chat Workspace Read Model & Controller：已完成
 Chat Read-Only UI Integration：已完成
+Read-Only Workspace / Readiness Decoupling：已完成
 Configuration Ownership & Flow Audit：已完成
 Chat Send & Streaming Composition：待实施
 Chat Realtime Coordination：待实施
 Chat Capability / Regenerate 收尾：待实施
 ```
 
-当前 Penumbra 已有 Chat、Calendar、Todo 和 Settings 的部分 UI 外壳；Chat 页面已通过 presentation boundary 接入真实 Workspace、conversation selection 与 initial persistent history，production Chat 不再读取 mock。发送、流式与 realtime 仍未接入。Calendar/Todo 尚未接入后端业务状态。Settings 已接入安全只读的 Session、models 与 Chat readiness，Provider/TTS/Memory 等完整设置仍未迁移。UI 存在不代表领域已完成迁移。
+当前 Penumbra 已有 Chat、Calendar、Todo 和 Settings 的部分 UI 外壳；Chat 页面已通过 presentation boundary 接入真实 Workspace、conversation selection 与 initial persistent history，production Chat 不再读取 mock。S6B.1 已将 conversation/history read path 与 send readiness 解耦：readiness 失败时真实只读 Workspace 继续展示，Sender 保持 disabled。发送、流式与 realtime 仍未接入。Calendar/Todo 尚未接入后端业务状态。Settings 已接入安全只读的 Session、models 与 Chat readiness，Provider/TTS/Memory 等完整设置仍未迁移。UI 存在不代表领域已完成迁移。
 
-> Runtime read client、Conversation/Message Domain Foundation、Conversation CRUD hardening、Chat Setup Application Layer、Message History Application、Streaming Transport / SSE Framing、Chat Execution Client / Event Contract、WebSocket Transport / Event Contract、Realtime Reconciliation Application、Settings Safe Basics Integration、Chat Workspace Read Model & Controller、Chat Read-Only UI Integration 与 Configuration Ownership & Flow Audit 已完成；optimistic/streaming composition 与 realtime coordination 尚未实施。C1 已确认 Model & Generation Contract 和 Conversation Config 是 S6C 前置收口，完整 Provider/Capability 管理仍延后。Settings UI Refinement 已移入普通 backlog，不阻塞 Chat；Legacy Chat mocks cleanup 作为后续 cleanup，不夹入 S6B。
+> Runtime read client、Conversation/Message Domain Foundation、Conversation CRUD hardening、Chat Setup Application Layer、Message History Application、Streaming Transport / SSE Framing、Chat Execution Client / Event Contract、WebSocket Transport / Event Contract、Realtime Reconciliation Application、Settings Safe Basics Integration、Chat Workspace Read Model & Controller、Chat Read-Only UI Integration、Read-Only Workspace / Readiness Decoupling 与 Configuration Ownership & Flow Audit 已完成；optimistic/streaming composition 与 realtime coordination 尚未实施。C1 已确认 Model & Generation Contract 和 Conversation Config 是 S6C 前置收口，完整 Provider/Capability 管理仍延后。Settings UI Refinement 已移入普通 backlog，不阻塞 Chat；Legacy Chat mocks cleanup 作为后续 cleanup，不夹入 S6B。
+
+Readiness contract gap：当前 deployed backend 可能对 `GET /api/chat/readiness` 返回 404。Penumbra 只将其解释为 send readiness unavailable，使 conversation list 与 persistent history 可以安全降级展示；404 不代表 provider ready。本轮不修改 AionHome 或后端 route，S6C 启用发送前仍必须补齐并稳定该 readiness 契约。在此之前以及 readiness 返回 `ready=false` 时，Sender 始终 disabled，不调用 Chat Execution/provider，不消费 SSE，不连接 WebSocket，也不运行 reconciliation。
 
 Backend blocker：**Message update reconciliation**。当前 WS 只提供 message/conversation ID，HTTP 没有单 Message GET；较早消息更新无法由有限 latest window 保证完整对账。S4E2 将该结果保持为 `latest-window-only`，不以 WS payload、伪造单条 fetch 或自动分页全部历史规避此契约缺口。
 
@@ -129,7 +134,7 @@ Backend blocker：**Message update reconciliation**。当前 WS 只提供 messag
 1. 已完成安全的 session/models/readiness read contract、Penumbra read layer 与 C1 所有权审计。
 2. C2A 先以 characterization tests 固定 model registry、unknown model 和 send/regenerate 参数语义，再收口实现差异。
 3. C2B 保持 conversation model 为发送模型事实来源，并决定 conversation-scoped generation config 是明确存在还是明确不存在。
-4. S6C 只组合 C2A/C2B 允许的最小发送字段；未稳定的高级字段保持省略。
+4. S6C 只组合 C2A/C2B 允许的最小发送字段，并且必须先确认 deployed readiness 契约稳定；未稳定的高级字段保持省略。
 5. C2C Provider Admin、C2D MCP、C2E 其他 capabilities 分别使用 secret-safe DTO 小步迁移。
 6. C2F 在所有调用方有替代后逐字段退役 legacy Settings，不一次性删除。
 
@@ -174,7 +179,7 @@ Backend blocker：**Message update reconciliation**。当前 WS 只提供 messag
 
 | 领域 | 旧前端来源 | Penumbra 当前状态 | 迁移方式 | 优先级 |
 |---|---|---|---|---|
-| Chat | `aion-chat/static/chat.html`、`aion-chat/routes/chat.py` | 只读页面已使用真实 Workspace、selection 与 initial history；Sender disabled，发送/流式/realtime 待实施 | 直接复用现有 Penumbra UI；domain client 重写；adapter/mapper 转换 | P0 |
+| Chat | `aion-chat/static/chat.html`、`aion-chat/routes/chat.py` | 只读页面已使用真实 Workspace、selection 与 initial history；readiness failure 可安全降级且 Sender disabled；deployed readiness 404 仍是 S6C 前后端缺口，发送/流式/realtime 待实施 | 直接复用现有 Penumbra UI；domain client 重写；adapter/mapper 转换 | P0 |
 | Conversation | `aion-chat/static/chat.html`、conversation API | 真实 list 与 atomic selection 已进入 production Chat；create/rename/delete 未在本阶段接入 | domain client 重写；adapter/mapper 转换 | P0 |
 | Message | `aion-chat/static/chat.html`、message API/DTO contract | Message Domain、initial History、presentation mapping 与只读 BubbleList 接入已完成；load older 与 capability rendering 延后 | 直接复用现有 Penumbra UI；adapter/mapper 转换 | P0 |
 | WebSocket | `aion-chat/static/common.js`、`aion-chat/static/chat.html`、`aion-chat/ws.py` | S4E1 单连接 transport 与安全 event projection、S4E2 Realtime Reconciliation 已完成 | 共享 transport 负责单次连接和分发；reconciliation application 负责 HTTP authority 策略；未来 coordinator 负责串行化与连接策略 | P0 |

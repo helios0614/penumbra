@@ -36,6 +36,15 @@ describe("chat setup view model", () => {
       ],
       status: "ready",
       setupActionRequired: false,
+      readiness: {
+        kind: "available",
+        value: {
+          ready: true,
+          modelKey: "model-b",
+          reason: "ready",
+          setupActionRequired: false,
+        },
+      },
     });
   });
 
@@ -55,6 +64,15 @@ describe("chat setup view model", () => {
 
     expect(result.status).toBe(reason);
     expect(result.setupActionRequired).toBe(setupActionRequired);
+    expect(result.readiness).toEqual({
+      kind: "available",
+      value: {
+        ready: false,
+        modelKey: "model-b",
+        reason,
+        setupActionRequired,
+      },
+    });
   });
 
   it("preserves an unknown historical conversation model without selecting a replacement", () => {
@@ -262,7 +280,18 @@ describe("chat setup view model", () => {
       "models",
       "status",
       "setupActionRequired",
+      "readiness",
     ]);
+    expect(Object.keys(result.readiness)).toEqual(["kind", "value"]);
+    expect(result.readiness.kind).toBe("available");
+    if (result.readiness.kind === "available") {
+      expect(Object.keys(result.readiness.value)).toEqual([
+        "ready",
+        "modelKey",
+        "reason",
+        "setupActionRequired",
+      ]);
+    }
     expect(Object.keys(result.models[0] ?? {})).toEqual([
       "key",
       "label",
@@ -343,6 +372,93 @@ describe("chat setup load service", () => {
     ]);
     expect(result.modelKey).toBe("model-c");
     expect(result.models.map((model) => model.selected)).toEqual([false, false, true]);
+  });
+
+  it("degrades a missing bootstrap readiness route without inventing a model or ready state", async () => {
+    const fakeEndpoint = "https://private-readiness.example";
+    fetchMock.mockImplementation((input) => Promise.resolve(
+      String(input) === "/api/models"
+        ? json(modelDtos())
+        : json({ error: "missing", endpoint: fakeEndpoint }, 404),
+    ));
+
+    const result = await loadBootstrapChatSetup({ timeoutMs: 0 });
+
+    expect(result).toMatchObject({
+      modelKey: null,
+      modelLabel: null,
+      modelKnown: false,
+      status: "readiness-unavailable",
+      setupActionRequired: true,
+      readiness: { kind: "unavailable", reason: "not-found" },
+    });
+    expect(result.models.every((model) => model.selected === false)).toBe(true);
+    expect(JSON.stringify(result)).not.toContain(fakeEndpoint);
+  });
+
+  it("safely degrades readiness network, timeout, and DTO contract failures", async () => {
+    const fakeEndpoint = "https://internal-provider.example";
+    const readinessFailures: ReadonlyArray<{
+      readonly expectedReason: "network" | "timeout" | "contract";
+      readonly timeoutMs: number;
+      readonly readinessResponse: (signal?: AbortSignal | null) => Promise<Response>;
+    }> = [
+      {
+        expectedReason: "network",
+        timeoutMs: 0,
+        readinessResponse: () => Promise.reject(new TypeError(fakeEndpoint)),
+      },
+      {
+        expectedReason: "timeout",
+        timeoutMs: 1,
+        readinessResponse: (signal) => new Promise<Response>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+        }),
+      },
+      {
+        expectedReason: "contract",
+        timeoutMs: 0,
+        readinessResponse: () => Promise.resolve(json({
+          ...readinessDto("ready", "model-b"),
+          ready: "yes",
+          endpoint: fakeEndpoint,
+        })),
+      },
+    ];
+
+    for (const failure of readinessFailures) {
+      fetchMock.mockReset();
+      fetchMock.mockImplementation((input, init) =>
+        String(input) === "/api/models"
+          ? Promise.resolve(json(modelDtos()))
+          : failure.readinessResponse(init?.signal),
+      );
+
+      const result = await loadBootstrapChatSetup({
+        timeoutMs: failure.timeoutMs,
+      });
+
+      expect(result.readiness).toEqual({
+        kind: "unavailable",
+        reason: failure.expectedReason,
+      });
+      expect(result.status).toBe("readiness-unavailable");
+      expect(JSON.stringify(result)).not.toContain(fakeEndpoint);
+    }
+  });
+
+  it("keeps readiness authentication failures fatal", async () => {
+    fetchMock.mockImplementation((input) => Promise.resolve(
+      String(input) === "/api/models"
+        ? json(modelDtos())
+        : json({ error: "unauthenticated" }, 401),
+    ));
+
+    const error = await loadBootstrapChatSetup({ timeoutMs: 0 })
+      .catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 401 });
   });
 
   it("starts models and readiness concurrently", async () => {

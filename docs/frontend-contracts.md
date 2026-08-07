@@ -1,6 +1,6 @@
 # Penumbra 前端契约摘要
 
-> 最后更新：2026-08-06
+> 最后更新：2026-08-07
 
 导航：[架构原则](./penumbra-architecture.md) · [迁移路线图](./frontend-migration-plan.md) · [前端契约](./frontend-contracts.md)
 
@@ -34,7 +34,7 @@ Conversation Domain 不拥有 available models、readiness、active API config�
 
 ### Chat Setup Application Layer（S3B）
 
-Chat Setup 是 Conversation Domain 与 Runtime Domain 之上的 application composition，不定义新的后端 DTO，也不拥有任何一个领域的 wire contract。它只把 `Conversation`、`AvailableModel[]` 和 `ChatReadiness` 组合为 UI 可消费的安全 ViewModel。
+Chat Setup 是 Conversation Domain 与 Runtime Domain 之上的 application composition，不定义新的后端 DTO，也不拥有任何一个领域的 wire contract。它把 `Conversation`、`AvailableModel[]` 和 readiness 读取结果组合为 UI 可消费的安全 ViewModel。Runtime Domain 的 `ChatReadiness` 仍只表示成功校验的后端事实；application 层另用 `ChatReadinessState` 明确区分已取得的事实与无法取得的降级状态。
 
 - 有 conversation 时，当前模型的唯一事实来源是 `conversation.modelKey`；readiness 必须按该 key 请求，响应中的 `modelKey` 必须与它完全一致。
 - conversation model 与 readiness model 不一致属于 application composition contract error。前端不得静默采用 readiness model、自动重新请求或改写 conversation。
@@ -43,6 +43,8 @@ Chat Setup 是 Conversation Domain 与 Runtime Domain 之上的 application comp
 - available models 保持 Runtime Domain 顺序，不排序、不去重；选中状态只按 key 精确匹配。
 - 历史或 bootstrap model 不在 available models 时仍保留原始 key，并以该 key 作为安全 label fallback；未知 model 不自动替换，所有 model options 均不选中。
 - readiness reason 与 `setupActionRequired` 直接进入最小 ViewModel；`ready=false` 是正常业务状态，不转为异常，也不在本层重新判断 endpoint、secret、auth mode、provider 或 provider health。
+- `ChatReadinessState` 为 `{ kind: "available", value: ChatReadiness } | { kind: "unavailable", reason: SafeReadinessReason }`。`available` 只表示响应成功且 DTO 合法，不等于 `value.ready=true`；`unavailable` 只保留 `not-found/network/timeout/service/contract/unknown` 安全分类，不保留 response、endpoint、stack、内部 target 或 provider exception。
+- Chat Setup load service 对 readiness 的 404、network、timeout、其他非认证 HTTP 错误及 DTO contract error 返回 `readiness-unavailable` ViewModel；它不从 models 第一项补 model、不伪造 readiness，也不自动重试。readiness 的 401/403 与 abort 仍抛出，models 读取或 models DTO 失败仍为致命错误。
 - 本层不读取 Settings 或 active API config，不拥有 provider routing、fallback、secret、endpoint、raw readiness 或 raw DTO，也不请求 messages。
 - 本阶段只提供普通 TypeScript 纯组合函数和异步 load service，不接入现有 Chat mock、React hook、可见 UI 或全局状态。
 
@@ -72,7 +74,7 @@ type ChatWorkspaceSnapshot = {
 };
 ```
 
-- 现有 Chat Setup 的公开 bootstrap loader 只组合 models 与 bootstrap readiness，不读取 conversation list 或 session；Workspace 对它只调用一次，并通过 Conversation Domain 对真实列表只调用一次。Workspace 不拆开重复请求 models/readiness，也不借用 Settings Overview。
+- 现有 Chat Setup 的公开 bootstrap loader 只组合 models 与 bootstrap readiness state，不读取 conversation list 或 session；Workspace 对它只调用一次，并通过 Conversation Domain 对真实列表只调用一次。Workspace 不拆开重复请求 models/readiness，也不借用 Settings Overview。Session 的独立安全概览仍属于 Settings；Workspace 任一受 session 保护的请求返回 401/403 时，controller 继续进入 unauthenticated fatal error。
 - `setup` 是一次 bootstrap Chat Setup 结果，与 conversation selection 分离；它不从 models 第一项推断模型。conversation 的模型事实仍由 `selectedConversation.modelKey` 提供。conversation switch 不重新请求 setup、list、session、models 或 readiness。
 - Snapshot 只包含成功读取的 application 数据，不包含 loading、error、pending、retry、streaming、sending、realtime、scroll 或 toast 状态，也不复制第二份 `Message[]`。Domain Message 尚未映射成现有 Chat UI 的 mock `ChatMessage`。
 - selection 是前端 UI policy，不是后端 default conversation。为保持当前 Penumbra Chat 的用户可见行为，初次加载先采用存在于列表中的 `preferredConversationId`，否则采用后端原顺序的第一项；这不改变后端 `updated_at DESC` 顺序，也不使用 model、`messageCount` 或 mock ID 推导选择。
@@ -83,6 +85,14 @@ type ChatWorkspaceSnapshot = {
 - React controller 为 bootstrap 与 switch 分别维护 AbortController 和递增 request generation。retry、快速 A→B→C、abort、unmount 和 Strict Mode 下的 stale success/error 都不能覆盖更新选择；abort 不作为普通 UI error。
 - `useChatWorkspace` 只公开 controller state、bootstrap retry、`selectConversation(id)` 与 switch retry。它不公开 send、regenerate、stop、older pagination、latest refresh、realtime connection、streaming text 或 optimistic message。
 - Chat Workspace 不依赖 Chat Execution、SSE、WebSocket、Realtime Reconciliation 或 Settings。S6A 本身没有修改当时的 Chat page/view、`useChat` 或 mock；S6B 的可见页面接入边界见下一节。
+
+#### Read-only Workspace 与 send readiness 解耦（S6B.1）
+
+- Workspace bootstrap 仍并行启动 Chat Setup 与真实 conversation list，但 readiness 的非认证失败由 Chat Setup 收敛为安全降级 ViewModel，因此不再 reject 整个 bootstrap。成功取得的 conversations 会继续完成 selection，并为初始选中会话加载一次真实 HTTP history；conversation switch 继续只切换真实 history。
+- 致命边界不变：models 或 conversation list 请求失败、conversation/message DTO 无法安全解析、初始选中 history 失败、401/403 认证失败及 Workspace selection/history 状态不一致都会阻止 Workspace。readiness 404、network、timeout、非认证服务错误、业务 `ready=false` 与 readiness DTO contract error 不阻止只读 Workspace。
+- `ready=false` 保留为 `readiness.kind="available"` 下的真实业务值；请求或 DTO 无法取得事实时使用 `readiness.kind="unavailable"`。两者都不能被解释为 provider ready，未来 S6C 必须只在 readiness 契约稳定且明确 `value.ready=true` 后再决定发送门控。
+- 当前部署的 `/api/chat/readiness` 404 是后端契约或部署缺口，只表示 send readiness unavailable，不表示 conversation service unavailable，也不表示 provider ready。本阶段不修改 AionHome route；S6C 启用发送前仍必须补齐并稳定部署 readiness 契约。
+- readiness 降级不自动重试。现有显式 bootstrap retry 可重新取得 readiness，并优先保持仍存在的 current selection；conversation list 与 history 的权威读取语义不变。
 
 **AionsHome 权威来源**：`aion-chat/routes/chat.py` 中 conversation list 与 initial history 的当前读取语义；Penumbra composition 事实见 `src/application/chat-setup`、`src/domain/conversation` 与 `src/application/message-history`。
 
@@ -118,7 +128,7 @@ type ChatMessageViewModel =
 - idle/loading 使用稳定双栏 skeleton 与 `aria-busy`；bootstrap error 只展示 controller 的安全分类摘要和 retry；unauthenticated 不自动登录；空列表不创建 conversation；ready/no-selection 不请求或伪造 history；空或仅 hidden-runtime 的 history 使用稳定 empty state。
 - conversation switch 直接调用 `selectConversation(id)`。pending item 只显示局部 spinner，旧 selected item、header 与 history 保持一致；成功后由 controller 原子替换；失败保留旧 workspace 并调用 `retryConversationSwitch()`。UI 不提前高亮目标、不清空旧 history，也不使用 timer 模拟。
 - initial history 与 conversation 成功切换后，BubbleList 只在 conversation ID、最后可见 message ID 或可见长度变化时滚动到底部；不在每次 render 强制滚动。本阶段不实现 load older、scroll anchor 或 per-conversation scroll memory。
-- Sender 保留原布局但 textarea、附件按钮和发送按钮均 disabled，并显示“发送功能将在下一阶段接入”。Welcome 快捷发送不进入 production Chat；页面不调用旧 mock send，不创建 optimistic message，也不提供 regenerate、stop 或 mutation。
+- Sender 保留原布局且 textarea、附件按钮和发送按钮均 disabled。readiness 无法取得或 `ready=false` 时显示“当前仅支持查看历史，发送服务尚未就绪”；成功取得 `ready=true` 时仍显示“发送功能将在下一阶段接入”。两种状态都不启用发送。Welcome 快捷发送不进入 production Chat；页面不调用旧 mock send，不创建 optimistic message，也不提供 regenerate、stop 或 mutation。
 - S6B 不调用 Chat Execution，不打开或消费 SSE，不连接 WebSocket，不运行 Realtime Reconciliation，也不读取 Settings Overview。send/streaming composition、realtime coordination、load older、conversation CRUD、model mutation 与 capability rendering 都保持后续阶段。
 
 ## 2. Message Domain（S4B）
@@ -458,6 +468,7 @@ SSE/WS 权威关系、stop/cancel、carryover 所有权、production 部署、se
 | Settings Safe Basics Integration | `Completed (S5A)` | Session、models 与 bootstrap readiness 已通过 application read model 接入现有 Settings；含安全 error summary、loading、empty、retry、abort 与 stale-request 防护，无旧 `/api/settings` 或写操作。 |
 | Chat Workspace Read Model & Controller | `Completed (S6A)` | 一次 bootstrap setup、真实 conversation list、前端 selection 与 initial persisted history 已组合；含 atomic switch、retry、abort 与 stale-request 防护；controller 本身不拥有 UI、Execution、SSE、WebSocket、Reconciliation 或 Settings。 |
 | Chat Read-Only UI Integration | `Completed (S6B)` | production Chat 已通过 presentation model 读取真实 Workspace；含 loading/error/empty、atomic switch UI、system/unknown 中性展示、hidden-runtime 过滤与 disabled Sender；无 send、Execution、SSE、WebSocket、Reconciliation、load older 或 capability rendering。 |
+| Read-Only Workspace / Readiness Decoupling | `Completed (S6B.1)` | readiness 404/network/timeout/unavailable/DTO error 不再阻止真实 conversation/history；安全降级状态不伪造 ready，Sender 保持 disabled。当前 deployed readiness 404 仍是 S6C 前必须修复的后端契约/部署缺口。 |
 | Message update reconciliation | `Backend contract gap` | WS 仅提供 ID 且 HTTP 无单 Message GET；latest refresh 无法保证较早消息已权威更新，结果保持 `latest-window-only`。 |
 | SSE/WS 权威关系 | `Pending backend confirmation` | 去重与最终权威规则待确认。 |
 | Stop/cancel | `Pending backend confirmation` | 尚无已确认的服务端停止契约。 |

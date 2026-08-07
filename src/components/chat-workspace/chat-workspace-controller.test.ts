@@ -473,6 +473,15 @@ function setup(): ChatSetupViewModel {
     models: [],
     status: "ready",
     setupActionRequired: false,
+    readiness: {
+      kind: "available",
+      value: {
+        ready: true,
+        modelKey: "backend-default",
+        reason: "ready",
+        setupActionRequired: false,
+      },
+    },
   };
 }
 

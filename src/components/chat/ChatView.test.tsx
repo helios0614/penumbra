@@ -188,6 +188,32 @@ describe("ChatWorkspaceView ready states", () => {
     fetchSpy.mockRestore();
   });
 
+  it("keeps real conversations and history visible when readiness is unavailable", () => {
+    const fakeEndpoint = "https://private-readiness.example";
+    const selected = conversation("conv_a", "可读取会话");
+    const workspace = {
+      ...snapshot(
+        [selected],
+        selected,
+        history("conv_a", [
+          message("a_1", "assistant", "assistant", "持久化历史仍然可见", 1),
+        ]),
+      ),
+      setup: unavailableSetup("network"),
+      endpoint: fakeEndpoint,
+    } as ChatWorkspaceSnapshot;
+
+    const html = render(ready(workspace));
+
+    expect(html).toContain("可读取会话");
+    expect(html).toContain("持久化历史仍然可见");
+    expect(html).toContain("当前仅支持查看历史，发送服务尚未就绪");
+    expect(html).not.toContain("会话服务暂时不可用");
+    expect(html).not.toContain(fakeEndpoint);
+    expect(html).toMatch(/<textarea[^>]*disabled/);
+    expect(html).toMatch(/aria-label="发送消息"[^>]*disabled|disabled=""[^>]*aria-label="发送消息"/);
+  });
+
   it("does not expose raw workspace payload fields or unsafe unknown role labels", () => {
     const forbidden = [
       "fake-api-key",
@@ -274,6 +300,31 @@ function setup(): ChatSetupViewModel {
     models: [],
     status: "ready",
     setupActionRequired: false,
+    readiness: {
+      kind: "available",
+      value: {
+        ready: true,
+        modelKey: "bootstrap-model",
+        reason: "ready",
+        setupActionRequired: false,
+      },
+    },
+  };
+}
+
+function unavailableSetup(
+  reason: "not-found" | "network" | "timeout" | "service" | "contract" | "unknown",
+): ChatSetupViewModel {
+  return {
+    conversationId: null,
+    conversationTitle: null,
+    modelKey: null,
+    modelLabel: null,
+    modelKnown: false,
+    models: [],
+    status: "readiness-unavailable",
+    setupActionRequired: true,
+    readiness: { kind: "unavailable", reason },
   };
 }
 

@@ -26,6 +26,8 @@ import { ConversationsList } from "./ConversationsList";
 import { Sender } from "./Sender";
 
 const READ_ONLY_SENDER_MESSAGE = "发送功能将在下一阶段接入";
+const READINESS_UNAVAILABLE_SENDER_MESSAGE =
+  "当前仅支持查看历史，发送服务尚未就绪";
 
 export function ChatView() {
   const workspace = useChatWorkspace();
@@ -78,6 +80,11 @@ export function ChatWorkspaceView({
   });
   const selectedConversation = conversations.find(({ isSelected }) => isSelected) ?? null;
   const messages = presentChatMessages(workspace.history?.messages ?? []);
+  const senderMessage =
+    workspace.setup.readiness.kind === "available" &&
+    workspace.setup.readiness.value.ready
+      ? READ_ONLY_SENDER_MESSAGE
+      : READINESS_UNAVAILABLE_SENDER_MESSAGE;
 
   const selectConversation = (conversationId: string) => {
     onSelectConversation(conversationId);
@@ -169,8 +176,8 @@ export function ChatWorkspaceView({
 
           <Sender
             disabled
-            placeholder={READ_ONLY_SENDER_MESSAGE}
-            statusMessage={READ_ONLY_SENDER_MESSAGE}
+            placeholder={senderMessage}
+            statusMessage={senderMessage}
           />
         </div>
       </div>

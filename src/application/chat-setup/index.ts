@@ -2,10 +2,12 @@ export {
   ChatSetupContractError,
 } from "@/application/chat-setup/chat-setup-types";
 export type {
+  ChatReadinessState,
   ChatSetupModelOption,
   ChatSetupStatus,
   ChatSetupViewModel,
   CreateChatSetupViewModelInput,
+  SafeReadinessReason,
 } from "@/application/chat-setup/chat-setup-types";
 export {
   createChatSetupViewModel,
