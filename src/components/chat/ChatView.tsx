@@ -1,10 +1,19 @@
 import { ArrowLeft, LoaderCircle, Menu, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
-import type { ChatWorkspaceControllerState } from "@/components/chat-workspace";
 import {
+  getChatSenderAvailability,
+  useChatSend,
+  type ChatWorkspaceControllerState,
+} from "@/components/chat-workspace";
+import {
+  INITIAL_CHAT_SEND_STATE,
+  isChatSendActive,
+  type ChatSendState,
+} from "@/application/chat-send";
+import {
+  composeVisibleChatMessages,
   presentChatConversations,
-  presentChatMessages,
 } from "@/components/chat-workspace/presentation";
 import { useChatWorkspace } from "@/components/chat-workspace/useChatWorkspace";
 import { Button } from "@/components/ui/button";
@@ -25,22 +34,42 @@ import {
 import { ConversationsList } from "./ConversationsList";
 import { Sender } from "./Sender";
 
-const READ_ONLY_SENDER_MESSAGE = "发送功能将在下一阶段接入";
-const READINESS_UNAVAILABLE_SENDER_MESSAGE =
-  "当前仅支持查看历史，发送服务尚未就绪";
 const CHAT_HEADER_ACTION_CLASS =
   "rounded-xl border border-border-strong/50 bg-background/25 text-foreground shadow-sm hover:border-primary/30 hover:bg-primary/10 active:bg-primary/15";
 
 export function ChatView({ onBack }: { readonly onBack?: () => void }) {
   const workspace = useChatWorkspace();
+  const send = useChatSend(workspace.reloadSelectedConversationHistory);
+
+  const selectConversation = (conversationId: string) => {
+    if (isChatSendActive(send.state)) return;
+    send.resetError();
+    workspace.selectConversation(conversationId);
+  };
+
+  const sendMessage = (content: string): Promise<boolean> => {
+    if (
+      workspace.state.status !== "ready" ||
+      workspace.state.workspace.selectedConversation === null
+    ) {
+      return Promise.resolve(false);
+    }
+    return send.send({
+      conversationId: workspace.state.workspace.selectedConversation.id,
+      content,
+    });
+  };
 
   return (
     <ChatWorkspaceView
       state={workspace.state}
       onRetry={workspace.retry}
-      onSelectConversation={workspace.selectConversation}
+      onSelectConversation={selectConversation}
       onRetryConversationSwitch={workspace.retryConversationSwitch}
       onBack={onBack}
+      sendState={send.state}
+      onSend={sendMessage}
+      onRetryFinalization={send.retryFinalization}
     />
   );
 }
@@ -50,6 +79,9 @@ export interface ChatWorkspaceViewProps {
   readonly onRetry: () => void;
   readonly onSelectConversation: (conversationId: string) => void;
   readonly onRetryConversationSwitch: () => void;
+  readonly sendState?: ChatSendState;
+  readonly onSend?: (content: string) => Promise<boolean>;
+  readonly onRetryFinalization?: () => void;
   readonly onBack?: () => void;
 }
 
@@ -58,6 +90,9 @@ export function ChatWorkspaceView({
   onRetry,
   onSelectConversation,
   onRetryConversationSwitch,
+  sendState = INITIAL_CHAT_SEND_STATE,
+  onSend,
+  onRetryFinalization,
   onBack,
 }: ChatWorkspaceViewProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -84,12 +119,19 @@ export function ChatWorkspaceView({
     pendingConversationId,
   });
   const selectedConversation = conversations.find(({ isSelected }) => isSelected) ?? null;
-  const messages = presentChatMessages(workspace.history?.messages ?? []);
-  const senderMessage =
-    workspace.setup.readiness.kind === "available" &&
-    workspace.setup.readiness.value.ready
-      ? READ_ONLY_SENDER_MESSAGE
-      : READINESS_UNAVAILABLE_SENDER_MESSAGE;
+  const messages = composeVisibleChatMessages(
+    workspace.history?.messages ?? [],
+    sendState,
+    workspace.selectedConversationId ?? "",
+  );
+  const sender = getChatSenderAvailability(state, sendState);
+  const executionActive = isChatSendActive(sendState);
+  const forceFollowKey = sendState.kind === "sending-user" ||
+    sendState.kind === "streaming" ||
+    sendState.kind === "finalizing" ||
+    sendState.kind === "finalization-uncertain"
+    ? sendState.executionId
+    : null;
 
   const selectConversation = (conversationId: string) => {
     onSelectConversation(conversationId);
@@ -102,6 +144,7 @@ export function ChatWorkspaceView({
         <ConversationsList
           conversations={conversations}
           onSelect={selectConversation}
+          disabled={executionActive}
           className="hidden w-[280px] shrink-0 md:flex"
         />
 
@@ -140,6 +183,7 @@ export function ChatWorkspaceView({
                 <ConversationsList
                   conversations={conversations}
                   onSelect={selectConversation}
+                  disabled={executionActive}
                   className="h-full w-full border-r-0"
                 />
               </SheetContent>
@@ -175,6 +219,11 @@ export function ChatWorkspaceView({
             </div>
           )}
 
+          <ChatExecutionNotice
+            state={sendState}
+            onRetryFinalization={onRetryFinalization}
+          />
+
           {workspace.conversations.length === 0 ? (
             <ChatWorkspaceEmpty kind="conversations" />
           ) : workspace.selectedConversation === null || workspace.history === null ? (
@@ -185,16 +234,56 @@ export function ChatWorkspaceView({
             <BubbleList
               conversationId={workspace.selectedConversation.id}
               messages={messages}
+              forceFollowKey={forceFollowKey}
             />
           )}
 
           <Sender
-            disabled
-            placeholder={senderMessage}
+            disabled={!sender.enabled || onSend === undefined}
+            placeholder={sender.placeholder}
+            statusMessage={sender.statusMessage ?? undefined}
+            onSend={onSend}
           />
         </div>
       </div>
     </TooltipProvider>
+  );
+}
+
+function ChatExecutionNotice({
+  state,
+  onRetryFinalization,
+}: {
+  readonly state: ChatSendState;
+  readonly onRetryFinalization?: () => void;
+}) {
+  const error = state.kind === "error"
+    ? state.error
+    : state.kind === "finalization-uncertain"
+      ? state.error
+      : state.kind === "streaming" || state.kind === "finalizing"
+        ? state.executionError
+        : null;
+  if (error === null) return null;
+
+  return (
+    <div
+      className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-destructive/5 px-4 py-2 text-xs text-muted-strong"
+      role="alert"
+    >
+      <span className="min-w-0 flex-1">{error.message}</span>
+      {state.kind === "finalization-uncertain" && onRetryFinalization && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onRetryFinalization}
+        >
+          <RefreshCw className="size-3.5" aria-hidden="true" />
+          重新加载历史
+        </Button>
+      )}
+    </div>
   );
 }
 

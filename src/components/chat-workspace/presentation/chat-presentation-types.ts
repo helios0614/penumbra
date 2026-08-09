@@ -17,6 +17,11 @@ type ChatVisibleMessageBase = {
   readonly id: string;
   readonly content: string;
   readonly createdAt: number;
+  readonly executionStatus?:
+    | "optimistic"
+    | "streaming"
+    | "finalizing"
+    | "unconfirmed";
 };
 
 export type ChatMessageViewModel =

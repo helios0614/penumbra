@@ -33,15 +33,7 @@ describe("Chat execution request contracts", () => {
     });
   });
 
-  it("maps every explicit send option, including false, zero, null, attachments, carryover, and client ID", () => {
-    const carryover = {
-      role: "user",
-      content: "older",
-      created_at: 0,
-      attachments: ["/upload/旧图.png"],
-      nested: { enabled: false, score: 0, empty: null },
-    };
-
+  it("maps every explicit allowlisted send option, including false, zero, null, attachments, and client ID", () => {
     expect(
       mapSendMessageRequest({
         content: "hello",
@@ -51,7 +43,6 @@ describe("Chat execution request contracts", () => {
         fastMode: false,
         temperature: null,
         thinkingEffort: null,
-        carryoverMessages: [carryover],
         clientMessageId: null,
       }),
     ).toEqual({
@@ -62,7 +53,6 @@ describe("Chat execution request contracts", () => {
       fast_mode: false,
       temperature: null,
       thinking_effort: null,
-      carryover_messages: [carryover],
       client_msg_id: null,
     });
 
@@ -80,31 +70,25 @@ describe("Chat execution request contracts", () => {
     });
   });
 
-  it("creates a fresh allowlisted request and recursively copies carryover JSON", () => {
-    const carryover = {
-      content: "past",
-      nested: { values: [1, { ok: true }] },
-    };
+  it("creates a fresh allowlisted request and drops legacy or internal input", () => {
     const unsafeInput = {
       content: "now",
       attachments: ["/upload/a.png"],
-      carryoverMessages: [carryover],
+      carryoverMessages: [{ content: "past" }],
+      model: "forbidden-model",
+      provider: "forbidden-provider",
+      cacheMetadata: { secret: "fake-cache-secret" },
+      rawHistory: [{ content: "fake-history" }],
       providerSecret: "fake-secret",
       rawPrompt: "fake-prompt",
     };
 
     const request = mapSendMessageRequest(unsafeInput);
-    carryover.content = "changed";
-    carryover.nested.values[0] = 99;
     unsafeInput.attachments.push("later");
-    unsafeInput.carryoverMessages.push({ content: "later", nested: { values: [] } });
 
     expect(request).toEqual({
       content: "now",
       attachments: ["/upload/a.png"],
-      carryover_messages: [
-        { content: "past", nested: { values: [1, { ok: true }] } },
-      ],
     });
     expect(JSON.stringify(request)).not.toContain("fake-secret");
     expect(JSON.stringify(request)).not.toContain("fake-prompt");
@@ -113,9 +97,6 @@ describe("Chat execution request contracts", () => {
   it("rejects unsafe send inputs without echoing content or attachment URLs", () => {
     const fakeContent = "fake-sensitive-content";
     const fakeUrl = "https://secret.example/fake-token";
-    const cyclic: Record<string, unknown> = { content: fakeContent };
-    cyclic.self = cyclic;
-
     const invalidInputs: unknown[] = [
       null,
       {},
@@ -127,8 +108,6 @@ describe("Chat execution request contracts", () => {
       { content: fakeContent, fastMode: "false" },
       { content: fakeContent, thinkingEffort: 1 },
       { content: fakeContent, clientMessageId: 1 },
-      { content: fakeContent, carryoverMessages: ["not-an-object"] },
-      { content: fakeContent, carryoverMessages: [cyclic] },
     ];
 
     for (const input of invalidInputs) {
@@ -602,6 +581,7 @@ describe("Chat execution event validation and projection", () => {
         messageId: "msg_1",
         modelKey: "model_1",
         hasError: false,
+        failureCode: null,
         usage: { promptTokens: 0, completionTokens: 2, totalTokens: 2 },
       },
     ],
@@ -732,6 +712,7 @@ describe("Chat execution event validation and projection", () => {
       messageId: "msg_1",
       modelKey: "safe-model-key",
       hasError: true,
+      failureCode: null,
       usage: { promptTokens: 10, completionTokens: 4, totalTokens: 14 },
     });
     for (const sensitive of [
@@ -750,6 +731,30 @@ describe("Chat execution event validation and projection", () => {
     expect(errorLog).not.toHaveBeenCalled();
     log.mockRestore();
     errorLog.mockRestore();
+  });
+
+  it.each([
+    "provider_request_failed",
+    "provider_execution_failed",
+  ] as const)("projects only the fixed provider failure marker %s", (failureCode) => {
+    const event = mapChatExecutionEvent({
+      type: "debug",
+      model: "safe-model-key",
+      msg_id: "msg_1",
+      usage: null,
+      has_error: true,
+      error_text: `private provider text ${failureCode}`,
+    });
+
+    expect(event).toEqual({
+      type: "debug-summary",
+      messageId: "msg_1",
+      modelKey: "safe-model-key",
+      hasError: true,
+      failureCode,
+      usage: null,
+    });
+    expect(JSON.stringify(event)).not.toContain("private provider text");
   });
 
   it("keeps only the unknown type marker and never its payload", () => {

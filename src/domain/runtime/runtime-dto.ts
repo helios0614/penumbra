@@ -11,6 +11,7 @@ export type ChatReadinessReasonCodeDto =
   | "ready"
   | "unknown_model"
   | "provider_not_configured"
+  | "generation_not_supported"
   | "configuration_invalid";
 
 export type ChatReadinessDto = {

@@ -7,6 +7,10 @@ import type {
 
 const SAFE_UNKNOWN_ROLE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,47}$/;
 const SENSITIVE_UNKNOWN_ROLE = /(?:api[-_]?key|authorization|bearer|cookie|secret|token|https?[:/])/i;
+const PROVIDER_FAILURE_MARKERS = [
+  "provider_request_failed",
+  "provider_execution_failed",
+] as const;
 
 export function presentChatMessages(
   messages: readonly Message[],
@@ -42,6 +46,7 @@ export function presentChatMessage(
     case "assistant":
       return Object.freeze({
         ...base,
+        content: presentSafeAssistantContent(message.content),
         kind: "assistant",
         thinking: message.thinking,
         simpleThink: message.simpleThink,
@@ -58,6 +63,12 @@ export function presentChatMessage(
         rawRole: presentSafeUnknownRole(message.rawRole),
       });
   }
+}
+
+function presentSafeAssistantContent(content: string): string {
+  return PROVIDER_FAILURE_MARKERS.some((marker) => content.includes(marker))
+    ? "当前回复生成失败。"
+    : content;
 }
 
 export function presentSafeUnknownRole(rawRole: string): string {

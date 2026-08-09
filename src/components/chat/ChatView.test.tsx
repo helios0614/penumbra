@@ -81,7 +81,7 @@ describe("ChatWorkspaceView ready states", () => {
 
     expect(html).toContain("空会话");
     expect(html).toContain("暂无可显示的消息");
-    expect(html).toContain("发送功能将在下一阶段接入");
+    expect(html).toContain("输入消息");
   });
 
   it("renders selected persistent history while keeping raw model metadata out of the header", () => {
@@ -192,18 +192,17 @@ describe("ChatWorkspaceView ready states", () => {
     expect(html).not.toContain("B 的历史");
   });
 
-  it("keeps Sender fully disabled and performs no fetch while rendering", () => {
+  it("enables the composer only when selected readiness is ready and a send callback exists", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const selected = conversation("conv_a", "会话 A");
     const html = render(ready(snapshot(
       [selected],
       selected,
       history("conv_a", [message("a_1", "user", "user", "只读消息", 1)]),
-    )));
+    )), undefined, { onSend: vi.fn(async () => true) });
 
-    expect(html).toContain("发送功能将在下一阶段接入");
-    expect(html.match(/发送功能将在下一阶段接入/g)).toHaveLength(1);
-    expect(html).toMatch(/<textarea[^>]*disabled/);
+    expect(html).toContain("输入消息");
+    expect(html).not.toMatch(/<textarea[^>]*disabled/);
     expect(html).toMatch(/aria-label="发送消息"[^>]*disabled|disabled=""[^>]*aria-label="发送消息"/);
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
@@ -228,7 +227,7 @@ describe("ChatWorkspaceView ready states", () => {
 
     expect(html).toContain("可读取会话");
     expect(html).toContain("持久化历史仍然可见");
-    expect(html).toContain("当前仅支持查看历史，发送服务尚未就绪");
+    expect(html).toContain("当前发送服务暂时不可用");
     expect(html).not.toContain("会话服务暂时不可用");
     expect(html).not.toContain(fakeEndpoint);
     expect(html).toMatch(/<textarea[^>]*disabled/);
@@ -267,6 +266,9 @@ describe("ChatWorkspaceView ready states", () => {
 function render(
   state: ChatWorkspaceControllerState,
   onBack?: () => void,
+  props: {
+    readonly onSend?: (content: string) => Promise<boolean>;
+  } = {},
 ): string {
   const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
   const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -277,6 +279,7 @@ function render(
       onSelectConversation={vi.fn()}
       onRetryConversationSwitch={vi.fn()}
       onBack={onBack}
+      onSend={props.onSend}
     />,
   );
   expect(consoleError).not.toHaveBeenCalled();
@@ -307,7 +310,7 @@ function snapshot(
   selectedHistory: MessageHistoryState | null,
 ): ChatWorkspaceSnapshot {
   return {
-    setup: setup(),
+    setup: setup(selectedConversation),
     conversations,
     selectedConversationId: selectedConversation?.id ?? null,
     selectedConversation,
@@ -315,21 +318,29 @@ function snapshot(
   };
 }
 
-function setup(): ChatSetupViewModel {
+function setup(
+  selectedConversation: ConversationSummary | null = null,
+): ChatSetupViewModel {
+  const modelKey = selectedConversation?.modelKey ?? "bootstrap-model";
   return {
-    conversationId: null,
-    conversationTitle: null,
-    modelKey: "bootstrap-model",
-    modelLabel: "bootstrap-model",
-    modelKnown: false,
-    models: [],
+    conversationId: selectedConversation?.id ?? null,
+    conversationTitle: selectedConversation?.title ?? null,
+    modelKey,
+    modelLabel: modelKey,
+    modelKnown: true,
+    models: [{
+      key: modelKey,
+      label: modelKey,
+      provider: "safe-provider",
+      selected: true,
+    }],
     status: "ready",
     setupActionRequired: false,
     readiness: {
       kind: "available",
       value: {
         ready: true,
-        modelKey: "bootstrap-model",
+        modelKey,
         reason: "ready",
         setupActionRequired: false,
       },

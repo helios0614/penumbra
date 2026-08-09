@@ -13,6 +13,9 @@ export type UseChatWorkspaceResult = {
   readonly retry: () => void;
   readonly selectConversation: (conversationId: string) => void;
   readonly retryConversationSwitch: () => void;
+  readonly reloadSelectedConversationHistory: (
+    conversationId: string,
+  ) => Promise<readonly string[]>;
 };
 
 export function useChatWorkspace(
@@ -59,10 +62,22 @@ export function useChatWorkspace(
     void controllerRef.current?.retryConversationSwitch();
   }, []);
 
+  const reloadSelectedConversationHistory = useCallback(
+    async (conversationId: string) => {
+      const controller = controllerRef.current;
+      if (controller === null) {
+        throw new Error("Chat workspace controller is unavailable");
+      }
+      return controller.reloadSelectedConversationHistory(conversationId);
+    },
+    [],
+  );
+
   return {
     state,
     retry,
     selectConversation,
     retryConversationSwitch,
+    reloadSelectedConversationHistory,
   };
 }

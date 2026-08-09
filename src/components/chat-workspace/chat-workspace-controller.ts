@@ -1,9 +1,16 @@
 import {
+  ChatWorkspaceContractError,
+  createChatWorkspaceSnapshot,
   loadChatWorkspace,
   loadChatWorkspaceConversation,
   type ChatWorkspaceLoadInput,
   type ChatWorkspaceSnapshot,
 } from "@/application/chat-workspace";
+import {
+  reloadMessageHistoryFromScratch,
+  type MessageHistoryRequestOptions,
+  type MessageHistoryState,
+} from "@/application/message-history";
 import { ApiError, type ApiRequestOptions } from "@/lib/api";
 
 export type ChatWorkspaceSafeUiErrorCode =
@@ -48,9 +55,15 @@ export type ChatWorkspaceConversationLoader = (
   options?: ApiRequestOptions,
 ) => Promise<ChatWorkspaceSnapshot>;
 
+export type ChatWorkspaceHistoryReloader = (
+  history: MessageHistoryState,
+  options?: MessageHistoryRequestOptions,
+) => Promise<MessageHistoryState>;
+
 export type ChatWorkspaceControllerDependencies = {
   readonly loadWorkspace?: ChatWorkspaceBootstrapLoader;
   readonly loadConversation?: ChatWorkspaceConversationLoader;
+  readonly reloadHistory?: ChatWorkspaceHistoryReloader;
 };
 
 export interface ChatWorkspaceController {
@@ -59,6 +72,9 @@ export interface ChatWorkspaceController {
   retry(): Promise<void>;
   selectConversation(conversationId: string): Promise<void>;
   retryConversationSwitch(): Promise<void>;
+  reloadSelectedConversationHistory(
+    conversationId: string,
+  ): Promise<readonly string[]>;
   subscribe(listener: (state: ChatWorkspaceControllerState) => void): () => void;
   dispose(): void;
 }
@@ -70,11 +86,15 @@ export function createChatWorkspaceController(
   const bootstrapLoader = dependencies.loadWorkspace ?? loadChatWorkspace;
   const conversationLoader =
     dependencies.loadConversation ?? loadChatWorkspaceConversation;
+  const historyReloader =
+    dependencies.reloadHistory ?? reloadMessageHistoryFromScratch;
   let state = INITIAL_CHAT_WORKSPACE_CONTROLLER_STATE;
   let bootstrapController: AbortController | null = null;
   let switchController: AbortController | null = null;
+  let historyController: AbortController | null = null;
   let bootstrapSequence = 0;
   let switchSequence = 0;
+  let historySequence = 0;
   let lastFailedConversationId: string | null = null;
   let disposed = false;
   const listeners = new Set<(state: ChatWorkspaceControllerState) => void>();
@@ -101,6 +121,9 @@ export function createChatWorkspaceController(
     switchSequence += 1;
     switchController?.abort();
     switchController = null;
+    historySequence += 1;
+    historyController?.abort();
+    historyController = null;
     lastFailedConversationId = null;
 
     publish({ status: "loading" });
@@ -144,6 +167,9 @@ export function createChatWorkspaceController(
     const sequence = ++switchSequence;
     switchController?.abort();
     switchController = null;
+    historySequence += 1;
+    historyController?.abort();
+    historyController = null;
     lastFailedConversationId = null;
 
     if (conversationId === workspace.selectedConversationId) {
@@ -199,6 +225,71 @@ export function createChatWorkspaceController(
     }
   };
 
+  const reloadSelectedConversationHistory = async (
+    conversationId: string,
+  ) => {
+    if (
+      disposed ||
+      state.status !== "ready" ||
+      state.pendingConversationId !== null ||
+      state.workspace.selectedConversationId !== conversationId ||
+      state.workspace.selectedConversation === null ||
+      state.workspace.history === null
+    ) {
+      throw new ChatWorkspaceContractError(
+        "History reconciliation requires the current selected conversation",
+      );
+    }
+
+    const currentState = state;
+    const workspace = currentState.workspace;
+    const currentHistory = workspace.history;
+    if (currentHistory === null) {
+      throw new ChatWorkspaceContractError(
+        "History reconciliation requires loaded history",
+      );
+    }
+    const sequence = ++historySequence;
+    historyController?.abort();
+    const controller = new AbortController();
+    historyController = controller;
+
+    try {
+      const history = await historyReloader(currentHistory, {
+        request: { signal: controller.signal },
+      });
+      if (
+        disposed ||
+        controller.signal.aborted ||
+        sequence !== historySequence ||
+        state.status !== "ready" ||
+        state.workspace.selectedConversationId !== conversationId
+      ) {
+        throw new ChatWorkspaceContractError(
+          "History reconciliation became stale",
+        );
+      }
+
+      const nextWorkspace = createChatWorkspaceSnapshot({
+        setup: workspace.setup,
+        conversations: workspace.conversations,
+        selectedConversation: workspace.selectedConversation,
+        history,
+      });
+      publish({
+        status: "ready",
+        workspace: nextWorkspace,
+        pendingConversationId: state.pendingConversationId,
+        switchError: state.switchError,
+      });
+      return history.messages.map(({ id }) => id);
+    } finally {
+      if (sequence === historySequence && historyController === controller) {
+        historyController = null;
+      }
+    }
+  };
+
   return {
     getState() {
       return state;
@@ -209,6 +300,8 @@ export function createChatWorkspaceController(
     retry: load,
 
     selectConversation,
+
+    reloadSelectedConversationHistory,
 
     async retryConversationSwitch() {
       if (
@@ -236,11 +329,14 @@ export function createChatWorkspaceController(
       disposed = true;
       bootstrapSequence += 1;
       switchSequence += 1;
+      historySequence += 1;
       listeners.clear();
       bootstrapController?.abort();
       switchController?.abort();
+      historyController?.abort();
       bootstrapController = null;
       switchController = null;
+      historyController = null;
       lastFailedConversationId = null;
     },
   };

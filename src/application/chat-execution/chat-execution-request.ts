@@ -1,6 +1,5 @@
 import type { SendMessageRequestDto } from "@/application/chat-execution/chat-execution-dto";
 import {
-  cloneJsonObject,
   isPlainRecord,
   readOwnData,
 } from "@/application/chat-execution/chat-execution-json";
@@ -57,11 +56,6 @@ export function mapSendMessageRequest(
         thinkingEffort,
         "thinking effort",
       );
-    }
-
-    const carryoverMessages = optionalValue(input, "carryoverMessages");
-    if (carryoverMessages !== omitted) {
-      request.carryover_messages = jsonObjectArray(carryoverMessages);
     }
 
     const clientMessageId = optionalValue(input, "clientMessageId");
@@ -206,26 +200,6 @@ function stringArray(value: unknown, field: string): string[] {
       throw requestContractError(`Chat ${field} must be a string array`);
     }
     copy.push(descriptor.value);
-  }
-  return copy;
-}
-
-function jsonObjectArray(value: unknown): Record<string, unknown>[] {
-  if (!Array.isArray(value)) {
-    throw requestContractError(
-      "Chat carryover messages must be JSON object array",
-    );
-  }
-
-  const copy: Record<string, unknown>[] = [];
-  for (let index = 0; index < value.length; index += 1) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-    if (!descriptor || !("value" in descriptor)) {
-      throw requestContractError(
-        "Chat carryover messages must be JSON object array",
-      );
-    }
-    copy.push(cloneJsonObject(descriptor.value));
   }
   return copy;
 }

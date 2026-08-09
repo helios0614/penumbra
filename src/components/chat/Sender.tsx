@@ -7,24 +7,35 @@ import {
   type KeyboardEvent,
   type ChangeEvent,
 } from "react";
-import { Send, Square, Paperclip } from "lucide-react";
+import { Send, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface SenderProps {
-  onSend?: (content: string) => void;
-  onStop?: () => void;
-  isStreaming?: boolean;
+  onSend?: (content: string) => boolean | void | Promise<boolean | void>;
   disabled?: boolean;
   placeholder?: string;
   statusMessage?: string;
   className?: string;
 }
 
+export function shouldSubmitSenderKey(input: {
+  readonly key: string;
+  readonly shiftKey: boolean;
+  readonly isComposing: boolean;
+}): boolean {
+  return input.key === "Enter" && !input.shiftKey && !input.isComposing;
+}
+
+export function clearAcceptedSenderDraft(
+  currentDraft: string,
+  submittedDraft: string,
+): string {
+  return currentDraft === submittedDraft ? "" : currentDraft;
+}
+
 export function Sender({
   onSend,
-  onStop,
-  isStreaming,
   disabled,
   placeholder = "输入消息…",
   statusMessage,
@@ -33,6 +44,8 @@ export function Sender({
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const statusId = useId();
+  const submittingRef = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // 自动增高
   const autoResize = useCallback(() => {
@@ -47,26 +60,44 @@ export function Sender({
     autoResize();
   }, [value, autoResize]);
 
-  const handleSubmit = useCallback(() => {
-    const trimmed = value.trim();
-    if (!trimmed || disabled || !onSend) return;
-    onSend(trimmed);
-    setValue("");
-    // 重置高度
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
+  const handleSubmit = useCallback(async () => {
+    const submittedDraft = value;
+    const trimmed = submittedDraft.trim();
+    if (!trimmed || disabled || !onSend || submittingRef.current) return;
+
+    submittingRef.current = true;
+    setIsSubmitting(true);
+    try {
+      const accepted = await onSend(trimmed);
+      if (accepted !== false) {
+        setValue((current) => clearAcceptedSenderDraft(
+          current,
+          submittedDraft,
+        ));
+        if (textareaRef.current) {
+          textareaRef.current.style.height = "auto";
+        }
+      }
+    } catch {
+      // The parent owns safe error presentation; retain the current draft.
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
     }
   }, [value, disabled, onSend]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && !e.shiftKey) {
+      if (shouldSubmitSenderKey({
+        key: e.key,
+        shiftKey: e.shiftKey,
+        isComposing: e.nativeEvent.isComposing,
+      })) {
         e.preventDefault();
-        if (isStreaming) return;
-        handleSubmit();
+        void handleSubmit();
       }
     },
-    [handleSubmit, isStreaming],
+    [handleSubmit],
   );
 
   const handleChange = useCallback(
@@ -76,7 +107,11 @@ export function Sender({
     [],
   );
 
-  const canSend = value.trim().length > 0 && !disabled && onSend !== undefined;
+  const canSend =
+    value.trim().length > 0 &&
+    !disabled &&
+    !isSubmitting &&
+    onSend !== undefined;
 
   return (
     <div
@@ -92,8 +127,8 @@ export function Sender({
             variant="ghost"
             size="icon-sm"
             className="shrink-0 text-muted-foreground hover:text-foreground"
-            disabled={disabled}
-            aria-label="添加附件"
+            disabled
+            aria-label="附件上传尚未接入"
           >
             <Paperclip className="size-4" />
           </Button>
@@ -117,33 +152,19 @@ export function Sender({
             )}
           />
 
-          {/* 发送 / 停止按钮 */}
-          {isStreaming ? (
-            <Button
-              variant="destructive"
-              size="icon-sm"
-              onClick={onStop}
-              disabled={disabled || !onStop}
-              className="shrink-0 rounded-full"
-              aria-label="停止生成"
-            >
-              <Square className="size-4" />
-            </Button>
-          ) : (
-            <Button
-              variant="default"
-              size="icon-sm"
-              onClick={handleSubmit}
-              disabled={!canSend}
-              className={cn(
-                "shrink-0 rounded-full transition-opacity",
-                !canSend && "opacity-40",
-              )}
-              aria-label="发送消息"
-            >
-              <Send className="size-4" />
-            </Button>
-          )}
+          <Button
+            variant="default"
+            size="icon-sm"
+            onClick={() => void handleSubmit()}
+            disabled={!canSend}
+            className={cn(
+              "shrink-0 rounded-full transition-opacity",
+              !canSend && "opacity-40",
+            )}
+            aria-label="发送消息"
+          >
+            <Send className="size-4" />
+          </Button>
         </div>
 
         {statusMessage && (

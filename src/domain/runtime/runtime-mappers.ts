@@ -16,6 +16,7 @@ const readinessReasons: Record<ChatReadinessReasonCodeDto, ChatReadinessReason> 
   ready: "ready",
   unknown_model: "unknown-model",
   provider_not_configured: "provider-not-configured",
+  generation_not_supported: "configuration-invalid",
   configuration_invalid: "configuration-invalid",
 };
 
@@ -71,6 +72,9 @@ export function mapChatReadiness(payload: unknown): ChatReadiness {
     modelKey: dto.model_key,
     reason: readinessReasons[dto.reason_code],
     setupActionRequired: dto.setup_action_required,
+    ...(dto.reason_code === "generation_not_supported"
+      ? { generationUnsupported: true as const }
+      : {}),
   };
 }
 

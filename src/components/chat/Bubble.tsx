@@ -141,6 +141,14 @@ function BubbleInner({ message }: BubbleProps) {
   const isUser = message.kind === "user";
   const chunks = splitIntoChunks(message.content);
   const time = format(new Date(message.createdAt * 1000), "HH:mm");
+  const executionLabel = message.executionStatus === undefined
+    ? null
+    : {
+        optimistic: "正在发送",
+        streaming: "正在生成",
+        finalizing: "正在确认",
+        unconfirmed: "未确认保存",
+      }[message.executionStatus];
 
   return (
     <div
@@ -159,9 +167,19 @@ function BubbleInner({ message }: BubbleProps) {
         <MessageAvatar kind={message.kind} />
         <span className="text-xs font-medium">{isUser ? "你" : "知远"}</span>
         <span className="text-xs opacity-60">{time}</span>
-        <div className="shrink-0 opacity-0 transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100">
-          <MessageActions role={message.kind} content={message.content} />
-        </div>
+        {executionLabel && (
+          <span
+            className="text-[11px] text-muted-strong"
+            role={message.executionStatus === "unconfirmed" ? "alert" : "status"}
+          >
+            {executionLabel}
+          </span>
+        )}
+        {message.executionStatus === undefined && (
+          <div className="shrink-0 opacity-0 transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100">
+            <MessageActions role={message.kind} content={message.content} />
+          </div>
+        )}
       </div>
 
       <div className="min-w-0 max-w-[85%]">

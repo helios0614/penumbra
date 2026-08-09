@@ -61,21 +61,60 @@ function groupByDate(messages: readonly ChatMessageViewModel[]): DateGroup[] {
 interface BubbleListProps {
   readonly conversationId: string;
   readonly messages: readonly ChatMessageViewModel[];
+  readonly forceFollowKey?: string | null;
 }
 
-function BubbleListInner({ conversationId, messages }: BubbleListProps) {
+function BubbleListInner({
+  conversationId,
+  messages,
+  forceFollowKey = null,
+}: BubbleListProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const shouldFollowRef = useRef(true);
+  const previousConversationRef = useRef<string | null>(null);
+  const previousForceKeyRef = useRef<string | null>(null);
   const lastMessageId = messages[messages.length - 1]?.id ?? null;
+  const lastMessage = messages[messages.length - 1];
+  const tailRevision = lastMessage === undefined
+    ? ""
+    : `${lastMessage.content.length}:${lastMessage.kind === "assistant"
+      ? `${lastMessage.thinking?.length ?? 0}:${lastMessage.simpleThink?.length ?? 0}`
+      : "0:0"}`;
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
-  }, [conversationId, lastMessageId, messages.length]);
+    const viewport = rootRef.current?.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    );
+    if (!viewport) return;
+
+    const updateFollow = () => {
+      const distance = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+      shouldFollowRef.current = distance <= 96;
+    };
+    viewport.addEventListener("scroll", updateFollow, { passive: true });
+    updateFollow();
+    return () => viewport.removeEventListener("scroll", updateFollow);
+  }, [conversationId]);
+
+  useEffect(() => {
+    const conversationChanged = previousConversationRef.current !== conversationId;
+    const forced = forceFollowKey !== null &&
+      previousForceKeyRef.current !== forceFollowKey;
+    if (conversationChanged || forced || shouldFollowRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+      shouldFollowRef.current = true;
+    }
+    previousConversationRef.current = conversationId;
+    previousForceKeyRef.current = forceFollowKey;
+  }, [conversationId, forceFollowKey, lastMessageId, messages.length, tailRevision]);
 
   const dateGroups = useMemo(() => groupByDate(messages), [messages]);
 
   return (
-    <ScrollArea className="min-h-0 w-full flex-1 overflow-hidden">
-      <div className="mx-auto flex max-w-[720px] flex-col gap-2 px-4 py-3">
+    <div ref={rootRef} className="min-h-0 w-full flex-1 overflow-hidden">
+      <ScrollArea className="h-full w-full overflow-hidden">
+        <div className="mx-auto flex max-w-[720px] flex-col gap-2 px-4 py-3">
         {dateGroups.map((group) => (
           <div key={group.dateKey}>
             <DateSeparator timestamp={group.timestamp} />
@@ -96,9 +135,10 @@ function BubbleListInner({ conversationId, messages }: BubbleListProps) {
             </div>
           </div>
         ))}
-        <div ref={bottomRef} />
-      </div>
-    </ScrollArea>
+          <div ref={bottomRef} />
+        </div>
+      </ScrollArea>
+    </div>
   );
 }
 

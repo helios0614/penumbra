@@ -88,10 +88,10 @@ type ChatWorkspaceSnapshot = {
 
 #### Read-only Workspace 与 send readiness 解耦（S6B.1）
 
-- Workspace bootstrap 仍并行启动 Chat Setup 与真实 conversation list，但 readiness 的非认证失败由 Chat Setup 收敛为安全降级 ViewModel，因此不再 reject 整个 bootstrap。成功取得的 conversations 会继续完成 selection，并为初始选中会话加载一次真实 HTTP history；conversation switch 继续只切换真实 history。
+- Workspace 先读取真实 conversation list 并解析 selection；有 selection 时以该 `Conversation.model` 并行读取 models/readiness 与 initial history，无 selection 时才读取 bootstrap setup。readiness 的非认证失败仍收敛为安全降级 ViewModel，不阻止真实只读 history。
 - 致命边界不变：models 或 conversation list 请求失败、conversation/message DTO 无法安全解析、初始选中 history 失败、401/403 认证失败及 Workspace selection/history 状态不一致都会阻止 Workspace。readiness 404、network、timeout、非认证服务错误、业务 `ready=false` 与 readiness DTO contract error 不阻止只读 Workspace。
-- `ready=false` 保留为 `readiness.kind="available"` 下的真实业务值；请求或 DTO 无法取得事实时使用 `readiness.kind="unavailable"`。两者都不能被解释为 provider ready，未来 S6C 必须只在 readiness 契约稳定且明确 `value.ready=true` 后再决定发送门控。
-- 当前部署的 `/api/chat/readiness` 404 是后端契约或部署缺口，只表示 send readiness unavailable，不表示 conversation service unavailable，也不表示 provider ready。本阶段不修改 AionHome route；S6C 启用发送前仍必须补齐并稳定部署 readiness 契约。
+- `ready=false` 保留为 `readiness.kind="available"` 下的真实业务值；请求或 DTO 无法取得事实时使用 `readiness.kind="unavailable"`。两者都不能被解释为 provider ready。S6C 还要求 readiness model、setup model 与 selected `Conversation.model` 完全一致。
+- `/api/chat/readiness` 404 只表示 send readiness unavailable，不表示 conversation service unavailable，也不表示 provider ready；Sender 保持 disabled。
 - readiness 降级不自动重试。现有显式 bootstrap retry 可重新取得 readiness，并优先保持仍存在的 current selection；conversation list 与 history 的权威读取语义不变。
 
 **AionsHome 权威来源**：`aion-chat/routes/chat.py` 中 conversation list 与 initial history 的当前读取语义；Penumbra composition 事实见 `src/application/chat-setup`、`src/domain/conversation` 与 `src/application/message-history`。
@@ -127,9 +127,23 @@ type ChatMessageViewModel =
 - user 与 unknown content 按纯文本显示；assistant 继续使用现有 `react-markdown` 默认安全 URL/HTML 策略，不启用 `rehypeRaw` 或 `dangerouslySetInnerHTML`。长标题、model key、消息和 unknown role label 使用 truncate、break-all 或 break-words 控制溢出。
 - idle/loading 使用稳定双栏 skeleton 与 `aria-busy`；bootstrap error 只展示 controller 的安全分类摘要和 retry；unauthenticated 不自动登录；空列表不创建 conversation；ready/no-selection 不请求或伪造 history；空或仅 hidden-runtime 的 history 使用稳定 empty state。
 - conversation switch 直接调用 `selectConversation(id)`。pending item 只显示局部 spinner，旧 selected item、header 与 history 保持一致；成功后由 controller 原子替换；失败保留旧 workspace 并调用 `retryConversationSwitch()`。UI 不提前高亮目标、不清空旧 history，也不使用 timer 模拟。
-- initial history 与 conversation 成功切换后，BubbleList 只在 conversation ID、最后可见 message ID 或可见长度变化时滚动到底部；不在每次 render 强制滚动。本阶段不实现 load older、scroll anchor 或 per-conversation scroll memory。
-- Sender 保留原布局且 textarea、附件按钮和发送按钮均 disabled。readiness 无法取得或 `ready=false` 时显示“当前仅支持查看历史，发送服务尚未就绪”；成功取得 `ready=true` 时仍显示“发送功能将在下一阶段接入”。两种状态都不启用发送。Welcome 快捷发送不进入 production Chat；页面不调用旧 mock send，不创建 optimistic message，也不提供 regenerate、stop 或 mutation。
-- S6B 不调用 Chat Execution，不打开或消费 SSE，不连接 WebSocket，不运行 Realtime Reconciliation，也不读取 Settings Overview。send/streaming composition、realtime coordination、load older、conversation CRUD、model mutation 与 capability rendering 都保持后续阶段。
+- BubbleList 在 conversation switch 和用户明确发送时滚动到底部；streaming/final reconciliation 仅在用户仍接近底部时跟随，用户向上阅读后不强拉。首版不实现复杂 anchor 或 per-conversation scroll memory。
+- S6C Sender 已接真实 send；附件仍 disabled，regenerate、server cancel、Settings generation mock 与 capability mutation 不接入。
+
+### Chat Send & Streaming Composition（S6C）
+
+S6C 使用独立 `ChatSendState` 表达 `idle / sending-user / streaming / finalizing / finalization-uncertain / error`。`MessageHistoryState` 始终只包含 HTTP 已持久化的 Domain Message；可见消息由纯函数 `persistent presentation + execution overlay` 组合，overlay 不修改 persistent input、conversation `messageCount` 或 Domain Message。
+
+- Sender 只有 Workspace ready、存在 selection、没有 switch、selected-model readiness available 且 `ready=true`、当前 send state 为 idle 时启用。unknown model、provider not configured、generation unsupported、readiness unavailable、execution active、uncertain 和 fatal error 都 disabled；models 第一项永不作为 default 或发送依据。
+- 每次明确 send 使用 `crypto.randomUUID()` 生成一个 `client_msg_id`，同一 execution 与 finalization retry 保持该 ID；conversation ID、时间戳或伪造 persisted message ID 都不作为幂等 ID。
+- 点击发送后先创建 `OptimisticUserMessage` overlay 并进入 `sending-user`。只有 `openSendExecution()` 成功返回 stream/duplicate 分支后 Sender 才清空 draft；HTTP 前置失败会移除 optimistic overlay、保留输入并显示安全错误。
+- production 首版只发送 `content + client_msg_id`。request mapper 的完整 C2A2 allowlist 是 `content/attachments/client_msg_id/temperature/context_limit/thinking_effort/fast_mode/whisper_mode`；没有真实 UI state 的可选字段全部省略，后端 canonical defaults 为唯一默认事实来源。不得发送 model/provider/cache/carryover/raw history/Settings/MCP/cookie/Authorization。
+- SSE `start/chunk/debug-summary/unknown/capability` 仍由既有 parser 与 Execution mapper处理。composition reducer 只保留 assistant content、thinking、simple-think、safe usage、server assistant ID 与两个固定 provider failure code；raw SSE object、debug body、provider response、endpoint、payload、prompt、key 和 stack 不进入 React state。
+- `[THINKING_START]...[THINKING_END]` 与 `[SIMPLETHINK:...]` 支持跨 chunk 累积；`provider_request_failed/provider_execution_failed` 只映射成固定安全错误，包含 marker 的 provider 文本不展示。
+- transport EOF 不等于持久化成功。EOF 后进入 finalizing 并调用 `reloadMessageHistoryFromScratch()`；正常 stream 已取得 `start.assistantMessageId` 时，只有 HTTP history 包含同一真实 ID 才移除 overlay。HTTP 暂时只有 user 时进入 finalization uncertain；明确 provider failure 仍以 HTTP reload 为最终状态。若 persisted assistant content 含固定 provider failure marker，presentation mapper 只投影通用安全文案，不修改 Domain Message，也不展示 provider 名称或状态码。
+- finalization uncertain 保留 optimistic/partial assistant overlay 并标记“未确认保存”，只提供“重新加载历史”。retry 不重新调用 provider、不生成新 `client_msg_id`、不按文本去重。
+- execution active 时所有 conversation selection disabled，避免 A 的 SSE 投影到 B。client dispose/abort 只停止本地继续读取，不承诺 server/provider cancel；production S6C 不展示 Stop。
+- S6C 不调用 `openRealtimeEvents()`、`reconcileRealtimeEvent()` 或 reconnect reconciliation。SSE 只服务当前 HTTP execution；WebSocket post-commit coordination 留在 S6D。
 
 ## 2. Message Domain（S4B）
 
@@ -278,12 +292,11 @@ type SendMessageRequestDto = {
   fast_mode?: boolean;
   temperature?: number | null;
   thinking_effort?: string | null;
-  carryover_messages?: Record<string, unknown>[];
   client_msg_id?: string | null;
 };
 ```
 
-后端 Pydantic 默认值依次为 `context_limit=30`、`attachments=[]`、`whisper_mode=false`、`fast_mode=false`、`temperature=null`、`thinking_effort=null`、`carryover_messages=[]`、`client_msg_id=null`。client 不 trim 或改写 content，不拒绝空字符串，不自动生成 client message ID，不解释 attachment MIME/capability，也不复制 prompt/provider 行为。number 只做 finite 校验，attachment item 必须是 string，carryover item 必须是可安全序列化并递归复制的普通 JSON object；错误不包含 content、attachment URL 或 raw carryover。
+后端 canonical defaults 为 `temperature=1.0`、`context_limit=30`、`thinking_effort=null`、`fast_mode=false`、`whisper_mode=false`。client 不为服务端行为复制这些默认值，只保留调用者显式提供的 `false/0/null`；attachment item 必须是 string。send 不接受 model override，模型只来自 `Conversation.model`；carryover/cache/provider/raw history 不在 C2A2 envelope 中。
 
 regenerate 使用 `POST /api/conversations/{encodedConversationId}/regenerate`，没有 JSON body。可选 query 为 `context_limit`、`whisper_mode`、`fast_mode`、`temperature`、`thinking_effort`；未提供字段省略，显式 `false`、`0` 和空字符串保留，显式 null 省略以表达后端 `None`。client 不接收 target message ID/model，不删除旧 assistant，也不编排 legacy 的 delete-then-regenerate 行为。
 
@@ -314,7 +327,7 @@ direct SSE 没有公开 `done`。后台 task 在内部 queue 写入的 `done` �
 
 所有已知事件都逐字段验证；ID 要求非空 string，其他 string 不擅自 trim，number 必须 finite，array/object 递归复制，extra fields 丢弃。已知 type 的 malformed payload 抛不含原始 event 的 `ChatExecutionContractError`，不得降级为 unknown。未知 string type 投影为 `{ type: "unknown", rawType }`，只保留 type、不保留 payload，并允许后续 frame 继续消费；缺失或非 string type 仍是 contract error。
 
-debug 的公开 allowlist 只有 `messageId <- msg_id`、`modelKey <- model`、`hasError <- has_error`，以及 usage 中 finite 的 `prompt_tokens/completion_tokens/total_tokens`，分别映射成 `promptTokens/completionTokens/totalTokens`；usage 可为 null，缺失的 allowlisted token count 映射为 null。`error_text` 不公开。`api_payload`、`api_format`、prompt/recall/quick-note 内容、raw request/provider response、Authorization、secret、provider endpoint、完整 error object 和未知 debug 字段全部丢弃，不进入 event、contract error 或日志。
+debug 的公开 allowlist 只有 `messageId <- msg_id`、`modelKey <- model`、`hasError <- has_error`、两个固定 `failureCode`，以及 usage 中 finite 的 `prompt_tokens/completion_tokens/total_tokens`；usage 可为 null，缺失 token count 映射为 null。`error_text` 本身不公开，只检测 `provider_request_failed/provider_execution_failed`；其他 debug/provider/prompt/secret 字段全部丢弃。
 
 生命周期语义严格限定如下：
 
@@ -323,7 +336,7 @@ debug 的公开 allowlist 只有 `messageId <- msg_id`、`modelKey <- model`、`
 - iterator 自然结束/transport EOF 只表示当前 HTTP response body 已结束；不产生 `completed` 或伪造的持久化事件，不表示 assistant commit、WS 送达、history 更新或 provider 正常完成。
 - caller abort、timeout 或 consumer 提前停止只停止本地请求和后续读取并释放资源。AionHome 的生成在独立后台 task 中继续；client 不提供 `cancelGeneration`，也不承诺停止 provider、阻止持久化、撤销 command 或取消其他 side effect。
 
-Chat Execution 不调用 `loadInitialMessageHistory`、`loadOlderMessageHistory`、`refreshLatestMessageHistory` 或 `reloadMessageHistoryFromScratch`，不创建 optimistic Message、不连接 WebSocket、不读取 Settings/conversation list，也不修改 `MessageHistoryState`。未来 S4E/S4F 的高层编排应在 transport EOF 或 WS 通知后，通过相同 ID 的 WS `msg_created` 或 HTTP latest refresh 确认持久化事实，再用 persistent Message 替换临时展示。
+底层 Chat Execution 仍不调用 history、不创建 optimistic Message、不连接 WebSocket、不读取 Settings，也不修改 `MessageHistoryState`。S6C 的上层 send controller 在 EOF 后显式触发 HTTP scratch reload，并以真实 assistant message ID 确认后移除临时展示。
 
 **AionsHome 权威来源**：`aion-chat/routes/chat.py::MsgCreate`、`send_message`、`regenerate_message` 及其 queue/SSE generator；旧 `static/chat.html` 只用于核对兼容差异。
 
@@ -454,7 +467,7 @@ S4E2 服务一次只处理一个 plan，不拥有连接或并发控制。未来 
 
 ## 14. 待确认事项的处理
 
-SSE/WS 权威关系、stop/cancel、carryover 所有权、production 部署、secret response 和其他未确认项，在后端给出实现或 contract test 前都保持“待确认”。后续任务应记录确认结果及其 AionsHome 来源，不得把临时前端行为升级为默认契约。
+SSE/WS 的三源权威边界已经确认，连接与并发协调仍待 S6D 实施。stop/cancel、carryover 所有权、production 部署、secret response 和其他未确认项，在后端给出实现或 contract test 前都保持“待确认”。后续任务应记录确认结果及其 AionsHome 来源，不得把临时前端行为升级为默认契约。
 
 ## 15. 未决契约状态
 
@@ -468,9 +481,10 @@ SSE/WS 权威关系、stop/cancel、carryover 所有权、production 部署、se
 | Settings Safe Basics Integration | `Completed (S5A)` | Session、models 与 bootstrap readiness 已通过 application read model 接入现有 Settings；含安全 error summary、loading、empty、retry、abort 与 stale-request 防护，无旧 `/api/settings` 或写操作。 |
 | Chat Workspace Read Model & Controller | `Completed (S6A)` | 一次 bootstrap setup、真实 conversation list、前端 selection 与 initial persisted history 已组合；含 atomic switch、retry、abort 与 stale-request 防护；controller 本身不拥有 UI、Execution、SSE、WebSocket、Reconciliation 或 Settings。 |
 | Chat Read-Only UI Integration | `Completed (S6B)` | production Chat 已通过 presentation model 读取真实 Workspace；含 loading/error/empty、atomic switch UI、system/unknown 中性展示、hidden-runtime 过滤与 disabled Sender；无 send、Execution、SSE、WebSocket、Reconciliation、load older 或 capability rendering。 |
-| Read-Only Workspace / Readiness Decoupling | `Completed (S6B.1)` | readiness 404/network/timeout/unavailable/DTO error 不再阻止真实 conversation/history；安全降级状态不伪造 ready，Sender 保持 disabled。当前 deployed readiness 404 仍是 S6C 前必须修复的后端契约/部署缺口。 |
+| Read-Only Workspace / Readiness Decoupling | `Completed (S6B.1)` | readiness 404/network/timeout/unavailable/DTO error 不再阻止真实 conversation/history；安全降级状态不伪造 ready，Sender 保持 disabled。 |
+| Chat Send & Streaming Composition | `Completed (S6C)` | selected-model readiness 门控、稳定 `client_msg_id`、optimistic/streaming overlay、安全 SSE accumulator、provider failure、EOF 后 HTTP ID 对账、uncertain retry 与 conversation switch 隔离已实施；未接 WebSocket、regenerate 或 server cancel。 |
 | Message update reconciliation | `Backend contract gap` | WS 仅提供 ID 且 HTTP 无单 Message GET；latest refresh 无法保证较早消息已权威更新，结果保持 `latest-window-only`。 |
-| SSE/WS 权威关系 | `Pending backend confirmation` | 去重与最终权威规则待确认。 |
+| SSE/WS 权威关系 | `Confirmed; S6D pending` | HTTP history 是持久化最终事实，SSE 是当前 request 增量，WebSocket 是 post-commit notification；S6C 未连接 WS。 |
 | Stop/cancel | `Pending backend confirmation` | 尚无已确认的服务端停止契约。 |
 | Carryover 所有权 | `Pending backend confirmation` | 前后端职责与迁移方式待确认。 |
 | Production 部署方式 | `Pending backend confirmation` | 同源反代或跨域部署待确认。 |

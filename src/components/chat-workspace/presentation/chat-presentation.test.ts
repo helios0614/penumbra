@@ -146,6 +146,27 @@ describe("chat message presentation", () => {
     }
   });
 
+  it.each([
+    "provider_request_failed",
+    "provider_execution_failed",
+  ])("projects persisted %s assistant failures to safe copy", (marker) => {
+    const rawContent = `[private provider 429] ${marker}`;
+    const input = message({
+      roleKind: "assistant",
+      rawRole: "assistant",
+      content: rawContent,
+    });
+
+    const output = presentChatMessage(input);
+
+    expect(output).toMatchObject({
+      kind: "assistant",
+      content: "当前回复生成失败。",
+    });
+    expect(JSON.stringify(output)).not.toMatch(/private|429|provider_/);
+    expect(input.content).toBe(rawContent);
+  });
+
   it("preserves a safe unknown role and never projects it as assistant", () => {
     const output = presentChatMessage(message({
       roleKind: "unknown",

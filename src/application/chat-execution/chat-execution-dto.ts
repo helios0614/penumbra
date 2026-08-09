@@ -6,7 +6,6 @@ export type SendMessageRequestDto = {
   fast_mode?: boolean;
   temperature?: number | null;
   thinking_effort?: string | null;
-  carryover_messages?: Record<string, unknown>[];
   client_msg_id?: string | null;
 };
 

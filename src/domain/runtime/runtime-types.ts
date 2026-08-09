@@ -19,6 +19,7 @@ export type ChatReadiness = {
   modelKey: string;
   reason: ChatReadinessReason;
   setupActionRequired: boolean;
+  readonly generationUnsupported?: true;
 };
 
 export class RuntimeContractError extends Error {

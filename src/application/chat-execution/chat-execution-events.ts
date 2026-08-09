@@ -8,6 +8,7 @@ import {
 import {
   ChatExecutionContractError,
   type ChatExecutionEvent,
+  type ChatProviderFailureCode,
   type DuplicateSendAcknowledgement,
   type SafeUsageSummary,
 } from "@/application/chat-execution/chat-execution-types";
@@ -89,6 +90,7 @@ export function mapChatExecutionEvent(input: unknown): ChatExecutionEvent {
           messageId: nonEmptyString(input, "msg_id", rawType),
           modelKey: stringValue(input, "model", rawType),
           hasError: booleanValue(input, "has_error", rawType),
+          failureCode: safeProviderFailure(input),
           usage: safeUsage(requiredField(input, "usage"), rawType),
         };
       default:
@@ -100,6 +102,23 @@ export function mapChatExecutionEvent(input: unknown): ChatExecutionEvent {
     }
     throw eventContractError();
   }
+}
+
+function safeProviderFailure(
+  record: Record<string, unknown>,
+): ChatProviderFailureCode | null {
+  const property = readOwnData(record, "error_text");
+  if (!property.present || typeof property.value !== "string") {
+    return null;
+  }
+
+  if (property.value.includes("provider_request_failed")) {
+    return "provider_request_failed";
+  }
+  if (property.value.includes("provider_execution_failed")) {
+    return "provider_execution_failed";
+  }
+  return null;
 }
 
 export function mapDuplicateSendAcknowledgement(

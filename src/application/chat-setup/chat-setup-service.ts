@@ -3,14 +3,19 @@ import {
   getAvailableModels,
   getChatReadiness,
   RuntimeContractError,
+  type AvailableModel,
+  type ChatReadiness,
 } from "@/domain/runtime";
 import { ApiError, type ApiRequestOptions } from "@/lib/api";
 
 import type {
-  ChatReadinessState,
   ChatSetupViewModel,
   SafeReadinessReason,
 } from "@/application/chat-setup/chat-setup-types";
+
+type LoadedReadinessState =
+  | { readonly kind: "available"; readonly value: ChatReadiness }
+  | { readonly kind: "unavailable"; readonly reason: SafeReadinessReason };
 import {
   assertChatSetupConversation,
   createChatSetupViewModel,
@@ -31,6 +36,20 @@ export async function loadChatSetupForConversation(
   return createSetupViewModel(conversation, availableModels, readiness);
 }
 
+export async function loadChatSetupForConversationWithModels(
+  conversation: Conversation,
+  availableModels: readonly AvailableModel[],
+  options?: ApiRequestOptions,
+): Promise<ChatSetupViewModel> {
+  assertChatSetupConversation(conversation);
+  const readiness = await loadReadinessState(conversation.modelKey, options);
+  return createSetupViewModel(
+    conversation,
+    [...availableModels],
+    readiness,
+  );
+}
+
 export async function loadBootstrapChatSetup(
   options?: ApiRequestOptions,
 ): Promise<ChatSetupViewModel> {
@@ -45,7 +64,7 @@ export async function loadBootstrapChatSetup(
 async function loadReadinessState(
   modelKey: string | undefined,
   options?: ApiRequestOptions,
-): Promise<ChatReadinessState> {
+): Promise<LoadedReadinessState> {
   try {
     const readiness = await getChatReadiness(modelKey, options);
     return { kind: "available", value: readiness };
@@ -64,7 +83,7 @@ async function loadReadinessState(
 function createSetupViewModel(
   conversation: Conversation | null,
   availableModels: Awaited<ReturnType<typeof getAvailableModels>>,
-  readiness: ChatReadinessState,
+  readiness: LoadedReadinessState,
 ): ChatSetupViewModel {
   if (readiness.kind === "available") {
     return createChatSetupViewModel({

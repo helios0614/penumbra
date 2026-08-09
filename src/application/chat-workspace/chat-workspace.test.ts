@@ -26,6 +26,8 @@ import { ApiError, type ApiRequestOptions } from "@/lib/api";
 
 const mocks = vi.hoisted(() => ({
   loadBootstrapChatSetup: vi.fn(),
+  loadChatSetupForConversation: vi.fn(),
+  loadChatSetupForConversationWithModels: vi.fn(),
   loadInitialMessageHistory: vi.fn(),
   listConversations: vi.fn(),
 }));
@@ -33,6 +35,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/application/chat-setup", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/application/chat-setup")>()),
   loadBootstrapChatSetup: mocks.loadBootstrapChatSetup,
+  loadChatSetupForConversation: mocks.loadChatSetupForConversation,
+  loadChatSetupForConversationWithModels:
+    mocks.loadChatSetupForConversationWithModels,
 }));
 
 vi.mock("@/application/message-history", async (importOriginal) => ({
@@ -47,9 +52,17 @@ vi.mock("@/domain/conversation", async (importOriginal) => ({
 
 beforeEach(() => {
   mocks.loadBootstrapChatSetup.mockReset();
+  mocks.loadChatSetupForConversation.mockReset();
+  mocks.loadChatSetupForConversationWithModels.mockReset();
   mocks.loadInitialMessageHistory.mockReset();
   mocks.listConversations.mockReset();
   mocks.loadBootstrapChatSetup.mockResolvedValue(setup());
+  mocks.loadChatSetupForConversation.mockImplementation((conversation) =>
+    Promise.resolve(setup(conversation.id, conversation.modelKey)),
+  );
+  mocks.loadChatSetupForConversationWithModels.mockImplementation((conversation) =>
+    Promise.resolve(setup(conversation.id, conversation.modelKey)),
+  );
   mocks.listConversations.mockResolvedValue(conversations());
   mocks.loadInitialMessageHistory.mockImplementation((conversationId, options) =>
     Promise.resolve(history(conversationId, [], options?.pageSize)),
@@ -129,7 +142,7 @@ describe("chat workspace selection policy", () => {
 });
 
 describe("chat workspace bootstrap", () => {
-  it("loads setup and list once, then loads at most one selected history", async () => {
+  it("loads list once, then selected-model setup and at most one history", async () => {
     const request: ApiRequestOptions = {
       signal: new AbortController().signal,
       timeoutMs: 123,
@@ -138,8 +151,12 @@ describe("chat workspace bootstrap", () => {
 
     const workspace = await loadChatWorkspace({}, request);
 
-    expect(mocks.loadBootstrapChatSetup).toHaveBeenCalledOnce();
-    expect(mocks.loadBootstrapChatSetup).toHaveBeenCalledWith(request);
+    expect(mocks.loadBootstrapChatSetup).not.toHaveBeenCalled();
+    expect(mocks.loadChatSetupForConversation).toHaveBeenCalledOnce();
+    expect(mocks.loadChatSetupForConversation).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "conv_a", modelKey: "model-a" }),
+      request,
+    );
     expect(mocks.listConversations).toHaveBeenCalledOnce();
     expect(mocks.listConversations).toHaveBeenCalledWith(request);
     expect(mocks.loadInitialMessageHistory).toHaveBeenCalledOnce();
@@ -190,6 +207,7 @@ describe("chat workspace bootstrap", () => {
       history: null,
     });
     expect(mocks.loadInitialMessageHistory).not.toHaveBeenCalled();
+    expect(mocks.loadBootstrapChatSetup).toHaveBeenCalledOnce();
   });
 
   it("keeps an empty persisted history as a valid selected workspace", async () => {
@@ -229,7 +247,7 @@ describe("chat workspace bootstrap", () => {
     ) {
       mocks.loadInitialMessageHistory.mockRejectedValue(expected);
     } else {
-      mocks.loadBootstrapChatSetup.mockRejectedValue(expected);
+      mocks.loadChatSetupForConversation.mockRejectedValue(expected);
     }
 
     const actual = await loadChatWorkspace().catch((reason: unknown) => reason);
@@ -244,6 +262,7 @@ describe("chat workspace bootstrap", () => {
 
     expect(error).toBeInstanceOf(ChatWorkspaceContractError);
     expect(mocks.loadBootstrapChatSetup).not.toHaveBeenCalled();
+    expect(mocks.loadChatSetupForConversation).not.toHaveBeenCalled();
     expect(mocks.listConversations).not.toHaveBeenCalled();
     expect(mocks.loadInitialMessageHistory).not.toHaveBeenCalled();
   });
@@ -272,7 +291,15 @@ describe("chat workspace conversation switch", () => {
       selectedConversation: { id: "conv_b" },
       history: { conversationId: "conv_b" },
     });
-    expect(switched.setup).toBe(original.setup);
+    expect(switched.setup).toMatchObject({
+      conversationId: "conv_b",
+      modelKey: "model-a",
+    });
+    expect(mocks.loadChatSetupForConversationWithModels).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "conv_b" }),
+      expect.any(Array),
+      request,
+    );
     expect(switched.conversations).toBe(original.conversations);
     expect(original).toEqual(before);
   });
@@ -361,17 +388,20 @@ describe("chat workspace snapshot contract and public surface", () => {
   });
 });
 
-function setup(): ChatSetupViewModel {
+function setup(
+  conversationId: string | null = null,
+  modelKey = "backend-default",
+): ChatSetupViewModel {
   return {
-    conversationId: null,
-    conversationTitle: null,
-    modelKey: "backend-default",
-    modelLabel: "Backend default",
+    conversationId,
+    conversationTitle: conversationId === null ? null : `Conversation ${conversationId}`,
+    modelKey,
+    modelLabel: modelKey,
     modelKnown: true,
     models: [
       {
-        key: "backend-default",
-        label: "Backend default",
+        key: modelKey,
+        label: modelKey,
         provider: "provider-a",
         selected: true,
       },
@@ -382,7 +412,7 @@ function setup(): ChatSetupViewModel {
       kind: "available",
       value: {
         ready: true,
-        modelKey: "backend-default",
+        modelKey,
         reason: "ready",
         setupActionRequired: false,
       },

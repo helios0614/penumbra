@@ -1,5 +1,7 @@
 import {
   loadBootstrapChatSetup,
+  loadChatSetupForConversation,
+  loadChatSetupForConversationWithModels,
   type ChatSetupViewModel,
 } from "@/application/chat-setup";
 import {
@@ -29,16 +31,14 @@ export async function loadChatWorkspace(
 ): Promise<ChatWorkspaceSnapshot> {
   assertLoadInput(input);
 
-  const [setup, conversations] = await Promise.all([
-    loadBootstrapChatSetup(options),
-    listConversations(options),
-  ]);
+  const conversations = await listConversations(options);
   const selectedConversation = resolveWorkspaceConversationSelection(
     conversations,
     input,
   );
 
   if (selectedConversation === null) {
+    const setup = await loadBootstrapChatSetup(options);
     return createChatWorkspaceSnapshot({
       setup,
       conversations,
@@ -47,10 +47,13 @@ export async function loadChatWorkspace(
     });
   }
 
-  const history = await loadInitialMessageHistory(selectedConversation.id, {
-    pageSize: input.historyPageSize,
-    request: options,
-  });
+  const [setup, history] = await Promise.all([
+    loadChatSetupForConversation(selectedConversation, options),
+    loadInitialMessageHistory(selectedConversation.id, {
+      pageSize: input.historyPageSize,
+      request: options,
+    }),
+  ]);
 
   return createChatWorkspaceSnapshot({
     setup,
@@ -75,14 +78,26 @@ export async function loadChatWorkspaceConversation(
     throw contractError("Conversation switch target is not in the workspace");
   }
 
-  const history = await loadInitialMessageHistory(conversationId, {
-    pageSize: snapshot.history?.pageSize ?? DEFAULT_MESSAGE_HISTORY_PAGE_SIZE,
-    request: options,
-  });
+  const availableModels = snapshot.setup.models.map(({ key, label, provider }) => ({
+    key,
+    label,
+    provider,
+  }));
+  const [setup, history] = await Promise.all([
+    loadChatSetupForConversationWithModels(
+      selectedConversation,
+      availableModels,
+      options,
+    ),
+    loadInitialMessageHistory(conversationId, {
+      pageSize: snapshot.history?.pageSize ?? DEFAULT_MESSAGE_HISTORY_PAGE_SIZE,
+      request: options,
+    }),
+  ]);
   assertMatchingHistory(conversationId, history);
 
   return Object.freeze({
-    setup: snapshot.setup,
+    setup,
     conversations: snapshot.conversations,
     selectedConversationId: selectedConversation.id,
     selectedConversation,

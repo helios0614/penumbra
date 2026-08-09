@@ -12,7 +12,14 @@ export type ChatSetupModelOption = {
   selected: boolean;
 };
 
-export type ChatSetupStatus = ChatReadinessReason;
+export type ChatSetupStatus = ChatReadinessReason | "generation-not-supported";
+
+export type ChatSetupReadiness = Omit<
+  ChatReadiness,
+  "reason" | "generationUnsupported"
+> & {
+  readonly reason: ChatSetupStatus;
+};
 
 export type SafeReadinessReason =
   | "not-found"
@@ -25,7 +32,7 @@ export type SafeReadinessReason =
 export type ChatReadinessState =
   | {
       readonly kind: "available";
-      readonly value: ChatReadiness;
+      readonly value: ChatSetupReadiness;
     }
   | {
       readonly kind: "unavailable";

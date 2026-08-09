@@ -11,6 +11,9 @@ export {
   presentChatMessages,
   presentSafeUnknownRole,
 } from "@/components/chat-workspace/presentation/chat-message-presenter";
+export {
+  composeVisibleChatMessages,
+} from "@/components/chat-workspace/presentation/chat-execution-composer";
 export type {
   ChatAttachmentViewModel,
   ChatConversationItemViewModel,

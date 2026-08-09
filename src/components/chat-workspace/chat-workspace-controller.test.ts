@@ -418,6 +418,54 @@ describe("chat workspace controller conversation switching", () => {
   });
 });
 
+describe("chat workspace controller history reconciliation", () => {
+  it("reloads only the selected HTTP history and atomically replaces it", async () => {
+    const original = workspace("conv_a", undefined, "old history");
+    const reloaded = history("conv_a", "persisted final");
+    const reloadHistory = vi.fn().mockResolvedValue(reloaded);
+    const controller = createChatWorkspaceController({}, {
+      loadWorkspace: () => Promise.resolve(original),
+      reloadHistory,
+    });
+    await controller.load();
+
+    await controller.reloadSelectedConversationHistory("conv_a");
+
+    expect(reloadHistory).toHaveBeenCalledWith(
+      original.history,
+      { request: { signal: expect.any(AbortSignal) } },
+    );
+    expect(controller.getState()).toMatchObject({
+      status: "ready",
+      workspace: {
+        selectedConversationId: "conv_a",
+        history: { messages: [{ content: "persisted final" }] },
+      },
+    });
+    expect(original.history?.messages[0]?.content).toBe("old history");
+  });
+
+  it("preserves persistent history when reload fails and rejects other conversations", async () => {
+    const original = workspace("conv_a", undefined, "old history");
+    const expected = new ApiError("private reload", 500);
+    const reloadHistory = vi.fn().mockRejectedValue(expected);
+    const controller = createChatWorkspaceController({}, {
+      loadWorkspace: () => Promise.resolve(original),
+      reloadHistory,
+    });
+    await controller.load();
+
+    await expect(controller.reloadSelectedConversationHistory("conv_a"))
+      .rejects.toBe(expected);
+    await expect(controller.reloadSelectedConversationHistory("conv_b"))
+      .rejects.toBeInstanceOf(ChatWorkspaceContractError);
+    expect(controller.getState()).toMatchObject({
+      workspace: { history: { messages: [{ content: "old history" }] } },
+    });
+    expect(reloadHistory).toHaveBeenCalledOnce();
+  });
+});
+
 describe("chat workspace safe UI errors", () => {
   it("maps error categories without retaining raw payload, endpoint, session, or content", () => {
     const fakeSecret = "fake-safe-ui-secret";

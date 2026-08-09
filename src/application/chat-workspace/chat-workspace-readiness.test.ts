@@ -18,7 +18,7 @@ describe("chat workspace readiness degradation", () => {
     fetchMock.mockImplementation((input) => {
       const path = String(input);
       if (path === "/api/models") return Promise.resolve(json(modelDtos()));
-      if (path === "/api/chat/readiness") {
+      if (path === "/api/chat/readiness?model=conversation-model") {
         return Promise.resolve(json({
           error: "missing route",
           endpoint: fakeEndpoint,
@@ -45,9 +45,9 @@ describe("chat workspace readiness degradation", () => {
     expect(workspace.history?.messages[0]?.content).toBe("真实持久化历史");
     expect(JSON.stringify(workspace)).not.toContain(fakeEndpoint);
     expect(requestPaths()).toEqual([
-      "/api/models",
-      "/api/chat/readiness",
       "/api/conversations",
+      "/api/models",
+      "/api/chat/readiness?model=conversation-model",
       "/api/conversations/conv_a/messages?limit=50",
     ]);
     expect(requestPaths().join(" ")).not.toMatch(
@@ -60,7 +60,7 @@ describe("chat workspace readiness degradation", () => {
     const fakeEndpoint = "https://internal-readiness.example";
     fetchMock.mockImplementation((input) => {
       const path = String(input);
-      if (path === "/api/chat/readiness") {
+      if (path === "/api/chat/readiness?model=conversation-model") {
         return Promise.reject(new TypeError(fakeEndpoint));
       }
       return successfulReadResponse(path);
@@ -80,10 +80,10 @@ describe("chat workspace readiness degradation", () => {
   it("preserves a successful not-ready response instead of inventing ready", async () => {
     fetchMock.mockImplementation((input) => {
       const path = String(input);
-      if (path === "/api/chat/readiness") {
+      if (path === "/api/chat/readiness?model=conversation-model") {
         return Promise.resolve(json(readinessDto(
           "provider_not_configured",
-          "backend-default",
+          "conversation-model",
         )));
       }
       return successfulReadResponse(path);
@@ -95,7 +95,7 @@ describe("chat workspace readiness degradation", () => {
       kind: "available",
       value: {
         ready: false,
-        modelKey: "backend-default",
+        modelKey: "conversation-model",
         reason: "provider-not-configured",
         setupActionRequired: true,
       },
@@ -112,7 +112,7 @@ describe("chat workspace readiness degradation", () => {
         expected: { status: "error", error: { code: "service" } },
       },
       {
-        failingPath: "/api/chat/readiness",
+        failingPath: "/api/chat/readiness?model=conversation-model",
         response: json({ error: "unauthenticated" }, 401),
         expected: { status: "error", error: { code: "authentication" } },
       },
@@ -150,11 +150,11 @@ describe("chat workspace readiness degradation", () => {
     let readinessCalls = 0;
     fetchMock.mockImplementation((input) => {
       const path = String(input);
-      if (path === "/api/chat/readiness") {
+      if (path === "/api/chat/readiness?model=conversation-model") {
         readinessCalls += 1;
         return Promise.resolve(readinessCalls === 1
           ? json({ error: "not deployed" }, 404)
-          : json(readinessDto("ready", "backend-default")));
+          : json(readinessDto("ready", "conversation-model")));
       }
       return successfulReadResponse(path);
     });
@@ -220,8 +220,8 @@ describe("chat workspace readiness degradation", () => {
 
 function successfulReadResponse(path: string): Promise<Response> {
   if (path === "/api/models") return Promise.resolve(json(modelDtos()));
-  if (path === "/api/chat/readiness") {
-    return Promise.resolve(json(readinessDto("ready", "backend-default")));
+  if (path === "/api/chat/readiness?model=conversation-model") {
+    return Promise.resolve(json(readinessDto("ready", "conversation-model")));
   }
   if (path === "/api/conversations") {
     return Promise.resolve(json(conversationDtos()));

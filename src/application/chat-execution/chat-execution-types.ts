@@ -1,10 +1,6 @@
 import type { JsonValue } from "@/domain/message";
 import type { ApiRequestOptions } from "@/lib/api";
 
-export type JsonObject = {
-  readonly [key: string]: JsonValue;
-};
-
 export type SendMessageInput = {
   readonly content: string;
   readonly contextLimit?: number;
@@ -13,7 +9,6 @@ export type SendMessageInput = {
   readonly fastMode?: boolean;
   readonly temperature?: number | null;
   readonly thinkingEffort?: string | null;
-  readonly carryoverMessages?: readonly JsonObject[];
   readonly clientMessageId?: string | null;
 };
 
@@ -35,6 +30,10 @@ export type SafeUsageSummary = {
   readonly completionTokens: number | null;
   readonly totalTokens: number | null;
 };
+
+export type ChatProviderFailureCode =
+  | "provider_request_failed"
+  | "provider_execution_failed";
 
 /**
  * Events observed while reading one HTTP execution response.
@@ -97,6 +96,7 @@ export type ChatExecutionEvent =
       readonly messageId: string;
       readonly modelKey: string;
       readonly hasError: boolean;
+      readonly failureCode: ChatProviderFailureCode | null;
       readonly usage: SafeUsageSummary | null;
     }
   | {

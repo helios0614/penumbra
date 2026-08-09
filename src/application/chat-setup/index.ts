@@ -15,4 +15,5 @@ export {
 export {
   loadBootstrapChatSetup,
   loadChatSetupForConversation,
+  loadChatSetupForConversationWithModels,
 } from "@/application/chat-setup/chat-setup-service";

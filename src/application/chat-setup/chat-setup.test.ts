@@ -75,6 +75,27 @@ describe("chat setup view model", () => {
     });
   });
 
+  it("projects generation-not-supported only into the Chat setup boundary", () => {
+    const result = createChatSetupViewModel({
+      conversation: conversation(),
+      availableModels: models(),
+      readiness: readiness({
+        ready: false,
+        reason: "configuration-invalid",
+        setupActionRequired: true,
+        generationUnsupported: true,
+      }),
+    });
+
+    expect(result).toMatchObject({
+      status: "generation-not-supported",
+      readiness: {
+        kind: "available",
+        value: { reason: "generation-not-supported", ready: false },
+      },
+    });
+  });
+
   it("preserves an unknown historical conversation model without selecting a replacement", () => {
     const result = createChatSetupViewModel({
       conversation: conversation({ modelKey: "historical-model" }),
@@ -311,6 +332,7 @@ describe("chat setup view model", () => {
       "createChatSetupViewModel",
       "loadBootstrapChatSetup",
       "loadChatSetupForConversation",
+      "loadChatSetupForConversationWithModels",
     ]);
     expect(chatSetup).not.toHaveProperty("ApiError");
     expect(chatSetup).not.toHaveProperty("apiGet");

@@ -12,6 +12,7 @@ const chatSetupStatuses: ReadonlySet<ChatSetupStatus> = new Set([
   "ready",
   "unknown-model",
   "provider-not-configured",
+  "generation-not-supported",
   "configuration-invalid",
 ]);
 
@@ -22,6 +23,9 @@ export function createChatSetupViewModel(
 
   const { conversation, availableModels, readiness } = input;
   const modelKey = conversation?.modelKey ?? readiness.modelKey;
+  const readinessReason = readiness.generationUnsupported === true
+    ? "generation-not-supported"
+    : readiness.reason;
 
   if (conversation !== null && readiness.modelKey !== modelKey) {
     throw new ChatSetupContractError(
@@ -49,14 +53,14 @@ export function createChatSetupViewModel(
       provider: model.provider,
       selected: model.key === modelKey,
     })),
-    status: readiness.reason,
+    status: readinessReason,
     setupActionRequired: readiness.setupActionRequired,
     readiness: {
       kind: "available",
       value: {
         ready: readiness.ready,
         modelKey: readiness.modelKey,
-        reason: readiness.reason,
+        reason: readinessReason,
         setupActionRequired: readiness.setupActionRequired,
       },
     },
@@ -126,7 +130,9 @@ function assertChatSetupInput(
     typeof readiness.ready !== "boolean" ||
     typeof readiness.modelKey !== "string" ||
     !isChatSetupStatus(readiness.reason) ||
-    typeof readiness.setupActionRequired !== "boolean"
+    typeof readiness.setupActionRequired !== "boolean" ||
+    (readiness.generationUnsupported !== undefined &&
+      readiness.generationUnsupported !== true)
   ) {
     throw incompleteInputError();
   }

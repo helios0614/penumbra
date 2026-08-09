@@ -90,15 +90,17 @@ describe("runtime read client", () => {
       ["ready", "ready"],
       ["unknown_model", "unknown-model"],
       ["provider_not_configured", "provider-not-configured"],
+      ["generation_not_supported", "configuration-invalid", true],
       ["configuration_invalid", "configuration-invalid"],
     ] as const;
-    for (const [wire, domain] of cases) {
+    for (const [wire, domain, generationUnsupported] of cases) {
       fetchMock.mockResolvedValueOnce(json({ ...readiness(wire, "model/key + one"), extra: "drop-me" }));
       await expect(getChatReadiness("model/key + one", { timeoutMs: 0 })).resolves.toEqual({
         ready: wire === "ready",
         modelKey: "model/key + one",
         reason: domain,
         setupActionRequired: wire !== "ready",
+        ...(generationUnsupported ? { generationUnsupported: true } : {}),
       });
     }
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/chat/readiness?model=model%2Fkey+%2B+one");
@@ -124,7 +126,7 @@ describe("runtime read client", () => {
   });
 });
 
-function readiness(reason: "ready" | "unknown_model" | "provider_not_configured" | "configuration_invalid", modelKey = "model") {
+function readiness(reason: "ready" | "unknown_model" | "provider_not_configured" | "generation_not_supported" | "configuration_invalid", modelKey = "model") {
   return {
     ready: reason === "ready",
     model_key: modelKey,

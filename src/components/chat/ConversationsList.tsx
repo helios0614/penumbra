@@ -9,12 +9,14 @@ import { cn } from "@/lib/utils";
 interface ConversationsListProps {
   readonly conversations: readonly ChatConversationItemViewModel[];
   readonly onSelect: (id: string) => void;
+  readonly disabled?: boolean;
   readonly className?: string;
 }
 
 export function ConversationsList({
   conversations,
   onSelect,
+  disabled = false,
   className,
 }: ConversationsListProps) {
   return (
@@ -52,17 +54,19 @@ export function ConversationsList({
               <button
                 key={conversation.id}
                 type="button"
-                disabled={conversation.isPending}
+                disabled={disabled || conversation.isPending}
                 aria-current={conversation.isSelected ? "page" : undefined}
                 aria-label={
-                  conversation.isPending
+                  disabled
+                    ? `当前无法切换到${conversation.title}`
+                    : conversation.isPending
                     ? `正在切换到${conversation.title}`
                     : `打开会话${conversation.title}`
                 }
                 onClick={() => onSelect(conversation.id)}
                 className={cn(
                   "group relative flex w-full items-start gap-2 rounded-lg px-3 py-2.5 text-left",
-                  "transition-colors duration-150 disabled:cursor-wait",
+                  "transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-65",
                   conversation.isSelected
                     ? "bg-surface-secondary"
                     : "hover:bg-surface-secondary/50",

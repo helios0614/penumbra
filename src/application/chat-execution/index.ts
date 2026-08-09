@@ -18,7 +18,7 @@ export type {
   ChatExecutionRequestOptions,
   ChatExecutionStream,
   DuplicateSendAcknowledgement,
-  JsonObject,
+  ChatProviderFailureCode,
   RegenerateInput,
   SafeUsageSummary,
   SendExecutionResult,
