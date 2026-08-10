@@ -102,7 +102,11 @@ describe("single WebSocket connection opening", () => {
 
     const error = await opening.catch((reason: unknown) => reason);
     expect(error).toBeInstanceOf(WebSocketTransportError);
-    expect(error).toMatchObject({ code: "CLOSED_BEFORE_OPEN" });
+    expect(error).toMatchObject({
+      code: "CLOSED_BEFORE_OPEN",
+      closeCode: 1008,
+    });
+    expect(error).not.toHaveProperty("closeReason");
     expect(String(error)).not.toContain("fake-auth-detail");
     expect(socket.activeListenerCount()).toBe(0);
   });

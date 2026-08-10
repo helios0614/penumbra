@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ChatSetupViewModel } from "@/application/chat-setup";
+import type { ChatRealtimeState } from "@/application/chat-realtime";
 import type { ChatWorkspaceSnapshot } from "@/application/chat-workspace";
 import type { MessageHistoryState } from "@/application/message-history";
 import { ChatWorkspaceView } from "@/components/chat/ChatView";
@@ -234,6 +235,22 @@ describe("ChatWorkspaceView ready states", () => {
     expect(html).toMatch(/aria-label="发送消息"[^>]*disabled|disabled=""[^>]*aria-label="发送消息"/);
   });
 
+  it("shows isolated realtime degradation without disabling an otherwise-ready sender", () => {
+    const selected = conversation("conv_a", "会话 A");
+    const html = render(ready(snapshot(
+      [selected],
+      selected,
+      history("conv_a", [message("a_1", "user", "user", "历史仍可用", 1)]),
+    )), undefined, {
+      onSend: vi.fn(async () => true),
+      realtimeState: { kind: "unavailable", reason: "network" },
+    });
+
+    expect(html).toContain("实时连接暂时不可用");
+    expect(html).toContain("历史记录与发送仍可使用");
+    expect(html).not.toMatch(/<textarea[^>]*disabled/);
+  });
+
   it("does not expose raw workspace payload fields or unsafe unknown role labels", () => {
     const forbidden = [
       "fake-api-key",
@@ -268,6 +285,7 @@ function render(
   onBack?: () => void,
   props: {
     readonly onSend?: (content: string) => Promise<boolean>;
+    readonly realtimeState?: ChatRealtimeState;
   } = {},
 ): string {
   const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -280,6 +298,7 @@ function render(
       onRetryConversationSwitch={vi.fn()}
       onBack={onBack}
       onSend={props.onSend}
+      realtimeState={props.realtimeState}
     />,
   );
   expect(consoleError).not.toHaveBeenCalled();

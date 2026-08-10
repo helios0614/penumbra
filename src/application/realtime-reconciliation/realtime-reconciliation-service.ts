@@ -22,9 +22,9 @@ import type {
 } from "@/application/realtime-reconciliation/realtime-reconciliation-types";
 
 /**
- * Applies exactly one already-mapped realtime event. A future coordinator must
- * serialize calls per conversation and ensure stale requests cannot overwrite
- * newer refreshes; file sync and reconnect reloads supersede queued refreshes.
+ * Applies exactly one already-mapped realtime event. The S6D coordinator
+ * serializes current-history calls and collapses concurrent notifications into
+ * a later scratch refresh; Workspace generations reject stale results.
  */
 export async function reconcileRealtimeEvent(
   state: MessageHistoryState,

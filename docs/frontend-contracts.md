@@ -83,8 +83,8 @@ type ChatWorkspaceSnapshot = {
 - conversation switch 只对真实列表内的目标 ID 请求一次 initial history，不重新加载 Chat Setup 或 conversation list，不预加载相邻 conversation。未知 ID 在 HTTP 前拒绝，不回退第一项，也不创建临时 conversation。
 - switch 请求期间 controller 保留完整旧 Snapshot；目标 history 成功后 selected ID、selected Conversation 与 history 一次性原子替换。失败时保留旧 Snapshot，只公开安全 UI error。标题、选中项与消息 history 因而始终属于同一 conversation。
 - React controller 为 bootstrap 与 switch 分别维护 AbortController 和递增 request generation。retry、快速 A→B→C、abort、unmount 和 Strict Mode 下的 stale success/error 都不能覆盖更新选择；abort 不作为普通 UI error。
-- `useChatWorkspace` 只公开 controller state、bootstrap retry、`selectConversation(id)` 与 switch retry。它不公开 send、regenerate、stop、older pagination、latest refresh、realtime connection、streaming text 或 optimistic message。
-- Chat Workspace 不依赖 Chat Execution、SSE、WebSocket、Realtime Reconciliation 或 Settings。S6A 本身没有修改当时的 Chat page/view、`useChat` 或 mock；S6B 的可见页面接入边界见下一节。
+- S6A 的 `useChatWorkspace` 最初只公开 controller state、bootstrap retry、`selectConversation(id)` 与 switch retry；S6D 在不改变 Snapshot ownership 的前提下增加了应用既有 reconciliation result、reconnect scratch reload 和 conversation-list refresh 三个受 abort/generation 保护的更新端口。它仍不公开 raw socket、event payload、send、regenerate、stop、older pagination、streaming text 或 optimistic message。
+- Chat Workspace Snapshot 不依赖 Chat Execution、SSE、WebSocket 或 Settings，也不持有 realtime state。S6D coordinator 只通过 controller 更新端口把 HTTP/reconciliation 结果原子写回 Snapshot；S6A 本身没有修改当时的 Chat page/view、`useChat` 或 mock，S6B 的可见页面接入边界见下一节。
 
 #### Read-only Workspace 与 send readiness 解耦（S6B.1）
 
@@ -143,7 +143,42 @@ S6C 使用独立 `ChatSendState` 表达 `idle / sending-user / streaming / final
 - transport EOF 不等于持久化成功。EOF 后进入 finalizing 并调用 `reloadMessageHistoryFromScratch()`；正常 stream 已取得 `start.assistantMessageId` 时，只有 HTTP history 包含同一真实 ID 才移除 overlay。HTTP 暂时只有 user 时进入 finalization uncertain；明确 provider failure 仍以 HTTP reload 为最终状态。若 persisted assistant content 含固定 provider failure marker，presentation mapper 只投影通用安全文案，不修改 Domain Message，也不展示 provider 名称或状态码。
 - finalization uncertain 保留 optimistic/partial assistant overlay 并标记“未确认保存”，只提供“重新加载历史”。retry 不重新调用 provider、不生成新 `client_msg_id`、不按文本去重。
 - execution active 时所有 conversation selection disabled，避免 A 的 SSE 投影到 B。client dispose/abort 只停止本地继续读取，不承诺 server/provider cancel；production S6C 不展示 Stop。
-- S6C 不调用 `openRealtimeEvents()`、`reconcileRealtimeEvent()` 或 reconnect reconciliation。SSE 只服务当前 HTTP execution；WebSocket post-commit coordination 留在 S6D。
+- S6C send controller 本身不调用 `openRealtimeEvents()`、`reconcileRealtimeEvent()` 或 reconnect reconciliation。SSE 只服务当前 HTTP execution；已完成的 S6D coordinator 在其外层负责 WebSocket post-commit coordination。
+
+### Chat Realtime Coordination（S6D）
+
+S6D 在 Chat Workspace 可用且受保护 HTTP bootstrap 已成功（因此当前 lifecycle 已认证）时建立一条全局浏览器 realtime connection。Coordinator 只消费 `openRealtimeEvents()` 已映射的 `RealtimeEvent`，并复用 `reconcileRealtimeEvent()`、`reconcileMessageHistoryAfterReconnect()` 与 Workspace 更新端口；它不解析第二套 WebSocket payload，也不拥有 persistent `Message[]`。
+
+```ts
+type ChatRealtimeState =
+  | { kind: "idle" }
+  | { kind: "connecting" }
+  | { kind: "connected" }
+  | { kind: "reconnecting" }
+  | { kind: "unavailable"; reason: SafeRealtimeReason };
+
+type RealtimeDirtyState = {
+  currentConversationHistory: boolean;
+  conversationList: boolean;
+};
+```
+
+| 来源 | 唯一职责 | 明确不拥有 |
+|---|---|---|
+| SSE | 当前页面当前 execution 的临时增量与 overlay | persisted completion、其他客户端变化 |
+| WebSocket | 服务端已发生/已提交变化的通知与失效提示 | 最终 Message content、完整事件 replay |
+| HTTP History | 可重读的 persisted final truth | 当前尚未提交的 streaming 增量 |
+
+- mount/start 只安排一个延迟到 microtask 的 open；同步 `start → stop → start` 会取消第一代 open，因此 React Strict Mode 不产生双 socket。重复 start 幂等，conversation switch 只更新 context、不重建 socket；unmount/Workspace 离开可用生命周期会 abort opening、close 当前 connection 并取消 reconnect timer。
+- 初始 open/network failure 或非本地断开进入最小退避 reconnect；open 前后的 1008 policy/auth close 都只通过安全 close code 映射为 `unavailable/authentication` 并锁定当前 lifecycle，不无限 reconnect。untrusted close reason 不复制到 error；state 不保存 URL、close reason、raw exception、Cookie、payload、stack、provider 或 endpoint。reconnecting/unavailable 只显示轻量降级提示，不改变 HTTP read 或 S6C Sender readiness。
+- `message-created` 属于其他 conversation 时只合并 conversation-list refresh，不加载该 conversation history，也不污染当前 BubbleList。属于当前 conversation 且 execution idle 时交给既有 latest HTTP reconciliation；WS payload 永不构造 Message。
+- 当前 execution active 时，若 `message-created.messageId` 等于 SSE assistant ID 或当前 `client_msg_id`，该事件只视为 server-side persistence notification：保留 SSE overlay，不刷新或插入 bubble，等待 S6C finalization HTTP reload。包括 `finalizing/finalization-uncertain` 在内，WS 都不抢 execution ownership，因此不会形成 SSE assistant + WS assistant 双气泡。
+- active execution 收到当前 conversation 的 unrelated create/update/delete/file sync，或 reconnect 需要收敛时，只设置 `currentConversationHistory` dirty；不保存 event payload、不打断 overlay。execution 变 idle 后统一做一次 scratch HTTP reconciliation。current conversation 的 conversation update/delete 同样延后 sidebar refresh，避免 staged selection/model reload 干扰 SSE。
+- idle `message-deleted` 继续复用既有严格 server message ID 本地删除；active execution 下的任何 delete（包括命中 current user/assistant ID）都保守延后，不按 content/index 删除 overlay。idle `message-updated` 只复用 `latest-window-only` refresh，既不伪造 content，也不宣称旧历史已完整更新。
+- conversation create/update/delete 与非当前 message 变化只置 conversation-list dirty。list-only refresh 保留当前 history；只有 list 证明当前 conversation 已删除或 model metadata 已变化时，才在不发布 loading/清空旧 UI 的情况下 staged full Workspace reload。
+- history 与 conversation-list 各自最多一个 in-flight request；in-flight 期间的多个通知只合并成一个后继 dirty refresh。失败会恢复对应 dirty 位，允许下一事件、context transition、reconnect 或显式 coordinator retry 再次收敛；Coordinator 不无限积累 mapped/raw event。
+- 后端没有 event ID、sequence、resume cursor 或 replay。任一 reconnect success 都把当前 selected history 和 conversation list 标 dirty；若 execution active 则等待 SSE finalization，idle 后调用 `reconcileMessageHistoryAfterReconnect()` scratch reload。该过程不重发 send、不调用 provider、不生成或改变 `client_msg_id`。
+- 浏览器/WebView 活跃进程内的 `/ws` 是本阶段唯一 realtime 范围。Android 进程挂起、通知栏 push、FCM、native foreground service、后台唤醒与 APK true-background delivery 均不属于 S6D。
 
 ## 2. Message Domain（S4B）
 
@@ -351,13 +386,13 @@ Realtime Reconciliation 位于已经映射完成的 `RealtimeEvent` 与 HTTP Mes
 - caller-managed reconnect 计划为 `reload-history / reconnect`。后端没有 event ID、sequence、replay 或 reconnect cursor，socket 重新连接不能证明中间事件未丢失；S4E2 只用 HTTP 重建当前 latest window，不创建 socket、backoff 或 replay 状态。
 - conversation created/updated/deleted 只产生 conversation-list invalidation；它们不修改或清空 `MessageHistoryState`，即使当前 conversation 被删除也不自动导航或改变 selection。
 - unknown event 只产生带安全 `rawType` 的 ignore plan，不保留或解释 payload。
-- message/file 事件属于其他 conversation 时，不请求 HTTP、不切换 state conversation，也不修改当前 state；result 保留 plan 中的目标 conversation 和 `other-conversation` scope，供未来 coordinator 标记其他 conversation 有变化。
+- message/file 事件属于其他 conversation 时，不请求 HTTP、不切换 state conversation，也不修改当前 state；result 保留 plan 中的目标 conversation 和 `other-conversation` scope。S6D coordinator 对这类通知只合并 conversation-list refresh。
 
 Reconciliation result 显式包含 plan、应用动作、引用级 `historyChanged`、authority、scope 与 `conversationInvalidated`。`authoritative` 只描述本次明确动作：created 的 latest refresh、已提交 delete 的本地应用、或 file/reconnect 后重建的 latest window；它不是对所有未加载历史的全局完整性证明。
 
-SSE `start.assistantMessageId` 与 WS `message-created.messageId` 只在 message ID 和 conversation ID 都完全相等时关联。该判断仅表示“收到了对应 SSE generation ID 的持久化创建通知”；它不生成 Message、completed event 或发送成功结论，也不自动 refresh。未来 send coordinator 仍需读取 HTTP latest history，并集中管理 optimistic/streaming 展示。
+SSE `start.assistantMessageId` 与 WS `message-created.messageId` 只在 message ID 和 conversation ID 都完全相等时关联。该判断仅表示“收到了对应 SSE generation ID 的持久化创建通知”；它不生成 Message、completed event 或发送成功结论，也不自动 refresh。S6C send controller 继续通过 HTTP scratch history finalization，并集中管理 optimistic/streaming 展示；S6D 只做 correlation/defer。
 
-S4E2 服务一次只处理一个 plan，不拥有连接或并发控制。未来 coordinator 必须串行化同一 conversation 的 reconciliation，防止多个 create/update refresh 乱序，保证较旧请求不能覆盖较新结果，并让 `file-synced`/reconnect scratch reload 覆盖此前排队的 latest refresh。本阶段不提前引入 queue、debounce、batching、request cancellation、mutable controller 或 store。
+S4E2 服务一次只处理一个 plan，不拥有连接或并发控制。S6D coordinator 已串行化当前 history reconciliation：一个 request in flight 时只置 dirty，随后用一次 scratch reload 覆盖合并变化；Workspace AbortController/request generation 保证较旧结果不能覆盖新 selection。没有引入 raw event queue、外部 store 或新依赖。
 
 **Backend contract gap — Message update reconciliation**：当前 WS `msg_updated` 仅提供 message/conversation ID，HTTP 没有单 Message GET。较早消息的更新无法由有限 latest window 保证完整对账；该限制由 plan/result 与文档持续表达，前端不通过全量自动分页或猜测 payload 伪造修复。
 
@@ -404,7 +439,7 @@ S4E2 服务一次只处理一个 plan，不拥有连接或并发控制。未来 
 - `msg_created.data` 由不同持久化写入点临时组装，不是完整 HTTP history DTO；role、content、attachments、thinking、MCP、TTS 等字段不被当作可靠快照，也不会映射成 Message Domain 对象。WebSocket notification 只表示某项持久化事实可能已变化。
 - 未知非空 string event type（包括当前未由 S4E1 消费的 capability、execution、debug、pong 和其他领域事件）安全映射为 `{ type: "unknown", rawType }`，不保留 payload，且后续事件可以继续消费。已知 event 若缺少稳定 ID 则抛 `RealtimeContractError`，不能降级成 unknown。
 - 旧 web client 没有维持 `/ws` 所必需的应用层 heartbeat。后端支持 inbound `{type:"ping"}` 并回复 `pong`，主要服务 Android push；这不等于 Penumbra 必须定时发送 ping。`tts_state` 会改变服务端 runtime TTS state，属于后续独立能力，不在 S4E1 提供任意 outbound command API。
-- 当前后端没有 event ID、sequence、replay 或 reconnect cursor。S4E1 不实现 backoff、jitter、network/visibility listener、session refresh、reconnect marker 或 replay；未来重连必须与 S4E2 的 HTTP authority refresh/reload 一起设计，不能只恢复 socket 就宣称数据已恢复。
+- 当前后端没有 event ID、sequence、replay 或 reconnect cursor。S4E1 transport 本身不实现 backoff、jitter、network/visibility listener、session refresh、reconnect marker 或 replay；S6D caller-managed reconnect 已与 S4E2 的 HTTP scratch reconciliation 组合，不能只恢复 socket 就宣称数据已恢复。
 - HTTP history、SSE 与 WebSocket 仍是三套时间边界：HTTP history 是可重读的持久化最终事实，SSE 是当前请求临时增量，WebSocket 是提交后的变化通知或失效提示。S4E2 可按 `SSE start.assistantMessageId ↔ WS message-created.messageId` 和 conversation ID 做纯关联，但不合并两套 event union，也不据此生成 completed event。
 - S4E1 transport 不调用或修改 Message History，不调用 Conversation client 或 Chat Execution，不创建 optimistic/streaming state，也不接 Chat mock/UI。S4E2 只消费映射完成的 event，不调用 `openRealtimeEvents` 或持有 connection。
 - Chat、Theater 等领域不可仅因共用 `/ws` 就合并业务状态机。Theater 的入站 `tts_state` 以及 `tts_chunk`、`tts_done` 等事件继续保持独立语义。
@@ -467,7 +502,7 @@ S4E2 服务一次只处理一个 plan，不拥有连接或并发控制。未来 
 
 ## 14. 待确认事项的处理
 
-SSE/WS 的三源权威边界已经确认，连接与并发协调仍待 S6D 实施。stop/cancel、carryover 所有权、production 部署、secret response 和其他未确认项，在后端给出实现或 contract test 前都保持“待确认”。后续任务应记录确认结果及其 AionsHome 来源，不得把临时前端行为升级为默认契约。
+SSE/WS/HTTP 的三源权威边界与 S6D 连接/并发协调已经实施。stop/cancel、carryover 所有权、production 部署、secret response 和其他未确认项，在后端给出实现或 contract test 前都保持“待确认”。后续任务应记录确认结果及其 AionsHome 来源，不得把临时前端行为升级为默认契约。
 
 ## 15. 未决契约状态
 
@@ -483,8 +518,9 @@ SSE/WS 的三源权威边界已经确认，连接与并发协调仍待 S6D 实�
 | Chat Read-Only UI Integration | `Completed (S6B)` | production Chat 已通过 presentation model 读取真实 Workspace；含 loading/error/empty、atomic switch UI、system/unknown 中性展示、hidden-runtime 过滤与 disabled Sender；无 send、Execution、SSE、WebSocket、Reconciliation、load older 或 capability rendering。 |
 | Read-Only Workspace / Readiness Decoupling | `Completed (S6B.1)` | readiness 404/network/timeout/unavailable/DTO error 不再阻止真实 conversation/history；安全降级状态不伪造 ready，Sender 保持 disabled。 |
 | Chat Send & Streaming Composition | `Completed (S6C)` | selected-model readiness 门控、稳定 `client_msg_id`、optimistic/streaming overlay、安全 SSE accumulator、provider failure、EOF 后 HTTP ID 对账、uncertain retry 与 conversation switch 隔离已实施；未接 WebSocket、regenerate 或 server cancel。 |
+| Chat Realtime Coordination | `Completed (S6D)` | 单 connection lifecycle、Strict Mode generation guard、安全 reconnect、same-execution ID correlation、dirty/deferred refresh、HTTP in-flight 合并、conversation-list coordination 与 reconnect scratch reconciliation 已接入 production Chat；无 unread、push、provider call、regenerate 或 server cancel。 |
 | Message update reconciliation | `Backend contract gap` | WS 仅提供 ID 且 HTTP 无单 Message GET；latest refresh 无法保证较早消息已权威更新，结果保持 `latest-window-only`。 |
-| SSE/WS 权威关系 | `Confirmed; S6D pending` | HTTP history 是持久化最终事实，SSE 是当前 request 增量，WebSocket 是 post-commit notification；S6C 未连接 WS。 |
+| SSE/WS/HTTP 权威关系 | `Confirmed and integrated (S6D)` | HTTP history 是 persisted final truth，SSE 是当前 execution 增量，WebSocket 是 post-commit notification；same-execution WS event 不创建 Message。 |
 | Stop/cancel | `Pending backend confirmation` | 尚无已确认的服务端停止契约。 |
 | Carryover 所有权 | `Pending backend confirmation` | 前后端职责与迁移方式待确认。 |
 | Production 部署方式 | `Pending backend confirmation` | 同源反代或跨域部署待确认。 |

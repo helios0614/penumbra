@@ -7,6 +7,8 @@ import {
 } from "@/application/chat-workspace";
 import type { ChatSetupViewModel } from "@/application/chat-setup";
 import type { MessageHistoryState } from "@/application/message-history";
+import type { RealtimeEvent } from "@/application/realtime";
+import type { RealtimeReconciliationResult } from "@/application/realtime-reconciliation";
 import type { ConversationSummary } from "@/domain/conversation";
 import {
   createChatWorkspaceController,
@@ -485,6 +487,172 @@ describe("chat workspace safe UI errors", () => {
   });
 });
 
+describe("chat workspace realtime update ports", () => {
+  it("applies the existing realtime reconciliation result to persistent history", async () => {
+    const original = workspace("conv_a", undefined, "old history");
+    const nextHistory = history("conv_a", "HTTP refreshed history");
+    const reconcile = vi.fn(async (
+      _history: MessageHistoryState,
+      event: RealtimeEvent,
+    ) => reconciliationResult(nextHistory, event));
+    const controller = createChatWorkspaceController({}, {
+      loadWorkspace: async () => original,
+      reconcileRealtimeEvent: reconcile,
+    });
+    await controller.load();
+    const event = {
+      type: "message-created",
+      conversationId: "conv_a",
+      messageId: "server-message",
+    } as const;
+
+    await controller.reconcileSelectedConversationRealtimeEvent(event);
+
+    expect(reconcile).toHaveBeenCalledWith(
+      original.history,
+      event,
+      { history: { request: { signal: expect.any(AbortSignal) } } },
+    );
+    expect(controller.getState()).toMatchObject({
+      status: "ready",
+      workspace: {
+        history: { messages: [{ content: "HTTP refreshed history" }] },
+      },
+    });
+  });
+
+  it("applies reconnect scratch reconciliation without invoking send", async () => {
+    const original = workspace("conv_a", undefined, "before reconnect");
+    const nextHistory = history("conv_a", "scratch truth");
+    const reconnect = vi.fn(async () => reconnectResult(nextHistory));
+    const controller = createChatWorkspaceController({}, {
+      loadWorkspace: async () => original,
+      reconcileAfterReconnect: reconnect,
+    });
+    await controller.load();
+
+    await controller.reconcileSelectedConversationAfterReconnect("conv_a");
+
+    expect(reconnect).toHaveBeenCalledWith(
+      original.history,
+      { history: { request: { signal: expect.any(AbortSignal) } } },
+    );
+    expect(controller.getState()).toMatchObject({
+      workspace: { history: { messages: [{ content: "scratch truth" }] } },
+    });
+  });
+
+  it("refreshes non-current conversation summaries without loading history", async () => {
+    const original = workspace("conv_a");
+    const refreshed = conversations().map((conversation) =>
+      conversation.id === "conv_b"
+        ? { ...conversation, title: "Externally renamed" }
+        : conversation);
+    const loadWorkspace = vi.fn(async () => original);
+    const loadConversationList = vi.fn(async () => refreshed);
+    const reloadHistory = vi.fn();
+    const controller = createChatWorkspaceController({}, {
+      loadWorkspace,
+      loadConversationList,
+      reloadHistory,
+    });
+    await controller.load();
+
+    await controller.refreshConversationList();
+
+    expect(loadWorkspace).toHaveBeenCalledOnce();
+    expect(reloadHistory).not.toHaveBeenCalled();
+    expect(controller.getState()).toMatchObject({
+      status: "ready",
+      workspace: {
+        selectedConversationId: "conv_a",
+        conversations: expect.arrayContaining([
+          expect.objectContaining({ id: "conv_b", title: "Externally renamed" }),
+        ]),
+      },
+    });
+    const state = controller.getState();
+    if (state.status === "ready") {
+      expect(state.workspace.history).toBe(original.history);
+    }
+  });
+
+  it("stages a full workspace reload when the current conversation was deleted", async () => {
+    const original = workspace("conv_a");
+    const remaining = conversations().filter(({ id }) => id !== "conv_a");
+    const fallback = workspace("conv_b", remaining, "new selected history");
+    const loadWorkspace = vi.fn()
+      .mockResolvedValueOnce(original)
+      .mockResolvedValueOnce(fallback);
+    const controller = createChatWorkspaceController({}, {
+      loadWorkspace,
+      loadConversationList: async () => remaining,
+    });
+    const states: ChatWorkspaceControllerState[] = [];
+    controller.subscribe((state) => states.push(state));
+    await controller.load();
+    states.length = 0;
+
+    await controller.refreshConversationList();
+
+    expect(loadWorkspace).toHaveBeenLastCalledWith(
+      { currentConversationId: null },
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(states.map(({ status }) => status)).toEqual(["ready"]);
+    expect(controller.getState()).toMatchObject({
+      status: "ready",
+      workspace: { selectedConversationId: "conv_b" },
+    });
+  });
+
+  it("reloads setup and history if current conversation model metadata changed", async () => {
+    const original = workspace("conv_a");
+    const changed = conversations().map((conversation) =>
+      conversation.id === "conv_a"
+        ? { ...conversation, modelKey: "model-external" }
+        : conversation);
+    const reloaded = workspace("conv_a", changed, "model reload history");
+    const loadWorkspace = vi.fn()
+      .mockResolvedValueOnce(original)
+      .mockResolvedValueOnce(reloaded);
+    const controller = createChatWorkspaceController({}, {
+      loadWorkspace,
+      loadConversationList: async () => changed,
+    });
+    await controller.load();
+
+    await controller.refreshConversationList();
+
+    expect(loadWorkspace).toHaveBeenLastCalledWith(
+      { currentConversationId: "conv_a" },
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(controller.getState()).toMatchObject({
+      workspace: {
+        selectedConversation: { modelKey: "model-external" },
+        history: { messages: [{ content: "model reload history" }] },
+      },
+    });
+  });
+
+  it("keeps the last workspace intact when a sidebar refresh fails", async () => {
+    const original = workspace("conv_a");
+    const failure = new ApiError("private list failure", 500);
+    const controller = createChatWorkspaceController({}, {
+      loadWorkspace: async () => original,
+      loadConversationList: async () => Promise.reject(failure),
+    });
+    await controller.load();
+
+    await expect(controller.refreshConversationList()).rejects.toBe(failure);
+    expect(controller.getState()).toMatchObject({
+      status: "ready",
+      workspace: { selectedConversationId: "conv_a" },
+    });
+  });
+});
+
 async function readyController(
   initialWorkspace: ChatWorkspaceSnapshot,
   loadConversation: ChatWorkspaceConversationLoader,
@@ -565,6 +733,47 @@ function history(conversationId: string, content: string): MessageHistoryState {
     pageSize: 50,
     oldestCursor: 0,
     olderPageStatus: "exhausted",
+  };
+}
+
+function reconciliationResult(
+  state: MessageHistoryState,
+  event: RealtimeEvent,
+): RealtimeReconciliationResult {
+  const plan = event.type === "message-created"
+    ? {
+        kind: "refresh-latest-history" as const,
+        conversationId: event.conversationId,
+        reason: "message-created" as const,
+        authority: "expected-authoritative" as const,
+      }
+    : { kind: "ignore" as const, rawType: "test" };
+  return {
+    state,
+    plan,
+    applied: "refreshed-latest",
+    historyChanged: true,
+    authority: "authoritative",
+    scope: "current-conversation",
+    conversationInvalidated: false,
+  };
+}
+
+function reconnectResult(
+  state: MessageHistoryState,
+): RealtimeReconciliationResult {
+  return {
+    state,
+    plan: {
+      kind: "reload-history",
+      conversationId: state.conversationId,
+      reason: "reconnect",
+    },
+    applied: "reloaded-history",
+    historyChanged: true,
+    authority: "authoritative",
+    scope: "current-conversation",
+    conversationInvalidated: false,
   };
 }
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { ChatWorkspaceLoadInput } from "@/application/chat-workspace";
+import type { RealtimeEvent } from "@/application/realtime";
 import {
   createChatWorkspaceController,
   INITIAL_CHAT_WORKSPACE_CONTROLLER_STATE,
@@ -16,6 +17,13 @@ export type UseChatWorkspaceResult = {
   readonly reloadSelectedConversationHistory: (
     conversationId: string,
   ) => Promise<readonly string[]>;
+  readonly reconcileSelectedConversationRealtimeEvent: (
+    event: RealtimeEvent,
+  ) => Promise<void>;
+  readonly reconcileSelectedConversationAfterReconnect: (
+    conversationId: string,
+  ) => Promise<void>;
+  readonly refreshConversationList: () => Promise<void>;
 };
 
 export function useChatWorkspace(
@@ -73,11 +81,46 @@ export function useChatWorkspace(
     [],
   );
 
+  const reconcileSelectedConversationRealtimeEvent = useCallback(
+    async (event: RealtimeEvent) => {
+      const controller = controllerRef.current;
+      if (controller === null) {
+        throw new Error("Chat workspace controller is unavailable");
+      }
+      await controller.reconcileSelectedConversationRealtimeEvent(event);
+    },
+    [],
+  );
+
+  const reconcileSelectedConversationAfterReconnect = useCallback(
+    async (conversationId: string) => {
+      const controller = controllerRef.current;
+      if (controller === null) {
+        throw new Error("Chat workspace controller is unavailable");
+      }
+      await controller.reconcileSelectedConversationAfterReconnect(
+        conversationId,
+      );
+    },
+    [],
+  );
+
+  const refreshConversationList = useCallback(async () => {
+    const controller = controllerRef.current;
+    if (controller === null) {
+      throw new Error("Chat workspace controller is unavailable");
+    }
+    await controller.refreshConversationList();
+  }, []);
+
   return {
     state,
     retry,
     selectConversation,
     retryConversationSwitch,
     reloadSelectedConversationHistory,
+    reconcileSelectedConversationRealtimeEvent,
+    reconcileSelectedConversationAfterReconnect,
+    refreshConversationList,
   };
 }

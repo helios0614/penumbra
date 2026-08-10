@@ -156,6 +156,7 @@ class ManagedWebSocketConnection<T> {
         new WebSocketTransportError(
           "WebSocket closed before opening",
           "CLOSED_BEFORE_OPEN",
+          event.code,
         ),
       );
     } else if (this.state === "open") {

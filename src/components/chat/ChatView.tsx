@@ -3,9 +3,11 @@ import { useState } from "react";
 
 import {
   getChatSenderAvailability,
+  useChatRealtime,
   useChatSend,
   type ChatWorkspaceControllerState,
 } from "@/components/chat-workspace";
+import type { ChatRealtimeState } from "@/application/chat-realtime";
 import {
   INITIAL_CHAT_SEND_STATE,
   isChatSendActive,
@@ -40,6 +42,12 @@ const CHAT_HEADER_ACTION_CLASS =
 export function ChatView({ onBack }: { readonly onBack?: () => void }) {
   const workspace = useChatWorkspace();
   const send = useChatSend(workspace.reloadSelectedConversationHistory);
+  const realtime = useChatRealtime(workspace.state, send.state, {
+    reconcileEvent: workspace.reconcileSelectedConversationRealtimeEvent,
+    reconcileAfterReconnect:
+      workspace.reconcileSelectedConversationAfterReconnect,
+    refreshConversationList: workspace.refreshConversationList,
+  });
 
   const selectConversation = (conversationId: string) => {
     if (isChatSendActive(send.state)) return;
@@ -70,6 +78,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       sendState={send.state}
       onSend={sendMessage}
       onRetryFinalization={send.retryFinalization}
+      realtimeState={realtime}
     />
   );
 }
@@ -82,6 +91,7 @@ export interface ChatWorkspaceViewProps {
   readonly sendState?: ChatSendState;
   readonly onSend?: (content: string) => Promise<boolean>;
   readonly onRetryFinalization?: () => void;
+  readonly realtimeState?: ChatRealtimeState;
   readonly onBack?: () => void;
 }
 
@@ -93,6 +103,7 @@ export function ChatWorkspaceView({
   sendState = INITIAL_CHAT_SEND_STATE,
   onSend,
   onRetryFinalization,
+  realtimeState = { kind: "idle" },
   onBack,
 }: ChatWorkspaceViewProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -224,6 +235,8 @@ export function ChatWorkspaceView({
             onRetryFinalization={onRetryFinalization}
           />
 
+          <ChatRealtimeNotice state={realtimeState} />
+
           {workspace.conversations.length === 0 ? (
             <ChatWorkspaceEmpty kind="conversations" />
           ) : workspace.selectedConversation === null || workspace.history === null ? (
@@ -247,6 +260,27 @@ export function ChatWorkspaceView({
         </div>
       </div>
     </TooltipProvider>
+  );
+}
+
+function ChatRealtimeNotice({
+  state,
+}: {
+  readonly state: ChatRealtimeState;
+}) {
+  if (state.kind !== "unavailable" && state.kind !== "reconnecting") {
+    return null;
+  }
+
+  return (
+    <div
+      className="shrink-0 border-b border-border bg-muted/30 px-4 py-1.5 text-xs text-muted-foreground"
+      role="status"
+    >
+      {state.kind === "reconnecting"
+        ? "实时连接正在恢复，历史记录与发送仍可使用。"
+        : "实时连接暂时不可用，历史记录与发送仍可使用。"}
+    </div>
   );
 }
 

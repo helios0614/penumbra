@@ -29,10 +29,16 @@ export type WebSocketTransportErrorCode =
 
 export class WebSocketTransportError extends Error {
   readonly code: WebSocketTransportErrorCode;
+  readonly closeCode: number | null;
 
-  constructor(message: string, code: WebSocketTransportErrorCode) {
+  constructor(
+    message: string,
+    code: WebSocketTransportErrorCode,
+    closeCode: number | null = null,
+  ) {
     super(message);
     this.name = "WebSocketTransportError";
     this.code = code;
+    this.closeCode = closeCode;
   }
 }

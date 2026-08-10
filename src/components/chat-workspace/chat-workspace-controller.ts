@@ -11,6 +11,17 @@ import {
   type MessageHistoryRequestOptions,
   type MessageHistoryState,
 } from "@/application/message-history";
+import type { RealtimeEvent } from "@/application/realtime";
+import {
+  reconcileMessageHistoryAfterReconnect,
+  reconcileRealtimeEvent,
+  type RealtimeReconciliationOptions,
+  type RealtimeReconciliationResult,
+} from "@/application/realtime-reconciliation";
+import {
+  listConversations,
+  type ConversationSummary,
+} from "@/domain/conversation";
 import { ApiError, type ApiRequestOptions } from "@/lib/api";
 
 export type ChatWorkspaceSafeUiErrorCode =
@@ -60,10 +71,28 @@ export type ChatWorkspaceHistoryReloader = (
   options?: MessageHistoryRequestOptions,
 ) => Promise<MessageHistoryState>;
 
+export type ChatWorkspaceConversationListLoader = (
+  options?: ApiRequestOptions,
+) => Promise<ConversationSummary[]>;
+
+export type ChatWorkspaceRealtimeEventReconciler = (
+  history: MessageHistoryState,
+  event: RealtimeEvent,
+  options?: RealtimeReconciliationOptions,
+) => Promise<RealtimeReconciliationResult>;
+
+export type ChatWorkspaceReconnectReconciler = (
+  history: MessageHistoryState,
+  options?: RealtimeReconciliationOptions,
+) => Promise<RealtimeReconciliationResult>;
+
 export type ChatWorkspaceControllerDependencies = {
   readonly loadWorkspace?: ChatWorkspaceBootstrapLoader;
   readonly loadConversation?: ChatWorkspaceConversationLoader;
   readonly reloadHistory?: ChatWorkspaceHistoryReloader;
+  readonly loadConversationList?: ChatWorkspaceConversationListLoader;
+  readonly reconcileRealtimeEvent?: ChatWorkspaceRealtimeEventReconciler;
+  readonly reconcileAfterReconnect?: ChatWorkspaceReconnectReconciler;
 };
 
 export interface ChatWorkspaceController {
@@ -75,6 +104,13 @@ export interface ChatWorkspaceController {
   reloadSelectedConversationHistory(
     conversationId: string,
   ): Promise<readonly string[]>;
+  reconcileSelectedConversationRealtimeEvent(
+    event: RealtimeEvent,
+  ): Promise<void>;
+  reconcileSelectedConversationAfterReconnect(
+    conversationId: string,
+  ): Promise<void>;
+  refreshConversationList(): Promise<void>;
   subscribe(listener: (state: ChatWorkspaceControllerState) => void): () => void;
   dispose(): void;
 }
@@ -88,13 +124,21 @@ export function createChatWorkspaceController(
     dependencies.loadConversation ?? loadChatWorkspaceConversation;
   const historyReloader =
     dependencies.reloadHistory ?? reloadMessageHistoryFromScratch;
+  const conversationListLoader =
+    dependencies.loadConversationList ?? listConversations;
+  const realtimeEventReconciler =
+    dependencies.reconcileRealtimeEvent ?? reconcileRealtimeEvent;
+  const reconnectReconciler =
+    dependencies.reconcileAfterReconnect ?? reconcileMessageHistoryAfterReconnect;
   let state = INITIAL_CHAT_WORKSPACE_CONTROLLER_STATE;
   let bootstrapController: AbortController | null = null;
   let switchController: AbortController | null = null;
   let historyController: AbortController | null = null;
+  let conversationListController: AbortController | null = null;
   let bootstrapSequence = 0;
   let switchSequence = 0;
   let historySequence = 0;
+  let conversationListSequence = 0;
   let lastFailedConversationId: string | null = null;
   let disposed = false;
   const listeners = new Set<(state: ChatWorkspaceControllerState) => void>();
@@ -124,6 +168,9 @@ export function createChatWorkspaceController(
     historySequence += 1;
     historyController?.abort();
     historyController = null;
+    conversationListSequence += 1;
+    conversationListController?.abort();
+    conversationListController = null;
     lastFailedConversationId = null;
 
     publish({ status: "loading" });
@@ -170,6 +217,9 @@ export function createChatWorkspaceController(
     historySequence += 1;
     historyController?.abort();
     historyController = null;
+    conversationListSequence += 1;
+    conversationListController?.abort();
+    conversationListController = null;
     lastFailedConversationId = null;
 
     if (conversationId === workspace.selectedConversationId) {
@@ -225,8 +275,12 @@ export function createChatWorkspaceController(
     }
   };
 
-  const reloadSelectedConversationHistory = async (
+  const updateSelectedHistory = async (
     conversationId: string,
+    operation: (
+      history: MessageHistoryState,
+      signal: AbortSignal,
+    ) => Promise<MessageHistoryState>,
   ) => {
     if (
       disposed ||
@@ -241,8 +295,7 @@ export function createChatWorkspaceController(
       );
     }
 
-    const currentState = state;
-    const workspace = currentState.workspace;
+    const workspace = state.workspace;
     const currentHistory = workspace.history;
     if (currentHistory === null) {
       throw new ChatWorkspaceContractError(
@@ -255,9 +308,7 @@ export function createChatWorkspaceController(
     historyController = controller;
 
     try {
-      const history = await historyReloader(currentHistory, {
-        request: { signal: controller.signal },
-      });
+      const history = await operation(currentHistory, controller.signal);
       if (
         disposed ||
         controller.signal.aborted ||
@@ -270,10 +321,11 @@ export function createChatWorkspaceController(
         );
       }
 
+      const latestWorkspace = state.workspace;
       const nextWorkspace = createChatWorkspaceSnapshot({
-        setup: workspace.setup,
-        conversations: workspace.conversations,
-        selectedConversation: workspace.selectedConversation,
+        setup: latestWorkspace.setup,
+        conversations: latestWorkspace.conversations,
+        selectedConversation: latestWorkspace.selectedConversation,
         history,
       });
       publish({
@@ -290,6 +342,136 @@ export function createChatWorkspaceController(
     }
   };
 
+  const reloadSelectedConversationHistory = async (
+    conversationId: string,
+  ) => updateSelectedHistory(
+    conversationId,
+    (history, signal) => historyReloader(history, {
+      request: { signal },
+    }),
+  );
+
+  const reconcileSelectedConversationRealtimeEvent = async (
+    event: RealtimeEvent,
+  ) => {
+    if (state.status !== "ready" || state.workspace.history === null) {
+      throw new ChatWorkspaceContractError(
+        "Realtime reconciliation requires loaded history",
+      );
+    }
+    const conversationId = state.workspace.history.conversationId;
+    await updateSelectedHistory(
+      conversationId,
+      async (history, signal) => (await realtimeEventReconciler(
+        history,
+        event,
+        { history: { request: { signal } } },
+      )).state,
+    );
+  };
+
+  const reconcileSelectedConversationAfterReconnect = async (
+    conversationId: string,
+  ) => {
+    await updateSelectedHistory(
+      conversationId,
+      async (history, signal) => (await reconnectReconciler(
+        history,
+        { history: { request: { signal } } },
+      )).state,
+    );
+  };
+
+  const refreshConversationList = async () => {
+    if (
+      disposed ||
+      state.status !== "ready" ||
+      state.pendingConversationId !== null
+    ) {
+      throw new ChatWorkspaceContractError(
+        "Conversation refresh requires a stable workspace",
+      );
+    }
+
+    const selectedConversationId = state.workspace.selectedConversationId;
+    const sequence = ++conversationListSequence;
+    conversationListController?.abort();
+    const controller = new AbortController();
+    conversationListController = controller;
+
+    try {
+      const conversations = await conversationListLoader({
+        signal: controller.signal,
+      });
+      if (
+        disposed ||
+        controller.signal.aborted ||
+        sequence !== conversationListSequence ||
+        state.status !== "ready" ||
+        state.pendingConversationId !== null ||
+        state.workspace.selectedConversationId !== selectedConversationId
+      ) {
+        throw new ChatWorkspaceContractError(
+          "Conversation refresh became stale",
+        );
+      }
+
+      const workspace = state.workspace;
+      const selectedConversation = selectedConversationId === null
+        ? null
+        : conversations.find(({ id }) => id === selectedConversationId) ?? null;
+      if (
+        selectedConversationId !== null &&
+        (
+          selectedConversation === null ||
+          selectedConversation.modelKey !== workspace.selectedConversation?.modelKey
+        )
+      ) {
+        historySequence += 1;
+        historyController?.abort();
+        historyController = null;
+        const nextWorkspace = await bootstrapLoader(
+          {
+            ...input,
+            currentConversationId: selectedConversation?.id ?? null,
+          },
+          { signal: controller.signal },
+        );
+        if (
+          disposed ||
+          controller.signal.aborted ||
+          sequence !== conversationListSequence
+        ) {
+          throw new ChatWorkspaceContractError(
+            "Conversation refresh became stale",
+          );
+        }
+        publish(readyState(nextWorkspace));
+        return;
+      }
+
+      const nextWorkspace = createChatWorkspaceSnapshot({
+        setup: workspace.setup,
+        conversations,
+        selectedConversation,
+        history: workspace.history,
+      });
+      publish({
+        status: "ready",
+        workspace: nextWorkspace,
+        pendingConversationId: null,
+        switchError: state.switchError,
+      });
+    } finally {
+      if (
+        sequence === conversationListSequence &&
+        conversationListController === controller
+      ) {
+        conversationListController = null;
+      }
+    }
+  };
+
   return {
     getState() {
       return state;
@@ -302,6 +484,12 @@ export function createChatWorkspaceController(
     selectConversation,
 
     reloadSelectedConversationHistory,
+
+    reconcileSelectedConversationRealtimeEvent,
+
+    reconcileSelectedConversationAfterReconnect,
+
+    refreshConversationList,
 
     async retryConversationSwitch() {
       if (
@@ -330,13 +518,16 @@ export function createChatWorkspaceController(
       bootstrapSequence += 1;
       switchSequence += 1;
       historySequence += 1;
+      conversationListSequence += 1;
       listeners.clear();
       bootstrapController?.abort();
       switchController?.abort();
       historyController?.abort();
+      conversationListController?.abort();
       bootstrapController = null;
       switchController = null;
       historyController = null;
+      conversationListController = null;
       lastFailedConversationId = null;
     },
   };
