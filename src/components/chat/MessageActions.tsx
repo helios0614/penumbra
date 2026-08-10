@@ -11,6 +11,7 @@ interface MessageActionsProps {
   role: "user" | "assistant" | "system";
   content: string;
   onRegenerate?: () => void;
+  regenerateDisabled?: boolean;
   onDelete?: () => void;
   className?: string;
 }
@@ -19,6 +20,7 @@ function MessageActionsInner({
   role,
   content,
   onRegenerate,
+  regenerateDisabled = false,
   onDelete,
   className,
 }: MessageActionsProps) {
@@ -62,6 +64,8 @@ function MessageActionsInner({
                 variant="ghost"
                 size="icon-xs"
                 onClick={onRegenerate}
+                disabled={regenerateDisabled}
+                aria-label="重新生成回复"
                 className="text-muted-foreground hover:text-foreground"
               />
             }

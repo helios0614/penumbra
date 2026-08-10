@@ -3,14 +3,16 @@ import { useState } from "react";
 
 import {
   getChatSenderAvailability,
+  getChatRegenerateAvailability,
   useChatRealtime,
   useChatSend,
   type ChatWorkspaceControllerState,
 } from "@/components/chat-workspace";
 import type { ChatRealtimeState } from "@/application/chat-realtime";
 import {
+  createRegeneratePersistenceProjection,
   INITIAL_CHAT_SEND_STATE,
-  isChatSendActive,
+  isChatExecutionActive,
   type ChatSendState,
 } from "@/application/chat-send";
 import {
@@ -50,7 +52,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
   });
 
   const selectConversation = (conversationId: string) => {
-    if (isChatSendActive(send.state)) return;
+    if (isChatExecutionActive(send.state)) return;
     send.resetError();
     workspace.selectConversation(conversationId);
   };
@@ -68,6 +70,31 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
     });
   };
 
+  const regenerateMessage = (messageId: string): Promise<boolean> => {
+    if (workspace.state.status !== "ready") {
+      return Promise.resolve(false);
+    }
+    const availability = getChatRegenerateAvailability(
+      workspace.state,
+      send.state,
+    );
+    if (
+      !availability.enabled ||
+      availability.target === null ||
+      availability.target.id !== messageId
+    ) {
+      return Promise.resolve(false);
+    }
+    return send.regenerate({
+      conversationId: availability.target.conversationId,
+      targetMessageId: availability.target.id,
+      targetCreatedAt: availability.target.createdAt,
+      preRegenerateSnapshot: createRegeneratePersistenceProjection(
+        availability.target,
+      ),
+    });
+  };
+
   return (
     <ChatWorkspaceView
       state={workspace.state}
@@ -77,6 +104,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       onBack={onBack}
       sendState={send.state}
       onSend={sendMessage}
+      onRegenerate={regenerateMessage}
       onRetryFinalization={send.retryFinalization}
       realtimeState={realtime}
     />
@@ -90,6 +118,7 @@ export interface ChatWorkspaceViewProps {
   readonly onRetryConversationSwitch: () => void;
   readonly sendState?: ChatSendState;
   readonly onSend?: (content: string) => Promise<boolean>;
+  readonly onRegenerate?: (messageId: string) => Promise<boolean>;
   readonly onRetryFinalization?: () => void;
   readonly realtimeState?: ChatRealtimeState;
   readonly onBack?: () => void;
@@ -102,6 +131,7 @@ export function ChatWorkspaceView({
   onRetryConversationSwitch,
   sendState = INITIAL_CHAT_SEND_STATE,
   onSend,
+  onRegenerate,
   onRetryFinalization,
   realtimeState = { kind: "idle" },
   onBack,
@@ -136,7 +166,8 @@ export function ChatWorkspaceView({
     workspace.selectedConversationId ?? "",
   );
   const sender = getChatSenderAvailability(state, sendState);
-  const executionActive = isChatSendActive(sendState);
+  const regenerate = getChatRegenerateAvailability(state, sendState);
+  const executionActive = isChatExecutionActive(sendState);
   const forceFollowKey = sendState.kind === "sending-user" ||
     sendState.kind === "streaming" ||
     sendState.kind === "finalizing" ||
@@ -248,6 +279,13 @@ export function ChatWorkspaceView({
               conversationId={workspace.selectedConversation.id}
               messages={messages}
               forceFollowKey={forceFollowKey}
+              regenerateTargetId={regenerate.target?.id ?? null}
+              regenerateEnabled={regenerate.enabled && onRegenerate !== undefined}
+              onRegenerate={onRegenerate === undefined
+                ? undefined
+                : (messageId) => {
+                    void onRegenerate(messageId);
+                  }}
             />
           )}
 
@@ -291,13 +329,7 @@ function ChatExecutionNotice({
   readonly state: ChatSendState;
   readonly onRetryFinalization?: () => void;
 }) {
-  const error = state.kind === "error"
-    ? state.error
-    : state.kind === "finalization-uncertain"
-      ? state.error
-      : state.kind === "streaming" || state.kind === "finalizing"
-        ? state.executionError
-        : null;
+  const error = executionNoticeError(state);
   if (error === null) return null;
 
   return (
@@ -306,7 +338,9 @@ function ChatExecutionNotice({
       role="alert"
     >
       <span className="min-w-0 flex-1">{error.message}</span>
-      {state.kind === "finalization-uncertain" && onRetryFinalization && (
+      {(state.kind === "finalization-uncertain" ||
+        state.kind === "regenerate-finalization-uncertain") &&
+        onRetryFinalization && (
         <Button
           type="button"
           variant="outline"
@@ -319,6 +353,23 @@ function ChatExecutionNotice({
       )}
     </div>
   );
+}
+
+function executionNoticeError(state: ChatSendState) {
+  switch (state.kind) {
+    case "error":
+    case "finalization-uncertain":
+    case "regenerate-finalization-uncertain":
+      return state.error;
+    case "streaming":
+    case "finalizing":
+    case "regenerate-streaming":
+    case "regenerate-finalizing":
+      return state.executionError;
+    case "idle":
+    case "sending-user":
+      return null;
+  }
 }
 
 function HeaderCopy({

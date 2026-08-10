@@ -46,6 +46,9 @@ describe("chat sender readiness policy", () => {
     assistantState("streaming"),
     assistantState("finalizing"),
     assistantState("finalization-uncertain"),
+    regenerateState("regenerate-streaming"),
+    regenerateState("regenerate-finalizing"),
+    regenerateState("regenerate-finalization-uncertain"),
     { kind: "error", error: safeError() } as const,
   ])("disables while execution is active or fatal", (sendState) => {
     expect(getChatSenderAvailability(
@@ -209,4 +212,30 @@ function safeError() {
     field: null,
     providerFailure: null,
   };
+}
+
+function regenerateState(
+  kind:
+    | "regenerate-streaming"
+    | "regenerate-finalizing"
+    | "regenerate-finalization-uncertain",
+): ChatSendState {
+  const base = {
+    executionId: "regenerate-1",
+    conversationId: "conv-a",
+    targetMessageId: "assistant-1",
+    assistant: {
+      overlayId: "regenerate-overlay",
+      assistantMessageId: "assistant-1",
+      content: "partial",
+      thinking: null,
+      simpleThink: null,
+      usage: null,
+      createdAt: 1,
+    },
+    executionError: null,
+  };
+  return kind === "regenerate-finalization-uncertain"
+    ? { ...base, kind, error: safeError() }
+    : { ...base, kind };
 }

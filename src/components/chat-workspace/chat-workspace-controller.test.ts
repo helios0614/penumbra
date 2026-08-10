@@ -431,7 +431,10 @@ describe("chat workspace controller history reconciliation", () => {
     });
     await controller.load();
 
-    await controller.reloadSelectedConversationHistory("conv_a");
+    const reconciliation = await controller.reloadSelectedConversationHistory(
+      "conv_a",
+      "message-conv_a",
+    );
 
     expect(reloadHistory).toHaveBeenCalledWith(
       original.history,
@@ -445,6 +448,40 @@ describe("chat workspace controller history reconciliation", () => {
       },
     });
     expect(original.history?.messages[0]?.content).toBe("old history");
+    expect(reconciliation).toEqual({
+      persistedMessageIds: ["message-conv_a"],
+      regenerateTarget: {
+        id: "message-conv_a",
+        content: "persisted final",
+        thinking: null,
+        simpleThink: null,
+      },
+    });
+  });
+
+  it("installs authoritative history while returning a missing regenerate target", async () => {
+    const original = workspace("conv_a", undefined, "old history");
+    const reloaded = history("conv_a", "authoritative history");
+    const controller = createChatWorkspaceController({}, {
+      loadWorkspace: () => Promise.resolve(original),
+      reloadHistory: vi.fn().mockResolvedValue(reloaded),
+    });
+    await controller.load();
+
+    const reconciliation = await controller.reloadSelectedConversationHistory(
+      "conv_a",
+      "missing-target",
+    );
+
+    expect(controller.getState()).toMatchObject({
+      workspace: {
+        history: { messages: [{ content: "authoritative history" }] },
+      },
+    });
+    expect(reconciliation).toEqual({
+      persistedMessageIds: ["message-conv_a"],
+      regenerateTarget: null,
+    });
   });
 
   it("preserves persistent history when reload fails and rejects other conversations", async () => {

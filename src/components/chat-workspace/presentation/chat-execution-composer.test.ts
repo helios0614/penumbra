@@ -125,6 +125,95 @@ describe("chat execution presentation composition", () => {
     );
     expect(visible.map(({ id }) => id)).toEqual(["server-user"]);
   });
+
+  it.each([
+    ["regenerate-streaming", "streaming", ""],
+    ["regenerate-finalizing", "finalizing", "partial"],
+    ["regenerate-finalization-uncertain", "unconfirmed", "partial"],
+  ] as const)("replaces the persistent target in place for %s", (
+    kind,
+    executionStatus,
+    content,
+  ) => {
+    const oldTarget = Object.freeze(
+      message("assistant-target", "assistant", "original persisted content"),
+    );
+    const persistent = Object.freeze([
+      Object.freeze(message("persisted-user", "user", "question")),
+      oldTarget,
+    ]);
+    const state = regenerateState(kind, content);
+
+    const visible = composeVisibleChatMessages(persistent, state, "conv-a");
+
+    expect(visible).toHaveLength(2);
+    expect(visible.map(({ id }) => id)).toEqual([
+      "persisted-user",
+      "assistant-target",
+    ]);
+    expect(visible[1]).toMatchObject({
+      kind: "assistant",
+      content,
+      thinking: content ? "thinking" : null,
+      simpleThink: content ? "simple" : null,
+      executionStatus,
+    });
+    expect(oldTarget.content).toBe("original persisted content");
+    expect(persistent).toHaveLength(2);
+  });
+
+  it("uses authoritative same-ID persistent content after regenerate becomes idle", () => {
+    const targetBefore = message(
+      "assistant-target",
+      "assistant",
+      "original persisted content",
+    );
+    const targetAfter = message(
+      "assistant-target",
+      "assistant",
+      "authoritative regenerated content",
+    );
+
+    const during = composeVisibleChatMessages(
+      [targetBefore],
+      regenerateState("regenerate-finalizing", "temporary content"),
+      "conv-a",
+    );
+    const after = composeVisibleChatMessages(
+      [targetAfter],
+      { kind: "idle" },
+      "conv-a",
+    );
+
+    expect(during).toHaveLength(1);
+    expect(during[0]).toMatchObject({
+      id: "assistant-target",
+      content: "temporary content",
+    });
+    expect(after).toHaveLength(1);
+    expect(after[0]).toMatchObject({
+      id: "assistant-target",
+      content: "authoritative regenerated content",
+    });
+  });
+
+  it("does not replace a missing target or a target in another conversation", () => {
+    const persistent = [message("assistant-target", "assistant", "original")];
+    const missingTarget = regenerateState("regenerate-streaming", "temporary");
+    if (missingTarget.kind !== "regenerate-streaming") {
+      throw new Error("invalid regenerate fixture");
+    }
+    expect(composeVisibleChatMessages(
+      persistent,
+      { ...missingTarget, targetMessageId: "missing" },
+      "conv-a",
+    )[0]).toMatchObject({ content: "original" });
+    expect(composeVisibleChatMessages(
+      persistent,
+      regenerateState("regenerate-streaming", "temporary"),
+      "conv-b",
+    )).toHaveLength(1);
+  });
 });
 
 function sendingState(): ChatSendState {
@@ -147,6 +236,31 @@ function assistantState(
     executionError: null,
   };
   return kind === "finalization-uncertain"
+    ? { ...base, kind, error: safeError() }
+    : { ...base, kind };
+}
+
+function regenerateState(
+  kind:
+    | "regenerate-streaming"
+    | "regenerate-finalizing"
+    | "regenerate-finalization-uncertain",
+  content: string,
+): ChatSendState {
+  const base = {
+    executionId: "execution:regenerate",
+    conversationId: "conv-a",
+    targetMessageId: "assistant-target",
+    assistant: {
+      ...assistant(),
+      assistantMessageId: content ? "assistant-target" : null,
+      content,
+      thinking: content ? "thinking" : null,
+      simpleThink: content ? "simple" : null,
+    },
+    executionError: null,
+  };
+  return kind === "regenerate-finalization-uncertain"
     ? { ...base, kind, error: safeError() }
     : { ...base, kind };
 }

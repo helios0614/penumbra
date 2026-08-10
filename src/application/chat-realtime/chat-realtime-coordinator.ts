@@ -384,6 +384,7 @@ export function isCurrentExecutionPersistenceNotification(
   const execution = context.execution;
   if (
     execution.kind !== "active" ||
+    execution.executionKind !== "send" ||
     execution.conversationId !== event.conversationId
   ) {
     return false;
@@ -400,7 +401,8 @@ export function isCurrentExecutionPersistenceNotification(
     return true;
   }
 
-  return event.messageId === execution.userMessageId;
+  return execution.userMessageId !== null &&
+    event.messageId === execution.userMessageId;
 }
 
 function defaultQueueTask(task: () => void): void {

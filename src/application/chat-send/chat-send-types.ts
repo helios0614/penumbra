@@ -1,13 +1,18 @@
 import type {
   ChatProviderFailureCode,
+  RegenerateInput,
   SafeUsageSummary,
   SendMessageInput,
 } from "@/application/chat-execution";
+import type { RegeneratePersistenceProjection } from "@/application/chat-send/chat-regenerate-persistence";
 
 export type ChatGenerationUiValues = Omit<
   SendMessageInput,
   "content" | "clientMessageId"
 >;
+
+export type ChatRegenerateGenerationUiValues = RegenerateInput;
+export type ChatExecutionKind = "send" | "regenerate";
 
 export type OptimisticUserMessage = {
   readonly overlayId: string;
@@ -28,6 +33,10 @@ export type StreamingAssistantMessage = {
 
 export type SafeChatExecutionErrorCode =
   | "authentication"
+  | "regenerate-target-not-found"
+  | "regenerate-target-invalid"
+  | "regenerate-target-not-latest"
+  | "regenerate-conflict"
   | "unknown-model"
   | "invalid-generation-options"
   | "unsupported-generation-option"
@@ -66,6 +75,14 @@ type AssistantChatSendState = ActiveChatSendState & {
   readonly executionError: SafeChatExecutionError | null;
 };
 
+type ActiveChatRegenerateState = {
+  readonly executionId: string;
+  readonly conversationId: string;
+  readonly targetMessageId: string;
+  readonly assistant: StreamingAssistantMessage;
+  readonly executionError: SafeChatExecutionError | null;
+};
+
 export type ChatSendState =
   | { readonly kind: "idle" }
   | (ActiveChatSendState & { readonly kind: "sending-user" })
@@ -81,12 +98,30 @@ export type ChatSendState =
       readonly conversationId?: string;
       readonly optimisticUser?: OptimisticUserMessage;
       readonly assistant?: StreamingAssistantMessage;
-    };
+    }
+  | (ActiveChatRegenerateState & {
+      readonly kind: "regenerate-streaming";
+    })
+  | (ActiveChatRegenerateState & {
+      readonly kind: "regenerate-finalizing";
+    })
+  | (ActiveChatRegenerateState & {
+      readonly kind: "regenerate-finalization-uncertain";
+      readonly error: SafeChatExecutionError;
+    });
 
 export type ChatSendInput = {
   readonly conversationId: string;
   readonly content: string;
   readonly generation?: ChatGenerationUiValues;
+};
+
+export type ChatRegenerateInput = {
+  readonly conversationId: string;
+  readonly targetMessageId: string;
+  readonly targetCreatedAt: number;
+  readonly preRegenerateSnapshot: RegeneratePersistenceProjection;
+  readonly generation?: ChatRegenerateGenerationUiValues;
 };
 
 export const INITIAL_CHAT_SEND_STATE: ChatSendState = Object.freeze({

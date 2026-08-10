@@ -1,5 +1,6 @@
 import type { ChatProviderFailureCode } from "@/application/chat-execution";
 import type {
+  ChatExecutionKind,
   ChatGenerationOptionField,
   SafeChatExecutionError,
 } from "@/application/chat-send/chat-send-types";
@@ -17,12 +18,57 @@ const GENERATION_FIELDS = new Set<ChatGenerationOptionField>([
 
 export function toSafeChatExecutionError(
   error: unknown,
+  executionKind: ChatExecutionKind = "send",
 ): SafeChatExecutionError {
+  const regenerate = executionKind === "regenerate";
   if (error instanceof ApiError) {
     const detail = safeErrorDetail(error.data);
 
     if (error.status === 401 || error.status === 403) {
-      return safeError("authentication", "发送需要重新登录或授权。");
+      return safeError(
+        "authentication",
+        regenerate ? "重新生成需要重新登录或授权。" : "发送需要重新登录或授权。",
+      );
+    }
+    if (
+      regenerate &&
+      error.status === 404 &&
+      detail.code === "regenerate_target_not_found"
+    ) {
+      return safeError(
+        "regenerate-target-not-found",
+        "目标回复已不存在。",
+      );
+    }
+    if (
+      regenerate &&
+      error.status === 422 &&
+      detail.code === "regenerate_target_invalid"
+    ) {
+      return safeError(
+        "regenerate-target-invalid",
+        "当前回复不能重新生成。",
+      );
+    }
+    if (
+      regenerate &&
+      error.status === 409 &&
+      detail.code === "regenerate_target_not_latest"
+    ) {
+      return safeError(
+        "regenerate-target-not-latest",
+        "该回复已不是当前最新回复。",
+      );
+    }
+    if (
+      regenerate &&
+      error.status === 409 &&
+      detail.code === "regenerate_conflict"
+    ) {
+      return safeError(
+        "regenerate-conflict",
+        "会话已发生变化，请刷新后重试。",
+      );
     }
     if (error.status === 409 && detail.code === "unknown_model") {
       return safeError("unknown-model", "当前会话使用的模型已不可用。");
@@ -57,12 +103,27 @@ export function toSafeChatExecutionError(
       );
     }
     if (error.code === "TIMEOUT") {
-      return safeError("timeout", "发送请求超时，请稍后重试。");
+      return safeError(
+        "timeout",
+        regenerate
+          ? "重新生成请求超时，请稍后重试。"
+          : "发送请求超时，请稍后重试。",
+      );
     }
     if (error.code === "NETWORK_ERROR") {
-      return safeError("network", "暂时无法连接发送服务，请重试。");
+      return safeError(
+        "network",
+        regenerate
+          ? "暂时无法连接重新生成服务，请重试。"
+          : "暂时无法连接发送服务，请重试。",
+      );
     }
-    return safeError("service", "暂时无法发送消息，请重试。");
+    return safeError(
+      "service",
+      regenerate
+        ? "暂时无法重新生成回复，请重试。"
+        : "暂时无法发送消息，请重试。",
+    );
   }
 
   if (
@@ -74,10 +135,20 @@ export function toSafeChatExecutionError(
       error.name === "StreamContractError"
     )
   ) {
-    return safeError("contract", "发送响应暂时无法安全处理。");
+    return safeError(
+      "contract",
+      regenerate
+        ? "重新生成响应暂时无法安全处理。"
+        : "发送响应暂时无法安全处理。",
+    );
   }
 
-  return safeError("unknown", "发送消息时发生错误，请重试。");
+  return safeError(
+    "unknown",
+    regenerate
+      ? "重新生成回复时发生错误，请重试。"
+      : "发送消息时发生错误，请重试。",
+  );
 }
 
 export function providerFailureError(

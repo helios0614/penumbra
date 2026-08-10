@@ -19,6 +19,13 @@ export type {
 export { getChatSenderAvailability } from "@/components/chat-workspace/chat-sender-policy";
 export type { ChatSenderAvailability } from "@/components/chat-workspace/chat-sender-policy";
 export {
+  getChatRegenerateAvailability,
+  isRegenerateTargetMessage,
+} from "@/components/chat-workspace/chat-regenerate-policy";
+export type {
+  ChatRegenerateAvailability,
+} from "@/components/chat-workspace/chat-regenerate-policy";
+export {
   useChatWorkspace,
 } from "@/components/chat-workspace/useChatWorkspace";
 export type {

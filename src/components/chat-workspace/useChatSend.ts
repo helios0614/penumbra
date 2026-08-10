@@ -4,6 +4,7 @@ import {
   createChatSendController,
   INITIAL_CHAT_SEND_STATE,
   type ChatHistoryReconciler,
+  type ChatRegenerateInput,
   type ChatSendController,
   type ChatSendInput,
   type ChatSendState,
@@ -12,6 +13,7 @@ import {
 export type UseChatSendResult = {
   readonly state: ChatSendState;
   readonly send: (input: ChatSendInput) => Promise<boolean>;
+  readonly regenerate: (input: ChatRegenerateInput) => Promise<boolean>;
   readonly retryFinalization: () => void;
   readonly resetError: () => void;
 };
@@ -39,6 +41,9 @@ export function useChatSend(
   const send = useCallback(async (input: ChatSendInput) =>
     controllerRef.current?.send(input) ?? false, []);
 
+  const regenerate = useCallback(async (input: ChatRegenerateInput) =>
+    controllerRef.current?.regenerate(input) ?? false, []);
+
   const retryFinalization = useCallback(() => {
     void controllerRef.current?.retryFinalization();
   }, []);
@@ -47,5 +52,5 @@ export function useChatSend(
     controllerRef.current?.resetError();
   }, []);
 
-  return { state, send, retryFinalization, resetError };
+  return { state, send, regenerate, retryFinalization, resetError };
 }

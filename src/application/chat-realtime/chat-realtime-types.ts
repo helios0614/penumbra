@@ -21,9 +21,11 @@ export type ChatRealtimeExecutionContext =
   | { readonly kind: "idle" }
   | {
       readonly kind: "active";
+      readonly executionKind: "send" | "regenerate";
       readonly conversationId: string;
-      readonly userMessageId: string;
+      readonly userMessageId: string | null;
       readonly assistantMessageId: string | null;
+      readonly targetMessageId: string | null;
     };
 
 export type ChatRealtimeContext = {

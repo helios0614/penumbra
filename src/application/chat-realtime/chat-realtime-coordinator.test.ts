@@ -253,6 +253,37 @@ describe("chat realtime event coordination", () => {
       .toBe(false);
   });
 
+  it("treats regenerate msg_updated(target) as dirty persistence notification until execution is idle", async () => {
+    const harness = createHarness({ context: activeRegenerateContext() });
+    harness.coordinator.start();
+    await flushAsync();
+
+    await harness.coordinator.handleEvent(updated("assistant-a"));
+    expect(harness.reconcileEvent).not.toHaveBeenCalled();
+    expect(harness.reconcileAfterReconnect).not.toHaveBeenCalled();
+    expect(harness.coordinator.getDirtyState().currentConversationHistory)
+      .toBe(true);
+
+    harness.context.execution = { kind: "idle" };
+    harness.coordinator.contextChanged();
+    await flushAsync();
+    expect(harness.reconcileAfterReconnect).toHaveBeenCalledWith("conv-a");
+    expect(harness.coordinator.getDirtyState().currentConversationHistory)
+      .toBe(false);
+  });
+
+  it("defers unrelated events and reconnect convergence during regenerate without an execution retry port", async () => {
+    const harness = createHarness({ context: activeRegenerateContext() });
+    await harness.coordinator.handleEvent(created("external-assistant"));
+    await harness.coordinator.handleEvent(deleted("old-message"));
+
+    expect(harness.reconcileEvent).not.toHaveBeenCalled();
+    expect(harness.coordinator.getDirtyState().currentConversationHistory)
+      .toBe(true);
+    expect(harness.coordinator).not.toHaveProperty("send");
+    expect(harness.coordinator).not.toHaveProperty("regenerate");
+  });
+
   it.each([
     created("external-assistant"),
     updated("old-message"),
@@ -500,9 +531,25 @@ function activeContext(): ChatRealtimeContext {
     ...defaultContext(),
     execution: {
       kind: "active",
+      executionKind: "send",
       conversationId: "conv-a",
       userMessageId: "client-user-a",
       assistantMessageId: "assistant-a",
+      targetMessageId: null,
+    },
+  };
+}
+
+function activeRegenerateContext(): ChatRealtimeContext {
+  return {
+    ...defaultContext(),
+    execution: {
+      kind: "active",
+      executionKind: "regenerate",
+      conversationId: "conv-a",
+      userMessageId: null,
+      assistantMessageId: "assistant-a",
+      targetMessageId: "assistant-a",
     },
   };
 }

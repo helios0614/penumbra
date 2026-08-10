@@ -8,6 +8,10 @@ const THINKING_START = "[THINKING_START]";
 const THINKING_END = "[THINKING_END]";
 const SIMPLE_THINK_START = "[SIMPLETHINK:";
 const CONTENT_MARKERS = [THINKING_START, SIMPLE_THINK_START] as const;
+const PROVIDER_FAILURE_MARKERS = [
+  "provider_request_failed",
+  "provider_execution_failed",
+] as const;
 
 type AccumulatorMode = "content" | "thinking" | "simple-think";
 
@@ -15,6 +19,7 @@ export type StreamingAssistantAccumulator = {
   readonly message: StreamingAssistantMessage;
   readonly mode: AccumulatorMode;
   readonly pending: string;
+  readonly providerPending: string;
 };
 
 export type ChatExecutionReduction = {
@@ -38,6 +43,7 @@ export function createStreamingAssistantAccumulator(
     },
     mode: "content",
     pending: "",
+    providerPending: "",
   };
 }
 
@@ -55,16 +61,32 @@ export function reduceChatExecutionEvent(
         },
       });
     case "chunk": {
-      const failure = providerFailureFromText(event.content);
+      const input = accumulator.providerPending + event.content;
+      const failure = providerFailureFromText(input);
       if (failure !== null) {
-        return { accumulator, failure };
+        return {
+          accumulator: { ...accumulator, providerPending: "" },
+          failure,
+        };
       }
-      return unchanged(appendAssistantChunk(accumulator, event.content));
+      const providerPending = retainedMarkerPrefix(
+        input,
+        PROVIDER_FAILURE_MARKERS,
+      );
+      const emitted = input.slice(0, input.length - providerPending.length);
+      return unchanged({
+        ...appendAssistantChunk(
+          { ...accumulator, providerPending: "" },
+          emitted,
+        ),
+        providerPending,
+      });
     }
     case "debug-summary":
       return {
         accumulator: {
           ...accumulator,
+          providerPending: event.hasError ? "" : accumulator.providerPending,
           message: { ...accumulator.message, usage: event.usage },
         },
         failure: event.hasError
@@ -135,12 +157,19 @@ export function appendAssistantChunk(
     },
     mode,
     pending: input,
+    providerPending: accumulator.providerPending,
   };
 }
 
 export function flushAssistantAccumulator(
   accumulator: StreamingAssistantAccumulator,
 ): StreamingAssistantAccumulator {
+  if (accumulator.providerPending.length > 0) {
+    return flushAssistantAccumulator(appendAssistantChunk(
+      { ...accumulator, providerPending: "" },
+      accumulator.providerPending,
+    ));
+  }
   if (accumulator.pending.length === 0) return accumulator;
 
   const pending = accumulator.pending;
@@ -153,6 +182,7 @@ export function flushAssistantAccumulator(
         : { ...message, simpleThink: (message.simpleThink ?? "") + pending },
     mode: accumulator.mode,
     pending: "",
+    providerPending: "",
   };
 }
 

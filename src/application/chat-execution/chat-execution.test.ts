@@ -139,6 +139,7 @@ describe("Chat execution request contracts", () => {
     fetchMock.mockResolvedValue(sseResponse([]));
     const result = await openRegenerateExecution(
       "conv /?#",
+      "message /?#",
       {
         contextLimit: 0,
         whisperMode: false,
@@ -152,7 +153,7 @@ describe("Chat execution request contracts", () => {
 
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
-      "/api/conversations/conv%20%2F%3F%23/regenerate?context_limit=0&whisper_mode=false&fast_mode=false&temperature=0&thinking_effort=",
+      "/api/conversations/conv%20%2F%3F%23/messages/message%20%2F%3F%23/regenerate?context_limit=0&whisper_mode=false&fast_mode=false&temperature=0&thinking_effort=",
     );
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: "POST" });
     expect(fetchMock.mock.calls[0]?.[1]?.body).toBeUndefined();
@@ -175,12 +176,13 @@ describe("Chat execution request contracts", () => {
     fetchMock.mockResolvedValue(sseResponse([]));
     const result = await openRegenerateExecution(
       "conv_1",
+      "assistant_1",
       undefined,
       { timeoutMs: 0 },
     );
     await collectEvents(result.events);
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
-      "/api/conversations/conv_1/regenerate",
+      "/api/conversations/conv_1/messages/assistant_1/regenerate",
     );
   });
 
@@ -225,7 +227,10 @@ describe("Chat execution request contracts", () => {
       openSendExecution("  ", { content: "secret" }, { timeoutMs: 0 }),
     ).rejects.toBeInstanceOf(ChatExecutionContractError);
     await expect(
-      openRegenerateExecution("", {}, { timeoutMs: 0 }),
+      openRegenerateExecution("", "assistant_1", {}, { timeoutMs: 0 }),
+    ).rejects.toBeInstanceOf(ChatExecutionContractError);
+    await expect(
+      openRegenerateExecution("conv_1", "", {}, { timeoutMs: 0 }),
     ).rejects.toBeInstanceOf(ChatExecutionContractError);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -306,7 +311,7 @@ describe("Chat execution media type and duplicate response", () => {
     );
 
     await expect(
-      openRegenerateExecution("conv_1", {}, { timeoutMs: 0 }),
+      openRegenerateExecution("conv_1", "assistant_1", {}, { timeoutMs: 0 }),
     ).rejects.toBeInstanceOf(ChatExecutionContractError);
     expect(cancel).toHaveBeenCalledOnce();
   });
@@ -888,6 +893,7 @@ describe("Chat execution stream lifecycle and error propagation", () => {
     );
     const result = await openRegenerateExecution(
       "conv_1",
+      "assistant_1",
       {},
       { timeoutMs: 0 },
     );
@@ -1086,6 +1092,7 @@ describe("Chat execution stream lifecycle and error propagation", () => {
     fetchMock.mockResolvedValue(sseResponse([]));
     const result = await openRegenerateExecution(
       "conv_1",
+      "assistant_1",
       {},
       { timeoutMs: 0 },
     );
@@ -1093,11 +1100,39 @@ describe("Chat execution stream lifecycle and error propagation", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[1]?.method).toBe("POST");
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBeUndefined();
     const paths = fetchMock.mock.calls.map(([path]) => String(path)).join(" ");
-    expect(paths).toBe("/api/conversations/conv_1/regenerate");
-    expect(paths).not.toMatch(
-      /messages|settings|readiness|models|history|delete|\/ws|websocket/,
+    expect(paths).toBe(
+      "/api/conversations/conv_1/messages/assistant_1/regenerate",
     );
+    expect(paths).not.toMatch(
+      /settings|readiness|models|history|delete|\/ws|websocket/,
+    );
+    expect(paths).not.toContain("/api/conversations/conv_1/regenerate");
+  });
+
+  it("overrides unsafe runtime method, body, and query properties with the canonical regenerate request", async () => {
+    fetchMock.mockResolvedValue(sseResponse([]));
+    const result = await openRegenerateExecution(
+      "conv_1",
+      "assistant_1",
+      {},
+      {
+        timeoutMs: 0,
+        method: "DELETE",
+        body: JSON.stringify({ model: "forbidden-model" }),
+        query: { provider: "forbidden-provider" },
+      } as never,
+    );
+    await collectEvents(result.events);
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      "/api/conversations/conv_1/messages/assistant_1/regenerate",
+    );
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: "POST",
+      body: undefined,
+    });
   });
 
   it("exports only pure execution contracts, mappers, and clients", () => {

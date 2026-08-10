@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { ChatWorkspaceLoadInput } from "@/application/chat-workspace";
+import type { ChatHistoryReconciliationResult } from "@/application/chat-send";
 import type { RealtimeEvent } from "@/application/realtime";
 import {
   createChatWorkspaceController,
@@ -16,7 +17,8 @@ export type UseChatWorkspaceResult = {
   readonly retryConversationSwitch: () => void;
   readonly reloadSelectedConversationHistory: (
     conversationId: string,
-  ) => Promise<readonly string[]>;
+    regenerateTargetMessageId?: string,
+  ) => Promise<ChatHistoryReconciliationResult>;
   readonly reconcileSelectedConversationRealtimeEvent: (
     event: RealtimeEvent,
   ) => Promise<void>;
@@ -71,12 +73,18 @@ export function useChatWorkspace(
   }, []);
 
   const reloadSelectedConversationHistory = useCallback(
-    async (conversationId: string) => {
+    async (
+      conversationId: string,
+      regenerateTargetMessageId?: string,
+    ) => {
       const controller = controllerRef.current;
       if (controller === null) {
         throw new Error("Chat workspace controller is unavailable");
       }
-      return controller.reloadSelectedConversationHistory(conversationId);
+      return controller.reloadSelectedConversationHistory(
+        conversationId,
+        regenerateTargetMessageId,
+      );
     },
     [],
   );

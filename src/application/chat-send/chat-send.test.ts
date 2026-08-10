@@ -182,7 +182,7 @@ describe("chat send controller", () => {
     const persistentHistory = Object.freeze(["persisted-message"]);
     const controller = createChatSendController({
       openExecution,
-      reconcileHistory: vi.fn(async () => []),
+      reconcileHistory: vi.fn(async () => reconciliation()),
       createUuid,
       now: () => 12,
     });
@@ -217,7 +217,7 @@ describe("chat send controller", () => {
     const openExecution = vi.fn();
     const controller = createChatSendController({
       openExecution,
-      reconcileHistory: vi.fn(async () => []),
+      reconcileHistory: vi.fn(async () => reconciliation()),
       createUuid: () => "uuid",
     });
 
@@ -227,7 +227,7 @@ describe("chat send controller", () => {
   });
 
   it("streams safe presentation data, treats EOF as finalizing, then trusts HTTP reload", async () => {
-    const reload = deferred<readonly string[]>();
+    const reload = deferred<ReturnType<typeof reconciliation>>();
     const reconcileHistory = vi.fn(() => reload.promise);
     const controller = createChatSendController({
       openExecution: vi.fn(async () => streamResult([
@@ -263,7 +263,7 @@ describe("chat send controller", () => {
     });
     expect(reconcileHistory).toHaveBeenCalledWith("conv-a");
 
-    reload.resolve(["server-assistant"]);
+    reload.resolve(reconciliation(["server-assistant"]));
     await waitFor(() => controller.getState().kind === "idle");
     expect(controller.getState()).toEqual({ kind: "idle" });
   });
@@ -272,7 +272,7 @@ describe("chat send controller", () => {
     "provider_request_failed",
     "provider_execution_failed",
   ] as const)("shows safe %s failure and reconciles partial output", async (marker) => {
-    const reload = deferred<readonly string[]>();
+    const reload = deferred<ReturnType<typeof reconciliation>>();
     const controller = createChatSendController({
       openExecution: vi.fn(async () => streamResult([
         { type: "start", assistantMessageId: "server-assistant" },
@@ -296,7 +296,7 @@ describe("chat send controller", () => {
       "private provider body",
     );
 
-    reload.resolve([]);
+    reload.resolve(reconciliation());
     await waitFor(() => controller.getState().kind === "error");
     expect(controller.getState()).toMatchObject({
       kind: "error",
@@ -307,7 +307,7 @@ describe("chat send controller", () => {
   it("keeps overlay uncertain after reload failure and retries reload without resending", async () => {
     const reconcileHistory = vi.fn()
       .mockRejectedValueOnce(new ApiError("private reload", 500))
-      .mockResolvedValueOnce(["server-assistant"]);
+      .mockResolvedValueOnce(reconciliation(["server-assistant"]));
     const openExecution = vi.fn<ChatSendExecutionOpener>(async () => streamResult([
       { type: "start", assistantMessageId: "server-assistant" },
       { type: "chunk", content: "temporary answer" },
@@ -343,7 +343,7 @@ describe("chat send controller", () => {
         { type: "start", assistantMessageId: "expected-assistant" },
         { type: "chunk", content: "temporary answer" },
       ])),
-      reconcileHistory: vi.fn(async () => ["persisted-user"]),
+      reconcileHistory: vi.fn(async () => reconciliation(["persisted-user"])),
       createUuid: () => "uuid-user-only",
     });
 
@@ -363,7 +363,7 @@ describe("chat send controller", () => {
       openExecution: vi.fn(async () => streamResult([
         { type: "chunk", content: "temporary answer" },
       ])),
-      reconcileHistory: vi.fn(async () => ["some-assistant"]),
+      reconcileHistory: vi.fn(async () => reconciliation(["some-assistant"])),
       createUuid: () => "uuid-no-start",
     });
 
@@ -379,7 +379,9 @@ describe("chat send controller", () => {
   });
 
   it("reconciles duplicate acknowledgement without opening a second execution", async () => {
-    const reconcileHistory = vi.fn().mockResolvedValue(["persisted-user"]);
+    const reconcileHistory = vi.fn().mockResolvedValue(
+      reconciliation(["persisted-user"]),
+    );
     const openExecution = vi.fn(async () => ({
       kind: "duplicate" as const,
       userMessageId: "persisted-user",
@@ -398,7 +400,7 @@ describe("chat send controller", () => {
   });
 
   it("reconciles a malformed SSE failure before exposing a safe terminal error", async () => {
-    const reconcileHistory = vi.fn().mockResolvedValue([]);
+    const reconcileHistory = vi.fn().mockResolvedValue(reconciliation());
     const controller = createChatSendController({
       openExecution: vi.fn(async () => ({
         kind: "stream" as const,
@@ -454,4 +456,11 @@ async function waitFor(predicate: () => boolean): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
   throw new Error("Timed out waiting for chat send state");
+}
+
+function reconciliation(persistedMessageIds: readonly string[] = []) {
+  return {
+    persistedMessageIds,
+    regenerateTarget: null,
+  };
 }

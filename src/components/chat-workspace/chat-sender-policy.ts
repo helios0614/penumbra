@@ -26,6 +26,17 @@ export function getChatSenderAvailability(
   if (sendState.kind === "finalization-uncertain") {
     return unavailable(sendState.error.message);
   }
+  if (sendState.kind === "regenerate-streaming") {
+    return unavailable(
+      sendState.executionError?.message ?? "正在重新生成回复。",
+    );
+  }
+  if (sendState.kind === "regenerate-finalizing") {
+    return unavailable("正在通过历史记录确认重新生成结果。");
+  }
+  if (sendState.kind === "regenerate-finalization-uncertain") {
+    return unavailable(sendState.error.message);
+  }
   if (sendState.kind === "error") {
     return unavailable(sendState.error.message);
   }

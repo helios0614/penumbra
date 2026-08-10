@@ -11,6 +11,10 @@ import {
   type MessageHistoryRequestOptions,
   type MessageHistoryState,
 } from "@/application/message-history";
+import {
+  createRegeneratePersistenceProjection,
+  type ChatHistoryReconciliationResult,
+} from "@/application/chat-send";
 import type { RealtimeEvent } from "@/application/realtime";
 import {
   reconcileMessageHistoryAfterReconnect,
@@ -103,7 +107,8 @@ export interface ChatWorkspaceController {
   retryConversationSwitch(): Promise<void>;
   reloadSelectedConversationHistory(
     conversationId: string,
-  ): Promise<readonly string[]>;
+    regenerateTargetMessageId?: string,
+  ): Promise<ChatHistoryReconciliationResult>;
   reconcileSelectedConversationRealtimeEvent(
     event: RealtimeEvent,
   ): Promise<void>;
@@ -334,7 +339,7 @@ export function createChatWorkspaceController(
         pendingConversationId: state.pendingConversationId,
         switchError: state.switchError,
       });
-      return history.messages.map(({ id }) => id);
+      return history;
     } finally {
       if (sequence === historySequence && historyController === controller) {
         historyController = null;
@@ -344,12 +349,25 @@ export function createChatWorkspaceController(
 
   const reloadSelectedConversationHistory = async (
     conversationId: string,
-  ) => updateSelectedHistory(
-    conversationId,
-    (history, signal) => historyReloader(history, {
-      request: { signal },
-    }),
-  );
+    regenerateTargetMessageId?: string,
+  ) => {
+    const history = await updateSelectedHistory(
+      conversationId,
+      (currentHistory, signal) => historyReloader(currentHistory, {
+        request: { signal },
+      }),
+    );
+    const regenerateTarget = regenerateTargetMessageId === undefined
+      ? null
+      : history.messages.find(({ id }) => id === regenerateTargetMessageId) ??
+        null;
+    return {
+      persistedMessageIds: history.messages.map(({ id }) => id),
+      regenerateTarget: regenerateTarget === null
+        ? null
+        : createRegeneratePersistenceProjection(regenerateTarget),
+    };
+  };
 
   const reconcileSelectedConversationRealtimeEvent = async (
     event: RealtimeEvent,

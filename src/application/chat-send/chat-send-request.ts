@@ -1,5 +1,11 @@
-import type { SendMessageInput } from "@/application/chat-execution";
-import type { ChatGenerationUiValues } from "@/application/chat-send/chat-send-types";
+import type {
+  RegenerateInput,
+  SendMessageInput,
+} from "@/application/chat-execution";
+import type {
+  ChatGenerationUiValues,
+  ChatRegenerateGenerationUiValues,
+} from "@/application/chat-send/chat-send-types";
 
 export function mapChatSendExecutionInput(
   content: string,
@@ -21,6 +27,20 @@ export function mapChatSendExecutionInput(
   return input;
 }
 
+export function mapChatRegenerateExecutionInput(
+  generation: ChatRegenerateGenerationUiValues = {},
+): RegenerateInput {
+  const input: RegenerateInput = {};
+
+  copyRegenerateOwn(generation, "temperature", input);
+  copyRegenerateOwn(generation, "contextLimit", input);
+  copyRegenerateOwn(generation, "thinkingEffort", input);
+  copyRegenerateOwn(generation, "fastMode", input);
+  copyRegenerateOwn(generation, "whisperMode", input);
+
+  return input;
+}
+
 function copyOwn<
   Key extends keyof ChatGenerationUiValues & keyof SendMessageInput,
 >(
@@ -33,5 +53,18 @@ function copyOwn<
     source[key] !== undefined
   ) {
     (target as Record<Key, SendMessageInput[Key]>)[key] = source[key];
+  }
+}
+
+function copyRegenerateOwn<Key extends keyof RegenerateInput>(
+  source: ChatRegenerateGenerationUiValues,
+  key: Key,
+  target: RegenerateInput,
+): void {
+  if (
+    Object.prototype.hasOwnProperty.call(source, key) &&
+    source[key] !== undefined
+  ) {
+    (target as Record<Key, RegenerateInput[Key]>)[key] = source[key];
   }
 }

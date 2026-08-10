@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ChatSetupViewModel } from "@/application/chat-setup";
 import type { ChatRealtimeState } from "@/application/chat-realtime";
+import type { ChatSendState } from "@/application/chat-send";
 import type { ChatWorkspaceSnapshot } from "@/application/chat-workspace";
 import type { MessageHistoryState } from "@/application/message-history";
 import { ChatWorkspaceView } from "@/components/chat/ChatView";
@@ -251,6 +252,64 @@ describe("ChatWorkspaceView ready states", () => {
     expect(html).not.toMatch(/<textarea[^>]*disabled/);
   });
 
+  it("offers canonical regenerate only on the latest eligible persisted assistant", () => {
+    const selected = conversation("conv_a", "会话 A");
+    const html = render(ready(snapshot(
+      [selected],
+      selected,
+      history("conv_a", [
+        message("assistant_old", "assistant", "assistant", "旧回复", 1),
+        message("user_2", "user", "user", "新问题", 2),
+        message("assistant_latest", "assistant", "assistant", "最新回复", 3),
+      ]),
+    )), undefined, {
+      onSend: vi.fn(async () => true),
+      onRegenerate: vi.fn(async () => true),
+    });
+
+    expect(html.match(/aria-label="重新生成回复"/g)).toHaveLength(1);
+    expect(html).toContain("最新回复");
+  });
+
+  it("disables sender and conversation switching while regenerate owns execution", () => {
+    const selected = conversation("conv_a", "会话 A");
+    const sendState: ChatSendState = {
+      kind: "regenerate-streaming",
+      executionId: "regenerate-1",
+      conversationId: "conv_a",
+      targetMessageId: "assistant_latest",
+      assistant: {
+        overlayId: "regenerate-overlay",
+        assistantMessageId: "assistant_latest",
+        content: "临时新回复",
+        thinking: null,
+        simpleThink: null,
+        usage: null,
+        createdAt: 3,
+      },
+      executionError: null,
+    };
+    const html = render(ready(snapshot(
+      [selected],
+      selected,
+      history("conv_a", [
+        message("assistant_latest", "assistant", "assistant", "原回复", 3),
+      ]),
+    )), undefined, {
+      onSend: vi.fn(async () => true),
+      onRegenerate: vi.fn(async () => true),
+      sendState,
+    });
+
+    expect(html).toContain("临时新回复");
+    expect(html).not.toContain("原回复");
+    expect(html).toContain("正在生成");
+    expect(html).toMatch(/<textarea[^>]*disabled/);
+    expect(html).toMatch(
+      /<button[^>]*disabled[^>]*aria-label="当前无法切换到会话 A"|<button[^>]*aria-label="当前无法切换到会话 A"[^>]*disabled/,
+    );
+  });
+
   it("does not expose raw workspace payload fields or unsafe unknown role labels", () => {
     const forbidden = [
       "fake-api-key",
@@ -285,6 +344,8 @@ function render(
   onBack?: () => void,
   props: {
     readonly onSend?: (content: string) => Promise<boolean>;
+    readonly onRegenerate?: (messageId: string) => Promise<boolean>;
+    readonly sendState?: ChatSendState;
     readonly realtimeState?: ChatRealtimeState;
   } = {},
 ): string {
@@ -298,6 +359,8 @@ function render(
       onRetryConversationSwitch={vi.fn()}
       onBack={onBack}
       onSend={props.onSend}
+      onRegenerate={props.onRegenerate}
+      sendState={props.sendState}
       realtimeState={props.realtimeState}
     />,
   );

@@ -92,18 +92,33 @@ function toExecutionContext(
     case "sending-user":
       return {
         kind: "active",
+        executionKind: "send",
         conversationId: state.conversationId,
         userMessageId: state.optimisticUser.clientMessageId,
         assistantMessageId: null,
+        targetMessageId: null,
       };
     case "streaming":
     case "finalizing":
     case "finalization-uncertain":
       return {
         kind: "active",
+        executionKind: "send",
         conversationId: state.conversationId,
         userMessageId: state.optimisticUser.clientMessageId,
         assistantMessageId: state.assistant.assistantMessageId,
+        targetMessageId: null,
+      };
+    case "regenerate-streaming":
+    case "regenerate-finalizing":
+    case "regenerate-finalization-uncertain":
+      return {
+        kind: "active",
+        executionKind: "regenerate",
+        conversationId: state.conversationId,
+        userMessageId: null,
+        assistantMessageId: state.assistant.assistantMessageId,
+        targetMessageId: state.targetMessageId,
       };
     case "idle":
     case "error":

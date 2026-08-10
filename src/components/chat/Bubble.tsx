@@ -131,9 +131,15 @@ function NeutralMessage({
 
 interface BubbleProps {
   readonly message: ChatMessageViewModel;
+  readonly onRegenerate?: () => void;
+  readonly regenerateDisabled?: boolean;
 }
 
-function BubbleInner({ message }: BubbleProps) {
+function BubbleInner({
+  message,
+  onRegenerate,
+  regenerateDisabled = false,
+}: BubbleProps) {
   if (message.kind === "system" || message.kind === "unknown") {
     return <NeutralMessage message={message} />;
   }
@@ -177,7 +183,12 @@ function BubbleInner({ message }: BubbleProps) {
         )}
         {message.executionStatus === undefined && (
           <div className="shrink-0 opacity-0 transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100">
-            <MessageActions role={message.kind} content={message.content} />
+            <MessageActions
+              role={message.kind}
+              content={message.content}
+              onRegenerate={onRegenerate}
+              regenerateDisabled={regenerateDisabled}
+            />
           </div>
         )}
       </div>

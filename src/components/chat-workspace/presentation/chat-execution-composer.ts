@@ -10,6 +10,25 @@ export function composeVisibleChatMessages(
   conversationId: string,
 ): readonly ChatMessageViewModel[] {
   const visible = [...presentChatMessages(persistentMessages)];
+  const regenerate = regenerateOverlay(execution, conversationId);
+  if (regenerate !== null) {
+    const targetIndex = visible.findIndex(({ id }) =>
+      id === regenerate.targetMessageId
+    );
+    if (targetIndex < 0) return visible;
+    visible[targetIndex] = {
+      kind: "assistant",
+      id: regenerate.targetMessageId,
+      content: regenerate.assistant.content,
+      createdAt: regenerate.assistant.createdAt,
+      thinking: regenerate.assistant.thinking,
+      simpleThink: regenerate.assistant.simpleThink,
+      attachments: [],
+      executionStatus: regenerate.status,
+    };
+    return visible;
+  }
+
   const overlay = executionOverlay(execution, conversationId);
   if (overlay === null) {
     return visible;
@@ -47,6 +66,13 @@ function executionOverlay(
   conversationId: string,
 ) {
   if (execution.kind === "idle") return null;
+  if (
+    execution.kind === "regenerate-streaming" ||
+    execution.kind === "regenerate-finalizing" ||
+    execution.kind === "regenerate-finalization-uncertain"
+  ) {
+    return null;
+  }
   if (execution.kind === "error") {
     if (
       execution.conversationId !== conversationId ||
@@ -74,6 +100,30 @@ function executionOverlay(
     status: execution.kind === "streaming"
       ? "streaming" as const
       : execution.kind === "finalizing"
+        ? "finalizing" as const
+        : "unconfirmed" as const,
+  };
+}
+
+function regenerateOverlay(
+  execution: ChatSendState,
+  conversationId: string,
+) {
+  if (
+    execution.kind !== "regenerate-streaming" &&
+    execution.kind !== "regenerate-finalizing" &&
+    execution.kind !== "regenerate-finalization-uncertain"
+  ) {
+    return null;
+  }
+  if (execution.conversationId !== conversationId) return null;
+
+  return {
+    targetMessageId: execution.targetMessageId,
+    assistant: execution.assistant,
+    status: execution.kind === "regenerate-streaming"
+      ? "streaming" as const
+      : execution.kind === "regenerate-finalizing"
         ? "finalizing" as const
         : "unconfirmed" as const,
   };

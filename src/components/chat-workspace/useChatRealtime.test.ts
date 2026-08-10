@@ -50,6 +50,42 @@ describe("chat realtime React context projection", () => {
     });
     expect(context.execution).toEqual({ kind: "idle" });
   });
+
+  it.each([
+    "regenerate-streaming",
+    "regenerate-finalizing",
+    "regenerate-finalization-uncertain",
+  ] as const)("projects %s with the same target ID and no user ID", (kind) => {
+    const base = {
+      kind,
+      executionId: "regenerate-a",
+      conversationId: "conv-a",
+      targetMessageId: "assistant-a",
+      assistant: {
+        overlayId: "regenerate-overlay",
+        assistantMessageId: "assistant-a",
+        content: "temporary",
+        thinking: null,
+        simpleThink: null,
+        usage: null,
+        createdAt: 1,
+      },
+      executionError: null,
+    };
+    const state: ChatSendState = kind === "regenerate-finalization-uncertain"
+      ? { ...base, kind, error: safeError() }
+      : { ...base, kind };
+
+    expect(toRealtimeContext(readyWorkspace("conv-a"), state).execution)
+      .toEqual({
+        kind: "active",
+        executionKind: "regenerate",
+        conversationId: "conv-a",
+        userMessageId: null,
+        assistantMessageId: "assistant-a",
+        targetMessageId: "assistant-a",
+      });
+  });
 });
 
 function readyWorkspace(

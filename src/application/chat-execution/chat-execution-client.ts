@@ -50,15 +50,17 @@ export async function openSendExecution(
 
 export async function openRegenerateExecution(
   conversationId: string,
+  messageId: string,
   input: RegenerateInput = {},
   options?: ChatExecutionRequestOptions,
 ): Promise<ChatExecutionStream> {
-  const path = chatExecutionPath(conversationId, "regenerate");
+  const path = regenerateExecutionPath(conversationId, messageId);
   const query = mapRegenerateQuery(input);
   const response = await openApiStream(path, {
     ...options,
     method: "POST",
     query,
+    body: undefined,
   });
 
   if (normalizeMediaType(response.contentType) === "text/event-stream") {
@@ -73,7 +75,7 @@ export async function openRegenerateExecution(
 
 function chatExecutionPath(
   conversationId: string,
-  operation: "send" | "regenerate",
+  operation: "send",
 ): string {
   if (
     typeof conversationId !== "string" ||
@@ -85,6 +87,25 @@ function chatExecutionPath(
   }
 
   return `/api/conversations/${encodeURIComponent(conversationId)}/${operation}`;
+}
+
+function regenerateExecutionPath(
+  conversationId: string,
+  messageId: string,
+): string {
+  if (
+    typeof conversationId !== "string" ||
+    conversationId.trim().length === 0 ||
+    typeof messageId !== "string" ||
+    messageId.trim().length === 0
+  ) {
+    throw new ChatExecutionContractError(
+      "Chat regenerate conversation and target IDs must be non-empty strings",
+    );
+  }
+
+  return `/api/conversations/${encodeURIComponent(conversationId)}` +
+    `/messages/${encodeURIComponent(messageId)}/regenerate`;
 }
 
 function streamResult(body: ReadableStream<Uint8Array>): ChatExecutionStream {

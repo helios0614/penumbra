@@ -62,12 +62,18 @@ interface BubbleListProps {
   readonly conversationId: string;
   readonly messages: readonly ChatMessageViewModel[];
   readonly forceFollowKey?: string | null;
+  readonly regenerateTargetId?: string | null;
+  readonly regenerateEnabled?: boolean;
+  readonly onRegenerate?: (messageId: string) => void;
 }
 
 function BubbleListInner({
   conversationId,
   messages,
   forceFollowKey = null,
+  regenerateTargetId = null,
+  regenerateEnabled = false,
+  onRegenerate,
 }: BubbleListProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -128,7 +134,15 @@ function BubbleListInner({
                     key={message.id}
                     className={cn(isRoleSwitch ? "my-3" : "mt-1")}
                   >
-                    <Bubble message={message} />
+                    <Bubble
+                      message={message}
+                      onRegenerate={
+                        message.id === regenerateTargetId && onRegenerate
+                          ? () => onRegenerate(message.id)
+                          : undefined
+                      }
+                      regenerateDisabled={!regenerateEnabled}
+                    />
                   </div>
                 );
               })}
