@@ -253,7 +253,7 @@ describe("chat realtime event coordination", () => {
       .toBe(false);
   });
 
-  it("treats regenerate msg_updated(target) as dirty persistence notification until execution is idle", async () => {
+  it("keeps msg_updated(target) dirty when WS arrives before the regenerate receipt", async () => {
     const harness = createHarness({ context: activeRegenerateContext() });
     harness.coordinator.start();
     await flushAsync();
@@ -263,6 +263,11 @@ describe("chat realtime event coordination", () => {
     expect(harness.reconcileAfterReconnect).not.toHaveBeenCalled();
     expect(harness.coordinator.getDirtyState().currentConversationHistory)
       .toBe(true);
+    expect(harness.context.execution).toMatchObject({
+      kind: "active",
+      executionKind: "regenerate",
+      targetMessageId: "assistant-a",
+    });
 
     harness.context.execution = { kind: "idle" };
     harness.coordinator.contextChanged();

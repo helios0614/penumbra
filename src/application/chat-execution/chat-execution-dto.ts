@@ -84,7 +84,15 @@ export type DebugChatExecutionEventDto = {
   has_error: boolean;
 };
 
-/** The current direct send/regenerate SSE wire catalog. */
+/** Data payload for the named `event: persisted` regenerate receipt. */
+export type PersistedChatExecutionEventDto = {
+  id: string;
+  content: string;
+  thinking: string | null;
+  simple_think: string | null;
+};
+
+/** The current type-discriminated direct send/regenerate SSE wire catalog. */
 export type ChatExecutionEventDto =
   | StartChatExecutionEventDto
   | ChunkChatExecutionEventDto

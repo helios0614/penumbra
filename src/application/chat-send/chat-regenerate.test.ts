@@ -4,6 +4,7 @@ import {
   ChatExecutionContractError,
   type ChatExecutionEvent,
   type ChatExecutionStream,
+  type RegeneratePersistenceReceipt,
 } from "@/application/chat-execution";
 import {
   createRegeneratePersistenceProjection,
@@ -140,6 +141,12 @@ describe("unified regenerate execution controller", () => {
         { type: "chunk", content: "ING_START]reason" },
         { type: "chunk", content: "ing[THINKING_END] answer [SIMPLE" },
         { type: "chunk", content: "THINK:brief]" },
+        persistedReceipt({
+          id: "assistant-a",
+          content: "new  answer ",
+          thinking: "reasoning",
+          simpleThink: "brief",
+        }),
         { type: "unknown", rawType: "future-event" },
       ]),
     );
@@ -178,13 +185,124 @@ describe("unified regenerate execution controller", () => {
     await waitFor(() => controller.getState().kind === "idle");
   });
 
-  it("does not treat the pre-existing same-ID target as persisted regenerate success", async () => {
+  it("keeps a receipt execution-owned until EOF and does not replace the streaming overlay", async () => {
+    const finishStream = deferred<void>();
+    let receiptYielded = false;
+    const reconcileHistory = vi.fn(async () => reconciliation({
+      id: "assistant-a",
+      content: "canonical answer",
+      thinking: null,
+      simpleThink: null,
+    }));
+    const controller = createChatSendController({
+      openRegenerateExecution: vi.fn(async () => ({
+        kind: "stream" as const,
+        events: (async function* () {
+          yield { type: "start", assistantMessageId: "assistant-a" } as const;
+          yield {
+            type: "chunk",
+            content: "raw answer<meta>private metadata</meta>",
+          } as const;
+          yield persistedReceipt({
+            id: "assistant-a",
+            content: "canonical answer",
+            thinking: null,
+            simpleThink: null,
+          });
+          receiptYielded = true;
+          await finishStream.promise;
+        })(),
+      })),
+      reconcileHistory,
+      createUuid: () => "uuid-receipt-owned",
+    });
+
+    await controller.regenerate(regenerateInput());
+    await waitFor(() => receiptYielded);
+    expect(controller.getState()).toMatchObject({
+      kind: "regenerate-streaming",
+      assistant: { content: "raw answer<meta>private metadata</meta>" },
+    });
+    expect(reconcileHistory).not.toHaveBeenCalled();
+
+    finishStream.resolve();
+    await waitFor(() => controller.getState().kind === "idle");
+    expect(reconcileHistory).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    [
+      "meta cleanup",
+      "到家了跟我说，我提醒你点渔粉 🐟\n" +
+        "<meta>发送时间：8月10日 17:59</meta>",
+      "到家了跟我说，我提醒你点渔粉 🐟",
+    ],
+    [
+      "canonical TODO cleanup",
+      "hello [TODO:follow up]",
+      "hello",
+    ],
+  ] as const)("confirms %s from cleaned receipt and matching HTTP", async (
+    _label,
+    rawContent,
+    canonicalContent,
+  ) => {
+    const canonical = {
+      id: "assistant-a",
+      content: canonicalContent,
+      thinking: null,
+      simpleThink: null,
+    } as const;
+    const controller = createChatSendController({
+      openRegenerateExecution: vi.fn(async () => stream([
+        { type: "start", assistantMessageId: "assistant-a" },
+        { type: "chunk", content: rawContent },
+        persistedReceipt(canonical),
+      ])),
+      reconcileHistory: vi.fn(async () => reconciliation(canonical)),
+      createUuid: () => "uuid-cleanup",
+    });
+
+    await controller.regenerate(regenerateInput());
+    await waitFor(() => controller.getState().kind === "idle");
+  });
+
+  it("normalizes empty optional receipt text before comparing HTTP", async () => {
     const controller = createChatSendController({
       openRegenerateExecution: vi.fn(async () => stream([
         { type: "start", assistantMessageId: "assistant-a" },
         { type: "chunk", content: "new answer" },
+        persistedReceipt({
+          id: "assistant-a",
+          content: "new answer",
+          thinking: "",
+          simpleThink: "",
+        }),
       ])),
-      reconcileHistory: vi.fn(async () => reconciliation(oldTarget())),
+      reconcileHistory: vi.fn(async () => reconciliation({
+        id: "assistant-a",
+        content: "new answer",
+        thinking: null,
+        simpleThink: null,
+      })),
+      createUuid: () => "uuid-normalized-receipt",
+    });
+
+    await controller.regenerate(regenerateInput());
+    await waitFor(() => controller.getState().kind === "idle");
+  });
+
+  it("stays uncertain without a receipt across successful HTTP reloads", async () => {
+    const reconcileHistory = vi.fn(async () => reconciliation(oldTarget()));
+    const openRegenerateExecution = vi.fn<ChatRegenerateExecutionOpener>(
+      async () => stream([
+        { type: "start", assistantMessageId: "assistant-a" },
+        { type: "chunk", content: "new answer" },
+      ]),
+    );
+    const controller = createChatSendController({
+      openRegenerateExecution,
+      reconcileHistory,
       createUuid: () => "uuid-same-id-old-content",
     });
 
@@ -197,12 +315,25 @@ describe("unified regenerate execution controller", () => {
       targetMessageId: "assistant-a",
       assistant: { content: "new answer" },
     });
+
+    await controller.retryFinalization();
+    expect(controller.getState().kind).toBe(
+      "regenerate-finalization-uncertain",
+    );
+    expect(openRegenerateExecution).toHaveBeenCalledOnce();
+    expect(reconcileHistory).toHaveBeenCalledTimes(2);
   });
 
   it.each([
     [
       "content",
       [{ type: "chunk", content: "new answer" }] satisfies ChatExecutionEvent[],
+      {
+        id: "assistant-a",
+        content: "new answer",
+        thinking: null,
+        simpleThink: null,
+      },
       {
         id: "assistant-a",
         content: "different persisted answer",
@@ -216,6 +347,12 @@ describe("unified regenerate execution controller", () => {
         type: "chunk",
         content: "new answer[THINKING_START]expected thought[THINKING_END]",
       }] satisfies ChatExecutionEvent[],
+      {
+        id: "assistant-a",
+        content: "new answer",
+        thinking: "expected thought",
+        simpleThink: null,
+      },
       {
         id: "assistant-a",
         content: "new answer",
@@ -233,18 +370,26 @@ describe("unified regenerate execution controller", () => {
         id: "assistant-a",
         content: "new answer",
         thinking: null,
+        simpleThink: "expected brief",
+      },
+      {
+        id: "assistant-a",
+        content: "new answer",
+        thinking: null,
         simpleThink: "different persisted brief",
       },
     ],
   ] as const)("keeps the replacement uncertain on %s mismatch", async (
     _field,
     chunks,
+    receipt,
     persisted,
   ) => {
     const controller = createChatSendController({
       openRegenerateExecution: vi.fn(async () => stream([
         { type: "start", assistantMessageId: "assistant-a" },
         ...chunks,
+        persistedReceipt(receipt),
       ])),
       reconcileHistory: vi.fn(async () => reconciliation(persisted)),
       createUuid: () => "uuid-semantic-mismatch",
@@ -256,7 +401,7 @@ describe("unified regenerate execution controller", () => {
     );
   });
 
-  it("keeps identical regenerate output uncertain without a commit receipt or version", async () => {
+  it("confirms identical regenerate output when receipt and HTTP match", async () => {
     const identical = {
       id: "assistant-a",
       content: "same answer",
@@ -267,15 +412,14 @@ describe("unified regenerate execution controller", () => {
       openRegenerateExecution: vi.fn(async () => stream([
         { type: "start", assistantMessageId: "assistant-a" },
         { type: "chunk", content: "same answer" },
+        persistedReceipt(identical),
       ])),
       reconcileHistory: vi.fn(async () => reconciliation(identical)),
-      createUuid: () => "uuid-identical-ambiguity",
+      createUuid: () => "uuid-identical-receipt",
     });
 
-    await controller.regenerate(regenerateInput(identical));
-    await waitFor(() =>
-      controller.getState().kind === "regenerate-finalization-uncertain"
-    );
+    await controller.regenerate(regenerateInput());
+    await waitFor(() => controller.getState().kind === "idle");
   });
 
   it.each([
@@ -298,6 +442,40 @@ describe("unified regenerate execution controller", () => {
     expect(controller.getState()).toMatchObject({
       error: { code: "contract" },
     });
+  });
+
+  it("treats a receipt ID mismatch as a contract failure and finalization uncertain", async () => {
+    const reconcileHistory = vi.fn(async () => reconciliation({
+      id: "assistant-a",
+      content: "new answer",
+      thinking: null,
+      simpleThink: null,
+    }));
+    const controller = createChatSendController({
+      openRegenerateExecution: vi.fn(async () => stream([
+        { type: "start", assistantMessageId: "assistant-a" },
+        { type: "chunk", content: "new answer" },
+        persistedReceipt({
+          id: "different-assistant",
+          content: "new answer",
+          thinking: null,
+          simpleThink: null,
+        }),
+      ])),
+      reconcileHistory,
+      createUuid: () => "uuid-receipt-id-mismatch",
+    });
+
+    await controller.regenerate(regenerateInput());
+    await waitFor(() =>
+      controller.getState().kind === "regenerate-finalization-uncertain"
+    );
+    expect(controller.getState()).toMatchObject({
+      kind: "regenerate-finalization-uncertain",
+      executionError: { code: "contract" },
+      assistant: { content: "new answer" },
+    });
+    expect(reconcileHistory).toHaveBeenCalledWith("conv-a", "assistant-a");
   });
 
   it.each([
@@ -352,6 +530,12 @@ describe("unified regenerate execution controller", () => {
       async () => stream([
         { type: "start", assistantMessageId: "assistant-a" },
         { type: "chunk", content: "temporary replacement" },
+        persistedReceipt({
+          id: "assistant-a",
+          content: "temporary replacement",
+          thinking: null,
+          simpleThink: null,
+        }),
       ]),
     );
     const controller = createChatSendController({
@@ -377,7 +561,7 @@ describe("unified regenerate execution controller", () => {
     expect(reconcileHistory).toHaveBeenCalledTimes(2);
   });
 
-  it("retries only HTTP after a semantic mismatch and confirms the same expected snapshot", async () => {
+  it("retries only HTTP after a mismatch and confirms the saved receipt", async () => {
     const expected = {
       id: "assistant-a",
       content: "new answer",
@@ -395,6 +579,7 @@ describe("unified regenerate execution controller", () => {
           content: "new answer[THINKING_START]new thought[THINKING_END]" +
             "[SIMPLETHINK:new brief]",
         },
+        persistedReceipt(expected),
       ]),
     );
     const controller = createChatSendController({
@@ -431,6 +616,12 @@ describe("unified regenerate execution controller", () => {
       openRegenerateExecution: vi.fn(async () => stream([
         { type: "start", assistantMessageId: "assistant-a" },
         { type: "chunk", content: "temporary replacement" },
+        persistedReceipt({
+          id: "assistant-a",
+          content: "temporary replacement",
+          thinking: null,
+          simpleThink: null,
+        }),
       ])),
       reconcileHistory: vi.fn(async () => reconciliation(
         null,
@@ -471,15 +662,18 @@ describe("unified regenerate execution controller", () => {
   });
 });
 
-function regenerateInput(
-  preRegenerateSnapshot: RegeneratePersistenceProjection = oldTarget(),
-) {
+function regenerateInput() {
   return {
     conversationId: "conv-a",
     targetMessageId: "assistant-a",
     targetCreatedAt: 20,
-    preRegenerateSnapshot,
   };
+}
+
+function persistedReceipt(
+  receipt: RegeneratePersistenceReceipt,
+): ChatExecutionEvent {
+  return { type: "persisted", receipt };
 }
 
 function oldTarget() {

@@ -268,6 +268,33 @@ describe("chat send controller", () => {
     expect(controller.getState()).toEqual({ kind: "idle" });
   });
 
+  it("keeps send finalization unchanged when a persisted event is present", async () => {
+    const reconcileHistory = vi.fn(async () =>
+      reconciliation(["server-assistant"])
+    );
+    const controller = createChatSendController({
+      openExecution: vi.fn(async () => streamResult([
+        { type: "start", assistantMessageId: "server-assistant" },
+        { type: "chunk", content: "temporary send answer" },
+        {
+          type: "persisted",
+          receipt: {
+            id: "unrelated-receipt-id",
+            content: "must not own send finalization",
+            thinking: null,
+            simpleThink: null,
+          },
+        },
+      ])),
+      reconcileHistory,
+      createUuid: () => "uuid-send-receipt-regression",
+    });
+
+    await controller.send({ conversationId: "conv-a", content: "hello" });
+    await waitFor(() => controller.getState().kind === "idle");
+    expect(reconcileHistory).toHaveBeenCalledWith("conv-a");
+  });
+
   it.each([
     "provider_request_failed",
     "provider_execution_failed",

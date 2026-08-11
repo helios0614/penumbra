@@ -3,10 +3,11 @@ import {
   type SseDataFrame,
 } from "@/lib/sse/sse-types";
 
-/** Incremental, Chat-agnostic parser for SSE data framing. */
+/** Incremental, Chat-agnostic parser for SSE data and named-event framing. */
 export class SseParser {
   private buffer = "";
   private dataLines: string[] = [];
+  private eventType: string | undefined;
   private hasDataField = false;
   private hasUnterminatedField = false;
   private finished = false;
@@ -70,9 +71,10 @@ export class SseParser {
   private consumeLine(line: string): SseDataFrame | null {
     if (line === "") {
       const frame = this.hasDataField
-        ? { data: this.dataLines.join("\n") }
+        ? this.createFrame()
         : null;
       this.dataLines = [];
+      this.eventType = undefined;
       this.hasDataField = false;
       this.hasUnterminatedField = false;
       return frame;
@@ -93,9 +95,18 @@ export class SseParser {
     if (field === "data") {
       this.hasDataField = true;
       this.dataLines.push(value);
+    } else if (field === "event") {
+      this.eventType = value || undefined;
     }
 
     return null;
+  }
+
+  private createFrame(): SseDataFrame {
+    const data = this.dataLines.join("\n");
+    return this.eventType === undefined
+      ? { data }
+      : { data, event: this.eventType };
   }
 }
 

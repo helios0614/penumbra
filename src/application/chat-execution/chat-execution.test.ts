@@ -481,6 +481,36 @@ describe("Chat execution media type and duplicate response", () => {
 });
 
 describe("Chat execution event validation and projection", () => {
+  it("maps a persisted named SSE event and simple_think to simpleThink", () => {
+    expect(mapChatExecutionEvent({
+      id: "assistant_1",
+      content: "canonical answer",
+      thinking: null,
+      simple_think: "brief thought",
+      raw_provider_content: "must be dropped",
+    }, "persisted")).toEqual({
+      type: "persisted",
+      receipt: {
+        id: "assistant_1",
+        content: "canonical answer",
+        thinking: null,
+        simpleThink: "brief thought",
+      },
+    });
+  });
+
+  it.each([
+    {},
+    { id: "", content: "answer", thinking: null, simple_think: null },
+    { id: "assistant_1", content: 1, thinking: null, simple_think: null },
+    { id: "assistant_1", content: "answer", thinking: 1, simple_think: null },
+    { id: "assistant_1", content: "answer", thinking: null, simple_think: 1 },
+  ])("rejects a malformed persisted receipt", (wire) => {
+    expect(() => mapChatExecutionEvent(wire, "persisted")).toThrow(
+      ChatExecutionContractError,
+    );
+  });
+
   it.each([
     [
       { type: "start", id: "assistant_1", extra: "drop" },
@@ -862,6 +892,36 @@ describe("Chat execution stream lifecycle and error propagation", () => {
     );
     await expect(collectSendResult(result)).resolves.toEqual([
       { type: "chunk", content: "Penumbra 知远 😺" },
+    ]);
+  });
+
+  it("parses event: persisted through the shared SSE stream mapper", async () => {
+    fetchMock.mockResolvedValue(bytesResponse([
+      encode(sseData({ type: "start", id: "assistant_1" })),
+      encode(
+        "event: persisted\n" +
+          'data: {"id":"assistant_1","content":"canonical","thinking":null,"simple_think":"brief"}\n\n',
+      ),
+    ], "text/event-stream"));
+
+    const result = await openRegenerateExecution(
+      "conv_1",
+      "assistant_1",
+      {},
+      { timeoutMs: 0 },
+    );
+
+    await expect(collectEvents(result.events)).resolves.toEqual([
+      { type: "start", assistantMessageId: "assistant_1" },
+      {
+        type: "persisted",
+        receipt: {
+          id: "assistant_1",
+          content: "canonical",
+          thinking: null,
+          simpleThink: "brief",
+        },
+      },
     ]);
   });
 

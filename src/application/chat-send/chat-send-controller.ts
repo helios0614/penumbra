@@ -5,6 +5,7 @@ import {
   type ChatExecutionEvent,
   type ChatProviderFailureCode,
   type ChatExecutionStream,
+  type RegeneratePersistenceReceipt,
   type RegenerateInput,
   type SendExecutionResult,
   type SendMessageInput,
@@ -19,7 +20,6 @@ import {
   areRegeneratePersistenceProjectionsEqual,
   createRegeneratePersistenceProjection,
   type ChatHistoryReconciliationResult,
-  type RegeneratePersistenceProjection,
 } from "@/application/chat-send/chat-regenerate-persistence";
 import {
   finalizationUncertainError,
@@ -93,8 +93,8 @@ type ActiveSendExecution = ActiveExecutionBase & {
 type ActiveRegenerateExecution = ActiveExecutionBase & {
   readonly kind: "regenerate";
   readonly targetMessageId: string;
-  readonly preRegenerateSnapshot: RegeneratePersistenceProjection;
-  expectedRegenerateSnapshot: RegeneratePersistenceProjection | null;
+  persistenceReceipt: RegeneratePersistenceReceipt | null;
+  persistenceReceiptContractFailure: boolean;
   sawTargetStart: boolean;
 };
 
@@ -154,6 +154,12 @@ export function createChatSendController(
           )
         : await dependencies.reconcileHistory(execution.conversationId);
       if (!isCurrent(execution)) return;
+      if (
+        execution.kind === "regenerate" &&
+        execution.persistenceReceiptContractFailure
+      ) {
+        throw new Error("Regenerate persistence receipt contract failed");
+      }
       if (execution.executionError === null) {
         if (execution.kind === "regenerate") {
           if (!isRegeneratePersistenceConfirmed(execution, reconciliation)) {
@@ -220,6 +226,20 @@ export function createChatSendController(
           }
           execution.sawTargetStart = true;
         }
+        if (execution.kind === "regenerate" && event.type === "persisted") {
+          if (event.receipt.id !== execution.targetMessageId) {
+            execution.persistenceReceiptContractFailure = true;
+            execution.executionError = toSafeChatExecutionError(
+              new ChatExecutionContractError(
+                "Regenerate persistence receipt ID does not match the target message ID",
+              ),
+              "regenerate",
+            );
+          } else {
+            execution.persistenceReceipt =
+              createRegeneratePersistenceProjection(event.receipt);
+          }
+        }
         const reduction = reduceChatExecutionEvent(
           execution.accumulator,
           event,
@@ -254,20 +274,6 @@ export function createChatSendController(
         ),
         "regenerate",
       );
-    }
-    if (
-      execution.kind === "regenerate" &&
-      execution.sawTargetStart &&
-      execution.executionError === null
-    ) {
-      const assistant = execution.accumulator.message;
-      execution.expectedRegenerateSnapshot =
-        createRegeneratePersistenceProjection({
-          id: execution.targetMessageId,
-          content: assistant.content,
-          thinking: assistant.thinking,
-          simpleThink: assistant.simpleThink,
-        });
     }
     await finalize(execution);
   };
@@ -371,9 +377,7 @@ export function createChatSendController(
       if (
         !input.conversationId ||
         !input.targetMessageId ||
-        !Number.isFinite(input.targetCreatedAt) ||
-        input.preRegenerateSnapshot === undefined ||
-        input.preRegenerateSnapshot.id !== input.targetMessageId
+        !Number.isFinite(input.targetCreatedAt)
       ) {
         return false;
       }
@@ -394,10 +398,8 @@ export function createChatSendController(
         executionId,
         conversationId: input.conversationId,
         targetMessageId: input.targetMessageId,
-        preRegenerateSnapshot: createRegeneratePersistenceProjection(
-          input.preRegenerateSnapshot,
-        ),
-        expectedRegenerateSnapshot: null,
+        persistenceReceipt: null,
+        persistenceReceiptContractFailure: false,
         accumulator: createStreamingAssistantAccumulator(
           executionId,
           input.targetCreatedAt,
@@ -512,17 +514,8 @@ function isRegeneratePersistenceConfirmed(
   execution: ActiveRegenerateExecution,
   reconciliation: ChatHistoryReconciliationResult,
 ): boolean {
-  const expected = execution.expectedRegenerateSnapshot;
+  const expected = execution.persistenceReceipt;
   const persisted = reconciliation.regenerateTarget;
   if (expected === null || persisted === null) return false;
-  if (!areRegeneratePersistenceProjectionsEqual(persisted, expected)) {
-    return false;
-  }
-
-  // C2A3 has no terminal commit receipt or message version. When regenerate
-  // produces the pre-existing semantic state, HTTP cannot prove an UPDATE ran.
-  return !areRegeneratePersistenceProjectionsEqual(
-    expected,
-    execution.preRegenerateSnapshot,
-  );
+  return areRegeneratePersistenceProjectionsEqual(persisted, expected);
 }

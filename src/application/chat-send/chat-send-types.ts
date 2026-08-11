@@ -4,7 +4,6 @@ import type {
   SafeUsageSummary,
   SendMessageInput,
 } from "@/application/chat-execution";
-import type { RegeneratePersistenceProjection } from "@/application/chat-send/chat-regenerate-persistence";
 
 export type ChatGenerationUiValues = Omit<
   SendMessageInput,
@@ -120,7 +119,6 @@ export type ChatRegenerateInput = {
   readonly conversationId: string;
   readonly targetMessageId: string;
   readonly targetCreatedAt: number;
-  readonly preRegenerateSnapshot: RegeneratePersistenceProjection;
   readonly generation?: ChatRegenerateGenerationUiValues;
 };
 

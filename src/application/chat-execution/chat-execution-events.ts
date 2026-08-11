@@ -13,10 +13,25 @@ import {
   type SafeUsageSummary,
 } from "@/application/chat-execution/chat-execution-types";
 
-export function mapChatExecutionEvent(input: unknown): ChatExecutionEvent {
+export function mapChatExecutionEvent(
+  input: unknown,
+  sseEvent?: string,
+): ChatExecutionEvent {
   try {
     if (!isPlainRecord(input)) {
       throw eventContractError();
+    }
+
+    if (sseEvent === "persisted") {
+      return {
+        type: "persisted",
+        receipt: {
+          id: nonEmptyString(input, "id", sseEvent),
+          content: stringValue(input, "content", sseEvent),
+          thinking: nullableString(input, "thinking", sseEvent),
+          simpleThink: nullableString(input, "simple_think", sseEvent),
+        },
+      };
     }
 
     const rawType = requiredField(input, "type");
@@ -201,6 +216,18 @@ function booleanValue(
 ): boolean {
   const value = requiredField(record, key);
   if (typeof value !== "boolean") {
+    throw eventContractError(rawType);
+  }
+  return value;
+}
+
+function nullableString(
+  record: Record<string, unknown>,
+  key: string,
+  rawType: string,
+): string | null {
+  const value = requiredField(record, key);
+  if (value !== null && typeof value !== "string") {
     throw eventContractError(rawType);
   }
   return value;

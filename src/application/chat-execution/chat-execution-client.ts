@@ -119,7 +119,7 @@ async function* mapChatExecutionStream(
   body: ReadableStream<Uint8Array>,
 ): AsyncGenerator<ChatExecutionEvent, void, void> {
   for await (const frame of parseSseStream(body)) {
-    yield mapChatExecutionEvent(parseSseJsonData(frame));
+    yield mapChatExecutionEvent(parseSseJsonData(frame), frame.event);
   }
 }
 

@@ -10,7 +10,6 @@ import {
 } from "@/components/chat-workspace";
 import type { ChatRealtimeState } from "@/application/chat-realtime";
 import {
-  createRegeneratePersistenceProjection,
   INITIAL_CHAT_SEND_STATE,
   isChatExecutionActive,
   type ChatSendState,
@@ -89,9 +88,6 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       conversationId: availability.target.conversationId,
       targetMessageId: availability.target.id,
       targetCreatedAt: availability.target.createdAt,
-      preRegenerateSnapshot: createRegeneratePersistenceProjection(
-        availability.target,
-      ),
     });
   };
 
@@ -166,6 +162,7 @@ export function ChatWorkspaceView({
     workspace.selectedConversationId ?? "",
   );
   const sender = getChatSenderAvailability(state, sendState);
+  const executionNoticeVisible = executionNoticeError(sendState) !== null;
   const regenerate = getChatRegenerateAvailability(state, sendState);
   const executionActive = isChatExecutionActive(sendState);
   const forceFollowKey = sendState.kind === "sending-user" ||
@@ -291,8 +288,12 @@ export function ChatWorkspaceView({
 
           <Sender
             disabled={!sender.enabled || onSend === undefined}
-            placeholder={sender.placeholder}
-            statusMessage={sender.statusMessage ?? undefined}
+            placeholder={executionNoticeVisible
+              ? "输入消息…"
+              : sender.placeholder}
+            statusMessage={executionNoticeVisible
+              ? undefined
+              : sender.statusMessage ?? undefined}
             onSend={onSend}
           />
         </div>

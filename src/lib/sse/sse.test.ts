@@ -28,6 +28,22 @@ describe("SSE framing", () => {
     ).resolves.toEqual([{ data: "value" }]);
   });
 
+  it("preserves a named event on its data frame and resets it per frame", async () => {
+    await expect(framesFromStrings([
+      "eve",
+      "nt: persisted\nda",
+      "ta: {\"id\":\"assistant-1\"}\n\n",
+      "event: ignored-without-data\n\n",
+      "data: next\n\n",
+    ])).resolves.toEqual([
+      {
+        data: '{"id":"assistant-1"}',
+        event: "persisted",
+      },
+      { data: "next" },
+    ]);
+  });
+
   it("supports LF, CRLF, spaced and unspaced data fields", async () => {
     await expect(
       framesFromStrings([

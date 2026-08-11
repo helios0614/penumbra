@@ -35,6 +35,13 @@ export type ChatProviderFailureCode =
   | "provider_request_failed"
   | "provider_execution_failed";
 
+export type RegeneratePersistenceReceipt = {
+  readonly id: string;
+  readonly content: string;
+  readonly thinking: string | null;
+  readonly simpleThink: string | null;
+};
+
 /**
  * Events observed while reading one HTTP execution response.
  * They are temporary protocol facts, never persistent Message objects.
@@ -98,6 +105,10 @@ export type ChatExecutionEvent =
       readonly hasError: boolean;
       readonly failureCode: ChatProviderFailureCode | null;
       readonly usage: SafeUsageSummary | null;
+    }
+  | {
+      readonly type: "persisted";
+      readonly receipt: RegeneratePersistenceReceipt;
     }
   | {
       readonly type: "unknown";

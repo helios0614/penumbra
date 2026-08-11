@@ -1,5 +1,6 @@
 export interface SseDataFrame {
   readonly data: string;
+  readonly event?: string;
 }
 
 export interface ParseSseStreamOptions {

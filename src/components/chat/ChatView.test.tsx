@@ -310,6 +310,47 @@ describe("ChatWorkspaceView ready states", () => {
     );
   });
 
+  it("shows finalization uncertainty once instead of repeating it in sender footer", () => {
+    const selected = conversation("conv_a", "会话 A");
+    const messageText = "回复已结束，但暂时无法确认保存状态。";
+    const sendState: ChatSendState = {
+      kind: "regenerate-finalization-uncertain",
+      executionId: "regenerate-uncertain",
+      conversationId: "conv_a",
+      targetMessageId: "assistant_latest",
+      assistant: {
+        overlayId: "regenerate-overlay",
+        assistantMessageId: "assistant_latest",
+        content: "临时新回复",
+        thinking: null,
+        simpleThink: null,
+        usage: null,
+        createdAt: 3,
+      },
+      executionError: null,
+      error: {
+        code: "service",
+        message: messageText,
+        field: null,
+        providerFailure: null,
+      },
+    };
+    const html = render(ready(snapshot(
+      [selected],
+      selected,
+      history("conv_a", [
+        message("assistant_latest", "assistant", "assistant", "原回复", 3),
+      ]),
+    )), undefined, {
+      onSend: vi.fn(async () => true),
+      sendState,
+    });
+
+    expect(html.split(messageText)).toHaveLength(2);
+    expect(html).toContain("临时新回复");
+    expect(html).not.toContain("原回复");
+  });
+
   it("does not expose raw workspace payload fields or unsafe unknown role labels", () => {
     const forbidden = [
       "fake-api-key",

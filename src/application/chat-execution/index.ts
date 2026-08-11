@@ -20,6 +20,7 @@ export type {
   DuplicateSendAcknowledgement,
   ChatProviderFailureCode,
   RegenerateInput,
+  RegeneratePersistenceReceipt,
   SafeUsageSummary,
   SendExecutionResult,
   SendMessageInput,
