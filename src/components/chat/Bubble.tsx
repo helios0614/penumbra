@@ -105,23 +105,23 @@ function NeutralMessage({
 
   return (
     <div
-      className="mx-auto flex w-full max-w-[620px] items-start gap-2 rounded-lg border border-border/80 bg-surface-secondary/65 px-3 py-2.5 text-muted-strong"
+      className="mist-glass mx-auto flex w-full max-w-[560px] items-start gap-2 rounded-lg px-3 py-2 text-muted-foreground shadow-sm! sm:px-4"
       role="note"
     >
-      <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+      <Icon className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold uppercase tracking-[0.08em]">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-medium leading-4">
           <span>{isUnknown ? "暂不支持的消息类型" : "系统消息"}</span>
           {isUnknown && (
-            <code className="max-w-full break-all rounded bg-background/45 px-1.5 py-0.5 font-mono normal-case tracking-normal">
+            <code className="max-w-full break-all rounded bg-background/45 px-1.5 py-0.5 font-mono text-muted-strong">
               {message.rawRole}
             </code>
           )}
-          <span className="font-normal normal-case tracking-normal opacity-65">
+          <span className="font-normal">
             {format(new Date(message.createdAt * 1000), "HH:mm")}
           </span>
         </div>
-        <p className="mt-1 min-h-5 whitespace-pre-wrap break-words text-xs leading-[1.6]">
+        <p className="mt-0.5 min-h-5 whitespace-pre-wrap break-words text-sm leading-[1.55] text-foreground">
           {message.content}
         </p>
       </div>
