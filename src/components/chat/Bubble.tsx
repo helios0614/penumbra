@@ -121,7 +121,12 @@ function NeutralMessage({
 
   return (
     <div
-      className="mist-glass mx-auto flex w-full max-w-[560px] items-start gap-2 rounded-lg px-3 py-2 text-muted-foreground shadow-sm! sm:px-4"
+      className={cn(
+        "flex items-start gap-2 text-muted-foreground",
+        isUnknown
+          ? "mist-glass mx-auto w-full max-w-[560px] rounded-lg px-3 py-2 shadow-sm! sm:px-4"
+          : "-my-1 mx-auto w-fit max-w-full rounded-sm border-l border-border/35 bg-surface-secondary/25 px-2 py-1.5 shadow-none sm:max-w-[560px]",
+      )}
       role="note"
     >
       <Icon className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
@@ -137,7 +142,12 @@ function NeutralMessage({
             {format(new Date(message.createdAt * 1000), "HH:mm")}
           </span>
         </div>
-        <p className="mt-0.5 min-h-5 whitespace-pre-wrap break-words text-sm leading-[1.55] text-foreground">
+        <p
+          className={cn(
+            "mt-0.5 min-h-5 whitespace-pre-wrap break-words leading-[1.55]",
+            isUnknown ? "text-sm text-foreground" : "text-[13px] text-foreground/80",
+          )}
+        >
           {message.content}
         </p>
       </div>

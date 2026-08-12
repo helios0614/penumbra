@@ -53,23 +53,23 @@ function ThinkingBlockInner({ content, className }: ThinkingBlockProps) {
         onClick={() => setExpanded(!expanded)}
         aria-expanded={expanded}
         className={cn(
-          "flex w-full items-center gap-2 text-left transition-colors duration-200",
+          "group/thinking flex w-full items-center gap-2 text-left",
           expanded
             ? "min-h-10 px-3 py-2"
-            : "relative min-h-9 py-1.5 pl-3 pr-1 hover:bg-muted/30 before:absolute before:inset-y-2 before:left-0 before:w-px before:bg-border-strong/50 before:content-['']",
+            : "relative min-h-9 py-1.5 pl-3 pr-1 before:absolute before:inset-y-2 before:left-0 before:w-px before:bg-border-strong/50 before:content-['']",
         )}
       >
-        <span className="text-xs font-semibold text-muted-foreground">
+        <span className="text-xs font-semibold text-muted-foreground transition-colors duration-150 group-hover/thinking:text-muted-strong">
           思考过程
         </span>
         {!expanded && (
-          <span className="text-[11px] text-muted-foreground truncate flex-1 ml-1">
+          <span className="ml-1 flex-1 truncate text-[11px] text-muted-foreground transition-colors duration-150 group-hover/thinking:text-muted-strong">
             {summary}
           </span>
         )}
         <ChevronDown
           className={cn(
-            "size-3.5 shrink-0 text-muted-foreground transition-transform duration-200",
+            "size-3.5 shrink-0 text-muted-foreground transition-[color,transform] duration-200 group-hover/thinking:text-muted-strong",
             expanded && "rotate-180",
           )}
         />
