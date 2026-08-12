@@ -2,13 +2,21 @@ import { format } from "date-fns";
 import { Bot, CircleHelp, Info, Paperclip, User } from "lucide-react";
 import { memo } from "react";
 
+import aiAvatarPlaceholder from "@/assets/chat/avatar-ai-placeholder.png";
+import userAvatarPlaceholder from "@/assets/chat/avatar-user-placeholder.png";
 import type { ChatMessageViewModel } from "@/components/chat-workspace/presentation";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { MessageActions } from "./MessageActions";
 import { SimpleThink, ThinkingBlock } from "./system-command/InlineIndicator";
+
+// Temporary visual-only sources. Replace these imports when avatar settings land.
+const temporaryAvatarImages = {
+  assistant: aiAvatarPlaceholder,
+  user: userAvatarPlaceholder,
+} as const;
 
 function splitIntoChunks(content: string): string[] {
   // TODO(markdown-chunking): 当前逻辑只跟踪 ``` fence，并在 Markdown 解析前按空行拆分。
@@ -55,8 +63,16 @@ function MessageAvatar({ kind }: { kind: "user" | "assistant" }) {
   const isUser = kind === "user";
 
   return (
-    <Avatar size="sm">
-      <AvatarFallback className={cn(isUser ? "bg-primary-subtle" : "bg-ai-subtle")}>
+    <Avatar
+      size="sm"
+      className="size-7 overflow-hidden bg-transparent shadow-none after:border-border/55 after:mix-blend-normal sm:size-8 dark:after:mix-blend-normal"
+    >
+      <AvatarImage
+        src={temporaryAvatarImages[kind]}
+        alt=""
+        className="object-cover"
+      />
+      <AvatarFallback className="bg-surface-secondary/45">
         {isUser ? (
           <User className="size-3.5 text-muted-foreground" aria-hidden="true" />
         ) : (
@@ -80,10 +96,10 @@ function BubbleSegment({
     <div
       className={cn(
         "relative min-h-9 min-w-0 max-w-full overflow-hidden rounded-md border px-4 py-2",
-        "overflow-wrap-anywhere break-words text-[14px] leading-[1.6] shadow-sm backdrop-blur-md",
+        "overflow-wrap-anywhere break-words text-[14px] leading-[1.6]",
         isUser
-          ? "border-primary/20 bg-primary/10 text-primary"
-          : "border-ai/20 bg-ai/10 text-ai",
+          ? "border-primary/20 bg-primary/10 text-primary shadow-sm backdrop-blur-md"
+          : "border-ai/10 bg-ai/[0.06] text-ai shadow-none backdrop-blur-[2px]",
       )}
     >
       {isUser ? (
@@ -205,7 +221,7 @@ function BubbleInner({
         <div
           className={cn(
             "flex min-w-0 flex-col gap-1",
-            isUser ? "items-end" : "items-start",
+            isUser ? "items-end" : "items-start gap-0.5",
           )}
         >
           {chunks.map((chunk, index) => (
