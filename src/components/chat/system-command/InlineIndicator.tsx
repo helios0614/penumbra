@@ -47,20 +47,16 @@ function ThinkingBlockInner({ content, className }: ThinkingBlockProps) {
     content.length > 80 ? content.slice(0, 80).replace(/\n/g, " ") + "…" : content;
 
   return (
-    <div
-      className={cn(
-        "overflow-hidden rounded-md border border-border/70",
-        "bg-muted/45",
-        className,
-      )}
-    >
+    <div className={className}>
       {/* 折叠头 */}
       <button
         onClick={() => setExpanded(!expanded)}
         aria-expanded={expanded}
         className={cn(
-          "flex min-h-10 w-full items-center gap-2 px-3 py-2 text-left",
-          "transition-colors duration-200 hover:bg-muted/70",
+          "flex w-full items-center gap-2 text-left transition-colors duration-200",
+          expanded
+            ? "min-h-10 px-3 py-2"
+            : "relative min-h-9 py-1.5 pl-3 pr-1 hover:bg-muted/30 before:absolute before:inset-y-2 before:left-0 before:w-px before:bg-border-strong/50 before:content-['']",
         )}
       >
         <span className="text-xs font-semibold text-muted-foreground">
@@ -81,14 +77,8 @@ function ThinkingBlockInner({ content, className }: ThinkingBlockProps) {
 
       {/* 展开内容 */}
       {expanded && (
-        <div className="px-3 pb-3">
-          <div
-            className={cn(
-              "text-xs leading-[1.6] text-muted-foreground",
-              "whitespace-pre-wrap break-words",
-              "max-h-[300px] overflow-y-auto",
-            )}
-          >
+        <div className="ml-3 border-l border-border-strong/50 pb-2 pl-3 pr-1">
+          <div className="whitespace-pre-wrap break-words text-[13px] leading-[1.65] text-muted-foreground">
             {content}
           </div>
         </div>
