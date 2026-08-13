@@ -10,6 +10,7 @@ interface ConversationsListProps {
   readonly conversations: readonly ChatConversationItemViewModel[];
   readonly onSelect: (id: string) => void;
   readonly disabled?: boolean;
+  readonly mobileDrawer?: boolean;
   readonly className?: string;
 }
 
@@ -17,20 +18,31 @@ export function ConversationsList({
   conversations,
   onSelect,
   disabled = false,
+  mobileDrawer = false,
   className,
 }: ConversationsListProps) {
   return (
     <div
       className={cn(
-        "mist-solid flex h-full flex-col overflow-hidden border-r border-border shadow-none",
+        "flex h-full flex-col overflow-hidden shadow-none",
+        mobileDrawer
+          ? "border-r-0 bg-transparent"
+          : "mist-solid border-r border-border",
         className,
       )}
     >
-      <div className="flex shrink-0 items-center justify-between border-b border-border p-3">
+      <div
+        className={cn(
+          "flex shrink-0 items-center justify-between border-b border-border p-3",
+          mobileDrawer && "min-h-14 pr-14",
+        )}
+      >
         <span className="text-sm font-semibold text-foreground">会话</span>
-        <span className="text-xs tabular-nums text-muted-foreground">
-          {conversations.length}
-        </span>
+        {!mobileDrawer && (
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {conversations.length}
+          </span>
+        )}
       </div>
 
       <ScrollArea className="min-h-0 flex-1">

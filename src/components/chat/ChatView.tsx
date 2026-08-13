@@ -217,13 +217,17 @@ export function ChatWorkspaceView({
               >
                 <Menu className="size-4.5" aria-hidden="true" />
               </SheetTrigger>
-              <SheetContent side="left" className="w-[280px] p-0">
+              <SheetContent
+                side="left"
+                className="chat-conversations-drawer w-[280px] gap-0 p-0"
+              >
                 <SheetTitle className="sr-only">会话列表</SheetTitle>
                 <ConversationsList
                   conversations={conversations}
                   onSelect={selectConversation}
                   disabled={executionActive}
-                  className="h-full w-full border-r-0"
+                  mobileDrawer
+                  className="h-full w-full"
                 />
               </SheetContent>
             </Sheet>
