@@ -8,6 +8,7 @@ import {
   MemoryListLoading,
 } from "@/components/memory/MemoryListStates";
 import { useMemoryList } from "@/components/memory/useMemoryList";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
@@ -32,8 +33,12 @@ export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
 
   return (
     <main className="mx-auto flex h-full w-full max-w-5xl flex-col overflow-y-auto px-4 pb-8 pt-5 sm:px-6 sm:pb-10 sm:pt-8" aria-labelledby="memory-page-title">
-      <header className="mist-glass shrink-0 rounded-[24px] p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-4">
+      <header className="mist-glass relative isolate shrink-0 overflow-hidden rounded-[24px] p-4 sm:p-5">
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-[color-mix(in_srgb,var(--color-background)_10%,transparent)]"
+        />
+        <div className="relative z-10 flex items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
               Memories
@@ -46,15 +51,17 @@ export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
             </p>
           </div>
           {onBack && (
-            <button
+            <Button
               type="button"
               onClick={onBack}
-              className="grid size-11 shrink-0 place-items-center rounded-xl border border-border-strong/50 bg-background/25 text-foreground shadow-sm transition-colors hover:border-primary/30 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              variant="ghost"
+              size="icon-lg"
+              className="size-11 rounded-xl border border-border-strong/50 bg-background/25 text-foreground shadow-sm hover:border-primary/30 hover:bg-primary/10 hover:text-primary active:bg-primary/15"
               aria-label="返回桌面"
               title="返回桌面"
             >
               <ArrowLeft className="size-4" aria-hidden="true" />
-            </button>
+            </Button>
           )}
         </div>
       </header>

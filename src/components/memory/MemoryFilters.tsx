@@ -4,13 +4,8 @@ import type {
   MemoryDateFilter,
   MemoryImportanceFilter,
 } from "@/application/memory-list";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { AppSelect } from "@/components/ui/app-select";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 const DATE_FILTERS: ReadonlyArray<{ value: MemoryDateFilter; label: string }> = [
@@ -53,17 +48,22 @@ export function MemoryFilters({
   readonly onPinFirstChange: (value: boolean) => void;
 }) {
   return (
-    <section aria-label="搜索与筛选" className="flex flex-col gap-2.5">
+    <section
+      aria-label="搜索与筛选"
+      className="mist-glass flex flex-col gap-2.5 rounded-[22px] p-3 sm:p-4"
+      data-memory-filter-surface="true"
+    >
       <label className="relative block">
         <span className="sr-only">搜索记忆</span>
         <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-        <input
+        <Input
           type="search"
+          surface="translucent"
           value={searchInput}
           onChange={(event) => onSearchChange(event.target.value)}
           maxLength={200}
           placeholder="搜索被留下来的片段"
-          className="mist-glass-strong h-12 w-full rounded-2xl pl-11 pr-12 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-primary/50 focus-visible:ring-3 focus-visible:ring-ring/40"
+          className="h-12 rounded-2xl pl-11 pr-12 text-sm"
         />
         {searchInput ? (
           <button
@@ -93,8 +93,8 @@ export function MemoryFilters({
                 className={cn(
                   "min-h-11 shrink-0 rounded-xl border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   active
-                    ? "border-primary/25 bg-primary/10 text-primary-ink"
-                    : "border-transparent bg-background/20 text-muted-strong hover:border-border-strong/35 hover:bg-background/35",
+                    ? "border-primary/45 bg-primary/12 text-primary-ink shadow-sm"
+                    : "border-border-strong/50 bg-background/25 text-muted-strong hover:bg-background/45",
                 )}
               >
                 {option.label}
@@ -104,28 +104,14 @@ export function MemoryFilters({
         </div>
 
         <div className="flex items-center gap-1.5">
-          <Select
+          <AppSelect
             value={importance}
-            onValueChange={(value) => {
-              if (value) onImportanceChange(value as MemoryImportanceFilter);
-            }}
-          >
-            <SelectTrigger
-              aria-label="按重要度筛选"
-              className="w-full border border-transparent! bg-background/20! px-3 text-xs font-medium text-muted-strong shadow-none! hover:border-border-strong/35! hover:bg-background/35! data-[size=default]:h-11 sm:w-36"
-            >
-              <SelectValue>
-                {IMPORTANCE_FILTERS.find((option) => option.value === importance)?.label}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent align="end" className="p-1">
-              {IMPORTANCE_FILTERS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            surface="translucent"
+            options={IMPORTANCE_FILTERS}
+            onValueChange={onImportanceChange}
+            ariaLabel="按重要度筛选"
+            className="sm:w-36"
+          />
           <button
             type="button"
             onClick={() => onPinFirstChange(!pinFirst)}
@@ -133,8 +119,8 @@ export function MemoryFilters({
             className={cn(
               "min-h-11 shrink-0 rounded-xl border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               pinFirst
-                ? "border-primary/25 bg-primary/10 text-primary-ink"
-                : "border-transparent bg-background/20 text-muted-strong hover:border-border-strong/35 hover:bg-background/35",
+                ? "border-primary/45 bg-primary/12 text-primary-ink shadow-sm"
+                : "border-border-strong/50 bg-background/25 text-muted-strong hover:bg-background/45",
             )}
           >
             钉住的在前

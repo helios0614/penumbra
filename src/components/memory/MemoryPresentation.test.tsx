@@ -84,10 +84,15 @@ describe("memory presentation", () => {
     );
 
     expect(html).toContain('type="search"');
+    expect(html).toContain('data-memory-filter-surface="true"');
+    expect(html).toContain("mist-glass");
+    expect(html.match(/data-surface="translucent"/g)).toHaveLength(2);
+    expect(html).not.toContain("mist-solid");
     expect(html).toContain("搜索记忆");
     expect(html).toContain('aria-pressed="true"');
     expect(html).toContain("按重要度筛选");
     expect(html).toContain('data-slot="select-trigger"');
+    expect(html).toContain("全部重要度");
     expect(html).not.toContain("<select");
     expect(html).toContain("钉住的在前");
     expect(html).not.toMatch(/[📌🔍🧠✏️🗑️🔄📜]/u);
