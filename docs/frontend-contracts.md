@@ -1,6 +1,6 @@
 # Penumbra 前端契约摘要
 
-> 最后更新：2026-08-10
+> 最后更新：2026-08-13
 
 导航：[架构原则](./penumbra-architecture.md) · [迁移路线图](./frontend-migration-plan.md) · [前端契约](./frontend-contracts.md)
 
@@ -463,7 +463,28 @@ S4E2 服务一次只处理一个 plan，不拥有连接或并发控制。S6D coo
 
 **AionsHome 权威来源**：`docs/ws-event-contract.md`、`aion-chat/ws.py`、`aion-chat/main.py` 及 WebSocket contract/snapshot tests。
 
-## 11. Authentication 与部署
+## 11. Memory Read Foundation（S7A）
+
+S7A 只消费 AionHome 的分页读取契约 `GET /api/memories`。Penumbra 每次请求都显式发送 `page` 与 `page_size=30`，因此只接受 `{ items, page, page_size, total, total_all, has_more }`；不进入省略 `page` 时的 legacy 全量数组分支，也不在浏览器内模拟全库过滤。
+
+- list item wire fields 为 `id/content/type/created_at/source_conv/keywords/importance/source_start_ts/source_end_ts/unresolved`。DTO 只停留在 `src/domain/memory`；React 只读取 camelCase Memory Domain。
+- `content` 是 list 返回的完整记忆正文；当前没有单条 memory detail endpoint。`GET /api/memories/{id}/source` 是原文追溯，不属于 S7A。
+- 支持的服务端 query 仅为 `page/page_size/q/created_from/created_to/importance/pin_first`。S7A 不发送 type、tags、pinned-only、cursor 或 offset 等不存在字段。
+- `q` 由后端匹配正文、已知类型中文标签与未知 type 原值；前端只 trim、限制 200 字并 debounce，不复制匹配规则。
+- `importance` 只发送 `low/mid/high/top` 枚举；具体数值区间由后端拥有。`all` 通过省略 query 表达。
+- 时间边界是 inclusive Unix 秒数。预设时间保留 Memory 已建立的本地 04:00 逻辑日边界，再把绝对 `created_from/created_to` 发送给后端。
+- `keywords` 的标准数据库形态是 JSON array string；adapter 同时容忍空值、历史普通字符串与 array，安全去空/去重，非法 metadata 不让页面崩溃。
+- `unresolved` 映射为 Domain `isPinned`，表示这条 memory 仍含未完成事件。只读 UI 仅显示不可点击的小型线性 Pin icon；不得展示“待跟进/任务/警告”等文字或 badge。
+- `pin_first=true` 只表示服务端将 unresolved 项排在前面，不是 pinned-only filter。
+- controller 拥有 `idle/loading/ready/error`、retry、AbortController、request sequence 与旧请求保护；筛选或搜索变化回到第一页，旧数据可在背景刷新时稳定保留。
+- 页面采用一块连续 `mist-glass-strong` 阅读面板，item 依赖留白与 separator，而非独立卡片墙；Pin 之外不常驻操作 icon。
+- S7A 不调用 create/update/delete、unresolved patch、digest、anchor reset、source、re-summarize、export、WebSocket 或任何 AI provider。
+
+S7B Memory Mutations 后续单独接入；在对应 command、确认反馈和并发语义完成前，presentation 不展示 disabled 或无效的 mutation 按钮。
+
+**AionsHome 权威来源**：`aion-chat/routes/memories.py`、`aion-chat/database.py` 与 `aion-chat/static/memory.html` 中的真实字段/筛选语义。旧 HTML 只用于契约核对，不是 Penumbra 的 DOM/CSS 来源。
+
+## 12. Authentication 与部署
 
 - 当前 web 前端请求使用 cookie/session。
 - PR8A HTTP transport 使用 `credentials: "include"`。
@@ -494,7 +515,7 @@ S4E2 服务一次只处理一个 plan，不拥有连接或并发控制。S6D coo
 
 **AionsHome 权威来源**：`aion-chat/main.py`、`aion-chat/auth.py`、部署配置和未来部署契约；Penumbra transport 事实见 `src/lib/runtime-config.ts` 与 `src/lib/api.ts`。
 
-## 12. Provider config 与 secret
+## 13. Provider config 与 secret
 
 - API provider 配置仍是有效业务能力。
 - legacy `custom_*` 和 Gemini fallback 尚不能由 Penumbra 删除。
@@ -505,7 +526,7 @@ S4E2 服务一次只处理一个 plan，不拥有连接或并发控制。S6D coo
 
 **AionsHome 权威来源**：`aion-chat/routes/settings.py`、`aion-chat/static/settings.html`、provider 配置实现和相关 contract tests。
 
-## 13. Upload
+## 14. Upload
 
 - 当前上传 endpoint 为 `/api/upload`。
 - 必须使用 PR8A 的 upload URL resolution，不在 Chat 组件或 upload client 中手拼 base URL。
@@ -517,11 +538,11 @@ S4E2 服务一次只处理一个 plan，不拥有连接或并发控制。S6D coo
 
 **AionsHome 权威来源**：`aion-chat/routes/files.py`、`aion-chat/static/chat.html` 及未来 upload contract tests；Penumbra URL 解析事实见 `src/lib/runtime-config.ts`。
 
-## 14. 待确认事项的处理
+## 15. 待确认事项的处理
 
 SSE/WS/HTTP 的三源权威边界、S6D 连接/并发协调与 S6E1 canonical target regenerate 已经实施。stop/cancel、carryover 所有权、production 部署、secret response 和其他未确认项，在后端给出实现或 contract test 前都保持“待确认”。后续任务应记录确认结果及其 AionsHome 来源，不得把临时前端行为升级为默认契约。
 
-## 15. 未决契约状态
+## 16. 未决契约状态
 
 | 契约 | 状态 | 说明 |
 |---|---|---|
@@ -537,6 +558,7 @@ SSE/WS/HTTP 的三源权威边界、S6D 连接/并发协调与 S6E1 canonical ta
 | Chat Send & Streaming Composition | `Completed (S6C)` | selected-model readiness 门控、稳定 `client_msg_id`、optimistic/streaming overlay、安全 SSE accumulator、provider failure、EOF 后 HTTP ID 对账、uncertain retry 与 conversation switch 隔离已实施。 |
 | Chat Realtime Coordination | `Completed (S6D)` | 单 connection lifecycle、Strict Mode generation guard、安全 reconnect、same-execution ID correlation、dirty/deferred refresh、HTTP in-flight 合并、conversation-list coordination 与 reconnect scratch reconciliation 已接入 production Chat；无 unread、push、provider call 或 server cancel。 |
 | Canonical Target Regenerate | `Completed (S6E1/C2A3.1)` | latest persisted non-carryover assistant guard、canonical same-ID POST、统一 execution ownership、target replacement overlay、start/receipt ID 验证、receipt+HTTP finalization、conservative missing-receipt retry 与 `msg_updated` dirty coordination 已接入；无 DELETE、legacy regenerate、command parser 或 provider retry。 |
+| Memory Read Foundation | `Completed (S7A)` | 真实分页 list、DTO adapter、搜索、时间/重要度筛选、pin-first、只读 Pin、loading/empty/error、route/navigation 与连续阅读面板已接入；无 mutation、realtime、digest、source detail 或 provider call。 |
 | Stop / Abort | `Pending (S6E2)` | 未实施；`AbortController` 仍不宣称 server cancel。 |
 | Capability Composition | `Pending (S6E3)` | 未实施。 |
 | System Message / Instruction Presentation | `Pending (S6F)` | 未实施。 |

@@ -1,0 +1,222 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
+  buildMemoryListApiQuery,
+  listMemories,
+  mapMemoryList,
+  MemoryContractError,
+} from "@/domain/memory";
+
+describe("memory list adapter", () => {
+  it("maps the real paged list DTO and normalizes optional metadata", () => {
+    expect(mapMemoryList(page([
+      memory({
+        keywords: '["  海边  ","电影","电影",4,null]',
+        importance: 0.8,
+        unresolved: 1,
+      }),
+      memory({
+        id: "legacy",
+        type: null,
+        source_conv: null,
+        keywords: "历史标签",
+        importance: null,
+        source_start_ts: null,
+        source_end_ts: null,
+        unresolved: 0,
+      }),
+    ]))).toEqual({
+      items: [
+        {
+          id: "mem_1",
+          content: "一段真实记忆",
+          type: "shared_moment",
+          createdAt: 1_720_000_000.5,
+          sourceConversationId: "conv_1",
+          tags: ["海边", "电影"],
+          importance: 0.8,
+          sourceStartedAt: 1_719_999_900,
+          sourceEndedAt: 1_720_000_000,
+          isPinned: true,
+        },
+        expect.objectContaining({
+          id: "legacy",
+          type: null,
+          sourceConversationId: null,
+          tags: ["历史标签"],
+          importance: null,
+          sourceStartedAt: null,
+          sourceEndedAt: null,
+          isPinned: false,
+        }),
+      ],
+      page: 1,
+      pageSize: 30,
+      total: 2,
+      totalAll: 2,
+      hasMore: false,
+    });
+  });
+
+  it("safely drops malformed optional fields while preserving unknown type text", () => {
+    const item = mapMemoryList(page([memory({
+      type: "future_memory_type",
+      keywords: { unsafe: true },
+      importance: 7,
+      source_start_ts: "bad",
+      source_end_ts: Number.NaN,
+      unresolved: "yes",
+    })])).items[0];
+
+    expect(item).toMatchObject({
+      type: "future_memory_type",
+      tags: [],
+      importance: null,
+      sourceStartedAt: null,
+      sourceEndedAt: null,
+      isPinned: false,
+    });
+  });
+
+  it("rejects malformed required list, page, and item fields without leaking payload", () => {
+    const secret = "fake-memory-secret";
+    for (const payload of [
+      [],
+      { ...page([]), page: 0 },
+      { ...page([]), page_size: 201 },
+      { ...page([]), total: 2, total_all: 1 },
+      page([{ ...memory(), id: "" }]),
+      page([{ ...memory(), content: null }]),
+      page([{ ...memory(), created_at: secret, secret }]),
+      page([{ ...memory(), created_at: Number.MAX_VALUE }]),
+    ]) {
+      let error: unknown;
+      try {
+        mapMemoryList(payload);
+      } catch (reason) {
+        error = reason;
+      }
+      expect(error).toBeInstanceOf(MemoryContractError);
+      expect(String(error)).not.toContain(secret);
+    }
+  });
+});
+
+describe("memory list query", () => {
+  it("emits only supported backend query fields and omits inactive filters", () => {
+    expect(buildMemoryListApiQuery({ page: 2, pageSize: 30 })).toEqual({
+      page: 2,
+      page_size: 30,
+      q: undefined,
+      created_from: undefined,
+      created_to: undefined,
+      importance: undefined,
+      pin_first: undefined,
+    });
+
+    expect(buildMemoryListApiQuery({
+      page: 1,
+      pageSize: 50,
+      search: "  海边 & 电影  ",
+      createdFrom: 10,
+      createdTo: 20,
+      importance: "top",
+      pinFirst: true,
+    })).toEqual({
+      page: 1,
+      page_size: 50,
+      q: "海边 & 电影",
+      created_from: 10,
+      created_to: 20,
+      importance: "top",
+      pin_first: true,
+    });
+  });
+
+  it("rejects invented or invalid query values", () => {
+    expect(() => buildMemoryListApiQuery({ page: 0, pageSize: 30 }))
+      .toThrow(MemoryContractError);
+    expect(() => buildMemoryListApiQuery({ page: 1, pageSize: 201 }))
+      .toThrow(MemoryContractError);
+    expect(() => buildMemoryListApiQuery({
+      page: 1,
+      pageSize: 30,
+      createdFrom: 20,
+      createdTo: 10,
+    })).toThrow(MemoryContractError);
+    expect(() => buildMemoryListApiQuery({
+      page: 1,
+      pageSize: 30,
+      importance: "future" as "top",
+    })).toThrow(MemoryContractError);
+  });
+});
+
+describe("memory list client", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(() => vi.stubGlobal("fetch", fetchMock));
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    fetchMock.mockReset();
+  });
+
+  it("uses the paged server read contract and shared URL encoding", async () => {
+    fetchMock.mockResolvedValue(json(page([memory()])));
+    await expect(listMemories({
+      page: 1,
+      pageSize: 30,
+      search: "海边 & 电影",
+      importance: "high",
+    }, { timeoutMs: 0 })).resolves.toMatchObject({ total: 1 });
+
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    expect(url).toBe("/api/memories?page=1&page_size=30&q=%E6%B5%B7%E8%BE%B9+%26+%E7%94%B5%E5%BD%B1&importance=high");
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: "GET",
+      credentials: "include",
+      signal: expect.any(AbortSignal),
+    });
+    expect(url).not.toMatch(/type=|unresolved=|cursor=|offset=/);
+  });
+
+  it("does not accept the legacy unpaged array response", async () => {
+    fetchMock.mockResolvedValue(json([memory()]));
+    await expect(listMemories({ page: 1, pageSize: 30 }, { timeoutMs: 0 }))
+      .rejects.toBeInstanceOf(MemoryContractError);
+  });
+});
+
+function memory(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "mem_1",
+    content: "一段真实记忆",
+    type: "shared_moment",
+    created_at: 1_720_000_000.5,
+    source_conv: "conv_1",
+    keywords: "[]",
+    importance: 0.5,
+    source_start_ts: 1_719_999_900,
+    source_end_ts: 1_720_000_000,
+    unresolved: 0,
+    ...overrides,
+  };
+}
+
+function page(items: unknown[]) {
+  return {
+    items,
+    page: 1,
+    page_size: 30,
+    total: items.length,
+    total_all: items.length,
+    has_more: false,
+  };
+}
+
+function json(payload: unknown): Response {
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}

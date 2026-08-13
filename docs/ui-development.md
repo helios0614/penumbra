@@ -32,7 +32,7 @@ Claude 专用的 `.claude/skills/ui-dev.md` 只负责自动触发和指路，具
 - 颜色使用 `docs/design-spec.md` 定义的 CSS 变量，不在组件里硬编码 hex。
 - 主色只从 `--color-theme` 派生；语义色使用 `--color-success`、`--color-warning`、`--color-error`、`--color-info` 等命名 token。
 - 间距使用 Tailwind 4px 网格，圆角、阴影、动效按 design-spec 档位。
-- 毛玻璃只用于导航栏、弹框、下拉菜单、Toast、悬浮工具条等浮层；聊天正文、设置表单、长文本卡片优先用实色 surface。
+- 毛玻璃优先用于导航栏、弹框、下拉菜单、Toast、悬浮工具条等浮层。内容密集区域、长文本与表单应优先保证可读性，避免多层嵌套或高强度 blur；可使用低透明度或轻玻璃 surface，但不应为了视觉效果牺牲文字对比度和信息密度。
 - 移动端优先，页面容器避免全局滚动，正文区使用 `flex-1 min-h-0 overflow-y-auto`。
 - 图标统一用 Lucide React；图标按钮必须同时有 tooltip 和 `aria-label`。
 - 可点击目标不小于 `44px × 44px`，键盘焦点清晰，遵守 `prefers-reduced-motion`。

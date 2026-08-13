@@ -8,6 +8,7 @@ import {
   MessageSquare,
   Music2,
   LoaderCircle,
+  LibraryBig,
   StickyNote,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,9 @@ import { cn } from "@/lib/utils";
 const Calendar = lazy(() => import("@/components/calendar/Calendar"));
 const ChatView = lazy(() =>
   import("@/components/chat/ChatView").then((module) => ({ default: module.ChatView })),
+);
+const MemoryView = lazy(() =>
+  import("@/components/memory/MemoryView").then((module) => ({ default: module.MemoryView })),
 );
 
 export type DesktopAppId =
@@ -24,7 +28,8 @@ export type DesktopAppId =
   | "notes"
   | "clock"
   | "weather"
-  | "music";
+  | "music"
+  | "memory";
 
 interface DesktopAppMeta {
   name: string;
@@ -40,6 +45,7 @@ export const DESKTOP_APP_META: Record<DesktopAppId, DesktopAppMeta> = {
   clock: { name: "时钟", description: "时钟与提醒功能", icon: Clock3 },
   weather: { name: "天气", description: "查看天气和未来预报", icon: CloudSun },
   music: { name: "音乐", description: "播放和管理音乐", icon: Music2 },
+  memory: { name: "记忆库", description: "翻阅被留下来的片段", icon: LibraryBig },
 };
 
 export function isDesktopAppId(value: string): value is DesktopAppId {
@@ -60,11 +66,11 @@ export function DesktopAppView({
     <section
       className={cn(
         "mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden sm:rounded-[28px]",
-        appId === "chat" ? "mist-glass" : "mist-glass-strong",
+        appId === "chat" ? "mist-glass" : appId === "memory" ? "" : "mist-glass-strong",
       )}
       data-testid="desktop-app-view"
     >
-      {appId !== "chat" && (
+      {appId !== "chat" && appId !== "memory" && (
         <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3 sm:px-5">
           <button
             type="button"
@@ -88,12 +94,13 @@ export function DesktopAppView({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <Suspense fallback={<AppLoading />}>
           {appId === "chat" && <ChatView onBack={onBack} />}
+          {appId === "memory" && <MemoryView onBack={onBack} />}
           {appId === "calendar" && (
             <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
               <Calendar embedded className="mx-auto w-full max-w-xl" />
             </div>
           )}
-          {appId !== "chat" && appId !== "calendar" && (
+          {appId !== "chat" && appId !== "calendar" && appId !== "memory" && (
             <AppPlaceholder appId={appId} />
           )}
         </Suspense>
