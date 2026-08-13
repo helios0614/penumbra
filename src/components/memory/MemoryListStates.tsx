@@ -4,10 +4,10 @@ import type { SafeMemoryListError } from "@/application/memory-list";
 
 export function MemoryListLoading() {
   return (
-    <div className="mist-glass-strong overflow-hidden rounded-[24px]" aria-live="polite" aria-busy="true">
+    <div className="mist-solid overflow-hidden rounded-[24px]" aria-live="polite" aria-busy="true">
       <span className="sr-only">正在加载记忆</span>
       {[0, 1, 2, 3].map((key) => (
-        <div key={key} className="border-b border-border/60 px-4 py-5 last:border-b-0 sm:px-6">
+        <div key={key} className="border-b border-primary/10 px-4 py-4 last:border-b-0 sm:px-6">
           <Skeleton className="h-3 w-28" />
           <Skeleton className="mt-4 h-4 w-full" />
           <Skeleton className="mt-2 h-4 w-5/6" />
@@ -42,7 +42,7 @@ export function MemoryListError({
       className={
         compact
           ? "flex flex-col gap-3 border-b border-error/15 bg-error-subtle px-4 py-3 text-error-subtle-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6"
-          : "mist-glass-strong rounded-[24px] px-5 py-10 text-center"
+          : "mist-solid rounded-[24px] px-5 py-10 text-center"
       }
     >
       <div>

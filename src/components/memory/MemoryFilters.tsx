@@ -4,6 +4,13 @@ import type {
   MemoryDateFilter,
   MemoryImportanceFilter,
 } from "@/application/memory-list";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 const DATE_FILTERS: ReadonlyArray<{ value: MemoryDateFilter; label: string }> = [
@@ -11,6 +18,17 @@ const DATE_FILTERS: ReadonlyArray<{ value: MemoryDateFilter; label: string }> = 
   { value: "today", label: "今天" },
   { value: "7-days", label: "近 7 天" },
   { value: "30-days", label: "近 30 天" },
+];
+
+const IMPORTANCE_FILTERS: ReadonlyArray<{
+  value: MemoryImportanceFilter;
+  label: string;
+}> = [
+  { value: "all", label: "全部重要度" },
+  { value: "low", label: "低" },
+  { value: "mid", label: "中" },
+  { value: "high", label: "较高" },
+  { value: "top", label: "高" },
 ];
 
 export function MemoryFilters({
@@ -35,7 +53,7 @@ export function MemoryFilters({
   readonly onPinFirstChange: (value: boolean) => void;
 }) {
   return (
-    <section aria-label="搜索与筛选" className="flex flex-col gap-3">
+    <section aria-label="搜索与筛选" className="flex flex-col gap-2.5">
       <label className="relative block">
         <span className="sr-only">搜索记忆</span>
         <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -62,8 +80,8 @@ export function MemoryFilters({
         ) : null}
       </label>
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0" aria-label="时间范围">
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+        <div className="flex gap-1.5 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0" aria-label="时间范围">
           {DATE_FILTERS.map((option) => {
             const active = date === option.value;
             return (
@@ -75,8 +93,8 @@ export function MemoryFilters({
                 className={cn(
                   "min-h-11 shrink-0 rounded-xl border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   active
-                    ? "border-primary/35 bg-primary/12 text-primary-ink"
-                    : "border-border-strong/45 bg-background/25 text-muted-strong hover:bg-background/45",
+                    ? "border-primary/25 bg-primary/10 text-primary-ink"
+                    : "border-transparent bg-background/20 text-muted-strong hover:border-border-strong/35 hover:bg-background/35",
                 )}
               >
                 {option.label}
@@ -85,22 +103,29 @@ export function MemoryFilters({
           })}
         </div>
 
-        <div className="flex items-center gap-2">
-          <label className="min-w-0 flex-1 sm:flex-none">
-            <span className="sr-only">重要度</span>
-            <select
-              value={importance}
-              onChange={(event) => onImportanceChange(event.target.value as MemoryImportanceFilter)}
-              className="mist-glass h-11 w-full rounded-xl px-3 text-xs font-medium text-muted-strong outline-none focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring sm:w-auto"
+        <div className="flex items-center gap-1.5">
+          <Select
+            value={importance}
+            onValueChange={(value) => {
+              if (value) onImportanceChange(value as MemoryImportanceFilter);
+            }}
+          >
+            <SelectTrigger
               aria-label="按重要度筛选"
+              className="w-full border border-transparent! bg-background/20! px-3 text-xs font-medium text-muted-strong shadow-none! hover:border-border-strong/35! hover:bg-background/35! data-[size=default]:h-11 sm:w-36"
             >
-              <option value="all">全部重要度</option>
-              <option value="low">低</option>
-              <option value="mid">中</option>
-              <option value="high">较高</option>
-              <option value="top">高</option>
-            </select>
-          </label>
+              <SelectValue>
+                {IMPORTANCE_FILTERS.find((option) => option.value === importance)?.label}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent align="end" className="p-1">
+              {IMPORTANCE_FILTERS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <button
             type="button"
             onClick={() => onPinFirstChange(!pinFirst)}
@@ -108,8 +133,8 @@ export function MemoryFilters({
             className={cn(
               "min-h-11 shrink-0 rounded-xl border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               pinFirst
-                ? "border-primary/35 bg-primary/12 text-primary-ink"
-                : "border-border-strong/45 bg-background/25 text-muted-strong hover:bg-background/45",
+                ? "border-primary/25 bg-primary/10 text-primary-ink"
+                : "border-transparent bg-background/20 text-muted-strong hover:border-border-strong/35 hover:bg-background/35",
             )}
           >
             钉住的在前

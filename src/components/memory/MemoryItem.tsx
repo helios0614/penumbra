@@ -11,9 +11,9 @@ export function MemoryItem({ memory }: { readonly memory: Memory }) {
   const canExpand = memory.content.length > 260 || memory.content.split("\n").length > 4;
 
   return (
-    <article className="px-4 py-5 sm:px-6 sm:py-5" data-memory-item>
-      <div className="flex min-w-0 items-start justify-between gap-4">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+    <article className="px-4 py-4 sm:px-6" data-memory-item>
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
           {presentation.typeLabel && (
             <span className="max-w-48 truncate font-medium text-muted-strong" title={presentation.typeLabel}>
               {presentation.typeLabel}
@@ -26,7 +26,7 @@ export function MemoryItem({ memory }: { readonly memory: Memory }) {
             role="img"
             aria-label="这条记忆仍有未完成事件"
             title="这条记忆仍有未完成事件"
-            className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary-ink"
+            className="grid size-7 shrink-0 place-items-center text-primary"
             data-memory-pin
           >
             <Pin className="size-3.5" strokeWidth={1.8} aria-hidden="true" />
@@ -37,14 +37,14 @@ export function MemoryItem({ memory }: { readonly memory: Memory }) {
       {memory.content ? (
         <p
           className={cn(
-            "mt-3 whitespace-pre-wrap break-words text-[15px] leading-7 text-foreground sm:text-base",
+            "mt-2.5 whitespace-pre-wrap break-words text-[15px] leading-7 text-foreground sm:text-base",
             canExpand && !expanded && "line-clamp-4",
           )}
         >
           {memory.content}
         </p>
       ) : (
-        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+        <p className="mt-2.5 text-sm leading-6 text-muted-foreground">
           这条记忆没有可显示的正文。
         </p>
       )}
@@ -60,19 +60,19 @@ export function MemoryItem({ memory }: { readonly memory: Memory }) {
         </button>
       )}
 
-      <footer className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+      <footer className="mt-2.5 flex flex-col gap-1.5 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
         <div className="flex min-w-0 flex-wrap gap-1.5" aria-label="记忆标签">
           {presentation.visibleTags.map((tag) => (
             <span
               key={tag}
               title={tag}
-              className="max-w-44 truncate rounded-full border border-border-strong/40 bg-background/25 px-2.5 py-1 text-[11px] text-muted-strong"
+              className="max-w-44 truncate rounded-full border border-border-strong/30 bg-background/15 px-2 py-0.5 text-[11px] text-muted-strong"
             >
               {tag}
             </span>
           ))}
           {presentation.hiddenTagCount > 0 && (
-            <span className="px-1 py-1 text-[11px] text-muted-foreground">
+            <span className="px-1 py-0.5 text-[11px] text-muted-foreground">
               +{presentation.hiddenTagCount}
             </span>
           )}

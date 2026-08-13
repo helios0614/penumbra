@@ -87,6 +87,8 @@ describe("memory presentation", () => {
     expect(html).toContain("搜索记忆");
     expect(html).toContain('aria-pressed="true"');
     expect(html).toContain("按重要度筛选");
+    expect(html).toContain('data-slot="select-trigger"');
+    expect(html).not.toContain("<select");
     expect(html).toContain("钉住的在前");
     expect(html).not.toMatch(/[📌🔍🧠✏️🗑️🔄📜]/u);
     expect(html).not.toMatch(/类型筛选|仅看钉住/);

@@ -80,8 +80,8 @@ export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
         )}
 
         {data && (
-          <div className="mist-glass-strong overflow-hidden rounded-[24px]">
-            <div className="flex min-h-11 items-center justify-between border-b border-border/60 px-4 py-2 text-xs text-muted-foreground sm:px-6">
+          <div className="mist-solid overflow-hidden rounded-[24px]">
+            <div className="flex min-h-10 items-center justify-between border-b border-primary/10 px-4 py-2 text-xs text-muted-foreground sm:px-6">
               <p aria-live="polite">
                 共 {data.totalAll} 条
                 {data.total !== data.totalAll && `，当前条件下 ${data.total} 条`}
@@ -98,7 +98,7 @@ export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
             {data.items.length === 0 ? (
               <MemoryListEmpty filtered={hasFilters} />
             ) : (
-              <div className={cn("divide-y divide-border/60", isLoading && "opacity-70")}>
+              <div className={cn("divide-y divide-primary/10", isLoading && "opacity-70")}>
                 {data.items.map((memory) => (
                   <MemoryItem key={memory.id} memory={memory} />
                 ))}
