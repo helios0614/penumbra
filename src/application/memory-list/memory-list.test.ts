@@ -91,6 +91,24 @@ describe("memory list controller", () => {
     expect(loader.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
   });
 
+  it("changes pages without losing the active search or filter state", async () => {
+    const loader = vi.fn(async (value: MemoryListRequest) => page(value.page));
+    const controller = createMemoryListController(loader);
+
+    await controller.load();
+    await controller.setSearch("海边");
+    await controller.setFilters({ date: "30-days", importance: "high" });
+    await controller.setPage(2);
+
+    expect(loader).toHaveBeenLastCalledWith(
+      request({ search: "海边", date: "30-days", importance: "high" }, 2),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(controller.getState().request).toEqual(
+      request({ search: "海边", date: "30-days", importance: "high" }, 2),
+    );
+  });
+
   it("exposes safe errors, preserves old data during retry, and never retains raw payload", async () => {
     const secret = "fake-memory-private-endpoint";
     const loader = vi.fn()

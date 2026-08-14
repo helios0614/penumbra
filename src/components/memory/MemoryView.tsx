@@ -1,5 +1,7 @@
+import { useEffect, useRef, type RefObject } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 
+import type { SafeMemoryListError } from "@/application/memory-list";
 import { MemoryFilters } from "@/components/memory/MemoryFilters";
 import { MemoryItem } from "@/components/memory/MemoryItem";
 import {
@@ -9,6 +11,7 @@ import {
 } from "@/components/memory/MemoryListStates";
 import { useMemoryList } from "@/components/memory/useMemoryList";
 import { Button } from "@/components/ui/button";
+import type { MemoryPage } from "@/domain/memory";
 import { cn } from "@/lib/utils";
 
 export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
@@ -30,15 +33,16 @@ export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
     filters.date !== "all" ||
     filters.importance !== "all",
   );
+  const listScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    resetMemoryListScrollPosition(listScrollRef.current);
+  }, [data?.page]);
 
   return (
-    <main className="mx-auto flex h-full w-full max-w-5xl flex-col overflow-y-auto px-4 pb-8 pt-5 sm:px-6 sm:pb-10 sm:pt-8" aria-labelledby="memory-page-title">
-      <header className="mist-glass relative isolate shrink-0 overflow-hidden rounded-[24px] p-4 sm:p-5">
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 bg-[color-mix(in_srgb,var(--color-background)_10%,transparent)]"
-        />
-        <div className="relative z-10 flex items-start justify-between gap-4">
+    <main className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col overflow-hidden px-4 pb-4 pt-5 sm:px-0 sm:pb-8 sm:pt-8" aria-labelledby="memory-page-title">
+      <header className="mist-glass shrink-0 rounded-[24px] p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
               Memories
@@ -80,28 +84,82 @@ export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
         />
       </div>
 
-      <section className="mt-4" aria-label="记忆列表" aria-busy={isLoading}>
+      <MemoryReadingPanel
+        data={data}
+        isLoading={isLoading}
+        error={state.status === "error" ? state.error : null}
+        hasFilters={hasFilters}
+        listScrollRef={listScrollRef}
+        onRetry={retry}
+        onPageChange={setPage}
+      />
+    </main>
+  );
+}
+
+export function MemoryReadingPanel({
+  data,
+  isLoading,
+  error,
+  hasFilters,
+  listScrollRef,
+  onRetry,
+  onPageChange,
+}: {
+  readonly data: MemoryPage | null;
+  readonly isLoading: boolean;
+  readonly error: SafeMemoryListError | null;
+  readonly hasFilters: boolean;
+  readonly listScrollRef: RefObject<HTMLDivElement | null>;
+  readonly onRetry: () => void;
+  readonly onPageChange: (page: number) => void;
+}) {
+  return (
+    <section
+      className="mist-solid mt-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[24px]"
+      aria-labelledby="memory-reading-title"
+      aria-busy={isLoading}
+      data-memory-reading-panel="true"
+    >
+      <header
+        className="flex min-h-12 shrink-0 items-center justify-between gap-4 border-b border-primary/10 px-4 py-2 sm:px-6"
+        data-memory-reading-header="true"
+      >
+        <h2 id="memory-reading-title" className="text-sm font-semibold text-foreground">
+          Memory
+        </h2>
+        <div className="flex items-baseline gap-3">
+          {data && (
+            <span
+              className="text-base font-normal tabular-nums tracking-[0.12em] text-muted-strong"
+              aria-label={`总计 ${data.totalAll} 条记忆`}
+              data-memory-total="true"
+            >
+              {data.totalAll}
+            </span>
+          )}
+          {isLoading && data && (
+            <span className="text-xs text-primary-ink" aria-live="polite">
+              正在更新
+            </span>
+          )}
+        </div>
+      </header>
+
+      <div
+        ref={listScrollRef}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        role="region"
+        aria-label="记忆列表"
+        tabIndex={0}
+        data-memory-list-scroll="true"
+      >
         {!data && isLoading && <MemoryListLoading />}
-        {!data && state.status === "error" && (
-          <MemoryListError error={state.error} onRetry={retry} />
-        )}
+        {!data && error && <MemoryListError error={error} onRetry={onRetry} />}
 
         {data && (
-          <div className="mist-solid overflow-hidden rounded-[24px]">
-            <div className="flex min-h-10 items-center justify-between border-b border-primary/10 px-4 py-2 text-xs text-muted-foreground sm:px-6">
-              <p aria-live="polite">
-                共 {data.totalAll} 条
-                {data.total !== data.totalAll && `，当前条件下 ${data.total} 条`}
-              </p>
-              {isLoading && (
-                <p className="text-primary-ink" aria-live="polite">正在更新</p>
-              )}
-            </div>
-
-            {state.status === "error" && (
-              <MemoryListError error={state.error} onRetry={retry} compact />
-            )}
-
+          <>
+            {error && <MemoryListError error={error} onRetry={onRetry} compact />}
             {data.items.length === 0 ? (
               <MemoryListEmpty filtered={hasFilters} />
             ) : (
@@ -111,22 +169,33 @@ export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
                 ))}
               </div>
             )}
-          </div>
+          </>
         )}
-      </section>
+      </div>
 
       {data && data.total > 0 && (
-        <MemoryPagination
-          page={data.page}
-          pageSize={data.pageSize}
-          total={data.total}
-          hasMore={data.hasMore}
-          disabled={isLoading}
-          onPageChange={setPage}
-        />
+        <footer
+          className="shrink-0 border-t border-primary/10 px-4 py-2"
+          data-memory-pagination-footer="true"
+        >
+          <MemoryPagination
+            page={data.page}
+            pageSize={data.pageSize}
+            total={data.total}
+            hasMore={data.hasMore}
+            disabled={isLoading}
+            onPageChange={onPageChange}
+          />
+        </footer>
       )}
-    </main>
+    </section>
   );
+}
+
+export function resetMemoryListScrollPosition(
+  scrollRegion: Pick<HTMLDivElement, "scrollTop"> | null,
+) {
+  if (scrollRegion) scrollRegion.scrollTop = 0;
 }
 
 function MemoryPagination({
@@ -146,12 +215,12 @@ function MemoryPagination({
 }) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   return (
-    <nav className="mt-4 flex shrink-0 items-center justify-center gap-3" aria-label="记忆分页">
+    <nav className="flex items-center justify-center gap-3" aria-label="记忆分页">
       <button
         type="button"
         onClick={() => onPageChange(page - 1)}
         disabled={disabled || page <= 1}
-        className="mist-glass grid size-11 place-items-center rounded-xl text-muted-strong transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-35"
+        className="grid size-11 place-items-center rounded-xl text-muted-strong transition-colors hover:bg-primary/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
         aria-label="上一页"
         title="上一页"
       >
@@ -164,7 +233,7 @@ function MemoryPagination({
         type="button"
         onClick={() => onPageChange(page + 1)}
         disabled={disabled || !hasMore}
-        className="mist-glass grid size-11 place-items-center rounded-xl text-muted-strong transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-35"
+        className="grid size-11 place-items-center rounded-xl text-muted-strong transition-colors hover:bg-primary/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
         aria-label="下一页"
         title="下一页"
       >

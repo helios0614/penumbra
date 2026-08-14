@@ -4,7 +4,7 @@ import type { SafeMemoryListError } from "@/application/memory-list";
 
 export function MemoryListLoading() {
   return (
-    <div className="mist-solid overflow-hidden rounded-[24px]" aria-live="polite" aria-busy="true">
+    <div className="min-w-0" aria-live="polite" aria-busy="true">
       <span className="sr-only">正在加载记忆</span>
       {[0, 1, 2, 3].map((key) => (
         <div key={key} className="border-b border-primary/10 px-4 py-4 last:border-b-0 sm:px-6">
@@ -42,7 +42,7 @@ export function MemoryListError({
       className={
         compact
           ? "flex flex-col gap-3 border-b border-error/15 bg-error-subtle px-4 py-3 text-error-subtle-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6"
-          : "mist-solid rounded-[24px] px-5 py-10 text-center"
+          : "flex min-h-full flex-col items-center justify-center px-5 py-10 text-center"
       }
     >
       <div>
@@ -63,7 +63,7 @@ export function MemoryListError({
 
 export function MemoryListEmpty({ filtered }: { readonly filtered: boolean }) {
   return (
-    <div className="px-5 py-20 text-center">
+    <div className="flex min-h-full flex-col items-center justify-center px-5 py-10 text-center">
       <p className="text-base font-semibold text-foreground">
         {filtered ? "没有找到相符的记忆" : "还没有留下记忆"}
       </p>

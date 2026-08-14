@@ -1,15 +1,27 @@
+import { readFileSync } from "node:fs";
+import { createRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { MemoryFilters } from "@/components/memory/MemoryFilters";
 import { MemoryItem } from "@/components/memory/MemoryItem";
 import {
+  MemoryReadingPanel,
+  MemoryView,
+  resetMemoryListScrollPosition,
+} from "@/components/memory/MemoryView";
+import {
   MemoryListEmpty,
   MemoryListError,
   MemoryListLoading,
 } from "@/components/memory/MemoryListStates";
 import { presentMemoryItem } from "@/components/memory/memory-presentation";
-import type { Memory } from "@/domain/memory";
+import type { Memory, MemoryPage } from "@/domain/memory";
+
+const memoryViewSource = readFileSync(
+  new URL("./MemoryView.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("memory presentation", () => {
   it("presents real text, known and unknown type, importance, tags, and timestamp", () => {
@@ -98,7 +110,134 @@ describe("memory presentation", () => {
     expect(html).not.toMatch(/[📌🔍🧠✏️🗑️🔄📜]/u);
     expect(html).not.toMatch(/类型筛选|仅看钉住/);
   });
+
+  it("keeps the mobile gutter without duplicating the desktop app gutter", () => {
+    const html = renderToStaticMarkup(<MemoryView onBack={vi.fn()} />);
+    const pageShell = html.match(
+      /<main[^>]*aria-labelledby="memory-page-title"[^>]*>/,
+    )?.[0];
+    const header = html.match(/<header[^>]*>/)?.[0];
+
+    expect(pageShell).toBeDefined();
+    expect(pageShell).toContain("px-4");
+    expect(pageShell).toContain("sm:px-0");
+    expect(pageShell).toContain("min-h-0");
+    expect(pageShell).toContain("overflow-hidden");
+    expect(pageShell).not.toContain("overflow-y-auto");
+    expect(pageShell).not.toContain("sm:px-6");
+    expect(header).toContain("mist-glass");
+    expect(header).not.toMatch(/\b(?:isolate|overflow-hidden)\b/);
+    expect(html).toContain('data-memory-filter-surface="true"');
+    expect(html).not.toContain(
+      "color-mix(in_srgb,var(--color-background)_10%,transparent)",
+    );
+  });
+
+  it("renders a fixed reading header, an independent list scroll region, and pagination footer", () => {
+    const html = renderReadingPanel(memoryPage());
+    const panel = html.match(/<section[^>]*data-memory-reading-panel="true"[^>]*>/)?.[0];
+    const readingHeader = html.match(/<header[^>]*data-memory-reading-header="true"[^>]*>/)?.[0];
+    const scrollRegion = html.match(/<div[^>]*data-memory-list-scroll="true"[^>]*>/)?.[0];
+    const paginationFooter = html.match(/<footer[^>]*data-memory-pagination-footer="true"[^>]*>/)?.[0];
+
+    expect(panel).toContain("mist-solid");
+    expect(panel).toContain("min-h-0");
+    expect(panel).toContain("flex-1");
+    expect(readingHeader).toContain("shrink-0");
+    expect(html).toContain("Memory");
+    expect(html).toContain('data-memory-total="true">4570</span>');
+    expect(html).not.toContain("共 4570 条");
+    expect(scrollRegion).toContain("min-h-0");
+    expect(scrollRegion).toContain("flex-1");
+    expect(scrollRegion).toContain("overflow-y-auto");
+    expect(paginationFooter).toContain("shrink-0");
+    expect(html.indexOf('data-memory-reading-header="true"')).toBeLessThan(
+      html.indexOf('data-memory-list-scroll="true"'),
+    );
+    expect(html.indexOf('data-memory-list-scroll="true"')).toBeLessThan(
+      html.indexOf('data-memory-pagination-footer="true"'),
+    );
+    expect(memoryViewSource).toMatch(
+      /data-memory-list-scroll="true"[\s\S]*?<\/div>\s*\{data && data\.total > 0 && \(\s*<footer/,
+    );
+  });
+
+  it("keeps loading, empty, and error states inside the reading panel scroll region", () => {
+    const loading = renderReadingPanel(null, { isLoading: true });
+    const empty = renderReadingPanel(memoryPage({ items: [], total: 0, hasMore: false }));
+    const error = renderReadingPanel(null, {
+      error: { code: "network", message: "暂时无法连接到记忆库。" },
+    });
+
+    for (const html of [loading, empty, error]) {
+      expect(html).toContain('data-memory-reading-panel="true"');
+      expect(html).toContain('data-memory-list-scroll="true"');
+      expect(html).toContain("Memory");
+    }
+    expect(loading).toContain("正在加载记忆");
+    expect(empty).toContain("还没有留下记忆");
+    expect(error).toContain("无法加载记忆");
+    expect(loading).not.toContain("data-memory-pagination-footer");
+    expect(empty).not.toContain("data-memory-pagination-footer");
+    expect(error).not.toContain("data-memory-pagination-footer");
+  });
+
+  it("keeps real pagination boundaries and 44px icon targets", () => {
+    const firstPage = renderReadingPanel(memoryPage());
+    const lastPage = renderReadingPanel(memoryPage({
+      page: 153,
+      hasMore: false,
+    }));
+
+    expect(firstPage).toContain("第 1 / 153 页");
+    expect(firstPage).toMatch(/<button[^>]*disabled=""[^>]*aria-label="上一页"/);
+    expect(firstPage).not.toMatch(/<button[^>]*disabled=""[^>]*aria-label="下一页"/);
+    expect(lastPage).not.toMatch(/<button[^>]*disabled=""[^>]*aria-label="上一页"/);
+    expect(lastPage).toMatch(/<button[^>]*disabled=""[^>]*aria-label="下一页"/);
+    expect(firstPage.match(/class="[^"]*size-11[^"]*"/g)).toHaveLength(2);
+  });
+
+  it("resets only the reading list scroll position for a delivered page", () => {
+    const scrollRegion = { scrollTop: 480 };
+
+    resetMemoryListScrollPosition(scrollRegion);
+
+    expect(scrollRegion.scrollTop).toBe(0);
+    expect(memoryViewSource).not.toMatch(/window\.scroll|scrollTo\(/);
+  });
 });
+
+function renderReadingPanel(
+  data: MemoryPage | null,
+  overrides: {
+    readonly isLoading?: boolean;
+    readonly error?: { readonly code: "network"; readonly message: string } | null;
+  } = {},
+) {
+  return renderToStaticMarkup(
+    <MemoryReadingPanel
+      data={data}
+      isLoading={overrides.isLoading ?? false}
+      error={overrides.error ?? null}
+      hasFilters={false}
+      listScrollRef={createRef<HTMLDivElement>()}
+      onRetry={vi.fn()}
+      onPageChange={vi.fn()}
+    />,
+  );
+}
+
+function memoryPage(overrides: Partial<MemoryPage> = {}): MemoryPage {
+  return {
+    items: [memory()],
+    page: 1,
+    pageSize: 30,
+    total: 4570,
+    totalAll: 4570,
+    hasMore: true,
+    ...overrides,
+  };
+}
 
 function memory(overrides: Partial<Memory> = {}): Memory {
   return {

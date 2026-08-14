@@ -429,9 +429,12 @@
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
-.desktop-home-grid,
-[data-testid="desktop-app-view"] {
+.desktop-home-grid {
   animation: desktop-surface-enter 0.22s ease-out both;
+}
+
+[data-testid="desktop-app-view"] {
+  animation: desktop-surface-enter 0.22s ease-out;
 }
 
 .desktop-home-pager {

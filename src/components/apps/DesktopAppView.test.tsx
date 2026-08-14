@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
@@ -7,6 +8,11 @@ import {
   isDesktopAppId,
 } from "@/components/apps/DesktopAppView";
 import { DesktopApps } from "@/components/desktop/DesktopApps";
+
+const desktopStyles = readFileSync(
+  new URL("../../index.css", import.meta.url),
+  "utf8",
+);
 
 describe("desktop memory route and navigation", () => {
   it("registers memory as a real desktop app route", () => {
@@ -33,5 +39,27 @@ describe("desktop memory route and navigation", () => {
     );
     expect(html).not.toContain("页面还在搭建中");
     expect(html).not.toContain("打开和管理");
+  });
+
+  it("does not retain the desktop app entrance animation after its active phase", () => {
+    const html = renderToStaticMarkup(
+      <DesktopAppView appId="memory" onBack={vi.fn()} />,
+    );
+    const shell = html.match(
+      /<section[^>]*data-testid="desktop-app-view"[^>]*>/,
+    )?.[0];
+
+    expect(shell).toBeDefined();
+    expect(shell).not.toContain("style=");
+    expect(shell).not.toMatch(/\b(?:opacity|scale|translate|transform)-/);
+    expect(desktopStyles).toMatch(
+      /\[data-testid="desktop-app-view"\]\s*\{\s*animation:\s*desktop-surface-enter 0\.22s ease-out;\s*\}/,
+    );
+  });
+
+  it("continues to disable the desktop app animation for reduced motion", () => {
+    expect(desktopStyles).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\[data-testid="desktop-app-view"\]\s*\{\s*animation:\s*none;\s*\}/,
+    );
   });
 });
