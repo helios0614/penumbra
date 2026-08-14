@@ -17,6 +17,7 @@ const MEMORY_TYPE_LABELS: Readonly<Record<string, string>> = Object.freeze({
 export type MemoryItemPresentation = {
   readonly typeLabel: string | null;
   readonly importanceLabel: string | null;
+  readonly importanceValue: string | null;
   readonly timeLabel: string;
   readonly visibleTags: readonly string[];
   readonly hiddenTagCount: number;
@@ -26,8 +27,8 @@ export function presentMemoryItem(memory: Memory): MemoryItemPresentation {
   const visibleTags = memory.tags.slice(0, 8);
   return {
     typeLabel: memory.type ? MEMORY_TYPE_LABELS[memory.type] ?? memory.type : null,
-    importanceLabel:
-      memory.importance === null ? null : `重要度 ${memory.importance.toFixed(1)}`,
+    importanceLabel: memory.importance === null ? null : "重要度",
+    importanceValue: memory.importance === null ? null : memory.importance.toFixed(1),
     timeLabel: format(new Date(memory.createdAt * 1_000), "yyyy年M月d日 HH:mm", {
       locale: zhCN,
     }),

@@ -11,6 +11,14 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: "LXGW WenKai Screen";
+  src: url("../TTF-屏幕阅读版（含GB）-1/LXGWWenKaiScreen.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -242,6 +250,16 @@
   background: var(--mist-solid-surface);
   border: 1px solid var(--mist-solid-border);
   box-shadow: var(--mist-solid-shadow);
+}
+
+.memory-total-decoration {
+  color: color-mix(in srgb, var(--color-theme) 14%, var(--color-muted-foreground));
+  font-family: "LXGW WenKai Screen", "Noto Serif SC", serif;
+  font-style: oblique 6deg;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  opacity: 0.64;
 }
 
 .chat-conversations-drawer {

@@ -24,4 +24,15 @@ describe("Input", () => {
     expect(html).toContain("bg-background/25");
     expect(html).not.toContain("mist-solid");
   });
+
+  it("uses one restrained focus-visible ring without the global outline stacking", () => {
+    const html = renderToStaticMarkup(<Input aria-label="Focused input" />);
+
+    expect(html).toContain("focus-visible:border-ring/55");
+    expect(html).toContain("focus-visible:outline-none!");
+    expect(html).toContain("focus-visible:ring-2");
+    expect(html).toContain("focus-visible:ring-ring/20");
+    expect(html).not.toContain("focus-visible:ring-3");
+    expect(html).not.toContain("focus-visible:ring-ring/50");
+  });
 });

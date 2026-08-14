@@ -47,6 +47,16 @@ describe("AppSelect", () => {
     expect(html).toContain('data-surface="translucent"');
     expect(html).toContain("border-border-strong/50");
     expect(html).toContain("bg-background/25");
+    expect(html).toContain("h-11");
+    expect(html).toContain("min-h-11");
+    expect(html).toContain("text-xs");
+    expect(html).toContain("leading-5");
+    expect(html).toContain("shadow-none");
+    expect(html).toContain("focus-visible:outline-none!");
+    expect(html).toContain("focus-visible:ring-2");
+    expect(html).toContain("focus-visible:ring-ring/20");
+    expect(html).not.toContain("focus-visible:ring-3");
+    expect(html).not.toContain("focus-visible:ring-ring/50");
     expect(html).not.toContain("mist-solid");
   });
 

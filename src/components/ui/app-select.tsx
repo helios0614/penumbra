@@ -53,10 +53,10 @@ export function AppSelect<TValue extends string>({
         aria-label={ariaLabel}
         surface={surface}
         className={cn(
-          "min-h-11 w-full rounded-xl px-3 text-xs font-medium text-muted-strong hover:text-foreground aria-expanded:text-foreground data-[size=default]:h-11",
+          "h-11 min-h-11 w-full rounded-xl px-2.5 py-0 text-xs font-medium leading-5 text-muted-strong hover:text-foreground focus-visible:border-ring/55 focus-visible:outline-none! focus-visible:ring-2 focus-visible:ring-ring/20 aria-expanded:text-foreground data-[size=default]:h-11",
           surface === "solid"
             ? "hover:bg-muted aria-expanded:bg-muted dark:hover:bg-input/50"
-            : "hover:border-border-strong/70 hover:bg-background/45 aria-expanded:bg-background/45",
+            : "shadow-none hover:border-border-strong/70 hover:bg-background/45 aria-expanded:bg-background/45",
           className,
         )}
       >

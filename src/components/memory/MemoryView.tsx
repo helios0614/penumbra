@@ -70,7 +70,7 @@ export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
         </div>
       </header>
 
-      <div className="mt-4 shrink-0">
+      <div className="mt-3 shrink-0 sm:mt-4">
         <MemoryFilters
           searchInput={searchInput}
           date={filters.date}
@@ -116,39 +116,36 @@ export function MemoryReadingPanel({
 }) {
   return (
     <section
-      className="mist-solid mt-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[24px]"
-      aria-labelledby="memory-reading-title"
+      className="mist-glass-strong relative mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[24px] sm:mt-4"
+      aria-label="记忆阅读区"
       aria-busy={isLoading}
       data-memory-reading-panel="true"
     >
-      <header
-        className="flex min-h-12 shrink-0 items-center justify-between gap-4 border-b border-primary/10 px-4 py-2 sm:px-6"
-        data-memory-reading-header="true"
-      >
-        <h2 id="memory-reading-title" className="text-sm font-semibold text-foreground">
-          Memory
-        </h2>
-        <div className="flex items-baseline gap-3">
-          {data && (
-            <span
-              className="text-base font-normal tabular-nums tracking-[0.12em] text-muted-strong"
-              aria-label={`总计 ${data.totalAll} 条记忆`}
-              data-memory-total="true"
-            >
-              {data.totalAll}
-            </span>
-          )}
-          {isLoading && data && (
-            <span className="text-xs text-primary-ink" aria-live="polite">
-              正在更新
-            </span>
-          )}
-        </div>
-      </header>
+      {data && (
+        <>
+          <span
+            className="sr-only"
+            aria-live="polite"
+            data-memory-total-announcement="true"
+          >
+            共 {data.totalAll} 条记忆
+          </span>
+          <span
+            className="memory-total-decoration pointer-events-none absolute right-4 top-3 z-10 text-[15px] sm:right-6"
+            aria-hidden="true"
+            data-memory-total-decoration="true"
+          >
+            {data.totalAll}
+          </span>
+        </>
+      )}
 
       <div
         ref={listScrollRef}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+          data && "pt-7",
+        )}
         role="region"
         aria-label="记忆列表"
         tabIndex={0}
@@ -175,7 +172,7 @@ export function MemoryReadingPanel({
 
       {data && data.total > 0 && (
         <footer
-          className="shrink-0 border-t border-primary/10 px-4 py-2"
+          className="shrink-0 border-t border-primary/10 px-4 py-0.5"
           data-memory-pagination-footer="true"
         >
           <MemoryPagination
@@ -226,7 +223,10 @@ function MemoryPagination({
       >
         <ChevronLeft className="size-4" aria-hidden="true" />
       </button>
-      <span className="min-w-24 text-center text-xs text-muted-foreground">
+      <span
+        className="min-w-24 text-center text-[11px] font-normal leading-none text-muted-foreground"
+        data-memory-pagination-label="true"
+      >
         第 {page} / {totalPages} 页
       </span>
       <button
