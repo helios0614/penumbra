@@ -10,7 +10,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { PageHeader, PageHeaderAction } from "@/components/ui/page-header";
 import { SettingsSafeBasics } from "@/components/settings/SettingsSafeBasics";
 import { useSettingsOverview } from "@/components/settings/useSettingsOverview";
 import { cn } from "@/lib/utils";
@@ -160,53 +160,44 @@ export function SettingsView({ onBack }: SettingsViewProps) {
     overviewState.status === "idle" || overviewState.status === "loading";
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8">
-      <div className="mist-glass rounded-[24px] p-4 sm:p-5">
-        <div className="relative">
-          <div className="min-w-0 pr-24">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              Settings
-            </p>
-            <h2 className="mt-1 text-xl font-semibold text-foreground">设置</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              设备外观偏好与安全只读运行状态。
-            </p>
-          </div>
-          <div className="absolute right-0 top-0 flex gap-2">
-            <Button
+    <div
+      className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8"
+      aria-labelledby="settings-page-title"
+    >
+      <PageHeader
+        eyebrow="Settings"
+        title="设置"
+        titleId="settings-page-title"
+        description="设备外观偏好与安全只读运行状态。"
+        actions={
+          <>
+            <PageHeaderAction
               type="button"
               onClick={reloadOverview}
               disabled={isOverviewLoading}
-              variant="ghost"
-              size="icon-lg"
-              className="rounded-xl border border-border-strong/50 bg-background/25 text-foreground shadow-sm hover:border-primary/30 hover:bg-primary/10 hover:text-primary active:bg-primary/15"
               aria-label={isOverviewLoading ? "正在重新加载设置状态" : "重新加载设置状态"}
               title={isOverviewLoading ? "正在重新加载" : "重新加载"}
             >
               <RefreshCw
                 className={cn(
-                  "size-4",
                   isOverviewLoading && "animate-spin motion-reduce:animate-none",
                 )}
                 aria-hidden="true"
               />
-            </Button>
+            </PageHeaderAction>
             {onBack && (
-              <Button
+              <PageHeaderAction
                 type="button"
                 onClick={onBack}
-                variant="ghost"
-                size="icon-lg"
-                className="rounded-xl border border-border-strong/50 bg-background/25 text-foreground shadow-sm hover:border-primary/30 hover:bg-primary/10 hover:text-primary active:bg-primary/15"
                 title="返回桌面"
                 aria-label="返回桌面"
               >
-                <X className="size-4" aria-hidden="true" />
-              </Button>
+                <X aria-hidden="true" />
+              </PageHeaderAction>
             )}
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <div className="mist-glass rounded-[24px] p-4 sm:p-5">
         <SettingsSectionHeading

@@ -345,7 +345,22 @@ describe("memory presentation", () => {
     expect(pageShell).not.toContain("overflow-y-auto");
     expect(pageShell).not.toContain("sm:px-6");
     expect(header).toContain("mist-glass");
+    expect(header).toContain('data-slot="page-header"');
     expect(header).not.toMatch(/\b(?:isolate|overflow-hidden)\b/);
+    expect(html).toContain('<h1 id="memory-page-title"');
+    expect(html).toContain("Memories");
+    expect(html).toContain("记忆库");
+    expect(html).toContain("那些留下来的片段，会在需要时重新浮上来。");
+    expect(html).not.toContain("那些被留下来的片段，会在需要的时候重新浮上来。");
+    const backButton = html.match(
+      /<button[^>]*data-slot="page-header-action"[^>]*aria-label="返回桌面"[^>]*>/,
+    )?.[0];
+    expect(backButton).toContain("size-11");
+    expect(backButton).toContain("before:inset-1");
+    expect(backButton).toContain("before:rounded-xl");
+    expect(html).toContain("lucide-x");
+    expect(html).not.toContain("lucide-arrow-left");
+    expect(memoryViewSource).toContain("onClick={onBack}");
     expect(html).toContain('data-memory-filter-surface="true"');
     expect(html).not.toContain(
       "color-mix(in_srgb,var(--color-background)_10%,transparent)",

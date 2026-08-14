@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react";
-import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
 import type { SafeMemoryListError } from "@/application/memory-list";
 import { MemoryFilters } from "@/components/memory/MemoryFilters";
@@ -10,7 +10,7 @@ import {
   MemoryListLoading,
 } from "@/components/memory/MemoryListStates";
 import { useMemoryList } from "@/components/memory/useMemoryList";
-import { Button } from "@/components/ui/button";
+import { PageHeader, PageHeaderAction } from "@/components/ui/page-header";
 import type { MemoryPage } from "@/domain/memory";
 import { cn } from "@/lib/utils";
 
@@ -41,34 +41,24 @@ export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
 
   return (
     <main className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col overflow-hidden px-4 pb-4 pt-5 sm:px-0 sm:pb-8 sm:pt-8" aria-labelledby="memory-page-title">
-      <header className="mist-glass shrink-0 rounded-[24px] p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              Memories
-            </p>
-            <h1 id="memory-page-title" className="mt-1 text-xl font-semibold text-foreground">
-              记忆库
-            </h1>
-            <p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground">
-              那些被留下来的片段，会在需要的时候重新浮上来。
-            </p>
-          </div>
-          {onBack && (
-            <Button
+      <PageHeader
+        eyebrow="Memories"
+        title="记忆库"
+        titleId="memory-page-title"
+        description="那些留下来的片段，会在需要时重新浮上来。"
+        actions={
+          onBack ? (
+            <PageHeaderAction
               type="button"
               onClick={onBack}
-              variant="ghost"
-              size="icon-lg"
-              className="size-11 rounded-xl border border-border-strong/50 bg-background/25 text-foreground shadow-sm hover:border-primary/30 hover:bg-primary/10 hover:text-primary active:bg-primary/15"
               aria-label="返回桌面"
               title="返回桌面"
             >
-              <ArrowLeft className="size-4" aria-hidden="true" />
-            </Button>
-          )}
-        </div>
-      </header>
+              <X aria-hidden="true" />
+            </PageHeaderAction>
+          ) : undefined
+        }
+      />
 
       <div className="mt-3 shrink-0 sm:mt-4">
         <MemoryFilters
