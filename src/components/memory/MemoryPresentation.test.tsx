@@ -93,6 +93,7 @@ describe("memory presentation", () => {
       /<span[^>]*data-memory-importance-value="true"[^>]*>/,
     )?.[0];
     const itemFooter = html.match(/<footer[^>]*>/)?.[0];
+    const time = html.match(/<time[^>]*>/)?.[0];
 
     expect(item).toContain("relative");
     expect(item).toContain("py-3.5");
@@ -108,8 +109,8 @@ describe("memory presentation", () => {
     expect(actions).not.toContain("tabindex=");
     expect(pin).toContain("size-11");
     expect(pin).not.toContain("size-7");
-    expect(body).toContain("text-sm");
-    expect(body).toContain("sm:text-[15px]");
+    expect(body).toContain("text-[13px]");
+    expect(body).toContain("sm:text-sm");
     expect(body).toContain("mt-1.5");
     expect(unpinnedBody).toContain("mt-1.5");
     expect(body).not.toContain("pr-10");
@@ -129,6 +130,9 @@ describe("memory presentation", () => {
     expect(itemFooter).toContain("mt-2");
     expect(itemFooter).toContain("gap-1");
     expect(itemFooter).toContain("sm:gap-4");
+    expect(time).toContain("self-end");
+    expect(time).toContain("text-xs");
+    expect(time).toContain("text-muted-foreground");
     expect(html).toContain('aria-label="记忆标签"');
     expect(html).toContain("2024年7月3日 17:46");
     expect(html.indexOf('data-memory-item-metadata="true"')).toBeLessThan(
@@ -245,10 +249,10 @@ describe("memory presentation", () => {
       /<button[^>]*aria-label="清空搜索"[^>]*>/,
     )?.[0];
 
-    expect(filterSurface).toContain("gap-1.5");
+    expect(filterSurface).toContain("gap-1");
     expect(filterSurface).toContain("px-3");
-    expect(filterSurface).toContain("py-1.5");
-    expect(filterSurface).toContain("sm:py-2");
+    expect(filterSurface).toContain("py-1");
+    expect(filterSurface).toContain("sm:py-1.5");
     expect(filterSurface).not.toContain("sm:p-3");
     expect(searchInput).toContain("h-11");
     expect(searchInput).toContain("min-h-11");
@@ -265,6 +269,8 @@ describe("memory presentation", () => {
     expect(searchInput).not.toMatch(/(?:class="|\s)text-sm(?:\s|")/);
     expect(searchInput).not.toContain("md:text-sm");
     expect(searchInput).toContain("shadow-none");
+    expect(searchInput).toContain("border-border-strong/50");
+    expect(searchInput).toContain("bg-background/25");
     expect(searchInput).toContain('placeholder="搜索被留下来的片段"');
     expect(searchInput).not.toContain("max-w-");
     expect(searchWrapper).toContain("block");
@@ -277,8 +283,20 @@ describe("memory presentation", () => {
     expect(selectTrigger).toContain("text-xs");
     expect(selectTrigger).toContain("leading-5");
     expect(selectTrigger).toContain("shadow-none");
+    expect(selectTrigger).toContain("border-border-strong/35");
+    expect(selectTrigger).toContain("bg-background/15");
+    expect(selectTrigger).toContain("hover:border-border-strong/70");
+    expect(selectTrigger).toContain("hover:bg-background/45");
     expect(selectTrigger).not.toContain("w-full");
     expect(dateButtons).toHaveLength(4);
+    expect(dateButtons[0]).toContain("border-primary/45");
+    expect(dateButtons[0]).toContain("bg-primary/12");
+    for (const control of [...dateButtons.slice(1), pinFirstButton]) {
+      expect(control).toContain("border-border-strong/25");
+      expect(control).toContain("bg-background/10");
+      expect(control).toContain("text-muted-strong");
+      expect(control).toContain("hover:bg-background/45");
+    }
     for (const control of [searchInput, selectTrigger, ...dateButtons, pinFirstButton]) {
       expect(control).toContain("h-11");
       expect(control).toContain("min-h-11");

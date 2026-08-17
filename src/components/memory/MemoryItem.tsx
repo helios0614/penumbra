@@ -67,7 +67,7 @@ export function MemoryItem({ memory }: { readonly memory: Memory }) {
       {memory.content ? (
         <p
           className={cn(
-            "mt-1.5 whitespace-pre-wrap break-words text-sm leading-7 text-[color-mix(in_srgb,var(--color-foreground)_70%,var(--color-muted-strong))] sm:text-[15px]",
+            "mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-7 text-[color-mix(in_srgb,var(--color-foreground)_70%,var(--color-muted-strong))] sm:text-sm",
             canExpand && !expanded && "line-clamp-4",
           )}
           data-memory-body="true"
@@ -110,7 +110,7 @@ export function MemoryItem({ memory }: { readonly memory: Memory }) {
         </div>
         <time
           dateTime={new Date(memory.createdAt * 1_000).toISOString()}
-          className="shrink-0 text-xs text-muted-foreground"
+          className="shrink-0 self-end text-xs text-muted-foreground"
         >
           {presentation.timeLabel}
         </time>

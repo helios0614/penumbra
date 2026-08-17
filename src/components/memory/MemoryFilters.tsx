@@ -53,7 +53,7 @@ export function MemoryFilters({
   return (
     <section
       aria-label="搜索与筛选"
-      className="mist-glass flex flex-col gap-1.5 rounded-[22px] px-3 py-1.5 sm:py-2"
+      className="mist-glass flex flex-col gap-1 rounded-[22px] px-3 py-1 sm:py-1.5"
       data-memory-filter-surface="true"
     >
       <div
@@ -105,7 +105,7 @@ export function MemoryFilters({
             options={IMPORTANCE_FILTERS}
             onValueChange={onImportanceChange}
             ariaLabel="按重要度筛选"
-            className="w-auto min-w-28"
+            className="w-auto min-w-28 border-border-strong/35 bg-background/15"
           />
         </div>
       </div>
@@ -135,7 +135,7 @@ export function MemoryFilters({
                   FILTER_FOCUS_CLASSES,
                   active
                     ? "border-primary/45 bg-primary/12 text-primary-ink"
-                    : "border-border-strong/50 bg-background/25 text-muted-strong hover:bg-background/45",
+                    : "border-border-strong/25 bg-background/10 text-muted-strong hover:bg-background/45",
                 )}
               >
                 {option.label}
@@ -153,7 +153,7 @@ export function MemoryFilters({
             FILTER_FOCUS_CLASSES,
             pinFirst
               ? "border-primary/45 bg-primary/12 text-primary-ink"
-              : "border-border-strong/50 bg-background/25 text-muted-strong hover:bg-background/45",
+              : "border-border-strong/25 bg-background/10 text-muted-strong hover:bg-background/45",
           )}
           data-memory-pin-first-filter="true"
         >
