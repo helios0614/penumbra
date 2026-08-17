@@ -106,7 +106,7 @@ export function MemoryReadingPanel({
 }) {
   return (
     <section
-      className="mist-glass-strong relative mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[24px] sm:mt-4"
+      className="memory-reading-panel mist-glass-strong relative mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[24px] sm:mt-4"
       aria-label="记忆阅读区"
       aria-busy={isLoading}
       data-memory-reading-panel="true"

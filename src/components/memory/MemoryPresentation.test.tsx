@@ -385,6 +385,7 @@ describe("memory presentation", () => {
     )?.[0];
 
     expect(panel).toContain("mist-glass-strong");
+    expect(panel).toContain("memory-reading-panel");
     expect(panel).not.toContain("mist-solid");
     expect(panel).toContain("relative");
     expect(panel).toContain("min-h-0");
@@ -430,6 +431,9 @@ describe("memory presentation", () => {
       "color: color-mix(in srgb, var(--color-theme) 36%, transparent);",
     );
     expect(totalDecorationStyles).not.toMatch(/(?:border|box-shadow|opacity):/);
+    expect(indexCssSource).toMatch(
+      /\.memory-reading-panel\s*\{[^}]*var\(--glass-surface-strong\) 69%[^}]*var\(--glass-surface\) 31%[^}]*\}/,
+    );
     expect(
       memoryViewSource.match(/className="memory-total-decoration\b/g),
     ).toHaveLength(1);

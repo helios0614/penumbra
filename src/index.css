@@ -288,6 +288,14 @@
   line-height: 1;
 }
 
+.memory-reading-panel {
+  background: color-mix(
+    in srgb,
+    var(--glass-surface-strong) 69%,
+    var(--glass-surface) 31%
+  );
+}
+
 .memory-list-scroll {
   scrollbar-width: none;
 }
