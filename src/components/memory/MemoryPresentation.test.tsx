@@ -349,8 +349,13 @@ describe("memory presentation", () => {
     expect(header).not.toMatch(/\b(?:isolate|overflow-hidden)\b/);
     expect(html).toContain('<h1 id="memory-page-title"');
     expect(html).toContain("Memories");
+    expect(html).not.toContain("Fragments");
     expect(html).toContain("记忆库");
     expect(html).toContain("那些留下来的片段，会在需要时重新浮上来。");
+    expect(html).not.toContain('data-memory-font-preview="true"');
+    expect(html).not.toContain("MEMORIES");
+    expect(html).not.toContain("August 17");
+    expect(html).not.toContain("4704");
     expect(html).not.toContain("那些被留下来的片段，会在需要的时候重新浮上来。");
     const backButton = html.match(
       /<button[^>]*data-slot="page-header-action"[^>]*aria-label="返回桌面"[^>]*>/,
@@ -389,11 +394,12 @@ describe("memory presentation", () => {
     expect(html).not.toContain(">Memory<");
     expect(totalDecoration).toContain("pointer-events-none");
     expect(totalDecoration).toContain("absolute");
-    expect(totalDecoration).toContain("right-4");
-    expect(totalDecoration).toContain("top-3");
-    expect(totalDecoration).toContain("text-[15px]");
-    expect(totalDecoration).not.toContain("text-base");
+    expect(totalDecoration).toContain("right-3");
+    expect(totalDecoration).toContain("top-2.5");
+    expect(totalDecoration).toContain("sm:right-5");
+    expect(totalDecoration).toContain("text-xl");
     expect(totalDecoration).toContain("memory-total-decoration");
+    expect(totalDecoration).toContain("font-decorative");
     expect(totalDecoration).not.toMatch(/\b(?:font-heading|text-muted-foreground)\b/);
     expect(totalDecoration).toContain('aria-hidden="true"');
     expect(html).toContain('data-memory-total-decoration="true">4570</span>');
@@ -401,22 +407,29 @@ describe("memory presentation", () => {
     expect(totalAnnouncement).toContain('aria-live="polite"');
     expect(html).toContain("共 4570 条记忆</span>");
     expect(indexCssSource).toMatch(
-      /@font-face\s*\{[^}]*font-family: "LXGW WenKai Screen";[^}]*LXGWWenKaiScreen\.ttf[^}]*font-display: swap;[^}]*\}/,
+      /@font-face\s*\{[^}]*font-family: "Cormorant Garamond";[^}]*CormorantGaramond-Regular-latin\.woff2[^}]*font-style: normal;[^}]*font-weight: 400;[^}]*font-display: swap;[^}]*\}/,
+    );
+    expect(indexCssSource).toMatch(
+      /@font-face\s*\{[^}]*font-family: "Cormorant Garamond";[^}]*CormorantGaramond-Italic-latin\.woff2[^}]*font-style: italic;[^}]*font-weight: 400;[^}]*font-display: swap;[^}]*\}/,
+    );
+    expect(indexCssSource).toContain(
+      '--font-decorative: "Cormorant Garamond", "Iowan Old Style", "Baskerville",',
+    );
+    expect(indexCssSource).toMatch(
+      /\.font-decorative\s*\{[^}]*font-family: var\(--font-decorative\);[^}]*\}/,
     );
     const totalDecorationStyles = indexCssSource.match(
       /\.memory-total-decoration\s*\{[^}]*\}/,
     )?.[0];
-    expect(totalDecorationStyles).toContain(
-      'font-family: "LXGW WenKai Screen", "Noto Serif SC", serif;',
-    );
-    expect(totalDecorationStyles).toContain("font-style: oblique 6deg;");
+    expect(totalDecorationStyles).toContain("font-style: normal;");
     expect(totalDecorationStyles).toContain("font-weight: 400;");
-    expect(totalDecorationStyles).toContain("letter-spacing: 0.08em;");
+    expect(totalDecorationStyles).toContain("font-variant-numeric: normal;");
+    expect(totalDecorationStyles).not.toContain("letter-spacing:");
     expect(totalDecorationStyles).toContain("line-height: 1;");
-    expect(totalDecorationStyles).toContain("opacity: 0.64;");
     expect(totalDecorationStyles).toContain(
-      "color: color-mix(in srgb, var(--color-theme) 14%, var(--color-muted-foreground));",
+      "color: color-mix(in srgb, var(--color-theme) 36%, transparent);",
     );
+    expect(totalDecorationStyles).not.toMatch(/(?:border|box-shadow|opacity):/);
     expect(
       memoryViewSource.match(/className="memory-total-decoration\b/g),
     ).toHaveLength(1);

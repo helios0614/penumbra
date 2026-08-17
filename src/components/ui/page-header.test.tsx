@@ -15,12 +15,17 @@ describe("PageHeader", () => {
       />,
     )
     const header = html.match(/<header[^>]*data-slot="page-header"[^>]*>/)?.[0]
+    const eyebrow = html.match(/<p[^>]*data-slot="page-header-eyebrow"[^>]*>/)?.[0]
     const heading = html.match(/<h1[^>]*id="memory-page-title"[^>]*>/)?.[0]
 
     expect(header).toContain("mist-glass")
     expect(header).toContain("rounded-[24px]")
     expect(header).toContain("py-3.5")
     expect(header).toContain("sm:py-4")
+    expect(eyebrow).toContain("font-decorative")
+    expect(eyebrow).toContain("font-normal")
+    expect(eyebrow).toContain("uppercase")
+    expect(eyebrow).not.toContain("font-medium")
     expect(heading).toContain("text-xl")
     expect(html).toContain("Memories")
     expect(html).toContain("记忆库")

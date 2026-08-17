@@ -121,7 +121,7 @@ export function MemoryReadingPanel({
             共 {data.totalAll} 条记忆
           </span>
           <span
-            className="memory-total-decoration pointer-events-none absolute right-4 top-3 z-10 text-[15px] sm:right-6"
+            className="memory-total-decoration font-decorative pointer-events-none absolute right-3 top-2.5 z-10 text-xl sm:right-5"
             aria-hidden="true"
             data-memory-total-decoration="true"
           >

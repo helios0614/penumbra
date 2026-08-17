@@ -24,7 +24,10 @@ function PageHeader({
     >
       <div className="flex min-w-0 items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+          <p
+            className="font-decorative text-xs font-normal uppercase tracking-[0.18em] text-muted-foreground"
+            data-slot="page-header-eyebrow"
+          >
             {eyebrow}
           </p>
           <h1
