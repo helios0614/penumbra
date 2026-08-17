@@ -436,7 +436,14 @@ describe("memory presentation", () => {
     expect(scrollRegion).toContain("min-h-0");
     expect(scrollRegion).toContain("flex-1");
     expect(scrollRegion).toContain("overflow-y-auto");
-    expect(scrollRegion).toContain("pt-7");
+    expect(scrollRegion).toContain("pt-5");
+    expect(scrollRegion).toContain("memory-list-scroll");
+    expect(indexCssSource).toMatch(
+      /\.memory-list-scroll\s*\{[^}]*scrollbar-width: none;[^}]*\}/,
+    );
+    expect(indexCssSource).toMatch(
+      /\.memory-list-scroll::\-webkit-scrollbar\s*\{[^}]*display: none;[^}]*\}/,
+    );
     expect(paginationFooter).toContain("shrink-0");
     expect(html.indexOf('data-memory-total-decoration="true"')).toBeLessThan(
       html.indexOf('data-memory-list-scroll="true"'),

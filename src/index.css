@@ -288,6 +288,14 @@
   line-height: 1;
 }
 
+.memory-list-scroll {
+  scrollbar-width: none;
+}
+
+.memory-list-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 .chat-conversations-drawer {
   background: color-mix(in srgb, var(--color-background) 82%, transparent);
   backdrop-filter: blur(26px) saturate(125%);

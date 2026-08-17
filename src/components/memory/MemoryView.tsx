@@ -133,8 +133,8 @@ export function MemoryReadingPanel({
       <div
         ref={listScrollRef}
         className={cn(
-          "min-h-0 flex-1 overflow-y-auto overscroll-contain",
-          data && "pt-7",
+          "memory-list-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain",
+          data && "pt-5",
         )}
         role="region"
         aria-label="记忆列表"

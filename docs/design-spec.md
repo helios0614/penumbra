@@ -150,10 +150,50 @@ AI 角色颜色使用现有 `--color-ai` 系列及其角色色配置，可以由
 ```css
 --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
   "Helvetica Neue", "Noto Sans SC", sans-serif;
+--font-decorative: "Cormorant Garamond", "Iowan Old Style", "Baskerville",
+  "Times New Roman", serif;
 --font-mono: "SF Mono", "Fira Code", "Cascadia Code", monospace;
 ```
 
-### 2.2 字号层级
+### 2.2 英文与数字装饰字体
+
+Penumbra 使用 **Cormorant Garamond** 作为英文和数字的装饰字体。装饰字体只负责增加视觉气质，不承担主要信息层级；字号、颜色、透明度和间距仍应根据所在组件的语义与层级决定。
+
+实现时优先复用已有的 `--font-decorative` token 或 `.font-decorative` class，不要在页面或业务组件内重复定义字体栈。
+
+#### Regular 400
+
+- 用于共享页面 Header 中的英文 eyebrow / decorative title，例如 `MEMORIES`、`SETTINGS`。
+- Header 中各页面保留各自原有的英文文案，只统一字体风格；不要把不同页面统一替换成某个固定单词。
+- 用于装饰性数字，例如记忆总数、年份、档案编号和装饰性页码。
+- 装饰数字默认保留 Cormorant Garamond 自身的原生数字字形。
+
+#### Italic 400
+
+- 只用于少量更柔和、偏 editorial / 手账感的英文装饰，例如 `Fragments`。
+- 不作为页面英文标题或共享 Header eyebrow 的默认样式。
+
+#### 使用边界
+
+- 不用于中文正文。
+- 不用于长正文、表单、按钮、列表等功能性文字。
+- 装饰字体不能替代正常的信息层级设计；需要清晰阅读、操作或数据比较的内容仍使用对应的正文或功能字体。
+
+#### 装饰数字的 OpenType 与字距
+
+除非有明确且经过确认的视觉需求，装饰数字保持：
+
+```css
+font-family: var(--font-decorative);
+font-weight: 400;
+font-style: normal;
+font-variant-numeric: normal;
+/* 使用默认 letter-spacing，不额外 tracking */
+```
+
+默认不要强制使用 `lining-nums`、`tabular-nums`，也不要添加额外 tracking。这些 OpenType / spacing 设置会明显改变 Cormorant Garamond 的数字 glyph、宽度与整体气质。确有对齐或特定数字样式需求时，应在对应组件中明确说明视觉理由并单独验证，不能修改装饰数字的全局默认规则。
+
+### 2.3 字号层级
 
 | Token | PC 端 | 移动端 | 用途 |
 |---|---|---|---|
@@ -165,7 +205,7 @@ AI 角色颜色使用现有 `--color-ai` 系列及其角色色配置，可以由
 | `--text-2xl` | 24px | 24px | 大标题 |
 | `--text-3xl` | 30px | 28px | Hero 标题（移动端略缩） |
 
-### 2.3 行高
+### 2.4 行高
 
 | 场景 | 行高 |
 |---|---|
@@ -174,14 +214,14 @@ AI 角色颜色使用现有 `--color-ai` 系列及其角色色配置，可以由
 | 按钮/单行 | 1.2 |
 | 代码块 | 1.5 |
 
-### 2.4 字重
+### 2.5 字重
 
 | Token | 值 | 用途 |
 |---|---|---|
 | `--font-normal` | 400 | 正文 |
 | `--font-medium` | 500 | 次要强调（标签、导航） |
 | `--font-semibold` | 600 | 标题、按钮 |
-| `--font-bold` | 700 | 数字突出、极少量使用 |
+| `--font-bold` | 700 | 功能性关键数字突出、极少量使用（不适用于装饰数字） |
 
 ---
 
