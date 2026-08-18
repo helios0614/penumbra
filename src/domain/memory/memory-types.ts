@@ -20,6 +20,12 @@ export type MemoryPage = {
   readonly hasMore: boolean;
 };
 
+export type MemoryUnresolvedMutationResult = {
+  readonly ok: true;
+  readonly id: string;
+  readonly unresolved: 0 | 1;
+};
+
 export type MemoryImportanceFilter = "all" | "low" | "mid" | "high" | "top";
 
 export type MemoryListQuery = {

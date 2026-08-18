@@ -19,6 +19,7 @@ export interface UseMemoryListResult {
   readonly setImportanceFilter: (value: MemoryImportanceFilter) => void;
   readonly setPinFirst: (value: boolean) => void;
   readonly setPage: (page: number) => void;
+  readonly setMemoryUnresolved: (memoryId: string, unresolved: boolean) => void;
   readonly retry: () => void;
 }
 
@@ -68,6 +69,10 @@ export function useMemoryList(): UseMemoryListResult {
     void controllerRef.current?.setPage(page);
   }, []);
 
+  const setMemoryUnresolved = useCallback((memoryId: string, unresolved: boolean) => {
+    void controllerRef.current?.setMemoryUnresolved(memoryId, unresolved);
+  }, []);
+
   const retry = useCallback(() => {
     void controllerRef.current?.load();
   }, []);
@@ -80,6 +85,7 @@ export function useMemoryList(): UseMemoryListResult {
     setImportanceFilter,
     setPinFirst,
     setPage,
+    setMemoryUnresolved,
     retry,
   };
 }

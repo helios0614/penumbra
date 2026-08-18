@@ -6,6 +6,7 @@ import {
   MemoryContractError,
   type Memory,
   type MemoryPage,
+  type MemoryUnresolvedMutationResult,
 } from "@/domain/memory/memory-types";
 
 const MAX_NORMALIZED_TAGS = 32;
@@ -20,6 +21,26 @@ export function mapMemoryList(payload: unknown): MemoryPage {
     total: dto.total,
     totalAll: dto.total_all,
     hasMore: dto.has_more,
+  };
+}
+
+export function mapMemoryUnresolvedMutation(
+  payload: unknown,
+  requestedMemoryId: string,
+): MemoryUnresolvedMutationResult {
+  if (
+    !isRecord(payload) ||
+    payload.ok !== true ||
+    payload.id !== requestedMemoryId ||
+    (payload.unresolved !== 0 && payload.unresolved !== 1)
+  ) {
+    throw contractError("memory unresolved mutation");
+  }
+
+  return {
+    ok: true,
+    id: payload.id,
+    unresolved: payload.unresolved,
   };
 }
 

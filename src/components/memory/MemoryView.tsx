@@ -1,13 +1,17 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
-import type { SafeMemoryListError } from "@/application/memory-list";
+import type {
+  SafeMemoryListError,
+  SafeMemoryMutationError,
+} from "@/application/memory-list";
 import { MemoryFilters } from "@/components/memory/MemoryFilters";
 import { MemoryItem } from "@/components/memory/MemoryItem";
 import {
   MemoryListEmpty,
   MemoryListError,
   MemoryListLoading,
+  MemoryMutationError,
 } from "@/components/memory/MemoryListStates";
 import { useMemoryList } from "@/components/memory/useMemoryList";
 import { PageHeader, PageHeaderAction } from "@/components/ui/page-header";
@@ -23,6 +27,7 @@ export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
     setImportanceFilter,
     setPinFirst,
     setPage,
+    setMemoryUnresolved,
     retry,
   } = useMemoryList();
   const isLoading = state.status === "idle" || state.status === "loading";
@@ -78,10 +83,13 @@ export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
         data={data}
         isLoading={isLoading}
         error={state.status === "error" ? state.error : null}
+        mutationError={state.mutationError}
+        pendingMemoryIds={state.pendingMemoryIds}
         hasFilters={hasFilters}
         listScrollRef={listScrollRef}
         onRetry={retry}
         onPageChange={setPage}
+        onSetUnresolved={setMemoryUnresolved}
       />
     </main>
   );
@@ -91,18 +99,24 @@ export function MemoryReadingPanel({
   data,
   isLoading,
   error,
+  mutationError,
+  pendingMemoryIds,
   hasFilters,
   listScrollRef,
   onRetry,
   onPageChange,
+  onSetUnresolved,
 }: {
   readonly data: MemoryPage | null;
   readonly isLoading: boolean;
   readonly error: SafeMemoryListError | null;
+  readonly mutationError: SafeMemoryMutationError | null;
+  readonly pendingMemoryIds: readonly string[];
   readonly hasFilters: boolean;
   readonly listScrollRef: RefObject<HTMLDivElement | null>;
   readonly onRetry: () => void;
   readonly onPageChange: (page: number) => void;
+  readonly onSetUnresolved: (memoryId: string, unresolved: boolean) => void;
 }) {
   return (
     <section
@@ -147,12 +161,18 @@ export function MemoryReadingPanel({
         {data && (
           <>
             {error && <MemoryListError error={error} onRetry={onRetry} compact />}
+            {mutationError && <MemoryMutationError error={mutationError} />}
             {data.items.length === 0 ? (
               <MemoryListEmpty filtered={hasFilters} />
             ) : (
               <div className={cn("divide-y divide-primary/10", isLoading && "opacity-70")}>
                 {data.items.map((memory) => (
-                  <MemoryItem key={memory.id} memory={memory} />
+                  <MemoryItem
+                    key={memory.id}
+                    memory={memory}
+                    pending={pendingMemoryIds.includes(memory.id)}
+                    onSetUnresolved={onSetUnresolved}
+                  />
                 ))}
               </div>
             )}

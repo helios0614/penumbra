@@ -1,12 +1,18 @@
-import { mapMemoryList } from "@/domain/memory/memory-mappers";
+import type { MemoryUnresolvedUpdateDto } from "@/domain/memory/memory-dto";
+import {
+  mapMemoryList,
+  mapMemoryUnresolvedMutation,
+} from "@/domain/memory/memory-mappers";
 import {
   MemoryContractError,
   type MemoryImportanceFilter,
   type MemoryListQuery,
   type MemoryPage,
+  type MemoryUnresolvedMutationResult,
 } from "@/domain/memory/memory-types";
 import {
   apiGet,
+  apiRequest,
   type ApiQuery,
   type ApiRequestOptions,
 } from "@/lib/api";
@@ -22,6 +28,22 @@ export async function listMemories(
       ...options,
       query: buildMemoryListApiQuery(query),
     }),
+  );
+}
+
+export async function setMemoryUnresolved(
+  memoryId: string,
+  unresolved: boolean,
+  options?: ApiRequestOptions,
+): Promise<MemoryUnresolvedMutationResult> {
+  const body: MemoryUnresolvedUpdateDto = { unresolved };
+  return mapMemoryUnresolvedMutation(
+    await apiRequest<unknown>(memoryUnresolvedPath(memoryId), {
+      ...options,
+      method: "PUT",
+      body,
+    }),
+    memoryId,
   );
 }
 
@@ -77,4 +99,8 @@ function queryError(field: string): MemoryContractError {
 
 function isFiniteTimestamp(value: number): boolean {
   return Number.isFinite(value) && value >= 0;
+}
+
+function memoryUnresolvedPath(memoryId: string): string {
+  return `${MEMORIES_ENDPOINT}/${encodeURIComponent(memoryId)}/unresolved`;
 }

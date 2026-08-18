@@ -5,7 +5,15 @@ import { presentMemoryItem } from "@/components/memory/memory-presentation";
 import type { Memory } from "@/domain/memory";
 import { cn } from "@/lib/utils";
 
-export function MemoryItem({ memory }: { readonly memory: Memory }) {
+export function MemoryItem({
+  memory,
+  pending,
+  onSetUnresolved,
+}: {
+  readonly memory: Memory;
+  readonly pending: boolean;
+  readonly onSetUnresolved: (memoryId: string, unresolved: boolean) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const presentation = presentMemoryItem(memory);
   const canExpand = memory.content.length > 260 || memory.content.split("\n").length > 4;
@@ -50,17 +58,12 @@ export function MemoryItem({ memory }: { readonly memory: Memory }) {
           className="absolute right-2 top-0 flex items-center gap-1 sm:right-4"
           data-memory-item-actions="true"
         >
-          {memory.isPinned && (
-            <span
-              role="img"
-              aria-label="这条记忆仍有未完成事件"
-              title="这条记忆仍有未完成事件"
-              className="grid size-11 shrink-0 place-items-center text-primary"
-              data-memory-pin
-            >
-              <Pin className="size-3.5" strokeWidth={1.8} aria-hidden="true" />
-            </span>
-          )}
+          <MemoryPinAction
+            memoryId={memory.id}
+            isPinned={memory.isPinned}
+            pending={pending}
+            onSetUnresolved={onSetUnresolved}
+          />
         </div>
       </div>
 
@@ -116,5 +119,41 @@ export function MemoryItem({ memory }: { readonly memory: Memory }) {
         </time>
       </footer>
     </article>
+  );
+}
+
+export function MemoryPinAction({
+  memoryId,
+  isPinned,
+  pending,
+  onSetUnresolved,
+}: {
+  readonly memoryId: string;
+  readonly isPinned: boolean;
+  readonly pending: boolean;
+  readonly onSetUnresolved: (memoryId: string, unresolved: boolean) => void;
+}) {
+  const label = isPinned ? "取消待继续标记" : "标记为待继续";
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSetUnresolved(memoryId, !isPinned)}
+      disabled={pending}
+      aria-label={label}
+      aria-pressed={isPinned}
+      aria-busy={pending || undefined}
+      title={label}
+      className={cn(
+        "grid size-11 shrink-0 place-items-center rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-45",
+        isPinned
+          ? "text-primary"
+          : "text-muted-foreground hover:bg-primary/10 hover:text-primary",
+      )}
+      data-memory-pin
+      data-memory-pin-state={isPinned ? "pinned" : "unpinned"}
+    >
+      <Pin className="size-3.5" strokeWidth={1.8} aria-hidden="true" />
+    </button>
   );
 }

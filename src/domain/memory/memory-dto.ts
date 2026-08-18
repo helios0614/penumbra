@@ -19,3 +19,7 @@ export type MemoryListDto = {
   total_all: number;
   has_more: boolean;
 };
+
+export type MemoryUnresolvedUpdateDto = {
+  unresolved: boolean;
+};

@@ -5,6 +5,7 @@ import {
   listMemories,
   mapMemoryList,
   MemoryContractError,
+  setMemoryUnresolved,
 } from "@/domain/memory";
 
 describe("memory list adapter", () => {
@@ -185,6 +186,74 @@ describe("memory list client", () => {
     await expect(listMemories({ page: 1, pageSize: 30 }, { timeoutMs: 0 }))
       .rejects.toBeInstanceOf(MemoryContractError);
   });
+
+  it("sets unresolved true through the target-state PUT contract", async () => {
+    fetchMock.mockResolvedValue(json({
+      ok: true,
+      id: "mem_1",
+      unresolved: 1,
+    }));
+
+    await expect(setMemoryUnresolved("mem_1", true, { timeoutMs: 0 }))
+      .resolves.toEqual({ ok: true, id: "mem_1", unresolved: 1 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/memories/mem_1/unresolved");
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: "PUT",
+      credentials: "include",
+      signal: expect.any(AbortSignal),
+    });
+    expect(fetchMock.mock.calls[0]?.[1]?.method).not.toBe("PATCH");
+    expect(
+      new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("content-type"),
+    ).toBe("application/json");
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      unresolved: true,
+    });
+  });
+
+  it("preserves an explicit false target in the request body", async () => {
+    fetchMock.mockResolvedValue(json({
+      ok: true,
+      id: "mem_1",
+      unresolved: 0,
+    }));
+
+    await expect(setMemoryUnresolved("mem_1", false, { timeoutMs: 0 }))
+      .resolves.toEqual({ ok: true, id: "mem_1", unresolved: 0 });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      unresolved: false,
+    });
+  });
+
+  it.each([
+    ["ok=false", { ok: false, id: "mem_1", unresolved: 1 }],
+    ["missing ok", { id: "mem_1", unresolved: 1 }],
+    ["missing id", { ok: true, unresolved: 1 }],
+    ["mismatched id", { ok: true, id: "mem_2", unresolved: 1 }],
+    ["missing unresolved", { ok: true, id: "mem_1" }],
+    ["non-canonical unresolved", { ok: true, id: "mem_1", unresolved: true }],
+  ])("rejects %s mutation responses", async (_case, payload) => {
+    fetchMock.mockResolvedValue(json(payload));
+
+    await expect(setMemoryUnresolved("mem_1", true, { timeoutMs: 0 }))
+      .rejects.toBeInstanceOf(MemoryContractError);
+  });
+
+  it("preserves shared ApiError semantics for mutation HTTP failures", async () => {
+    for (const status of [401, 404, 422, 500]) {
+      fetchMock.mockResolvedValueOnce(json({ detail: `status ${status}` }, status));
+
+      await expect(setMemoryUnresolved("mem_1", true, { timeoutMs: 0 }))
+        .rejects.toMatchObject({
+          name: "ApiError",
+          code: "HTTP_ERROR",
+          status,
+        });
+    }
+  });
 });
 
 function memory(overrides: Record<string, unknown> = {}) {
@@ -214,9 +283,9 @@ function page(items: unknown[]) {
   };
 }
 
-function json(payload: unknown): Response {
+function json(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
-    status: 200,
+    status,
     headers: { "content-type": "application/json" },
   });
 }

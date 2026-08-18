@@ -1,6 +1,9 @@
 import { RefreshCw } from "lucide-react";
 
-import type { SafeMemoryListError } from "@/application/memory-list";
+import type {
+  SafeMemoryListError,
+  SafeMemoryMutationError,
+} from "@/application/memory-list";
 
 export function MemoryListLoading() {
   return (
@@ -72,6 +75,22 @@ export function MemoryListEmpty({ filtered }: { readonly filtered: boolean }) {
           ? "可以换一个关键词，或放宽当前筛选条件。"
           : "当记忆被写入后，它们会安静地出现在这里。"}
       </p>
+    </div>
+  );
+}
+
+export function MemoryMutationError({
+  error,
+}: {
+  readonly error: SafeMemoryMutationError;
+}) {
+  return (
+    <div
+      role="alert"
+      className="border-b border-error/15 bg-error-subtle px-4 py-2 text-xs text-error-subtle-foreground sm:px-6"
+      data-memory-mutation-error="true"
+    >
+      {error.message}
     </div>
   );
 }

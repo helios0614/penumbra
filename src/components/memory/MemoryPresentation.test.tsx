@@ -4,7 +4,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { MemoryFilters } from "@/components/memory/MemoryFilters";
-import { MemoryItem } from "@/components/memory/MemoryItem";
+import {
+  MemoryItem,
+  MemoryPinAction,
+} from "@/components/memory/MemoryItem";
 import {
   MemoryReadingPanel,
   MemoryView,
@@ -14,6 +17,7 @@ import {
   MemoryListEmpty,
   MemoryListError,
   MemoryListLoading,
+  MemoryMutationError,
 } from "@/components/memory/MemoryListStates";
 import { presentMemoryItem } from "@/components/memory/memory-presentation";
 import type { Memory, MemoryPage } from "@/domain/memory";
@@ -51,25 +55,32 @@ describe("memory presentation", () => {
     expect(unknown.typeLabel).toBe("future_type");
   });
 
-  it("renders a read-only linear pin icon with accessible meaning and no pin status text", () => {
-    const html = renderToStaticMarkup(<MemoryItem memory={memory()} />);
+  it("renders pin and unpin actions with specific accessible meaning and no visible status text", () => {
+    const html = renderMemoryItem();
+    const unpinnedHtml = renderMemoryItem(memory({ isPinned: false }));
 
     expect(html).toContain("一段真实记忆");
     expect(html).toContain("共同经历");
     expect(html).toMatch(/重要度<\/span> <span[^>]*>0\.8<\/span>/);
     expect(html).toContain("海边");
     expect(html).toContain('data-memory-pin="true"');
-    expect(html).toContain('aria-label="这条记忆仍有未完成事件"');
-    expect(html).not.toMatch(/待跟进|未完成<|需要处理|标记待办|📌/);
+    expect(html).toContain('data-memory-pin-state="pinned"');
+    expect(html).toContain('aria-label="取消待继续标记"');
+    expect(html).toContain('title="取消待继续标记"');
+    expect(html).toContain('aria-pressed="true"');
+    expect(unpinnedHtml).toContain('data-memory-pin-state="unpinned"');
+    expect(unpinnedHtml).toContain('aria-label="标记为待继续"');
+    expect(unpinnedHtml).toContain('title="标记为待继续"');
+    expect(unpinnedHtml).toContain('aria-pressed="false"');
+    expect(`${html}${unpinnedHtml}`).not.toMatch(/>[^<]*(?:待继续|待跟进)[^<]*</);
+    expect(html).not.toMatch(/未完成<|需要处理|标记待办|📌/);
     expect(html).not.toMatch(/编辑|删除|重新总结|pin\/unpin/);
     expect(html).not.toContain("<form");
   });
 
   it("uses softer reading typography and a restrained metadata hierarchy", () => {
-    const html = renderToStaticMarkup(<MemoryItem memory={memory()} />);
-    const unpinnedHtml = renderToStaticMarkup(
-      <MemoryItem memory={memory({ isPinned: false })} />,
-    );
+    const html = renderMemoryItem();
+    const unpinnedHtml = renderMemoryItem(memory({ isPinned: false }));
     const item = html.match(/<article[^>]*data-memory-item="true"[^>]*>/)?.[0];
     const header = html.match(
       /<div[^>]*data-memory-item-header="true"[^>]*>/,
@@ -84,7 +95,7 @@ describe("memory presentation", () => {
     const unpinnedBody = unpinnedHtml.match(
       /<p[^>]*data-memory-body="true"[^>]*>/,
     )?.[0];
-    const pin = html.match(/<span[^>]*data-memory-pin="true"[^>]*>/)?.[0];
+    const pin = html.match(/<button[^>]*data-memory-pin="true"[^>]*>/)?.[0];
     const type = html.match(/<span[^>]*data-memory-type="true"[^>]*>/)?.[0];
     const importanceLabel = html.match(
       /<span[^>]*data-memory-importance-label="true"[^>]*>/,
@@ -109,6 +120,7 @@ describe("memory presentation", () => {
     expect(actions).not.toContain("tabindex=");
     expect(pin).toContain("size-11");
     expect(pin).not.toContain("size-7");
+    expect(pin).toContain('type="button"');
     expect(body).toContain("text-[13px]");
     expect(body).toContain("sm:text-sm");
     expect(body).toContain("mt-1.5");
@@ -143,19 +155,48 @@ describe("memory presentation", () => {
     );
   });
 
-  it("does not render pin or mutation affordances for an unpinned memory", () => {
-    const html = renderToStaticMarkup(
-      <MemoryItem memory={memory({ isPinned: false })} />,
-    );
-    const actions = html.match(
-      /<div[^>]*data-memory-item-actions="true"[^>]*><\/div>/,
+  it("sends the explicit target state and disables only the pending item action", () => {
+    const onSetUnresolved = vi.fn();
+    const pinAction = MemoryPinAction({
+      memoryId: "mem_1",
+      isPinned: false,
+      pending: false,
+      onSetUnresolved,
+    });
+    const unpinAction = MemoryPinAction({
+      memoryId: "mem_1",
+      isPinned: true,
+      pending: false,
+      onSetUnresolved,
+    });
+
+    pinAction.props.onClick();
+    unpinAction.props.onClick();
+
+    expect(onSetUnresolved.mock.calls).toEqual([
+      ["mem_1", true],
+      ["mem_1", false],
+    ]);
+
+    const pendingHtml = renderMemoryItem(memory({ isPinned: false }), true);
+    const pendingButton = pendingHtml.match(
+      /<button[^>]*data-memory-pin="true"[^>]*>/,
+    )?.[0];
+    const activeHtml = renderMemoryItem(memory({ isPinned: false }));
+    const activeButton = activeHtml.match(
+      /<button[^>]*data-memory-pin="true"[^>]*>/,
     )?.[0];
 
-    expect(actions).toBeDefined();
-    expect(html).not.toContain("data-memory-pin");
-    expect(html).not.toContain("<button");
-    expect(html).not.toMatch(/编辑|删除|更多|添加记忆|重新生成|总结/);
-    expect(memoryItemSource).not.toMatch(/onPin|togglePin|deleteMemory|editMemory/);
+    expect(pendingButton).toContain("size-11");
+    expect(pendingButton).toContain('disabled=""');
+    expect(pendingButton).toContain('aria-busy="true"');
+    expect(activeButton).toContain('type="button"');
+    expect(activeButton).not.toContain(' disabled=""');
+    expect(activeButton).not.toContain("tabindex");
+    expect(activeButton).toContain("focus-visible:ring-2");
+    expect(pendingHtml).not.toMatch(/>[^<]*(?:处理中|待跟进)[^<]*</);
+    expect(pendingHtml).not.toMatch(/编辑|删除|更多|添加记忆|重新生成|总结/);
+    expect(memoryItemSource).not.toMatch(/toggleMemoryUnresolved|togglePin|deleteMemory|editMemory/);
   });
 
   it("renders loading, empty, filtered empty, and safe error states", () => {
@@ -168,6 +209,11 @@ describe("memory presentation", () => {
         onRetry={vi.fn()}
       />,
     );
+    const mutationError = renderToStaticMarkup(
+      <MemoryMutationError
+        error={{ code: "server", message: "待继续标记未能更新，请稍后重试。" }}
+      />,
+    );
 
     expect(loading).toContain("正在加载记忆");
     expect(loading).toContain('aria-busy="true"');
@@ -176,6 +222,10 @@ describe("memory presentation", () => {
     expect(error).toContain("无法加载记忆");
     expect(error).toContain("重试");
     expect(error).not.toMatch(/endpoint|stack|response/);
+    expect(mutationError).toContain('role="alert"');
+    expect(mutationError).toContain('data-memory-mutation-error="true"');
+    expect(mutationError).toContain("待继续标记未能更新");
+    expect(mutationError).not.toMatch(/endpoint|stack|response/);
   });
 
   it("renders accessible server filters without emoji controls or unsupported filters", () => {
@@ -560,10 +610,26 @@ function renderReadingPanel(
       data={data}
       isLoading={overrides.isLoading ?? false}
       error={overrides.error ?? null}
+      mutationError={null}
+      pendingMemoryIds={[]}
       hasFilters={false}
       listScrollRef={createRef<HTMLDivElement>()}
       onRetry={vi.fn()}
       onPageChange={vi.fn()}
+      onSetUnresolved={vi.fn()}
+    />,
+  );
+}
+
+function renderMemoryItem(
+  value: Memory = memory(),
+  pending = false,
+): string {
+  return renderToStaticMarkup(
+    <MemoryItem
+      memory={value}
+      pending={pending}
+      onSetUnresolved={vi.fn()}
     />,
   );
 }

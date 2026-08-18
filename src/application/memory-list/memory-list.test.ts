@@ -6,9 +6,15 @@ import {
   mapMemoryListRequest,
   MEMORY_LIST_PAGE_SIZE,
   toSafeMemoryListError,
+  toSafeMemoryMutationError,
   type MemoryListRequest,
 } from "@/application/memory-list";
-import type { MemoryPage } from "@/domain/memory";
+import {
+  MemoryContractError,
+  type Memory,
+  type MemoryPage,
+  type MemoryUnresolvedMutationResult,
+} from "@/domain/memory";
 import { ApiError } from "@/lib/api";
 
 describe("memory list application query", () => {
@@ -148,6 +154,235 @@ describe("memory list controller", () => {
   });
 });
 
+describe("memory unresolved mutation coordinator", () => {
+  it.each([
+    ["Pin", false, true, 1 as const],
+    ["Unpin", true, false, 0 as const],
+  ])("completes %s with an explicit target and canonical refresh", async (
+    _operation,
+    initialPinned,
+    target,
+    unresolved,
+  ) => {
+    const loader = vi.fn()
+      .mockResolvedValueOnce(projection(initialPinned))
+      .mockResolvedValueOnce(projection(target));
+    const mutator = vi.fn().mockResolvedValue(
+      mutationResult(unresolved),
+    );
+    const controller = createMemoryListController(loader, mutator);
+
+    await controller.load();
+    await controller.setMemoryUnresolved("mem_1", target);
+
+    expect(mutator).toHaveBeenCalledTimes(1);
+    expect(mutator).toHaveBeenCalledWith(
+      "mem_1",
+      target,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(loader).toHaveBeenCalledTimes(2);
+    expect(controller.getState()).toMatchObject({
+      status: "ready",
+      data: { items: [{ id: "mem_1", isPinned: target }] },
+      pendingMemoryIds: [],
+      mutationError: null,
+    });
+  });
+
+  it("keeps canonical data unchanged and only the current item pending before refresh", async () => {
+    const mutation = deferred<MemoryUnresolvedMutationResult>();
+    const refresh = deferred<MemoryPage>();
+    const loader = vi.fn()
+      .mockResolvedValueOnce(projection(false, [memory(false), memory(true, "mem_2")]))
+      .mockReturnValueOnce(refresh.promise);
+    const mutator = vi.fn().mockReturnValue(mutation.promise);
+    const controller = createMemoryListController(loader, mutator);
+
+    await controller.load();
+    const inFlight = controller.setMemoryUnresolved("mem_1", true);
+    await controller.setMemoryUnresolved("mem_1", true);
+
+    expect(mutator).toHaveBeenCalledTimes(1);
+    expect(controller.getState()).toMatchObject({
+      status: "ready",
+      data: {
+        items: [
+          { id: "mem_1", isPinned: false },
+          { id: "mem_2", isPinned: true },
+        ],
+      },
+      pendingMemoryIds: ["mem_1"],
+    });
+
+    mutation.resolve(mutationResult(1));
+    await vi.waitFor(() => expect(loader).toHaveBeenCalledTimes(2));
+
+    expect(controller.getState()).toMatchObject({
+      status: "ready",
+      data: {
+        items: [
+          { id: "mem_1", isPinned: false },
+          { id: "mem_2", isPinned: true },
+        ],
+      },
+      pendingMemoryIds: ["mem_1"],
+    });
+
+    refresh.resolve(projection(true));
+    await inFlight;
+
+    expect(controller.getState()).toMatchObject({
+      status: "ready",
+      data: { items: [{ id: "mem_1", isPinned: true }] },
+      pendingMemoryIds: [],
+    });
+  });
+
+  it("reloads the complete active query without resetting page or filters", async () => {
+    const loader = vi.fn().mockResolvedValue(projection(false));
+    const mutator = vi.fn().mockResolvedValue(mutationResult(1));
+    const controller = createMemoryListController(loader, mutator);
+
+    await controller.load();
+    await controller.setSearch("海边");
+    await controller.setFilters({
+      date: "30-days",
+      importance: "high",
+      pinFirst: true,
+    });
+    await controller.setPage(3);
+    loader.mockClear();
+
+    await controller.setMemoryUnresolved("mem_1", true);
+
+    expect(loader).toHaveBeenCalledTimes(1);
+    expect(loader).toHaveBeenCalledWith(
+      request({
+        search: "海边",
+        date: "30-days",
+        importance: "high",
+        pinFirst: true,
+      }, 3),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it.each([
+    ["network", "NETWORK_ERROR" as const, "network" as const],
+    ["timeout", "TIMEOUT" as const, "timeout" as const],
+  ])("does not retry an uncertain %s mutation and reconciles by GET", async (
+    _case,
+    code,
+    safeCode,
+  ) => {
+    const loader = vi.fn()
+      .mockResolvedValueOnce(projection(false))
+      .mockResolvedValueOnce(projection(true));
+    const mutator = vi.fn().mockRejectedValue(
+      new ApiError("private transport detail", 0, { private: true }, code),
+    );
+    const controller = createMemoryListController(loader, mutator);
+
+    await controller.load();
+    await controller.setMemoryUnresolved("mem_1", true);
+
+    expect(mutator).toHaveBeenCalledTimes(1);
+    expect(loader).toHaveBeenCalledTimes(2);
+    expect(controller.getState()).toMatchObject({
+      status: "ready",
+      data: { items: [{ id: "mem_1", isPinned: true }] },
+      pendingMemoryIds: [],
+      mutationError: { code: safeCode },
+    });
+    expect(JSON.stringify(controller.getState())).not.toContain("private transport detail");
+  });
+
+  it("surfaces 404 and refreshes the projection so a missing item disappears", async () => {
+    const loader = vi.fn()
+      .mockResolvedValueOnce(projection(false))
+      .mockResolvedValueOnce(projection(false, []));
+    const mutator = vi.fn().mockRejectedValue(
+      new ApiError("private missing detail", 404, { detail: "private" }),
+    );
+    const controller = createMemoryListController(loader, mutator);
+
+    await controller.load();
+    await controller.setMemoryUnresolved("mem_1", true);
+
+    expect(mutator).toHaveBeenCalledTimes(1);
+    expect(loader).toHaveBeenCalledTimes(2);
+    expect(controller.getState()).toMatchObject({
+      status: "ready",
+      data: { items: [] },
+      pendingMemoryIds: [],
+      mutationError: { code: "not-found" },
+    });
+  });
+
+  it.each([
+    ["401", new ApiError("private auth", 401)],
+    ["422", new ApiError("private validation", 422)],
+    ["500", new ApiError("private server", 500)],
+    ["contract", new MemoryContractError("private contract")],
+  ])("keeps canonical local state on explicit %s failure", async (
+    _case,
+    error,
+  ) => {
+    const loader = vi.fn().mockResolvedValue(projection(false));
+    const mutator = vi.fn().mockRejectedValue(error);
+    const controller = createMemoryListController(loader, mutator);
+
+    await controller.load();
+    await controller.setMemoryUnresolved("mem_1", true);
+
+    expect(mutator).toHaveBeenCalledTimes(1);
+    expect(loader).toHaveBeenCalledTimes(1);
+    expect(controller.getState()).toMatchObject({
+      status: "ready",
+      data: { items: [{ id: "mem_1", isPinned: false }] },
+      pendingMemoryIds: [],
+      mutationError: {
+        code: _case === "401"
+          ? "authentication"
+          : _case === "contract"
+            ? "contract"
+            : "server",
+      },
+    });
+  });
+
+  it("keeps a mutation refresh from overwriting a newer active query", async () => {
+    const oldRefresh = deferred<MemoryPage>();
+    const newQuery = deferred<MemoryPage>();
+    const loader = vi.fn()
+      .mockResolvedValueOnce(projection(false))
+      .mockReturnValueOnce(oldRefresh.promise)
+      .mockReturnValueOnce(newQuery.promise);
+    const mutator = vi.fn().mockResolvedValue(mutationResult(1));
+    const controller = createMemoryListController(loader, mutator);
+
+    await controller.load();
+    const mutation = controller.setMemoryUnresolved("mem_1", true);
+    await vi.waitFor(() => expect(loader).toHaveBeenCalledTimes(2));
+    const query = controller.setSearch("新查询");
+
+    newQuery.resolve(projection(true));
+    await query;
+    oldRefresh.resolve(projection(false));
+    await mutation;
+
+    expect(controller.getState()).toMatchObject({
+      status: "ready",
+      request: { filters: { search: "新查询" } },
+      data: { items: [{ id: "mem_1", isPinned: true }] },
+      pendingMemoryIds: [],
+      mutationError: null,
+    });
+    expect(loader.mock.calls[1]?.[1]?.signal?.aborted).toBe(true);
+  });
+});
+
 describe("memory list safe errors", () => {
   it("maps transport categories without raw details", () => {
     const secret = "private-token";
@@ -159,6 +394,26 @@ describe("memory list safe errors", () => {
     ];
     for (const error of errors) {
       const safe = toSafeMemoryListError(error);
+      expect(JSON.stringify(safe)).not.toContain(secret);
+      expect(Object.keys(safe).sort()).toEqual(["code", "message"]);
+    }
+  });
+
+  it("maps mutation errors without retaining raw transport details", () => {
+    const secret = "private-mutation-payload";
+    const errors = [
+      new ApiError(secret, 401, { secret }),
+      new ApiError(secret, 404, { secret }),
+      new ApiError(secret, 0, { secret }, "NETWORK_ERROR"),
+      new ApiError(secret, 0, { secret }, "TIMEOUT"),
+      new ApiError(secret, 422, { secret }),
+      new ApiError(secret, 500, { secret }),
+      new MemoryContractError(secret),
+      { secret },
+    ];
+
+    for (const error of errors) {
+      const safe = toSafeMemoryMutationError(error);
       expect(JSON.stringify(safe)).not.toContain(secret);
       expect(Object.keys(safe).sort()).toEqual(["code", "message"]);
     }
@@ -190,6 +445,39 @@ function page(pageNumber: number): MemoryPage {
     totalAll: 0,
     hasMore: false,
   };
+}
+
+function projection(
+  isPinned: boolean,
+  items: readonly Memory[] = [memory(isPinned)],
+): MemoryPage {
+  return {
+    items,
+    page: 1,
+    pageSize: 30,
+    total: items.length,
+    totalAll: items.length,
+    hasMore: false,
+  };
+}
+
+function memory(isPinned: boolean, id = "mem_1"): Memory {
+  return {
+    id,
+    content: "canonical memory",
+    type: "promise",
+    createdAt: 1_720_000_000,
+    sourceConversationId: null,
+    tags: [],
+    importance: 0.8,
+    sourceStartedAt: null,
+    sourceEndedAt: null,
+    isPinned,
+  };
+}
+
+function mutationResult(unresolved: 0 | 1): MemoryUnresolvedMutationResult {
+  return { ok: true, id: "mem_1", unresolved };
 }
 
 function deferred<T>() {

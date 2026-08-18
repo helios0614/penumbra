@@ -24,8 +24,23 @@ export type SafeMemoryListError = {
   readonly message: string;
 };
 
+export type SafeMemoryMutationError = {
+  readonly code:
+    | "authentication"
+    | "not-found"
+    | "network"
+    | "timeout"
+    | "contract"
+    | "server"
+    | "sync"
+    | "unknown";
+  readonly message: string;
+};
+
 type MemoryListStateBase = {
   readonly request: MemoryListRequest;
+  readonly pendingMemoryIds: readonly string[];
+  readonly mutationError: SafeMemoryMutationError | null;
 };
 
 export type MemoryListState =
@@ -67,4 +82,6 @@ export const INITIAL_MEMORY_LIST_STATE: MemoryListState = Object.freeze({
   data: null,
   error: null,
   request: INITIAL_MEMORY_LIST_REQUEST,
+  pendingMemoryIds: Object.freeze([]),
+  mutationError: null,
 });

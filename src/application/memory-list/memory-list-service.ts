@@ -11,6 +11,7 @@ import {
   type MemoryDateFilter,
   type MemoryListRequest,
   type SafeMemoryListError,
+  type SafeMemoryMutationError,
 } from "@/application/memory-list/memory-list-types";
 
 export async function loadMemoryList(
@@ -85,4 +86,58 @@ export function toSafeMemoryListError(error: unknown): SafeMemoryListError {
     return { code: "contract", message: "记忆数据暂时无法读取。" };
   }
   return { code: "unknown", message: "记忆库暂时无法加载。" };
+}
+
+export function toSafeMemoryMutationError(
+  error: unknown,
+): SafeMemoryMutationError {
+  if (error instanceof ApiError) {
+    if (error.status === 401 || error.status === 403) {
+      return {
+        code: "authentication",
+        message: "当前会话无法更新这条记忆的待继续标记。",
+      };
+    }
+    if (error.status === 404) {
+      return {
+        code: "not-found",
+        message: "这条记忆可能已不存在，已尝试重新同步列表。",
+      };
+    }
+    if (error.code === "TIMEOUT") {
+      return {
+        code: "timeout",
+        message: "操作结果暂时无法确认，已尝试同步记忆列表。",
+      };
+    }
+    if (error.code === "NETWORK_ERROR" || error.code === "INVALID_RESPONSE") {
+      return {
+        code: "network",
+        message: "操作结果暂时无法确认，已尝试同步记忆列表。",
+      };
+    }
+    if (error.status === 422 || error.status >= 500) {
+      return {
+        code: "server",
+        message: "待继续标记未能更新，请稍后重试。",
+      };
+    }
+  }
+  if (error instanceof MemoryContractError) {
+    return {
+      code: "contract",
+      message: "待继续标记未能确认，本地状态保持不变。",
+    };
+  }
+  return {
+    code: "unknown",
+    message: "待继续标记未能更新，请稍后重试。",
+  };
+}
+
+export function memoryMutationRefreshError(): SafeMemoryMutationError {
+  return {
+    code: "sync",
+    message: "标记请求已完成，但记忆列表暂时未能同步。",
+  };
 }
