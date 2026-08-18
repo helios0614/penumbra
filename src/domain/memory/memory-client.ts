@@ -1,11 +1,15 @@
 import type { MemoryUnresolvedUpdateDto } from "@/domain/memory/memory-dto";
 import {
+  buildMemoryCreateDto,
+  mapMemoryCreateResult,
   mapMemoryList,
   mapMemoryUnresolvedMutation,
 } from "@/domain/memory/memory-mappers";
 import {
   MemoryContractError,
+  type CreateMemoryInput,
   type MemoryImportanceFilter,
+  type MemoryCreateResult,
   type MemoryListQuery,
   type MemoryPage,
   type MemoryUnresolvedMutationResult,
@@ -44,6 +48,19 @@ export async function setMemoryUnresolved(
       body,
     }),
     memoryId,
+  );
+}
+
+export async function createMemory(
+  input: CreateMemoryInput,
+  options?: ApiRequestOptions,
+): Promise<MemoryCreateResult> {
+  return mapMemoryCreateResult(
+    await apiRequest<unknown>(MEMORIES_ENDPOINT, {
+      ...options,
+      method: "POST",
+      body: buildMemoryCreateDto(input),
+    }),
   );
 }
 

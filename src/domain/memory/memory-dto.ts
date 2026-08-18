@@ -23,3 +23,19 @@ export type MemoryListDto = {
 export type MemoryUnresolvedUpdateDto = {
   unresolved: boolean;
 };
+
+export type MemoryCreateDto = {
+  content: string;
+  type: string;
+  importance: number;
+  keywords: string;
+};
+
+export type MemoryCreateResultDto = {
+  id: string;
+  content: string;
+  type: string;
+  created_at: number;
+  importance: number;
+  keywords: string;
+};

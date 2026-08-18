@@ -1,10 +1,11 @@
-import { useEffect, useRef, type RefObject } from "react";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 
 import type {
   SafeMemoryListError,
   SafeMemoryMutationError,
 } from "@/application/memory-list";
+import { MemoryCreateDialog } from "@/components/memory/MemoryCreateDialog";
 import { MemoryFilters } from "@/components/memory/MemoryFilters";
 import { MemoryItem } from "@/components/memory/MemoryItem";
 import {
@@ -28,8 +29,11 @@ export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
     setPinFirst,
     setPage,
     setMemoryUnresolved,
+    createMemory,
+    clearCreateError,
     retry,
   } = useMemoryList();
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const isLoading = state.status === "idle" || state.status === "loading";
   const data = state.data;
   const filters = state.request.filters;
@@ -52,16 +56,29 @@ export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
         titleId="memory-page-title"
         description="那些留下来的片段，会在需要时重新浮上来。"
         actions={
-          onBack ? (
+          <>
             <PageHeaderAction
               type="button"
-              onClick={onBack}
-              aria-label="返回桌面"
-              title="返回桌面"
+              onClick={() => {
+                clearCreateError();
+                setCreateDialogOpen(true);
+              }}
+              aria-label="新增记忆"
+              title="新增记忆"
             >
-              <X aria-hidden="true" />
+              <Plus aria-hidden="true" />
             </PageHeaderAction>
-          ) : undefined
+            {onBack && (
+              <PageHeaderAction
+                type="button"
+                onClick={onBack}
+                aria-label="返回桌面"
+                title="返回桌面"
+              >
+                <X aria-hidden="true" />
+              </PageHeaderAction>
+            )}
+          </>
         }
       />
 
@@ -90,6 +107,15 @@ export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
         onRetry={retry}
         onPageChange={setPage}
         onSetUnresolved={setMemoryUnresolved}
+      />
+
+      <MemoryCreateDialog
+        open={createDialogOpen}
+        isCreating={state.isCreating}
+        createError={state.createError}
+        onOpenChange={setCreateDialogOpen}
+        onCreate={createMemory}
+        onClearError={clearCreateError}
       />
     </main>
   );

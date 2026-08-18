@@ -1,7 +1,10 @@
 import {
   loadMemoryList,
+  memoryCreateRefreshError,
   memoryMutationRefreshError,
+  persistMemory,
   toSafeMemoryListError,
+  toSafeMemoryCreateError,
   toSafeMemoryMutationError,
 } from "@/application/memory-list/memory-list-service";
 import {
@@ -11,6 +14,8 @@ import {
   type MemoryListState,
 } from "@/application/memory-list/memory-list-types";
 import {
+  type CreateMemoryInput,
+  type MemoryCreateResult,
   setMemoryUnresolved,
   type MemoryPage,
   type MemoryUnresolvedMutationResult,
@@ -28,6 +33,11 @@ export type MemoryUnresolvedMutator = (
   options?: ApiRequestOptions,
 ) => Promise<MemoryUnresolvedMutationResult>;
 
+export type MemoryCreator = (
+  input: CreateMemoryInput,
+  options?: ApiRequestOptions,
+) => Promise<MemoryCreateResult>;
+
 export interface MemoryListController {
   getState(): MemoryListState;
   load(): Promise<void>;
@@ -35,6 +45,8 @@ export interface MemoryListController {
   setFilters(filters: Partial<Omit<MemoryListFilters, "search">>): Promise<void>;
   setPage(page: number): Promise<void>;
   setMemoryUnresolved(memoryId: string, unresolved: boolean): Promise<void>;
+  createMemory(input: CreateMemoryInput): Promise<boolean>;
+  clearCreateError(): void;
   subscribe(listener: (state: MemoryListState) => void): () => void;
   dispose(): void;
 }
@@ -42,6 +54,7 @@ export interface MemoryListController {
 export function createMemoryListController(
   loader: MemoryListLoader = loadMemoryList,
   mutateUnresolved: MemoryUnresolvedMutator = setMemoryUnresolved,
+  create: MemoryCreator = persistMemory,
 ): MemoryListController {
   let state = INITIAL_MEMORY_LIST_STATE;
   let activeController: AbortController | null = null;
@@ -50,6 +63,7 @@ export function createMemoryListController(
   const listeners = new Set<(state: MemoryListState) => void>();
   const mutationControllers = new Map<string, AbortController>();
   const pendingMemoryIds = new Set<string>();
+  let createInFlight = false;
 
   const publish = (nextState: MemoryListState) => {
     if (disposed) return;
@@ -86,6 +100,8 @@ export function createMemoryListController(
         request,
         pendingMemoryIds: [...pendingMemoryIds],
         mutationError: state.mutationError,
+        isCreating: state.isCreating,
+        createError: state.createError,
       });
     }
 
@@ -101,6 +117,8 @@ export function createMemoryListController(
         request,
         pendingMemoryIds: [...pendingMemoryIds],
         mutationError: state.mutationError,
+        isCreating: state.isCreating,
+        createError: state.createError,
       });
       return "delivered";
     } catch (error) {
@@ -122,6 +140,8 @@ export function createMemoryListController(
         request,
         pendingMemoryIds: [...pendingMemoryIds],
         mutationError: state.mutationError,
+        isCreating: state.isCreating,
+        createError: state.createError,
       });
       return "failed";
     } finally {
@@ -212,6 +232,56 @@ export function createMemoryListController(
       }
     },
 
+    async createMemory(input) {
+      if (disposed || createInFlight) return false;
+
+      createInFlight = true;
+      publish({
+        ...state,
+        isCreating: true,
+        createError: null,
+      });
+
+      try {
+        await create(input);
+        createInFlight = false;
+        if (disposed) return false;
+
+        const refreshRequest: MemoryListRequest = {
+          page: 1,
+          filters: state.request.filters,
+        };
+        publish({
+          ...state,
+          request: refreshRequest,
+          isCreating: false,
+          createError: null,
+          mutationError: null,
+        });
+
+        void execute(refreshRequest, "reconcile").then((outcome) => {
+          if (!disposed && outcome === "failed") {
+            publishMutationState(memoryCreateRefreshError());
+          }
+        });
+        return true;
+      } catch (error) {
+        createInFlight = false;
+        if (disposed) return false;
+        publish({
+          ...state,
+          isCreating: false,
+          createError: toSafeMemoryCreateError(error),
+        });
+        return false;
+      }
+    },
+
+    clearCreateError() {
+      if (disposed || state.createError === null) return;
+      publish({ ...state, createError: null });
+    },
+
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -227,6 +297,7 @@ export function createMemoryListController(
       mutationControllers.forEach((controller) => controller.abort());
       mutationControllers.clear();
       pendingMemoryIds.clear();
+      createInFlight = false;
     },
   };
 }

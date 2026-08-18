@@ -26,6 +26,22 @@ export type MemoryUnresolvedMutationResult = {
   readonly unresolved: 0 | 1;
 };
 
+export type CreateMemoryInput = {
+  readonly content: string;
+  readonly type: string;
+  readonly importance: number;
+  readonly keywords: readonly string[];
+};
+
+export type MemoryCreateResult = {
+  readonly id: string;
+  readonly content: string;
+  readonly type: string;
+  readonly createdAt: number;
+  readonly importance: number;
+  readonly keywords: string;
+};
+
 export type MemoryImportanceFilter = "all" | "low" | "mid" | "high" | "top";
 
 export type MemoryListQuery = {

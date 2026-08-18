@@ -1,4 +1,7 @@
 import {
+  createMemory,
+  type CreateMemoryInput,
+  type MemoryCreateResult,
   listMemories,
   MemoryContractError,
   type MemoryListQuery,
@@ -10,9 +13,17 @@ import {
   MEMORY_LIST_PAGE_SIZE,
   type MemoryDateFilter,
   type MemoryListRequest,
+  type SafeMemoryCreateError,
   type SafeMemoryListError,
   type SafeMemoryMutationError,
 } from "@/application/memory-list/memory-list-types";
+
+export async function persistMemory(
+  input: CreateMemoryInput,
+  options?: ApiRequestOptions,
+): Promise<MemoryCreateResult> {
+  return createMemory(input, options);
+}
 
 export async function loadMemoryList(
   request: MemoryListRequest,
@@ -139,5 +150,55 @@ export function memoryMutationRefreshError(): SafeMemoryMutationError {
   return {
     code: "sync",
     message: "标记请求已完成，但记忆列表暂时未能同步。",
+  };
+}
+
+export function toSafeMemoryCreateError(error: unknown): SafeMemoryCreateError {
+  if (error instanceof ApiError) {
+    if (error.status === 401 || error.status === 403) {
+      return {
+        code: "authentication",
+        message: "当前会话无法保存记忆。",
+      };
+    }
+    if (
+      error.code === "TIMEOUT" ||
+      error.code === "NETWORK_ERROR" ||
+      error.code === "INVALID_RESPONSE"
+    ) {
+      return {
+        code: "uncertain",
+        message: "保存结果暂时无法确认。为避免重复记录，请先确认记忆库后再尝试保存。",
+      };
+    }
+    if (error.status === 422) {
+      return {
+        code: "validation",
+        message: "这段记忆暂时无法保存，请检查填写内容。",
+      };
+    }
+    if (error.status >= 400) {
+      return {
+        code: "server",
+        message: "记忆未能保存，请稍后再试。",
+      };
+    }
+  }
+  if (error instanceof MemoryContractError) {
+    return {
+      code: "contract",
+      message: "保存响应暂时无法读取，请稍后再试。",
+    };
+  }
+  return {
+    code: "unknown",
+    message: "记忆未能保存，请稍后再试。",
+  };
+}
+
+export function memoryCreateRefreshError(): SafeMemoryMutationError {
+  return {
+    code: "sync",
+    message: "记忆已保存，但列表暂时无法刷新。",
   };
 }

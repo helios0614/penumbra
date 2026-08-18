@@ -37,10 +37,23 @@ export type SafeMemoryMutationError = {
   readonly message: string;
 };
 
+export type SafeMemoryCreateError = {
+  readonly code:
+    | "authentication"
+    | "validation"
+    | "server"
+    | "contract"
+    | "uncertain"
+    | "unknown";
+  readonly message: string;
+};
+
 type MemoryListStateBase = {
   readonly request: MemoryListRequest;
   readonly pendingMemoryIds: readonly string[];
   readonly mutationError: SafeMemoryMutationError | null;
+  readonly isCreating: boolean;
+  readonly createError: SafeMemoryCreateError | null;
 };
 
 export type MemoryListState =
@@ -84,4 +97,6 @@ export const INITIAL_MEMORY_LIST_STATE: MemoryListState = Object.freeze({
   request: INITIAL_MEMORY_LIST_REQUEST,
   pendingMemoryIds: Object.freeze([]),
   mutationError: null,
+  isCreating: false,
+  createError: null,
 });

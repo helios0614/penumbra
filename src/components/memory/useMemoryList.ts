@@ -8,6 +8,7 @@ import {
   type MemoryListController,
   type MemoryListState,
 } from "@/application/memory-list";
+import type { CreateMemoryInput } from "@/domain/memory";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -20,6 +21,8 @@ export interface UseMemoryListResult {
   readonly setPinFirst: (value: boolean) => void;
   readonly setPage: (page: number) => void;
   readonly setMemoryUnresolved: (memoryId: string, unresolved: boolean) => void;
+  readonly createMemory: (input: CreateMemoryInput) => Promise<boolean>;
+  readonly clearCreateError: () => void;
   readonly retry: () => void;
 }
 
@@ -73,6 +76,14 @@ export function useMemoryList(): UseMemoryListResult {
     void controllerRef.current?.setMemoryUnresolved(memoryId, unresolved);
   }, []);
 
+  const createMemory = useCallback((input: CreateMemoryInput) => {
+    return controllerRef.current?.createMemory(input) ?? Promise.resolve(false);
+  }, []);
+
+  const clearCreateError = useCallback(() => {
+    controllerRef.current?.clearCreateError();
+  }, []);
+
   const retry = useCallback(() => {
     void controllerRef.current?.load();
   }, []);
@@ -86,6 +97,8 @@ export function useMemoryList(): UseMemoryListResult {
     setPinFirst,
     setPage,
     setMemoryUnresolved,
+    createMemory,
+    clearCreateError,
     retry,
   };
 }

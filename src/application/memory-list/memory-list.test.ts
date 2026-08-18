@@ -5,13 +5,16 @@ import {
   getMemoryDateRange,
   mapMemoryListRequest,
   MEMORY_LIST_PAGE_SIZE,
+  toSafeMemoryCreateError,
   toSafeMemoryListError,
   toSafeMemoryMutationError,
   type MemoryListRequest,
 } from "@/application/memory-list";
 import {
   MemoryContractError,
+  type CreateMemoryInput,
   type Memory,
+  type MemoryCreateResult,
   type MemoryPage,
   type MemoryUnresolvedMutationResult,
 } from "@/domain/memory";
@@ -383,6 +386,165 @@ describe("memory unresolved mutation coordinator", () => {
   });
 });
 
+describe("memory create coordinator", () => {
+  it("keeps create pending separate, blocks duplicates, and never inserts a receipt optimistically", async () => {
+    const post = deferred<MemoryCreateResult>();
+    const refresh = deferred<MemoryPage>();
+    const loader = vi.fn()
+      .mockResolvedValueOnce(projection(false))
+      .mockReturnValueOnce(refresh.promise);
+    const creator = vi.fn().mockReturnValue(post.promise);
+    const controller = createMemoryListController(
+      loader,
+      vi.fn(),
+      creator,
+    );
+
+    await controller.load();
+    const creating = controller.createMemory(createInput());
+    const duplicate = await controller.createMemory(createInput({ content: "重复" }));
+
+    expect(duplicate).toBe(false);
+    expect(creator).toHaveBeenCalledTimes(1);
+    expect(controller.getState()).toMatchObject({
+      status: "ready",
+      data: { items: [{ id: "mem_1" }] },
+      isCreating: true,
+      pendingMemoryIds: [],
+      createError: null,
+    });
+
+    post.resolve(createResult());
+    await expect(creating).resolves.toBe(true);
+    await vi.waitFor(() => expect(loader).toHaveBeenCalledTimes(2));
+
+    expect(controller.getState()).toMatchObject({
+      data: { items: [{ id: "mem_1" }] },
+      request: { page: 1 },
+      isCreating: false,
+    });
+    expect(JSON.stringify(controller.getState().data)).not.toContain("mem_created");
+
+    refresh.resolve(projection(false, []));
+    await vi.waitFor(() => expect(controller.getState().data?.items).toEqual([]));
+    expect(controller.getState()).toMatchObject({
+      status: "ready",
+      data: { items: [] },
+      createError: null,
+    });
+  });
+
+  it("refreshes page one while preserving q, time, importance, and pin-first", async () => {
+    const loader = vi.fn().mockResolvedValue(projection(false));
+    const creator = vi.fn().mockResolvedValue(createResult());
+    const controller = createMemoryListController(loader, vi.fn(), creator);
+
+    await controller.load();
+    await controller.setSearch("海边");
+    await controller.setFilters({
+      date: "30-days",
+      importance: "high",
+      pinFirst: true,
+    });
+    await controller.setPage(3);
+    loader.mockClear();
+
+    await expect(controller.createMemory(createInput())).resolves.toBe(true);
+    await vi.waitFor(() => expect(loader).toHaveBeenCalledTimes(1));
+
+    expect(loader).toHaveBeenCalledWith(
+      request({
+        search: "海边",
+        date: "30-days",
+        importance: "high",
+        pinFirst: true,
+      }, 1),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(creator).toHaveBeenCalledWith(createInput());
+  });
+
+  it.each([
+    ["401", new ApiError("private auth", 401), "authentication"],
+    ["422", new ApiError("private validation", 422), "validation"],
+    ["500", new ApiError("private server", 500), "server"],
+    ["contract", new MemoryContractError("private contract"), "contract"],
+  ])("keeps the create form state available on explicit %s failure", async (
+    _case,
+    error,
+    safeCode,
+  ) => {
+    const loader = vi.fn().mockResolvedValue(projection(false));
+    const creator = vi.fn().mockRejectedValue(error);
+    const controller = createMemoryListController(loader, vi.fn(), creator);
+    await controller.load();
+
+    await expect(controller.createMemory(createInput())).resolves.toBe(false);
+
+    expect(creator).toHaveBeenCalledTimes(1);
+    expect(loader).toHaveBeenCalledTimes(1);
+    expect(controller.getState()).toMatchObject({
+      status: "ready",
+      data: { items: [{ id: "mem_1" }] },
+      isCreating: false,
+      createError: { code: safeCode },
+    });
+    expect(JSON.stringify(controller.getState())).not.toContain("private");
+  });
+
+  it.each([
+    ["network", "NETWORK_ERROR" as const],
+    ["timeout", "TIMEOUT" as const],
+  ])("does not retry an uncertain %s POST or describe it as a confirmed failure", async (
+    _case,
+    code,
+  ) => {
+    const loader = vi.fn().mockResolvedValue(projection(false));
+    const creator = vi.fn().mockRejectedValue(
+      new ApiError("private uncertainty", 0, { private: true }, code),
+    );
+    const controller = createMemoryListController(loader, vi.fn(), creator);
+    await controller.load();
+
+    await expect(controller.createMemory(createInput())).resolves.toBe(false);
+
+    expect(creator).toHaveBeenCalledTimes(1);
+    expect(loader).toHaveBeenCalledTimes(1);
+    expect(controller.getState()).toMatchObject({
+      isCreating: false,
+      createError: {
+        code: "uncertain",
+        message: expect.stringContaining("结果暂时无法确认"),
+      },
+    });
+    expect(controller.getState().createError?.message).not.toContain("保存失败");
+  });
+
+  it("reports a refresh failure as saved-but-unsynced without retrying POST", async () => {
+    const loader = vi.fn()
+      .mockResolvedValueOnce(projection(false))
+      .mockRejectedValueOnce(new ApiError("private refresh", 0, undefined, "NETWORK_ERROR"));
+    const creator = vi.fn().mockResolvedValue(createResult());
+    const controller = createMemoryListController(loader, vi.fn(), creator);
+    await controller.load();
+
+    await expect(controller.createMemory(createInput())).resolves.toBe(true);
+    await vi.waitFor(() => {
+      expect(controller.getState().mutationError).toEqual({
+        code: "sync",
+        message: "记忆已保存，但列表暂时无法刷新。",
+      });
+    });
+
+    expect(creator).toHaveBeenCalledTimes(1);
+    expect(loader).toHaveBeenCalledTimes(2);
+    expect(controller.getState()).toMatchObject({
+      isCreating: false,
+      createError: null,
+    });
+  });
+});
+
 describe("memory list safe errors", () => {
   it("maps transport categories without raw details", () => {
     const secret = "private-token";
@@ -417,6 +579,27 @@ describe("memory list safe errors", () => {
       expect(JSON.stringify(safe)).not.toContain(secret);
       expect(Object.keys(safe).sort()).toEqual(["code", "message"]);
     }
+  });
+
+  it("keeps create uncertainty distinct and never retains raw transport details", () => {
+    const secret = "private-create-payload";
+    const errors = [
+      new ApiError(secret, 401, { secret }),
+      new ApiError(secret, 0, { secret }, "NETWORK_ERROR"),
+      new ApiError(secret, 0, { secret }, "TIMEOUT"),
+      new ApiError(secret, 422, { secret }),
+      new ApiError(secret, 500, { secret }),
+      new MemoryContractError(secret),
+      { secret },
+    ];
+
+    for (const error of errors) {
+      const safe = toSafeMemoryCreateError(error);
+      expect(JSON.stringify(safe)).not.toContain(secret);
+      expect(Object.keys(safe).sort()).toEqual(["code", "message"]);
+    }
+    expect(toSafeMemoryCreateError(errors[1]).code).toBe("uncertain");
+    expect(toSafeMemoryCreateError(errors[2]).code).toBe("uncertain");
   });
 });
 
@@ -478,6 +661,27 @@ function memory(isPinned: boolean, id = "mem_1"): Memory {
 
 function mutationResult(unresolved: 0 | 1): MemoryUnresolvedMutationResult {
   return { ok: true, id: "mem_1", unresolved };
+}
+
+function createInput(overrides: Partial<CreateMemoryInput> = {}): CreateMemoryInput {
+  return {
+    content: "一段新记忆",
+    type: "event",
+    importance: 0.5,
+    keywords: ["海边"],
+    ...overrides,
+  };
+}
+
+function createResult(): MemoryCreateResult {
+  return {
+    id: "mem_created",
+    content: "一段新记忆",
+    type: "event",
+    createdAt: 1_723_000_000,
+    importance: 0.5,
+    keywords: '["海边"]',
+  };
 }
 
 function deferred<T>() {

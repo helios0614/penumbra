@@ -1,10 +1,14 @@
 import type {
+  MemoryCreateDto,
+  MemoryCreateResultDto,
   MemoryListDto,
   MemoryListItemDto,
 } from "@/domain/memory/memory-dto";
 import {
   MemoryContractError,
+  type CreateMemoryInput,
   type Memory,
+  type MemoryCreateResult,
   type MemoryPage,
   type MemoryUnresolvedMutationResult,
 } from "@/domain/memory/memory-types";
@@ -44,6 +48,40 @@ export function mapMemoryUnresolvedMutation(
   };
 }
 
+export function buildMemoryCreateDto(input: CreateMemoryInput): MemoryCreateDto {
+  const content = input.content.trim();
+  const type = input.type.trim();
+  if (!content) throw new MemoryContractError("Invalid memory create content");
+  if (!type) throw new MemoryContractError("Invalid memory create type");
+  if (
+    !Number.isFinite(input.importance) ||
+    input.importance < 0 ||
+    input.importance > 1
+  ) {
+    throw new MemoryContractError("Invalid memory create importance");
+  }
+
+  const keywords = normalizeCreateKeywords(input.keywords);
+  return {
+    content,
+    type,
+    importance: input.importance,
+    keywords: keywords.length > 0 ? JSON.stringify(keywords) : "",
+  };
+}
+
+export function mapMemoryCreateResult(payload: unknown): MemoryCreateResult {
+  const dto = parseMemoryCreateResult(payload);
+  return {
+    id: dto.id,
+    content: dto.content,
+    type: dto.type,
+    createdAt: dto.created_at,
+    importance: dto.importance,
+    keywords: dto.keywords,
+  };
+}
+
 function parseMemoryList(payload: unknown): MemoryListDto {
   if (
     !isRecord(payload) ||
@@ -67,6 +105,52 @@ function parseMemoryList(payload: unknown): MemoryListDto {
     total_all: payload.total_all,
     has_more: payload.has_more,
   };
+}
+
+function parseMemoryCreateResult(payload: unknown): MemoryCreateResultDto {
+  if (
+    !isRecord(payload) ||
+    typeof payload.id !== "string" ||
+    !payload.id ||
+    typeof payload.content !== "string" ||
+    typeof payload.type !== "string" ||
+    !isValidTimestamp(payload.created_at) ||
+    typeof payload.importance !== "number" ||
+    !Number.isFinite(payload.importance) ||
+    payload.importance < 0 ||
+    payload.importance > 1 ||
+    typeof payload.keywords !== "string"
+  ) {
+    throw contractError("memory create result");
+  }
+
+  return {
+    id: payload.id,
+    content: payload.content,
+    type: payload.type,
+    created_at: payload.created_at,
+    importance: payload.importance,
+    keywords: payload.keywords,
+  };
+}
+
+function normalizeCreateKeywords(values: readonly string[]): readonly string[] {
+  if (!Array.isArray(values)) {
+    throw new MemoryContractError("Invalid memory create keywords");
+  }
+
+  const seen = new Set<string>();
+  const keywords: string[] = [];
+  for (const value of values) {
+    if (typeof value !== "string") {
+      throw new MemoryContractError("Invalid memory create keywords");
+    }
+    const keyword = value.trim();
+    if (!keyword || seen.has(keyword)) continue;
+    seen.add(keyword);
+    keywords.push(keyword);
+  }
+  return keywords;
 }
 
 function parseMemoryListItem(payload: unknown): MemoryListItemDto {

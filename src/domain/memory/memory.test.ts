@@ -1,12 +1,74 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  buildMemoryCreateDto,
   buildMemoryListApiQuery,
+  createMemory,
   listMemories,
+  mapMemoryCreateResult,
   mapMemoryList,
   MemoryContractError,
   setMemoryUnresolved,
 } from "@/domain/memory";
+
+describe("memory create adapter", () => {
+  it("trims content and serializes normalized keyword semantics to the wire string", () => {
+    expect(buildMemoryCreateDto({
+      content: "  七夕论坛照片帖  ",
+      type: "event",
+      importance: 0.6,
+      keywords: [" 七夕 ", "论坛", "", "七夕", "Monitor"],
+    })).toEqual({
+      content: "七夕论坛照片帖",
+      type: "event",
+      importance: 0.6,
+      keywords: '["七夕","论坛","Monitor"]',
+    });
+  });
+
+  it("uses an empty wire string when no keywords remain", () => {
+    expect(buildMemoryCreateDto({
+      content: "一段记忆",
+      type: "event",
+      importance: 0.5,
+      keywords: [" ", ""],
+    }).keywords).toBe("");
+  });
+
+  it("maps only the stable create receipt instead of inventing a canonical list item", () => {
+    expect(mapMemoryCreateResult(createReceipt({ source_start_ts: null }))).toEqual({
+      id: "mem_created",
+      content: "一段新记忆",
+      type: "event",
+      createdAt: 1_723_000_000.5,
+      importance: 0.5,
+      keywords: '["海边"]',
+    });
+    expect(mapMemoryCreateResult(createReceipt())).not.toHaveProperty("isPinned");
+  });
+
+  it("rejects malformed stable response fields without retaining payload details", () => {
+    const secret = "private-create-payload";
+    for (const payload of [
+      null,
+      createReceipt({ id: "" }),
+      createReceipt({ content: null }),
+      createReceipt({ type: null }),
+      createReceipt({ created_at: Number.MAX_VALUE }),
+      createReceipt({ importance: 1.1 }),
+      createReceipt({ keywords: [secret] }),
+    ]) {
+      let error: unknown;
+      try {
+        mapMemoryCreateResult(payload);
+      } catch (reason) {
+        error = reason;
+      }
+      expect(error).toBeInstanceOf(MemoryContractError);
+      expect(String(error)).not.toContain(secret);
+    }
+  });
+});
 
 describe("memory list adapter", () => {
   it("maps the real paged list DTO and normalizes optional metadata", () => {
@@ -181,6 +243,76 @@ describe("memory list client", () => {
     expect(url).not.toMatch(/type=|unresolved=|cursor=|offset=/);
   });
 
+  it("posts every create field to the memories endpoint and returns a receipt", async () => {
+    fetchMock.mockResolvedValue(json(createReceipt()));
+
+    await expect(createMemory({
+      content: "  一段新记忆  ",
+      type: "event",
+      importance: 0.5,
+      keywords: ["海边"],
+    }, { timeoutMs: 0 })).resolves.toEqual({
+      id: "mem_created",
+      content: "一段新记忆",
+      type: "event",
+      createdAt: 1_723_000_000.5,
+      importance: 0.5,
+      keywords: '["海边"]',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/memories");
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: "POST",
+      credentials: "include",
+      signal: expect.any(AbortSignal),
+    });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      content: "一段新记忆",
+      type: "event",
+      importance: 0.5,
+      keywords: '["海边"]',
+    });
+  });
+
+  it("sends explicit empty keywords and rejects malformed create responses", async () => {
+    fetchMock
+      .mockResolvedValueOnce(json(createReceipt({ keywords: "" })))
+      .mockResolvedValueOnce(json(createReceipt({ importance: "0.5" })));
+
+    await createMemory({
+      content: "没有关键词",
+      type: "event",
+      importance: 0.5,
+      keywords: [],
+    }, { timeoutMs: 0 });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).keywords).toBe("");
+
+    await expect(createMemory({
+      content: "响应损坏",
+      type: "event",
+      importance: 0.5,
+      keywords: [],
+    }, { timeoutMs: 0 })).rejects.toBeInstanceOf(MemoryContractError);
+  });
+
+  it("preserves shared ApiError semantics for create HTTP failures", async () => {
+    for (const status of [401, 422, 500]) {
+      fetchMock.mockResolvedValueOnce(json({ detail: `status ${status}` }, status));
+
+      await expect(createMemory({
+        content: "一段记忆",
+        type: "event",
+        importance: 0.5,
+        keywords: [],
+      }, { timeoutMs: 0 })).rejects.toMatchObject({
+        name: "ApiError",
+        code: "HTTP_ERROR",
+        status,
+      });
+    }
+  });
+
   it("does not accept the legacy unpaged array response", async () => {
     fetchMock.mockResolvedValue(json([memory()]));
     await expect(listMemories({ page: 1, pageSize: 30 }, { timeoutMs: 0 }))
@@ -280,6 +412,18 @@ function page(items: unknown[]) {
     total: items.length,
     total_all: items.length,
     has_more: false,
+  };
+}
+
+function createReceipt(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "mem_created",
+    content: "一段新记忆",
+    type: "event",
+    created_at: 1_723_000_000.5,
+    importance: 0.5,
+    keywords: '["海边"]',
+    ...overrides,
   };
 }
 

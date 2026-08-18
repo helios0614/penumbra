@@ -2,12 +2,24 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
+type TextareaSurface = "solid" | "translucent"
+
+function Textarea({
+  className,
+  surface = "solid",
+  ...props
+}: React.ComponentProps<"textarea"> & {
+  surface?: TextareaSurface
+}) {
   return (
     <textarea
       data-slot="textarea"
+      data-surface={surface}
       className={cn(
-        "mist-solid flex field-sizing-content min-h-16 w-full rounded-lg px-2.5 py-2 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
+        "flex field-sizing-content min-h-16 w-full rounded-lg px-2.5 py-2 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring/55 focus-visible:outline-none! focus-visible:ring-2! focus-visible:ring-ring/20! disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
+        surface === "solid"
+          ? "mist-solid"
+          : "border border-border-strong/50 bg-background/25 shadow-sm hover:bg-background/35 focus:bg-background/35",
         className
       )}
       {...props}
@@ -16,3 +28,4 @@ function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
 }
 
 export { Textarea }
+export type { TextareaSurface }
