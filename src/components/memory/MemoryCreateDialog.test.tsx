@@ -22,6 +22,10 @@ const memoryViewSource = readFileSync(
   new URL("./MemoryView.tsx", import.meta.url),
   "utf8",
 );
+const pageHeaderSource = readFileSync(
+  new URL("../ui/page-header.tsx", import.meta.url),
+  "utf8",
+);
 const sliderSource = readFileSync(
   new URL("../ui/slider.tsx", import.meta.url),
   "utf8",
@@ -57,16 +61,54 @@ describe("memory create presentation", () => {
     expect(memoryViewSource).toContain("open={createDialogOpen}");
   });
 
-  it("uses the existing compact Dialog composition and decorative font", () => {
+  it("uses the existing compact Dialog composition and shared decorative family", () => {
     expect(dialogPrimitiveSource).toContain("mist-glass-strong");
     expect(dialogSource).toContain("max-h-[calc(100dvh-2rem)]");
     expect(dialogSource).toContain("sm:max-w-lg");
     expect(dialogSource).toContain("overflow-y-auto");
     expect(dialogSource).toContain("rounded-[28px]");
-    expect(dialogSource).toMatch(/font-decorative[\s\S]*?ADD MEMORY/);
+    expect(pageHeaderSource).toContain(
+      'className="font-decorative text-xs font-normal uppercase tracking-[0.18em] text-muted-foreground"',
+    );
+    expect(pageHeaderSource).toContain(
+      'className="mt-0.5 text-xl font-semibold leading-7 text-foreground"',
+    );
+    expect(dialogSource).toContain(
+      'className="font-decorative text-[11px] font-normal uppercase leading-4 tracking-[0.14em] text-muted-foreground"',
+    );
+    expect(dialogSource).toContain(
+      'className="mt-0.5 font-sans text-lg font-semibold leading-7 text-foreground"',
+    );
     expect(dialogSource).toContain("新增记忆");
     expect(dialogSource).toContain("留下一段值得记住的内容。");
+    expect(dialogPrimitiveSource).toContain("<DialogPrimitive.Title");
     expect(dialogSource).not.toMatch(/font-family|--font-decorative/);
+  });
+
+  it("tightens only metadata and footer rhythm while preserving content hierarchy", () => {
+    expect(dialogSource).toContain(
+      'className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-3 pt-5 sm:px-6"',
+    );
+    expect(dialogSource).toMatch(
+      /<div className="mt-5">[\s\S]*?id="memory-create-importance-label"/,
+    );
+    expect(dialogSource).toContain('<div className="mt-3">');
+    expect(dialogSource).toContain('<div className="mt-3.5">');
+    expect(dialogSource).toContain(
+      'className="shrink-0 border-t border-border/60 px-5 py-3 sm:px-6"',
+    );
+    expect(dialogSource).toMatch(
+      /htmlFor="memory-create-content"[\s\S]*?className="mb-2 block text-sm font-medium text-foreground"/,
+    );
+    expect(dialogSource).toMatch(
+      /id="memory-create-importance-label"[\s\S]*?className="text-sm font-normal text-foreground"/,
+    );
+    expect(dialogSource).toMatch(
+      /className="mb-2 block text-sm font-normal text-foreground"[\s\S]*?>\s*类型/,
+    );
+    expect(dialogSource).toMatch(
+      /htmlFor="memory-create-keywords"[\s\S]*?className="mb-2 block text-sm font-normal text-foreground"/,
+    );
   });
 
   it("keeps content visually primary without required stars and validates trimmed text", () => {

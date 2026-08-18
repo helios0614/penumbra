@@ -118,10 +118,10 @@ export function MemoryCreateDialog({
           aria-busy={isCreating}
         >
           <DialogHeader className="relative shrink-0 gap-0 border-b border-border/60 px-5 pb-4 pt-5 pr-16 sm:px-6 sm:pb-5 sm:pt-6 sm:pr-16">
-            <p className="font-decorative text-xs font-normal uppercase tracking-[0.18em] text-muted-foreground">
+            <p className="font-decorative text-[11px] font-normal uppercase leading-4 tracking-[0.14em] text-muted-foreground">
               ADD MEMORY
             </p>
-            <DialogTitle className="mt-1 text-lg font-semibold leading-7 text-foreground">
+            <DialogTitle className="mt-0.5 font-sans text-lg font-semibold leading-7 text-foreground">
               新增记忆
             </DialogTitle>
             <DialogDescription className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
@@ -144,8 +144,8 @@ export function MemoryCreateDialog({
             </DialogClose>
           </DialogHeader>
 
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">
-            <div className="space-y-5">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-3 pt-5 sm:px-6">
+            <div>
               <div>
                 <label
                   htmlFor="memory-create-content"
@@ -180,11 +180,11 @@ export function MemoryCreateDialog({
                 )}
               </div>
 
-              <div>
+              <div className="mt-5">
                 <div className="flex items-center justify-between gap-4">
                   <label
                     id="memory-create-importance-label"
-                    className="text-sm font-medium text-foreground"
+                    className="text-sm font-normal text-foreground"
                   >
                     重要性
                   </label>
@@ -207,8 +207,8 @@ export function MemoryCreateDialog({
                 />
               </div>
 
-              <div>
-                <label className="mb-2 block text-sm font-medium text-foreground">
+              <div className="mt-3">
+                <label className="mb-2 block text-sm font-normal text-foreground">
                   类型
                 </label>
                 <AppSelect
@@ -224,10 +224,10 @@ export function MemoryCreateDialog({
                 />
               </div>
 
-              <div>
+              <div className="mt-3.5">
                 <label
                   htmlFor="memory-create-keywords"
-                  className="mb-2 block text-sm font-medium text-foreground"
+                  className="mb-2 block text-sm font-normal text-foreground"
                 >
                   关键词
                 </label>
@@ -244,7 +244,7 @@ export function MemoryCreateDialog({
             </div>
           </div>
 
-          <div className="shrink-0 border-t border-border/60 px-5 py-4 sm:px-6">
+          <div className="shrink-0 border-t border-border/60 px-5 py-3 sm:px-6">
             {createError && (
               <div
                 role="alert"
