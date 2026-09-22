@@ -10,11 +10,12 @@ globs:
 # UI Development Skill
 
 本 skill 是 Claude 环境的自动触发入口，只做指路适配。
-Penumbra 的 UI 规范以 `docs/ui-development.md` 为通用入口，以 `docs/design-spec.md` 和 `docs/chat-ui-reference.md` 为具体规范来源。
+Penumbra 的 UI 规范以 `docs/ui-development.md` 为通用入口，以 `docs/ui-guidelines.md`、`docs/design-spec.md` 和 `docs/chat-ui-reference.md` 为具体规范来源。
 
 开始写 UI 代码前，按任务范围先阅读：
 
 - `docs/ui-development.md`
+- `docs/ui-guidelines.md`
 - `docs/design-spec.md`
 - `docs/chat-ui-reference.md`（涉及聊天 UI 时必读）
 

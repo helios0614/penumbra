@@ -21,7 +21,7 @@ UI 开发的通用入口是 `docs/ui-development.md`，适用于人类开发者�
 
 **重要约束**：
 - 功能和布局可参考原项目
-- **样式、组件、规范严格按 Penumbra 的来**（`docs/ui-development.md`、`docs/design-spec.md`）
+- **样式、组件、规范严格按 Penumbra 的来**（`docs/ui-development.md`、`docs/ui-guidelines.md`、`docs/design-spec.md`）
 - 不要复制原项目的样式代码，全部用 Penumbra 的设计系统重写
 - shadcn 组件优先，Tailwind class 优先，CSS 变量驱动
 
@@ -48,6 +48,7 @@ src/
   assets/        ← 静态资源、自定义 SVG 图标
 docs/
   ui-development.md     ← UI 开发通用入口（所有开发者/agent 从这里开始）
+  ui-guidelines.md      ← 视觉语言、页面组合、模式成熟度与 UI 抽象边界
   design-spec.md        ← 视觉规范（token、字体、间距、圆角、阴影、可访问性）
   chat-ui-reference.md  ← 聊天组件交互参考与默认实现决策
 ```

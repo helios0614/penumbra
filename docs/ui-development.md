@@ -9,10 +9,11 @@ Claude 专用的 `.claude/skills/ui-dev.md` 只负责自动触发和指路，具
 
 开始写 UI 代码前，先阅读并按任务范围确认相关规范：
 
+- `docs/ui-guidelines.md` — 视觉语言、页面组合原则、Stable / Provisional / Exploratory 模式与 UI 抽象边界
 - `docs/design-spec.md` — token、颜色、字体、间距、圆角、阴影、毛玻璃、动效、可访问性
 - `docs/chat-ui-reference.md` — 聊天组件交互参考与默认实现决策
 
-如果任务只涉及非聊天 UI，仍需遵循 `docs/design-spec.md`。如果任务涉及聊天页、消息气泡、输入框、会话列表、建议卡片或附件能力，则同时遵循 `docs/chat-ui-reference.md`。
+所有 UI 任务均需遵循 `docs/ui-guidelines.md` 与 `docs/design-spec.md`。如果任务涉及聊天页、消息气泡、输入框、会话列表、建议卡片或附件能力，则同时遵循 `docs/chat-ui-reference.md`。
 
 ---
 
@@ -55,7 +56,7 @@ Claude 专用的 `.claude/skills/ui-dev.md` 只负责自动触发和指路，具
 
 写完 UI 相关代码后，自查：
 
-- [ ] 是否已阅读本任务相关的 `design-spec` / `chat-ui-reference` 条目
+- [ ] 是否已阅读本任务相关的 `ui-guidelines` / `design-spec` / `chat-ui-reference` 条目
 - [ ] 是否优先使用了 shadcn 原语
 - [ ] 颜色是否全部来自 CSS 变量，没有组件内硬编码 hex
 - [ ] 主色是否只依赖 `--color-theme`，语义色是否使用命名 token
