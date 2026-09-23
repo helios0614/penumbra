@@ -138,13 +138,14 @@ Penumbra 使用现有三层 Mist Surface。Surface class 负责材质，不负�
 ### 3.4 Surface 使用原则
 
 - 不重复制造玻璃层；
-- 不在通用 Surface 之外再创建任意透明度和 blur 的第四套材质；
+- 业务组件不得自行组合新的透明度、blur、shadow 配方，形成未命名的隐性 Surface；
 - 不给每段内容套独立卡片；
 - 内容结构优先于视觉容器；
 - 同一个连续任务优先共享一张 Surface；
 - Surface 内部优先用留白、文字层级和 divider 分组；
 - 材质选择服务于可读性，不能为了“更玻璃”牺牲正文；
-- 页面特有的成熟材质调整保持在页面范围内，未经重复验证不升级为全局 primitive。
+- 页面或 feature 可以在已有 Surface primitive 基础上做经过可读性验证的成熟页面级视觉调整；Memory 的特殊材质组合属于此类页面模式，不自动推广为通用 Surface；
+- 如果页面调整演变成新的材质模式，应先提升为新的语义 primitive，再供业务代码使用，而不是将配方散落在业务组件中。
 
 ---
 
@@ -190,7 +191,7 @@ actions
 - description 降权，但仍保持正常可读性；
 - actions 位于稳定、易触达的位置，并保留清晰命中区域；
 - actions 可以为空或包含多个操作；
-- 页面标题应通过 `titleId` 等方式与页面容器建立可访问性关联；
+- 页面标题应通过 `titleId` 等方式与页面容器建立可访问性关联；当前这是消费者约束，`titleId` 仍是可选 prop，组件类型尚未强制保证关联；
 - 不为不同页面增加任意的 Header 字体、Surface、对齐或圆角变体。
 
 ### 4.4 Layout and Scrolling
@@ -259,7 +260,7 @@ Card
 
 ## 6. Chat Pattern
 
-Chat 当前有稳定方向，但具体消息表现仍处于 `Provisional`。
+Chat 当前有稳定方向，但消息 Surface、分段方式和 Thinking 展示语义仍处于 `Provisional`。当前实现可以作为 Chat 内的实验方向，不作为全局 UI 模式。
 
 ### 6.1 已稳定方向
 
@@ -281,13 +282,13 @@ Chat 当前有稳定方向，但具体消息表现仍处于 `Provisional`。
 - 为 AI 内容增加与信息无关的科技感装饰；
 - 因为角色不同而降低正文可读性。
 
-消息的具体 Surface、分段方式、操作位置和长内容折叠规则尚未成为全局规范。新页面不应复制当前 Chat 的所有像素细节作为通用 Message pattern。
+消息的具体 Surface、分段方式、操作位置和长内容折叠规则尚未成为全局规范。当前 `Bubble` 实现不是推荐方案；新页面不应复制其像素细节作为通用 Message pattern。
 
 ### 6.3 Thinking
 
-Thinking 当前是 Chat feature pattern，而不是全局 UI primitive。
+Thinking 的展示语义仍处于 `Provisional`，当前只是 Chat feature 内的实验方向，不是全局 UI primitive。
 
-可记录的展示结构：
+以下仅描述当前展示实验，不代表已定稿或可推广的展示语义：
 
 - collapsed 状态提供简短 preview；
 - expanded 状态展示完整内容；
@@ -353,7 +354,7 @@ Status Badge 表达状态，例如处理中、失败、已完成或未确认。
 
 ## 8. Component Abstraction Rules
 
-组件进入 `src/components/ui/` 前，应同时满足：
+业务层 UI 抽象进入 `src/components/ui/` 前，原则上应同时满足：
 
 1. 至少有两个独立消费者；
 2. 视觉和行为已经稳定；
@@ -361,6 +362,8 @@ Status Badge 表达状态，例如处理中、失败、已完成或未确认。
 4. 不依赖具体业务状态；
 5. API 能表达真实差异，而不是暴露大量样式开关；
 6. 抽象后能降低维护成本，而不是只减少几行 className。
+
+“至少两个独立消费者”主要约束业务层 UI 抽象。Button、Dialog 等基础交互 primitive 可以因基础能力、可访问性和一致性交付提前存在；第三方组件或基础设施封装也应按自身职责评估，不与业务模式抽象混为一谈。
 
 不要因为两个地方长得像就抽象。相似的外观可能承担完全不同的内容、交互和可访问性语义。
 
@@ -375,6 +378,8 @@ Status Badge 表达状态，例如处理中、失败、已完成或未确认。
 - `description`；
 - `actions`；
 - 标题与页面容器关联所需的标识。
+
+`titleId` 目前仍是消费者需要履行的约束，组件 prop 类型尚未将其设为必填。
 
 不要为单个页面加入大量视觉 props。页面差异优先通过内容表达，而不是重新配置 Header 材质。
 
@@ -426,11 +431,11 @@ Status Badge 表达状态，例如处理中、失败、已完成或未确认。
 
 ### Provisional
 
-- Chat message 的具体 Surface、分段与操作布局；
-- Thinking 的展示与 preview；
+- Chat message 的具体 Surface、分段与操作布局；当前 `Bubble` 仅是实验方向；
+- Thinking 的展示语义与 preview；
 - Chat Markdown 的排版和代码块呈现；
 - 通用 Tag、MetaText、DecorativeText 等轻量 primitive；
-- 主要阅读区使用半透明 Surface 的页面范围。
+- 将半透明 Surface 用于其他页面主要阅读区的适用范围。
 
 ### Exploratory
 
