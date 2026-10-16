@@ -77,6 +77,7 @@ export function MemoryFilters({
             placeholder="搜索被留下来的片段"
             className={cn(
               "h-11 min-h-11 w-full min-w-11 rounded-xl py-0 pl-11 text-xs font-medium leading-5 shadow-none placeholder:font-normal md:text-xs",
+              "[&::-webkit-search-cancel-button]:hidden",
               searchInput ? "pr-11" : loading ? "pr-10" : "pr-4",
             )}
           />
