@@ -191,7 +191,7 @@ actions
 - description 降权，但仍保持正常可读性；
 - actions 位于稳定、易触达的位置，并保留清晰命中区域；
 - actions 可以为空或包含多个操作；
-- 页面标题应通过 `titleId` 等方式与页面容器建立可访问性关联；当前这是消费者约束，`titleId` 仍是可选 prop，组件类型尚未强制保证关联；
+- `titleId` 是必填的字符串 prop，并设置为标题元素的 `id`；消费者必须让页面容器的 `aria-labelledby` 引用同一标识；
 - 不为不同页面增加任意的 Header 字体、Surface、对齐或圆角变体。
 
 ### 4.4 Layout and Scrolling
@@ -379,7 +379,7 @@ Status Badge 表达状态，例如处理中、失败、已完成或未确认。
 - `actions`；
 - 标题与页面容器关联所需的标识。
 
-`titleId` 目前仍是消费者需要履行的约束，组件 prop 类型尚未将其设为必填。
+`titleId` 已由组件 prop 类型设为必填；页面容器的 `aria-labelledby` 与标题 `id` 是否匹配仍需由消费者保证，并通过页面测试验证。
 
 不要为单个页面加入大量视觉 props。页面差异优先通过内容表达，而不是重新配置 Header 材质。
 

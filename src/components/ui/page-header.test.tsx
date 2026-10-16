@@ -1,10 +1,17 @@
 import { ArrowLeft, Plus } from "lucide-react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, expectTypeOf, it, vi } from "vitest"
 
 import { PageHeader, PageHeaderAction } from "@/components/ui/page-header"
+import type { PageHeaderProps } from "@/components/ui/page-header"
 
 describe("PageHeader", () => {
+  it("requires a string titleId in its props contract", () => {
+    expectTypeOf<Pick<PageHeaderProps, "titleId">>().toEqualTypeOf<{
+      readonly titleId: string
+    }>()
+  })
+
   it("renders the shared functional-page hierarchy without requiring actions", () => {
     const html = renderToStaticMarkup(
       <PageHeader
@@ -121,6 +128,7 @@ function renderHeaderWithActions(actions: React.ReactNode) {
     <PageHeader
       eyebrow="Settings"
       title="设置"
+      titleId="settings-page-title"
       description="设备外观偏好与安全只读运行状态。"
       actions={actions}
     />,

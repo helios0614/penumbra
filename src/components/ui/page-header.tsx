@@ -7,7 +7,7 @@ interface PageHeaderProps {
   readonly title: ReactNode
   readonly description: ReactNode
   readonly actions?: ReactNode
-  readonly titleId?: string
+  readonly titleId: string
 }
 
 function PageHeader({

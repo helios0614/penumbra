@@ -19,6 +19,7 @@ describe("SettingsView page header", () => {
       /<div[^>]*data-slot="page-header-actions"[^>]*>/,
     )?.[0]
 
+    expect(html).toMatch(/<div[^>]*aria-labelledby="settings-page-title"[^>]*>/)
     expect(pageHeader).toContain("mist-glass")
     expect(html).toContain('<h1 id="settings-page-title"')
     expect(html).toContain("Settings")
