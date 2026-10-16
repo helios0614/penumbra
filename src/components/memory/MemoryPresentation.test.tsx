@@ -21,6 +21,7 @@ import {
 } from "@/components/memory/MemoryListStates";
 import { presentMemoryItem } from "@/components/memory/memory-presentation";
 import type { Memory, MemoryPage } from "@/domain/memory";
+import type { SafeMemoryMutationError } from "@/application/memory-list";
 
 const memoryViewSource = readFileSync(
   new URL("./MemoryView.tsx", import.meta.url),
@@ -212,6 +213,7 @@ describe("memory presentation", () => {
     const mutationError = renderToStaticMarkup(
       <MemoryMutationError
         error={{ code: "server", message: "待继续标记未能更新，请稍后重试。" }}
+        onRetry={vi.fn()}
       />,
     );
 
@@ -226,6 +228,47 @@ describe("memory presentation", () => {
     expect(mutationError).toContain('data-memory-mutation-error="true"');
     expect(mutationError).toContain("待继续标记未能更新");
     expect(mutationError).not.toMatch(/endpoint|stack|response/);
+  });
+
+  it.each([
+    ["no list data", null],
+    ["retained list data", memoryPage()],
+  ])("shows confirmed-write recovery with %s without a duplicate load error", (_case, data) => {
+    const html = renderReadingPanel(data, {
+      error: { code: "network", message: "暂时无法连接到记忆库。" },
+      mutationError: { code: "sync", message: "记忆已保存，但列表暂时无法刷新。" },
+    });
+
+    expect(html).toContain("记忆已保存，但列表暂时无法刷新。");
+    expect(html).toContain("重新读取列表");
+    expect(html.match(/role="alert"/g)).toHaveLength(1);
+    expect(html).not.toContain("无法加载记忆");
+    expect(html).not.toContain("正在加载记忆");
+    expect(html.indexOf('data-memory-mutation-error="true"')).toBeGreaterThan(
+      html.indexOf('data-memory-list-scroll="true"'),
+    );
+    if (data) expect(html).toContain("一段真实记忆");
+    else expect(html).not.toContain("还没有留下记忆");
+  });
+
+  it("keeps synchronization recovery visible and disables its GET action while retrying", () => {
+    const error: SafeMemoryMutationError = {
+      code: "sync", message: "标记请求已完成，但记忆列表暂时未能同步。",
+    };
+    const onRetry = vi.fn();
+    const alert = MemoryMutationError({ error, onRetry });
+    const retryAction = alert.props.children[1];
+    retryAction.props.onClick();
+    expect(onRetry).toHaveBeenCalledTimes(1);
+
+    const html = renderReadingPanel(null, { mutationError: error, isLoading: true });
+    const button = html.match(/<button[^>]*>/)?.[0];
+    expect(html).toContain(error.message);
+    expect(html).toContain("重新读取列表");
+    expect(button).toContain('disabled=""');
+    expect(button).toContain('aria-busy="true"');
+    expect(button).toContain("min-h-11");
+    expect(html).toContain("正在加载记忆");
   });
 
   it("renders accessible server filters without emoji controls or unsupported filters", () => {
@@ -603,6 +646,7 @@ function renderReadingPanel(
   overrides: {
     readonly isLoading?: boolean;
     readonly error?: { readonly code: "network"; readonly message: string } | null;
+    readonly mutationError?: SafeMemoryMutationError;
   } = {},
 ) {
   return renderToStaticMarkup(
@@ -610,7 +654,7 @@ function renderReadingPanel(
       data={data}
       isLoading={overrides.isLoading ?? false}
       error={overrides.error ?? null}
-      mutationError={null}
+      mutationError={overrides.mutationError ?? null}
       pendingMemoryIds={[]}
       hasFilters={false}
       listScrollRef={createRef<HTMLDivElement>()}

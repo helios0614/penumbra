@@ -64,6 +64,9 @@ export function createMemoryListController(
   const mutationControllers = new Map<string, AbortController>();
   const pendingMemoryIds = new Set<string>();
   let createInFlight = false;
+  // A confirmed write stays unsynchronized until a current GET succeeds,
+  // including when its first refresh is superseded by a newer query.
+  let pendingSyncError: MemoryListState["mutationError"] = null;
 
   const publish = (nextState: MemoryListState) => {
     if (disposed) return;
@@ -92,7 +95,7 @@ export function createMemoryListController(
     const controller = new AbortController();
     activeController = controller;
     const previousData = state.data;
-    if (mode === "foreground") {
+    if (mode === "foreground" || !previousData) {
       publish({
         status: "loading",
         data: previousData,
@@ -110,13 +113,14 @@ export function createMemoryListController(
       if (disposed || controller.signal.aborted || sequence !== requestSequence) {
         return "superseded";
       }
+      pendingSyncError = null;
       publish({
         status: "ready",
         data,
         error: null,
         request,
         pendingMemoryIds: [...pendingMemoryIds],
-        mutationError: state.mutationError,
+        mutationError: state.mutationError?.code === "sync" ? null : state.mutationError,
         isCreating: state.isCreating,
         createError: state.createError,
       });
@@ -130,16 +134,13 @@ export function createMemoryListController(
       ) {
         return "superseded";
       }
-      if (mode === "reconcile") {
-        return "failed";
-      }
       publish({
         status: "error",
         data: previousData,
         error: toSafeMemoryListError(error),
         request,
         pendingMemoryIds: [...pendingMemoryIds],
-        mutationError: state.mutationError,
+        mutationError: pendingSyncError ?? state.mutationError,
         isCreating: state.isCreating,
         createError: state.createError,
       });
@@ -190,11 +191,10 @@ export function createMemoryListController(
       const controller = new AbortController();
       mutationControllers.set(memoryId, controller);
       pendingMemoryIds.add(memoryId);
-      publishMutationState(null);
+      publishMutationState(state.mutationError?.code === "sync" ? state.mutationError : null);
 
       let mutationFailure: unknown;
       let mutationFailed = false;
-      let refreshOutcome: "delivered" | "failed" | "superseded" | null = null;
       let cancelled = false;
 
       try {
@@ -205,7 +205,8 @@ export function createMemoryListController(
           cancelled = true;
           return;
         }
-        refreshOutcome = await execute(state.request, "reconcile");
+        pendingSyncError = memoryMutationRefreshError();
+        await execute(state.request, "reconcile");
       } catch (error) {
         if (disposed || controller.signal.aborted || isAbortError(error)) {
           cancelled = true;
@@ -215,18 +216,16 @@ export function createMemoryListController(
         mutationFailure = error;
         mutationFailed = true;
         if (shouldReconcileMutationFailure(error)) {
-          refreshOutcome = await execute(state.request, "reconcile");
+          await execute(state.request, "reconcile");
         }
       } finally {
         mutationControllers.delete(memoryId);
         pendingMemoryIds.delete(memoryId);
         if (!disposed && !cancelled) {
           publishMutationState(
-            mutationFailed
+            mutationFailed && state.mutationError?.code !== "sync"
               ? toSafeMemoryMutationError(mutationFailure)
-              : refreshOutcome === "failed"
-                ? memoryMutationRefreshError()
-                : null,
+              : state.mutationError,
           );
         }
       }
@@ -251,19 +250,16 @@ export function createMemoryListController(
           page: 1,
           filters: state.request.filters,
         };
+        pendingSyncError = memoryCreateRefreshError();
         publish({
           ...state,
           request: refreshRequest,
           isCreating: false,
           createError: null,
-          mutationError: null,
+          mutationError: state.mutationError?.code === "sync" ? state.mutationError : null,
         });
 
-        void execute(refreshRequest, "reconcile").then((outcome) => {
-          if (!disposed && outcome === "failed") {
-            publishMutationState(memoryCreateRefreshError());
-          }
-        });
+        void execute(refreshRequest, "reconcile");
         return true;
       } catch (error) {
         createInFlight = false;
@@ -298,6 +294,7 @@ export function createMemoryListController(
       mutationControllers.clear();
       pendingMemoryIds.clear();
       createInFlight = false;
+      pendingSyncError = null;
     },
   };
 }

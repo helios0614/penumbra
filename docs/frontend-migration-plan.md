@@ -69,7 +69,7 @@ Chat
 
 Memory
 - S7A Memory Read Foundation：已完成
-- S7B Memory Mutations：待实施
+- S7B Memory Mutations：Create / Pin 已接入；其余管理能力待实施
 - Realtime / AI-generated memory workflow：延后
 ```
 
@@ -88,10 +88,10 @@ S6E2 Stop / Abort：待实施
 S6E3 Capability Composition：待实施
 S6F System Message / Instruction Presentation：待实施
 S7A Memory Read Foundation：完成
-S7B Memory Mutations：待实施
+S7B Memory Mutations：Create / Pin 已接入，其余待实施
 ```
 
-当前 Penumbra 已有 Chat、Memory、Calendar、Todo 和 Settings 页面外壳；Memory 已由 S7A 接入真实分页 read path、server-side search/filter、只读 pin state 与内容阅读面板。Chat 页面已接入真实 Workspace、selected-model readiness、conversation selection、persistent history、S6C send/SSE/HTTP finalization、S6D WebSocket notification coordination，以及 S6E1 canonical target regenerate。optimistic user、streaming assistant 与 regenerate replacement 只存在于 execution overlay；send/regenerate 共用单一 execution ownership，WS 不生成 bubble，外部变化、`msg_updated(target)` 与 reconnect 最终通过 HTTP 收敛。Calendar/Todo 尚未接入后端业务状态。Settings 已接入安全只读的 Session、models 与 Chat readiness，Provider/TTS 等完整设置仍未迁移。UI 存在不代表领域已完成迁移。
+当前 Penumbra 已有 Chat、Memory、Calendar、Todo 和 Settings 页面外壳；Memory 已接入真实分页 read path、server-side search/filter、内容阅读面板，以及新增、Pin 和写入后的 GET 同步恢复。Chat 页面已接入真实 Workspace、selected-model readiness、conversation selection、persistent history、S6C send/SSE/HTTP finalization、S6D WebSocket notification coordination，以及 S6E1 canonical target regenerate。optimistic user、streaming assistant 与 regenerate replacement 只存在于 execution overlay；send/regenerate 共用单一 execution ownership，WS 不生成 bubble，外部变化、`msg_updated(target)` 与 reconnect 最终通过 HTTP 收敛。Calendar/Todo 尚未接入后端业务状态。Settings 已接入安全只读的 Session、models 与 Chat readiness，Provider/TTS 等完整设置仍未迁移。UI 存在不代表领域已完成迁移。
 
 > Runtime read client、Conversation/Message Domain Foundation、Message History、SSE/Chat Execution、Workspace read UI、readiness degradation、S6C send/streaming composition、S6D realtime coordination 与 S6E1 canonical target regenerate 已完成。SSE 保持当前 execution ownership；WebSocket 只触发 correlation/dirty/reconciliation，HTTP history 保持最终持久化事实。Stop/Abort、完整 Capability 管理、upload 与 server cancel 仍延后。
 
@@ -103,7 +103,9 @@ S6D 稳定决策：浏览器/WebView 活跃进程内最多一条 `/ws` connectio
 
 S6E1 稳定决策：Regenerate 只调用 `POST /api/conversations/{conversationId}/messages/{messageId}/regenerate`，target 仅为 current selected conversation 中 latest persisted non-carryover tail assistant。Penumbra 不调用 legacy conversation-scoped regenerate，不 DELETE target。persistent target + same-ID temporary replacement overlay 构成可见回复；SSE `start.id` 必须等于 target ID，EOF 后必须 HTTP reload，`msg_updated(target)` 只置 dirty。C2A3.1 的命名 SSE `persisted` receipt 是 regenerate transaction commit acknowledgement，HTTP history 是 authoritative persisted truth；只有 receipt 与 HTTP target 的 normalized `{id, content, thinking, simpleThink}` 完全相等才确认 finalization。raw provider stream 只驱动临时展示，不定义 persisted expected state；receipt 缺失、target 缺失、字段 mismatch 或 reload failure 都保持 uncertain。identical output 只要 receipt/HTTP 相等即可确认，retry 只重新加载历史并复用已保存 receipt。
 
-S7A 稳定决策：Memory 永远显式请求分页 `GET /api/memories`；search、时间、importance 与 pin-first 由后端执行，前端不做 legacy 全量 fallback。`unresolved` 只读映射为小型 Pin icon，不渲染状态文字或 mutation affordance。Memory 主列表是一块连续内容面板，item 不成为卡片墙。create/edit/delete/pin、digest、source detail、re-summarize、export、realtime 与 AI workflow 进入 S7B 或更后阶段。
+Memory 当前边界：列表永远显式请求分页 `GET /api/memories`；search、时间、importance 与 pin-first 由后端执行，前端不做 legacy 全量 fallback。新增使用 POST，Pin 使用明确目标状态 PUT；写入成功后按当前筛选 GET（新增回第一页，Pin 保留当前页）。同步失败保留旧数据并提供“重新读取列表”，只重试 GET；无数据时也能结束 loading 并恢复，旧请求不得覆盖新结果。主列表保留连续内容面板与小型 Pin，不增加状态 badge 或卡片墙。编辑、删除、digest、anchor、source detail、re-summarize、export、realtime 与 AI workflow 尚未接入。
+
+待产品确认：Pin 的最终产品语义、重要度筛选区间的重叠及空档规则。当前继续将 `unresolved` 作为待继续事件标记，保留后端区间，不改成普通收藏或前端自定义分档。
 
 ## Settings Domain Audit
 
@@ -207,7 +209,7 @@ S7A 稳定决策：Memory 永远显式请求分页 `GET /api/memories`；search�
 | Upload | `aion-chat/static/chat.html`、`aion-chat/routes/files.py` | 有附件按钮和 upload URL resolution，未上传 | domain client 重写；adapter/mapper 转换；延后 | P1 |
 | Settings/provider config | `aion-chat/static/settings.html`、`aion-chat/routes/settings.py` | 本地外观与 Session/models/readiness 安全概览已接入；C2A 已完成，C2B 与 provider 管理待后续 | Settings 只组合各领域安全 DTO；S6C 不读取旧 generation Settings；C2C+ 高级管理延后 | P1 |
 | Schedule/Todo | `aion-chat/static/schedule.html`、schedule routes/runtime | Calendar UI 可复用；Todo 为静态数据，均未接后端 | 直接复用现有 Penumbra UI；domain client 重写；adapter/mapper 转换 | P1 |
-| Memory | `aion-chat/static/memory.html`、`aion-chat/routes/memories.py`、database schema | S7A 已接真实分页 list、server search/filter、只读 pin state、route/navigation 与完整 read states；mutation/realtime 延后 | domain client 重写；adapter/mapper 转换；UI 已重做 | P1 |
+| Memory | `aion-chat/static/memory.html`、`aion-chat/routes/memories.py`、database schema | 已接真实分页 list、server search/filter、Create / Pin、route/navigation、read states 与写入后 GET 恢复；其余管理能力与 realtime 未接入 | domain client 重写；adapter/mapper 转换；UI 已重做 | P1 |
 | Activity | `aion-chat/static/activity-logs.html`、activity routes/runtime | 未接入 | domain client 重写；adapter/mapper 转换；UI 重做 | P2 |
 | Location/POI | `aion-chat/static/location.html`、location runtime | 未接入 | domain client 重写；adapter/mapper 转换；UI 重做 | P2 |
 | Heart | `aion-chat/static/heart-whispers.html`、Chat event | Chat 原型只有 mock 关联提示 | adapter/mapper 转换；合并入口 | P2 |

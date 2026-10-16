@@ -4,6 +4,7 @@ import type {
   SafeMemoryListError,
   SafeMemoryMutationError,
 } from "@/application/memory-list";
+import { Button } from "@/components/ui/button";
 
 export function MemoryListLoading() {
   return (
@@ -81,16 +82,32 @@ export function MemoryListEmpty({ filtered }: { readonly filtered: boolean }) {
 
 export function MemoryMutationError({
   error,
+  onRetry,
+  isLoading = false,
 }: {
   readonly error: SafeMemoryMutationError;
+  readonly onRetry: () => void;
+  readonly isLoading?: boolean;
 }) {
   return (
     <div
       role="alert"
-      className="border-b border-error/15 bg-error-subtle px-4 py-2 text-xs text-error-subtle-foreground sm:px-6"
+      className="flex flex-col gap-3 border-b border-error/15 bg-error-subtle px-4 py-2 text-xs text-error-subtle-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6"
       data-memory-mutation-error="true"
     >
-      {error.message}
+      <p>{error.message}</p>
+      {error.code === "sync" && (
+        <Button
+          type="button"
+          onClick={onRetry}
+          disabled={isLoading}
+          aria-busy={isLoading || undefined}
+          className="mx-auto min-h-11 gap-2 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover active:bg-primary-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:mx-0"
+        >
+          <RefreshCw className="size-4" aria-hidden="true" />
+          重新读取列表
+        </Button>
+      )}
     </div>
   );
 }

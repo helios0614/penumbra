@@ -144,6 +144,8 @@ export function MemoryReadingPanel({
   readonly onPageChange: (page: number) => void;
   readonly onSetUnresolved: (memoryId: string, unresolved: boolean) => void;
 }) {
+  const hasSyncError = mutationError?.code === "sync";
+
   return (
     <section
       className="memory-reading-panel mist-glass-strong relative mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[24px] sm:mt-4"
@@ -181,13 +183,15 @@ export function MemoryReadingPanel({
         tabIndex={0}
         data-memory-list-scroll="true"
       >
+        {mutationError && (
+          <MemoryMutationError error={mutationError} onRetry={onRetry} isLoading={isLoading} />
+        )}
         {!data && isLoading && <MemoryListLoading />}
-        {!data && error && <MemoryListError error={error} onRetry={onRetry} />}
+        {!data && error && !hasSyncError && <MemoryListError error={error} onRetry={onRetry} />}
 
         {data && (
           <>
-            {error && <MemoryListError error={error} onRetry={onRetry} compact />}
-            {mutationError && <MemoryMutationError error={mutationError} />}
+            {error && !hasSyncError && <MemoryListError error={error} onRetry={onRetry} compact />}
             {data.items.length === 0 ? (
               <MemoryListEmpty filtered={hasFilters} />
             ) : (
