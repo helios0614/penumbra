@@ -45,9 +45,10 @@ export function businessRange(date: string, config: TriggerConfig) {
   };
 }
 
-export function formatPeriod(start: number, end: number, timeZone: string): string {
+export function formatPeriod(start: number, end: number, timeZone: string, compact = false): string {
   const from = wallParts(start * 1000, timeZone);
   const to = wallParts(end * 1000, timeZone);
   const clock = (value: typeof from) => `${String(value.hour).padStart(2, "0")}:${String(value.minute).padStart(2, "0")}`;
+  if (compact) return `${clock(from)}–${clock(to)}${from.date === to.date ? "" : to.date === shiftDate(from.date, 1) ? "（次日）" : `（${to.date}）`}`;
   return `${from.date} ${clock(from)} — ${to.date !== from.date ? `${to.date}（跨天） ` : ""}${clock(to)}`;
 }

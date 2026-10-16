@@ -1,0 +1,10 @@
+/* Match overview and reader to Memory's verified reading surface. */
+.quick-note-overview,
+.quick-note-reader {
+  background: color-mix(in srgb, var(--glass-surface-strong) 69%, var(--glass-surface) 31%);
+}
+
+/* AI role ink on the existing reading surface, following both theme colors. */
+.quick-note-ai-prefix {
+  color: color-mix(in srgb, var(--color-ai) 65%, var(--color-foreground) 35%);
+}

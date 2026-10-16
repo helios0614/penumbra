@@ -1,5 +1,6 @@
 import type { QuickNoteLogState } from "@/application/quick-note/quick-note-logs";
 import { Button } from "@/components/ui/button";
+import { QUICK_NOTE_LOG_COLORS, quickNoteLogTime, quickNoteLogTone } from "./quick-note-log-presentation";
 
 const CONNECTION_LABELS = { connecting: "日志连接中", connected: "日志已连接", reconnecting: "日志连接中断，正在重连", error: "日志连接失败，请检查登录状态" };
 
@@ -7,31 +8,35 @@ export function QuickNoteLogs({ state, timeZone, onReconnect }: {
   readonly state: QuickNoteLogState; readonly timeZone?: string; readonly onReconnect: () => void;
 }) {
   const latest = state.entries[state.entries.length - 1];
-  const preview = latest ? { ...latest, message: latest.message.replace(/\s+/g, " ").slice(0, 120) + (latest.message.length > 120 ? "…" : "") } : null;
+  const preview = latest?.message.replace(/\s+/g, " ").slice(0, 120);
+  const failed = state.connection === "error" || state.connection === "reconnecting";
+  const previewColor = !failed && latest ? QUICK_NOTE_LOG_COLORS[quickNoteLogTone(latest)] : "text-muted-foreground";
   return (
-    <section className="mist-glass rounded-[24px] px-4 py-3 sm:px-5" aria-label="速记运行日志">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-medium">最近运行日志</h2>
-        <span className="text-xs text-muted-foreground" role="status">{CONNECTION_LABELS[state.connection]}</span>
-      </div>
-      <p className="mt-2 text-xs leading-5 text-muted-foreground">连接状态仅表示日志通道；生成结果请以已保存正文为准。</p>
-      <details className="mt-2">
+    <section className="mist-glass rounded-[24px] px-4 sm:px-5" aria-label="速记运行日志">
+      <details>
         <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-strong focus-visible:outline-ring">
-          {preview ? <><LogLine entry={preview} timeZone={timeZone} /> · 展开日志</> : "暂无收到的日志 · 展开日志"}
+          <span className="ml-1 inline-flex w-[calc(100%_-_1.5rem)] min-w-0 items-center gap-3 align-middle">
+            <span className="shrink-0 font-medium text-foreground">运行日志</span>
+            <span className={`min-w-0 truncate text-[11px] ${previewColor}`} role="status">{failed ? CONNECTION_LABELS[state.connection] : preview || (state.connection === "connecting" ? "日志连接中" : "暂无日志")}</span>
+          </span>
         </summary>
-        <p className="mb-3 text-xs text-muted-foreground">重新连接会读取服务端当前保留的日志；本页不持久化日志。</p>
-        {state.entries.length === 0 ? <p className="py-3 text-sm text-muted-foreground">服务端尚未推送日志。</p> : (
-          <ol className="space-y-3 border-l border-border pl-4 text-xs leading-6">
-            {state.entries.map((entry) => <li key={JSON.stringify([entry.seq, entry.ts, entry.level, entry.message])} className="whitespace-pre-wrap break-words"><LogLine entry={entry} timeZone={timeZone} /></li>)}
-          </ol>
-        )}
+        <div className="max-h-64 overflow-y-auto overscroll-contain border-t border-primary/10 py-3" aria-label="详细原始日志">
+          <p className="mb-3 text-xs text-muted-foreground">{CONNECTION_LABELS[state.connection]}</p>
+          {state.entries.length === 0 ? <p className="py-2 text-sm text-muted-foreground">暂无日志</p> : (
+            <ol className="space-y-2 border-l border-border pl-4 text-[11px] leading-5">
+              {state.entries.map((entry) => <li key={JSON.stringify([entry.seq, entry.ts, entry.level, entry.message])} className="whitespace-pre-wrap break-words"><LogLine entry={entry} timeZone={timeZone} /></li>)}
+            </ol>
+          )}
+        </div>
+        {!failed && <Button variant="ghost" className="mb-1 h-11 px-2 text-xs text-muted-strong" onClick={onReconnect}>重新读取日志</Button>}
       </details>
-      <Button variant="ghost" className="mt-1 h-11 px-2 text-xs text-muted-strong" onClick={onReconnect}>重新读取日志</Button>
+      {failed && <Button variant="ghost" className="mb-1 h-11 px-2 text-xs text-muted-strong" onClick={onReconnect}>重新连接日志</Button>}
     </section>
   );
 }
 
-function LogLine({ entry, timeZone }: { readonly entry: QuickNoteLogState["entries"][number]; readonly timeZone?: string }) {
-  const timestamp = timeZone ? new Intl.DateTimeFormat("zh-CN", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).format(entry.ts * 1000) : new Date(entry.ts * 1000).toISOString();
-  return <><time dateTime={new Date(entry.ts * 1000).toISOString()} className="text-muted-foreground">{timestamp}</time> <span className="text-muted-strong">[{entry.level}]</span> <span className="whitespace-pre-wrap break-words text-foreground">{entry.message}</span></>;
+export function LogLine({ entry, timeZone }: { readonly entry: QuickNoteLogState["entries"][number]; readonly timeZone?: string }) {
+  const timestamp = quickNoteLogTime(entry.ts, timeZone);
+  const tone = quickNoteLogTone(entry);
+  return <span className={QUICK_NOTE_LOG_COLORS[tone]} data-quick-note-log-tone={tone}><time dateTime={timestamp.iso} title={timestamp.full} className="text-muted-foreground">{timestamp.clock}</time> <span>[{entry.level}]</span> <span className="whitespace-pre-wrap break-words">{entry.message}</span></span>;
 }

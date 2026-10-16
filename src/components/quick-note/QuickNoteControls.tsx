@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { zhCN } from "date-fns/locale";
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { businessDate, parseDateKey, shiftDate } from "@/application/quick-note/quick-note-date";
 import type { TriggerConfig } from "@/domain/quick-note";
 import { Button } from "@/components/ui/button";
@@ -14,8 +14,9 @@ function calendarDate(key: string) {
   return new Date(year, month - 1, day, 12);
 }
 
-export function QuickNoteDatePicker({ date, onChange, disabled = false, label = "选择日期" }: {
+export function QuickNoteDatePicker({ date, onChange, disabled = false, label = "选择日期", compact = false, selected: customSelected = false }: {
   readonly date: string; readonly onChange: (date: string) => void; readonly disabled?: boolean; readonly label?: string;
+  readonly compact?: boolean; readonly selected?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState(() => calendarDate(date));
@@ -23,8 +24,8 @@ export function QuickNoteDatePicker({ date, onChange, disabled = false, label = 
   const moveMonth = (delta: number) => setMonth(new Date(month.getFullYear(), month.getMonth() + delta, 1, 12));
   return (
     <Popover open={open} onOpenChange={(next) => { setOpen(next); if (next) setMonth(selected); }}>
-      <PopoverTrigger render={<Button variant="outline" className="h-11 px-3" disabled={disabled} aria-label={label} />}>
-        <CalendarDays aria-hidden="true" />{date}
+      <PopoverTrigger render={<Button variant={compact ? customSelected ? "default" : "ghost" : "outline"} className={compact ? "h-11 min-w-11 w-full gap-1 px-1" : "h-11 px-3"} disabled={disabled} aria-label={label} aria-pressed={compact ? customSelected : undefined} />}>
+        {compact ? <>日期<ChevronDown aria-hidden="true" className="size-3" /></> : <><CalendarDays aria-hidden="true" />{date}</>}
       </PopoverTrigger>
       <PopoverContent className="w-auto max-w-[calc(100vw-2rem)] p-2" align="start" aria-label={label}>
         <div className="flex items-center justify-between gap-2">
@@ -57,13 +58,12 @@ export function QuickNoteDateNavigation({ config, date, onChange }: {
   try { today = businessDate(config, now); }
   catch { return <p role="alert" className="mist-glass rounded-[24px] p-4 text-sm">当前业务日界不可用，请重新读取时段配置。</p>; }
   return (
-    <nav className="mist-glass flex flex-wrap items-center gap-2 rounded-[24px] p-3 sm:px-5" aria-label="速记日期">
+    <nav className="mist-glass grid grid-cols-4 items-center gap-1 rounded-[24px] p-2 sm:gap-2 sm:px-4" aria-label="速记日期">
       {["今天", "昨天", "前天"].map((label, index) => {
         const key = shiftDate(today, -index);
-        return <Button key={label} variant={date === key ? "default" : "ghost"} className="h-11 min-w-16 px-4" aria-pressed={date === key} onClick={() => onChange(shiftDate(businessDate(config), -index))}>{label}</Button>;
+        return <Button key={label} variant={date === key ? "default" : "ghost"} className="h-11 min-w-11 w-full px-1" aria-pressed={date === key} onClick={() => onChange(shiftDate(businessDate(config), -index))}>{label}</Button>;
       })}
-      <QuickNoteDatePicker date={date} onChange={onChange} />
-      <span className="w-full px-1 text-xs text-muted-foreground sm:ml-auto sm:w-auto">{config.timeZone} · {String(config.dayBoundaryHour).padStart(2, "0")}:00 日界</span>
+      <QuickNoteDatePicker date={date} onChange={onChange} compact selected={![0, 1, 2].some((offset) => date === shiftDate(today, -offset))} />
     </nav>
   );
 }

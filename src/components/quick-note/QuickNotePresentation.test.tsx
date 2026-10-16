@@ -1,20 +1,26 @@
+import { readFileSync } from "node:fs";
+import { createRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { QuickNote, TriggerConfig } from "@/domain/quick-note";
 import { INITIAL_QUICK_NOTE_STATE, type QuickNoteState } from "@/application/quick-note/quick-note-state";
-import { QuickNoteReadingSurface, QuickNoteView } from "./QuickNoteView";
-import { QuickNoteSection, QuickNoteSummary } from "./QuickNoteSection";
+import { QuickNoteConfig, QuickNoteView } from "./QuickNoteView";
+import { QuickNoteOverview } from "./QuickNoteOverview";
+import { QuickNoteActions, QuickNoteReader, QuickNoteTopButton } from "./QuickNoteReader";
+import { QuickNoteOutput, QuickNoteSummary } from "./QuickNoteSection";
 import { QuickNoteCandidateList, confirmationCopy } from "./QuickNoteDialogs";
 import { QuickNoteEditorFields } from "./QuickNoteEditor";
 import { QuickNoteLogs } from "./QuickNoteLogs";
 import { QuickNoteDateNavigation } from "./QuickNoteControls";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import * as hooks from "./useQuickNotes";
+import * as navigationHooks from "./useQuickNoteNavigation";
 
 const config: TriggerConfig = { hours: [5, 13, 20], labels: { "5": "夜晚", "13": "上午", "20": "下午" }, dayBoundaryHour: 5, timeZone: "Asia/Shanghai" };
 const note: QuickNote = { id: "qn_1", periodStart: Date.parse("2026-10-16T12:00:00Z") / 1000, periodEnd: Date.parse("2026-10-16T21:00:00Z") / 1000, periodLabel: "保存时的名称", summary: '{"事件归纳":"事件内容","关键对话":[{"time":"09:00","content":["句1","句2"]}]}', output: "[DRIFT:保留]\n正文<br>[HEART:保留]", createdAt: 1792130000 };
-const loaded: QuickNoteState = { ...INITIAL_QUICK_NOTE_STATE, configLoading: false, config, date: "2026-10-16", status: "success", data: { items: [note], page: 1, pageSize: 10, total: 21, hasMore: true } };
-const render = (state: QuickNoteState) => renderToStaticMarkup(<TooltipProvider><QuickNoteReadingSurface state={state} controller={null} onAction={vi.fn()} /></TooltipProvider>);
+const loaded: QuickNoteState = { ...INITIAL_QUICK_NOTE_STATE, configLoading: false, config, date: "2026-10-16", status: "success", data: { items: [note] } };
+const render = (state: QuickNoteState) => renderToStaticMarkup(<TooltipProvider><QuickNoteOverview state={state} controller={null} onOpen={vi.fn()} /></TooltipProvider>);
+const renderReader = (value: QuickNote | null = note, state = loaded) => renderToStaticMarkup(<QuickNoteReader note={value} timeZone={config.timeZone} state={state} controller={null} onBack={vi.fn()} onAction={vi.fn()} />);
 afterEach(() => vi.restoreAllMocks());
 
 describe("Quick Note page presentation", () => {
@@ -32,7 +38,7 @@ describe("Quick Note page presentation", () => {
   });
   it("renders loading, empty, and recoverable read errors inside one reading surface", () => {
     expect(render({ ...loaded, status: "loading", data: null })).toContain("正在读取速记");
-    expect(render({ ...loaded, data: { ...loaded.data!, items: [], total: 0, hasMore: false } })).toContain("这个业务日期还没有速记记录");
+    expect(render({ ...loaded, data: { items: [] } })).toContain("这一天还没有留下速记");
     const error = render({ ...loaded, status: "error", error: "读取失败", data: null });
     expect(error).toContain('role="alert"');
     expect(error).toContain("重新读取记录");
@@ -47,22 +53,30 @@ describe("Quick Note page presentation", () => {
     expect(html).not.toContain("04:00");
   });
   it("shows real historical labels, cross-day times, complete output and independent summary", () => {
-    const html = render(loaded);
+    const html = renderReader();
     expect(html).toContain("保存时的名称");
     expect(html).toContain("2026-10-17（跨天） 05:00");
-    expect(html).toContain("[DRIFT:保留]\n正文\n[HEART:保留]");
-    expect(html).toContain("对话摘要（辅助整理 · Step 1）");
+    expect(html).toContain('data-quick-note-fragment="DRIFT"');
+    expect(html).toContain('data-quick-note-fragment="HEART"');
+    expect(html).toContain("正文");
+    expect(html).toContain('data-quick-note-summary-kind="events"');
+    expect(html).toContain('data-quick-note-summary-kind="dialogue"');
     expect(html).toContain("事件内容");
-    expect(html).toContain("time：09:00");
+    expect(html).toContain("time</dt>");
+    expect(html).toContain("09:00");
+    expect(html).toContain("句1");
+    expect(html).toContain("句2");
     expect(html).not.toMatch(/<details[^>]*open/);
-    const afterSummary = html.slice(html.indexOf("</details>") + "</details>".length);
-    expect(afterSummary).toContain('data-quick-note-output="true"');
-    expect(afterSummary).not.toContain("收起正文");
-    expect(html).toContain("第 1 / 3 页，共 21 条");
-    expect(html).toContain("按创建时间倒序");
+    expect(html.indexOf('data-quick-note-output="true"')).toBeLessThan(html.indexOf("<details"));
+    expect(html).not.toContain("收起正文");
+    expect(html).not.toMatch(/max-h-|line-clamp/);
+    expect((html.match(/overflow-y-auto/g) ?? []).length).toBe(1);
+    expect(html).toContain("返回日期概览");
+    expect(html).toContain('aria-label="本篇速记操作"');
+    expect(html).not.toContain("速记分页");
   });
   it("renders all wired actions with accessible names and distinct rerun semantics", () => {
-    const html = render(loaded);
+    const html = renderToStaticMarkup(<QuickNoteActions note={note} disabled={false} onAction={vi.fn()} />);
     expect(html).toContain("Step 1 重跑辅助模型（清空正文）");
     expect(html).toContain("Step 2 重跑主模型（重新生成正文）");
     expect(html).toContain('aria-label="保存时的名称：编辑正文"');
@@ -72,7 +86,7 @@ describe("Quick Note page presentation", () => {
   });
   it("labels empty output as saved absence, including whitespace, without inventing generation state", () => {
     for (const output of ["", " \n "]) {
-      const html = renderToStaticMarkup(<TooltipProvider><QuickNoteSection note={{ ...note, output }} timeZone={config.timeZone} disabled={false} onAction={vi.fn()} /></TooltipProvider>);
+      const html = renderToStaticMarkup(<QuickNoteOutput output={output} />);
       expect(html).toContain("尚无已保存正文");
       expect(html).not.toContain("生成中");
     }
@@ -116,22 +130,157 @@ describe("Quick Note page presentation", () => {
   it("separates log connection from task state and preserves level, timestamp, Step text", () => {
     const html = renderToStaticMarkup(<QuickNoteLogs state={{ connection: "connected", entries: [{ seq: 1, ts: note.periodStart, level: "success", message: "Step 2 完成 ✓\n原始日志" }] }} timeZone={config.timeZone} onReconnect={vi.fn()} />);
     expect(html).toContain("日志已连接");
-    expect(html).toContain("连接状态仅表示日志通道");
+    expect(html).not.toContain("连接状态仅表示日志通道");
     expect(html).toContain("[success]");
-    expect(html).toContain("2026/10/16 20:00:00");
+    expect(html).toMatch(/<time[^>]*title="2026\/10\/16 20:00:00"[^>]*>20:00:00<\/time>/);
+    expect(html).toContain('data-quick-note-log-tone="success"');
+    expect(html).toContain("text-success-foreground");
     expect(html).toContain("Step 2 完成 ✓\n原始日志");
     expect(html).not.toContain("运行中");
     expect(html).not.toMatch(/<details[^>]*open/);
+    expect(html).toContain("max-h-64 overflow-y-auto");
+    expect(html.indexOf("[success]")).toBeGreaterThan(html.indexOf("</summary>"));
     const failed = renderToStaticMarkup(<QuickNoteLogs state={{ connection: "reconnecting", entries: [] }} onReconnect={vi.fn()} />);
     expect(failed).toContain("正在重连");
-    expect(failed).toContain("重新读取日志");
+    expect(failed).toContain("重新连接日志");
+    expect(failed.indexOf("重新连接日志")).toBeGreaterThan(failed.indexOf("</details>"));
   });
-  it("marks date selection and exposes the configured timezone and boundary", () => {
+  it("keeps four 44px date controls on one grid row without exposing configuration", () => {
     const html = renderToStaticMarkup(<QuickNoteDateNavigation config={config} date="2000-01-01" onChange={vi.fn()} />);
     expect(html).toContain('aria-label="速记日期"');
     expect(html).toContain('aria-pressed="false"');
-    expect(html).toContain("Asia/Shanghai");
-    expect(html).toContain("05:00 日界");
-    expect(html).toContain("2000-01-01");
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).not.toContain("Asia/Shanghai");
+    expect(html).not.toContain("日界");
+    expect(html).not.toContain("2000-01-01");
+    expect(html).toContain("grid-cols-4");
+    expect(html).not.toMatch(/flex-wrap|overflow-x-auto|type="date"/);
+    expect((html.match(/<button\b/g) ?? []).length).toBe(4);
+    expect((html.match(/h-11 min-w-11 w-full/g) ?? []).length).toBe(4);
+  });
+
+  it("uses saved previews only, with no summary/actions or configured empty periods", () => {
+    const html = render(loaded);
+    expect(html).toContain("line-clamp-3");
+    expect(html).toContain('data-quick-note-preview="true"');
+    expect(html).toContain("[DRIFT:保留]\n正文\n[HEART:保留]");
+    expect(html).toContain("20:00–05:00（次日）");
+    expect(html).not.toContain("速记分页");
+    expect(html).not.toContain("上一页");
+    expect(html).not.toContain("下一页");
+    expect(html).not.toContain("共 21 条");
+    expect(html).not.toContain("按创建时间倒序");
+    expect(html).not.toContain("data-quick-note-output");
+    expect(html).not.toContain("事件内容");
+    expect(html).not.toContain("Step 1");
+    expect(html).not.toContain("编辑正文");
+    expect(html).not.toContain("下午");
+    expect(html).not.toContain("上午");
+    const records = [{ ...note, id: "newer", periodLabel: "较新的夜晚" }, { ...note, id: "older", periodLabel: "较早的上午", output: "" }];
+    const ordered = render({ ...loaded, data: { ...loaded.data!, items: records } });
+    expect(ordered.indexOf('data-quick-note-open="newer"')).toBeLessThan(ordered.indexOf('data-quick-note-open="older"'));
+    expect(ordered).toContain("尚无已保存正文");
+    expect(ordered).not.toContain("生成中");
+    expect(renderReader(null)).toContain("这一天已不包含这条速记");
+  });
+
+  it("keeps complete long output in the reader and tolerates structured/legacy summary values", () => {
+    const output = Array.from({ length: 120 }, (_, index) => `第${index}行正文`).join("\n");
+    const html = renderReader({ ...note, output });
+    expect(html).toContain(output);
+    const summary = renderToStaticMarkup(<QuickNoteSummary summary={JSON.stringify({ "事件归纳": [{ "时间段": "05:00–13:00", "原文": "<b>原话</b>", "归纳说明": "完整说明" }], "关键对话": [{ "对话": ["旧句1", "旧句2"], extra: { flag: true, value: null } }] })} />);
+    expect(summary).toContain("&lt;b&gt;原话&lt;/b&gt;");
+    for (const text of ["事件归纳", "关键对话", "时间段", "05:00–13:00", "归纳说明", "完整说明", "旧句1", "旧句2", "extra", "true", "null"]) expect(summary).toContain(text);
+    expect(summary).toContain("<dl");
+    expect(summary).toContain("<ol");
+    expect(summary).not.toMatch(/overflow-y|max-h|<details[^>]*open/);
+    for (const raw of ["null", '["旧摘要",{"未知":42}]', '"旧格式"', "{异常", ""]) expect(() => renderToStaticMarkup(<QuickNoteSummary summary={raw} />)).not.toThrow();
+  });
+
+  it("keeps empty logs compact and configuration read-only behind native disclosure", () => {
+    const logs = renderToStaticMarkup(<QuickNoteLogs state={{ connection: "connected", entries: [] }} onReconnect={vi.fn()} />);
+    expect(logs).toContain("暂无日志");
+    const summary = logs.slice(0, logs.indexOf("</summary>"));
+    expect(summary).toContain("运行日志");
+    expect(summary).not.toContain("重新读取日志");
+    expect(summary).not.toContain("日志已连接");
+    const configuration = renderToStaticMarkup(<QuickNoteConfig config={config} loading={false} onReload={vi.fn()} />);
+    expect(configuration).toContain("Asia/Shanghai");
+    expect(configuration).toContain("05:00");
+    expect(configuration).not.toContain("当前为只读配置入口");
+    expect(configuration).not.toMatch(/<details[^>]*open|<input/);
+  });
+
+  it("reuses Memory material values locally and avoids white nested reading surfaces", () => {
+    const css = readFileSync(new URL("./quick-note.css", import.meta.url), "utf8");
+    expect(css).toContain("var(--glass-surface-strong) 69%, var(--glass-surface) 31%");
+    expect(css).toMatch(/\.quick-note-overview,\s*\.quick-note-reader\s*\{/);
+    expect(css).not.toContain("--mist-solid-surface");
+    expect(render(loaded)).toContain("quick-note-overview mist-glass-strong");
+    expect(renderReader()).toContain("quick-note-reader mist-glass-strong");
+    expect(renderReader()).not.toContain("mist-solid");
+  });
+
+  it("keeps the overview mounted and reads current saved content after edit/rerun/deletion", () => {
+    vi.spyOn(navigationHooks, "useQuickNoteNavigation").mockReturnValue({
+      reader: note, overviewRef: createRef<HTMLDivElement>(), readerRef: createRef<HTMLDivElement>(),
+      discardAction: null, open: vi.fn(), back: vi.fn(), exit: vi.fn(), cancelDiscard: vi.fn(), confirmDiscard: vi.fn(),
+    });
+    const source = vi.spyOn(hooks, "useQuickNotes");
+    source.mockReturnValue({ state: { ...loaded, data: { ...loaded.data!, items: [{ ...note, output: "保存后完整正文\n最新一行" }] } }, controller: null });
+    const saved = renderToStaticMarkup(<QuickNoteView />);
+    expect(saved).toContain('hidden=""');
+    expect(saved).toContain("保存后完整正文\n最新一行");
+    expect(saved).toContain('data-quick-note-output="true"');
+    expect(saved).not.toContain("[DRIFT:保留]");
+    source.mockReturnValue({ state: { ...loaded, data: { ...loaded.data!, items: [{ ...note, output: "" }] } }, controller: null });
+    expect(renderToStaticMarkup(<QuickNoteView />)).toContain("尚无已保存正文");
+    source.mockReturnValue({ state: { ...loaded, data: { ...loaded.data!, items: [] } }, controller: null });
+    const removed = renderToStaticMarkup(<QuickNoteView />);
+    expect(removed).toContain("这一天已不包含这条速记");
+    expect(removed).not.toContain('data-quick-note-output="true"');
+  });
+
+  it("keeps reader navigation and metadata outside the single body/summary scroll region", () => {
+    const html = renderReader();
+    const endHeader = html.indexOf("</header>");
+    const scrollRegion = html.indexOf('data-quick-note-reader-scroll="true"');
+    const header = html.slice(0, endHeader);
+    expect(header).toContain("shrink-0");
+    expect(header).toContain("返回日期概览");
+    expect(header).toContain("2026-10-17（跨天） 05:00");
+    expect(scrollRegion).toBeGreaterThan(endHeader);
+    expect(html.indexOf('data-quick-note-output="true"')).toBeGreaterThan(scrollRegion);
+    expect(html.indexOf('data-quick-note-summary="true"')).toBeGreaterThan(scrollRegion);
+    expect(html).toContain('aria-label="速记正文与摘要" tabindex="0"');
+    const source = readFileSync(new URL("./QuickNoteView.tsx", import.meta.url), "utf8");
+    const wrapper = source.match(/<div ref=\{navigation.readerRef\}[^>]*>/)?.[0];
+    expect(wrapper).toContain("flex min-h-0 flex-1 flex-col overflow-hidden");
+    expect(source).toContain("max-h-dvh");
+  });
+
+  it("keeps local font hierarchy compact and the floating top button accessible", () => {
+    const overview = render(loaded);
+    expect(overview).toContain('class="text-base font-semibold"');
+    expect(overview).toContain("text-[13px] leading-6");
+    const reader = renderReader();
+    expect(reader).toContain("text-[15px] leading-7");
+    expect(reader).toContain("text-[13px] leading-6");
+    expect(renderToStaticMarkup(<QuickNoteTopButton visible={false} onClick={vi.fn()} />)).toBe("");
+    const button = renderToStaticMarkup(<QuickNoteTopButton visible onClick={vi.fn()} />);
+    expect(button).toContain('aria-label="回到正文顶部"');
+    expect(button).toContain("mist-glass");
+    expect(button).toContain("absolute bottom-3 right-3 size-11");
+  });
+
+  it("keeps long semantic prose and dialogue disclosures inside the existing reader scroll region", () => {
+    const dialogue = Array.from({ length: 300 }, (_, index) => `我：第${index}句完整原文`).join("\n");
+    const html = renderReader({ ...note, output: "前文\n[HEART:片段]\n" + "长正文\n".repeat(300) + "[DRIFT:末尾片段]", summary: JSON.stringify({ "事件归纳": "已保存事件", "关键对话": { time: "20:24–20:34", content: dialogue } }) });
+    expect((html.match(/overflow-y-auto/g) ?? []).length).toBe(1);
+    expect((html.match(/<details\b/g) ?? []).length).toBe(2);
+    expect(html).toContain("第299句完整原文");
+    expect(html).toContain("末尾片段");
+    expect(html).toContain("收起关键对话");
+    expect(html).not.toMatch(/max-h-|line-clamp/);
   });
 });

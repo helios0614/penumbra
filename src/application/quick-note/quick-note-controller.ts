@@ -1,5 +1,5 @@
 import * as client from "@/domain/quick-note";
-import { normalizeOutput, type QuickNote, type BackfillInput } from "@/domain/quick-note";
+import { normalizeOutput, QuickNoteContractError, type QuickNote, type BackfillInput } from "@/domain/quick-note";
 import { businessDate, businessRange, parseDateKey } from "./quick-note-date";
 import { INITIAL_QUICK_NOTE_STATE, failureText, sameSavedNote, uncertainFailure, type QuickNoteState } from "./quick-note-state";
 
@@ -12,33 +12,53 @@ export function createQuickNoteController(deps = client, now = () => Date.now())
   let configAbort: AbortController | null = null;
   let candidateAbort: AbortController | null = null;
   let writeAbort: AbortController | null = null;
+  let activeLoad: { readonly key: string; readonly promise: Promise<boolean | null> } | null = null;
   const publish = (patch: Partial<QuickNoteState>) => {
     if (disposed) return;
     state = { ...state, ...patch };
     listeners.forEach((listener) => listener(state));
   };
 
-  async function load(clear = false): Promise<boolean | null> {
-    if (disposed || !state.config) return null;
+  function load(clear = false, fresh = false): Promise<boolean | null> {
+    if (disposed || !state.config) return Promise.resolve(null);
+    const config = state.config;
+    const date = state.date;
+    const key = `${date}|${config.timeZone}|${config.dayBoundaryHour}`;
+    if (!fresh && activeLoad?.key === key && !listAbort?.signal.aborted) return activeLoad.promise;
     const seq = ++listSeq;
     listAbort?.abort();
     const abort = new AbortController();
     listAbort = abort;
     publish({ status: "loading", error: null, ...(clear ? { data: null } : {}) });
-    try {
-      const data = await deps.listQuickNotes({ ...businessRange(state.date, state.config), page: state.page, pageSize: 10 }, { signal: abort.signal });
-      if (disposed || seq !== listSeq) return null;
-      if (!data.items.length && state.page > 1 && data.total <= (state.page - 1) * data.pageSize) {
-        publish({ page: Math.max(1, Math.ceil(data.total / data.pageSize)) });
-        return load(true);
+    const promise = (async (): Promise<boolean | null> => {
+      try {
+        const range = businessRange(date, config);
+        const items: QuickNote[] = [];
+        const seen = new Set<string>();
+        for (let page = 1; ; page++) {
+          const data = await deps.listQuickNotes({ ...range, page, pageSize: 10 }, { signal: abort.signal });
+          if (disposed || seq !== listSeq) return null;
+          const previousSize = items.length;
+          for (const item of data.items) {
+            if (!seen.has(item.id)) { seen.add(item.id); items.push(item); }
+          }
+          if (!data.hasMore) {
+            // Publish one complete date, never a partial page as a full overview.
+            publish({ data: { items }, page: 1, status: "success", error: null });
+            return true;
+          }
+          if (items.length === previousSize) throw new QuickNoteContractError("无法完整读取这一天的速记，请重新读取记录。");
+        }
+      } catch (error) {
+        if (disposed || seq !== listSeq) return null;
+        publish({ status: "error", error: failureText(error) });
+        return false;
       }
-      publish({ data, status: "success", error: null });
-      return true;
-    } catch (error) {
-      if (disposed || seq !== listSeq) return null;
-      publish({ status: "error", error: failureText(error) });
-      return false;
-    }
+    })();
+    activeLoad = { key, promise };
+    const release = () => { if (activeLoad?.promise === promise) activeLoad = null; };
+    void promise.then(release, release);
+    return promise;
   }
 
   async function loadConfig() {
@@ -86,12 +106,12 @@ export function createQuickNoteController(deps = client, now = () => Date.now())
       else if (kind === "step1" || kind === "step2") await deps.rerunQuickNote(target, kind, { signal: abort.signal });
       if (disposed) return;
       const text = kind === "backfill" ? "补写请求已接受并安排执行；不代表生成完成。请查看日志，稍后刷新记录核对。" : kind === "delete" ? "记录已删除。" : kind === "step1" ? "Step 1 已完成，原正文已清空；可继续重跑 Step 2。" : "Step 2 已完成，请核对已保存正文。";
-      const synced = await load();
+      const synced = await load(false, true);
       publish({ notice: { tone: synced !== false ? "info" : "error", text: synced !== false ? text : `${text} 重新读取失败，请刷新记录核对；无需再次发起操作。` } });
     } catch (error) {
       if (disposed) return;
       const text = uncertainFailure(error) ? "操作结果暂时无法确认，已尝试重新读取记录核对。请查看日志与正文，勿重复提交来恢复读取失败。" : failureText(error);
-      await load();
+      await load(false, true);
       publish({ notice: { tone: "error", text } });
     } finally {
       writeAbort = null;
@@ -117,7 +137,7 @@ export function createQuickNoteController(deps = client, now = () => Date.now())
       await deps.saveQuickNote(editor.baseline.id, editor.draft, { signal: abort.signal });
       if (disposed) return;
       publish({ editor: null, notice: { tone: "info", text: "正文已保存。" } });
-      await load();
+      await load(false, true);
     } catch (error) {
       if (disposed) return;
       publish({ editor: { ...editor, uncertain: sent && uncertainFailure(error), error: sent && uncertainFailure(error) ? "保存结果暂时无法确认，草稿已保留。请先核对服务端正文。" : failureText(error) } });
@@ -140,7 +160,7 @@ export function createQuickNoteController(deps = client, now = () => Date.now())
       if (disposed || state.editor?.baseline.id !== editor.baseline.id) return;
       if (latest && normalizeOutput(latest.output) === editor.draft) {
         publish({ editor: null, notice: { tone: "info", text: "已重新读取并确认正文已保存。" } });
-        await load();
+        await load(false, true);
       } else publish({ editor: { ...editor, uncertain: false, conflict: latest && !sameSavedNote(latest, editor.baseline) ? latest : null, error: latest ? "尚未确认草稿已保存，请核对服务端正文。草稿仍保留。" : "记录已删除，草稿已保留，请复制备份。" } });
     } catch {
       publish({ editor: { ...editor, uncertain: true, error: "重新读取失败，无法确认保存结果。草稿已保留，请再次核对。" } });
@@ -156,12 +176,8 @@ export function createQuickNoteController(deps = client, now = () => Date.now())
     async selectDate(date: string) {
       if (disposed) return;
       try { parseDateKey(date); } catch (error) { publish({ notice: { tone: "error", text: failureText(error) } }); return; }
+      if (date === state.date) return;
       publish({ date, page: 1 });
-      await load(true);
-    },
-    async setPage(page: number) {
-      if (disposed || !Number.isInteger(page) || page < 1 || page === state.page) return;
-      publish({ page });
       await load(true);
     },
     beginEdit(note: QuickNote) {

@@ -1,5 +1,5 @@
 import { ApiError } from "@/lib/api";
-import { QuickNoteContractError, type QuickNote, type QuickNotePage, type TriggerConfig, type IncompletePeriod } from "@/domain/quick-note";
+import { QuickNoteContractError, type QuickNote, type TriggerConfig, type IncompletePeriod } from "@/domain/quick-note";
 
 export interface QuickNoteEditor {
   readonly baseline: QuickNote;
@@ -16,7 +16,8 @@ export interface QuickNoteState {
   readonly date: string;
   readonly page: number;
   readonly status: "idle" | "loading" | "success" | "error";
-  readonly data: QuickNotePage | null;
+  // Application-level date collection; backend page metadata stays in the client.
+  readonly data: { readonly items: readonly QuickNote[] } | null;
   readonly error: string | null;
   readonly notice: { readonly tone: "info" | "error"; readonly text: string } | null;
   readonly pending: { readonly kind: string; readonly target: string } | null;

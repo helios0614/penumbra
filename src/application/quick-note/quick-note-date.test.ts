@@ -32,4 +32,10 @@ describe("Quick Note business dates", () => {
   it("labels real cross-day periods without deriving names from current config", () => {
     expect(formatPeriod(Date.parse("2026-10-16T12:00:00Z") / 1000, Date.parse("2026-10-16T21:00:00Z") / 1000, config.timeZone)).toBe("2026-10-16 20:00 — 2026-10-17（跨天） 05:00");
   });
+  it("offers compact overview times without repeating dates or changing query bounds", () => {
+    const start = Date.parse("2026-10-16T12:00:00Z") / 1000;
+    expect(formatPeriod(start, start + 3600, config.timeZone, true)).toBe("20:00–21:00");
+    expect(formatPeriod(start, start + 9 * 3600, config.timeZone, true)).toBe("20:00–05:00（次日）");
+    expect(formatPeriod(start, start + 48 * 3600, config.timeZone, true)).toBe("20:00–20:00（2026-10-18）");
+  });
 });

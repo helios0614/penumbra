@@ -54,15 +54,26 @@ describe("Quick Note loading, pagination, and request lifetimes", () => {
     expect(deps.backfillQuickNote).not.toHaveBeenCalled();
     c.dispose();
   });
-  it("changes pages without changing the date and returns to page one on date selection", async () => {
+  it("loads every backend page for the selected date before publishing the overview", async () => {
     const { deps, controller: c } = setup();
     await c.loadConfig();
-    deps.listQuickNotes.mockResolvedValueOnce(page([note], 2, 21));
-    await c.setPage(2);
-    expect(c.getState()).toMatchObject({ date: "2026-10-16", page: 2 });
-    await c.selectDate("2026-10-15");
+    const records = Array.from({ length: 25 }, (_, index) => ({ ...note, id: `note-${index}`, createdAt: note.createdAt - index }));
+    const lastPage = deferred<QuickNotePage>();
+    deps.listQuickNotes.mockClear();
+    deps.listQuickNotes.mockResolvedValueOnce(page(records.slice(0, 10), 1, 25)).mockResolvedValueOnce(page(records.slice(10, 20), 2, 25)).mockReturnValueOnce(lastPage.promise);
+    const reading = c.selectDate("2026-10-15");
+    await Promise.resolve(); await Promise.resolve();
+    expect(c.getState()).toMatchObject({ status: "loading", data: null });
+    expect(deps.listQuickNotes.mock.calls.map(([query]) => query.page)).toEqual([1, 2, 3]);
+    lastPage.resolve(page(records.slice(20), 3, 25));
+    await reading;
     expect(c.getState()).toMatchObject({ date: "2026-10-15", page: 1 });
-    expect(deps.listQuickNotes.mock.lastCall?.[0].periodFrom).toBe(Date.parse("2026-10-14T21:00Z") / 1000);
+    expect(c.getState().data?.items).toEqual(records);
+    const signals = deps.listQuickNotes.mock.calls.map(([query, options]) => {
+      expect(query).toMatchObject({ periodFrom: Date.parse("2026-10-14T21:00Z") / 1000, periodTo: Date.parse("2026-10-15T21:00Z") / 1000, pageSize: 10 });
+      return options.signal;
+    });
+    expect(new Set(signals).size).toBe(1);
     c.dispose();
   });
   it("ignores stale date/page responses even when transport ignores abort", async () => {
@@ -84,12 +95,63 @@ describe("Quick Note loading, pagination, and request lifetimes", () => {
     expect(c.getState().date).toBe("2026-10-14");
     c.dispose();
   });
-  it("reconciles an empty out-of-range page after deletion using only reads", async () => {
+  it("retains the previous complete list on a later-page failure and recovers with GET only", async () => {
     const { deps, controller: c } = setup();
     await c.loadConfig();
-    deps.listQuickNotes.mockResolvedValueOnce(page([], 3, 11)).mockResolvedValueOnce(page([note], 2, 11));
-    await c.setPage(3);
-    expect(c.getState()).toMatchObject({ page: 2, status: "success" });
+    const records = Array.from({ length: 11 }, (_, index) => ({ ...note, id: `new-${index}` }));
+    deps.listQuickNotes.mockResolvedValueOnce(page(records.slice(0, 10), 1, 11)).mockRejectedValueOnce(new ApiError("offline", 0));
+    await c.load();
+    expect(c.getState()).toMatchObject({ status: "error", data: { items: [note] } });
+    deps.listQuickNotes.mockResolvedValueOnce(page(records.slice(0, 10), 1, 11)).mockResolvedValueOnce(page(records.slice(10), 2, 11));
+    await c.load();
+    expect(c.getState()).toMatchObject({ status: "success", data: { items: records } });
+    expect(deps.rerunQuickNote).not.toHaveBeenCalled();
+    expect(deps.backfillQuickNote).not.toHaveBeenCalled();
+    c.dispose();
+  });
+  it("cancels later pages and ignores their late responses after switching dates", async () => {
+    const { deps, controller: c } = setup();
+    await c.loadConfig();
+    const oldPage = deferred<QuickNotePage>();
+    deps.listQuickNotes.mockResolvedValueOnce(page([note], 1, 11)).mockReturnValueOnce(oldPage.promise);
+    const oldRead = c.selectDate("2026-10-15");
+    await Promise.resolve();
+    const signal = deps.listQuickNotes.mock.lastCall?.[1].signal;
+    const current = { ...note, id: "current" };
+    deps.listQuickNotes.mockResolvedValueOnce(page([current]));
+    await c.selectDate("2026-10-14");
+    expect(signal.aborted).toBe(true);
+    oldPage.resolve(page([{ ...note, id: "late" }], 2, 11));
+    await oldRead;
+    expect(c.getState()).toMatchObject({ date: "2026-10-14", data: { items: [current] } });
+    c.dispose();
+  });
+  it("deduplicates page overlaps without reordering and stops a non-advancing page chain", async () => {
+    const { deps, controller: c } = setup();
+    await c.loadConfig();
+    const next = { ...note, id: "next" };
+    deps.listQuickNotes.mockResolvedValueOnce(page([note], 1, 11)).mockResolvedValueOnce(page([note, next], 2, 11));
+    await c.load();
+    expect(c.getState().data?.items).toEqual([note, next]);
+    deps.listQuickNotes.mockResolvedValueOnce(page([note], 1, 21)).mockResolvedValueOnce(page([note], 2, 21));
+    const before = deps.listQuickNotes.mock.calls.length;
+    await c.load();
+    expect(deps.listQuickNotes.mock.calls.length - before).toBe(2);
+    expect(c.getState()).toMatchObject({ status: "error", error: expect.stringContaining("完整读取"), data: { items: [note, next] } });
+    c.dispose();
+  });
+  it("coalesces repeated loads and ignores repeated selection of the current date", async () => {
+    const { deps, controller: c } = setup();
+    await c.loadConfig();
+    const waiting = deferred<QuickNotePage>();
+    deps.listQuickNotes.mockReturnValueOnce(waiting.promise);
+    const first = c.load();
+    const second = c.load();
+    expect(second).toBe(first);
+    await c.selectDate(c.getState().date);
+    expect(deps.listQuickNotes).toHaveBeenCalledTimes(2);
+    waiting.resolve(page());
+    await first;
     c.dispose();
   });
   it("protects a newer config request and does not publish after disposal", async () => {
@@ -216,15 +278,13 @@ describe("Quick Note mutations, feedback, and failure recovery", () => {
     expect(deps.backfillQuickNote).not.toHaveBeenCalled();
     c.dispose();
   });
-  it("submits ordinary retry safely, keeps date/page, and reports accepted rather than complete", async () => {
+  it("submits ordinary retry safely, keeps the date, and reports accepted rather than complete", async () => {
     const { deps, controller: c } = setup();
     await c.loadConfig();
-    deps.listQuickNotes.mockResolvedValue(page([note], 2, 21));
-    await c.setPage(2);
     const input = { date: "2026-10-15", periodLabel: "夜晚", endHour: 5, overwrite: false };
     await c.mutate("backfill", "2026-10-15:5", input);
     expect(deps.backfillQuickNote).toHaveBeenCalledWith(input, expect.any(Object));
-    expect(c.getState()).toMatchObject({ date: "2026-10-16", page: 2, notice: { tone: "info", text: expect.stringContaining("不代表生成完成") } });
+    expect(c.getState()).toMatchObject({ date: "2026-10-16", page: 1, notice: { tone: "info", text: expect.stringContaining("不代表生成完成") } });
     c.dispose();
   });
   it("passes explicit overwrite only when the confirmed input requests it", async () => {
@@ -288,6 +348,23 @@ describe("Quick Note mutations, feedback, and failure recovery", () => {
     await mutation;
     expect(c.getState()).toMatchObject({ date: "2026-10-15", notice: { tone: "info", text: expect.stringContaining("Step 2 已完成") } });
     expect(c.getState().notice?.text).not.toContain("重新读取失败");
+    c.dispose();
+  });
+  it("starts a fresh reconciliation after a write instead of sharing a pre-write read", async () => {
+    const { deps, controller: c } = setup();
+    await c.loadConfig();
+    const waiting = deferred<QuickNotePage>();
+    deps.listQuickNotes.mockReturnValueOnce(waiting.promise);
+    const staleRead = c.load();
+    const signal = deps.listQuickNotes.mock.lastCall?.[1].signal;
+    const updated = { ...note, output: "重跑后完整正文" };
+    deps.listQuickNotes.mockResolvedValueOnce(page([updated]));
+    await c.mutate("step2", note.id);
+    expect(signal.aborted).toBe(true);
+    waiting.resolve(page([note]));
+    await staleRead;
+    expect(c.getState().data?.items).toEqual([updated]);
+    expect(deps.rerunQuickNote).toHaveBeenCalledOnce();
     c.dispose();
   });
   it("keeps pending operations single-flight and aborts/ignores them on leaving the page", async () => {
