@@ -1,13 +1,12 @@
 import { useState } from "react";
-import { MoreHorizontal, RefreshCw, X } from "lucide-react";
+import { ListRestart, MoreHorizontal, RefreshCw, X } from "lucide-react";
 import type { QuickNote, TriggerConfig } from "@/domain/quick-note";
 import { Button } from "@/components/ui/button";
 import { PageHeader, PageHeaderAction } from "@/components/ui/page-header";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { QuickNoteDateNavigation } from "./QuickNoteControls";
-import { QuickNoteBackfillDialog, QuickNoteConfirmDialog, QuickNoteRetryDialog, type QuickNoteConfirmation } from "./QuickNoteDialogs";
+import { QuickNoteBackfillDialog, QuickNoteConfirmDialog, QuickNoteDiscardDialog, QuickNoteRetryDialog, type QuickNoteConfirmation } from "./QuickNoteDialogs";
 import { QuickNoteEditor } from "./QuickNoteEditor";
 import { QuickNoteLogs } from "./QuickNoteLogs";
 import { QuickNoteOverview } from "./QuickNoteOverview";
@@ -34,7 +33,7 @@ export function QuickNoteView({ onBack }: { readonly onBack?: () => void }) {
     <TooltipProvider>
       <main className="mx-auto flex h-full max-h-dvh min-h-0 w-full max-w-5xl flex-col overflow-hidden px-4 pb-4 pt-5 sm:px-0 sm:pb-8 sm:pt-8" aria-labelledby="quick-note-page-title">
         <PageHeader eyebrow="QUICK NOTES" title="速记" titleId="quick-note-page-title" description="那些散落的时段，会被整理成可以回看的记录。" actions={<>
-          {!navigation.reader && <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="重试近期未完成时段" disabled={!state.config || Boolean(state.pending)} onClick={() => { setRetryOpen(true); void controller?.loadCandidates(); }} />}><RefreshCw aria-hidden="true" /></TooltipTrigger><TooltipContent>重试近期未完成时段</TooltipContent></Tooltip>}
+          {!navigation.reader && <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="重试近期未完成时段" disabled={!state.config || Boolean(state.pending)} onClick={() => { setRetryOpen(true); void controller?.loadCandidates(); }} />}><ListRestart aria-hidden="true" /></TooltipTrigger><TooltipContent>重试近期未完成时段</TooltipContent></Tooltip>}
           {!navigation.reader && <Popover open={menuOpen} onOpenChange={setMenuOpen}>
             <Tooltip><TooltipTrigger render={<PopoverTrigger render={<PageHeaderAction aria-label="更多速记操作" disabled={!state.config} />} />}><MoreHorizontal aria-hidden="true" /></TooltipTrigger><TooltipContent>更多速记操作</TooltipContent></Tooltip>
             <PopoverContent align="end" className="w-44"><Button variant="ghost" className="h-11 justify-start" disabled={Boolean(state.pending)} onClick={() => { setMenuOpen(false); setBackfillOpen(true); }}>补写历史时段</Button></PopoverContent>
@@ -68,16 +67,7 @@ export function QuickNoteView({ onBack }: { readonly onBack?: () => void }) {
           else void controller?.mutate(value.kind, value.note.id);
         }} />
         <QuickNoteEditor editor={state.editor} busy={Boolean(state.pending)} controller={controller} />
-        <AlertDialog open={Boolean(navigation.discardAction)} onOpenChange={(next) => { if (!next) navigation.cancelDiscard(); }}>
-          <AlertDialogContent>
-            <AlertDialogTitle>放弃当前草稿？</AlertDialogTitle>
-            <AlertDialogDescription>尚未保存的正文修改会被放弃。</AlertDialogDescription>
-            <AlertDialogFooter>
-              <AlertDialogCancel className="h-11">返回编辑</AlertDialogCancel>
-              <AlertDialogAction className="h-11" variant="destructive" onClick={navigation.confirmDiscard}>放弃草稿并返回</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <QuickNoteDiscardDialog open={Boolean(navigation.discardAction)} onCancel={navigation.cancelDiscard} onConfirm={navigation.confirmDiscard} />
       </main>
     </TooltipProvider>
   );
@@ -89,7 +79,7 @@ export function QuickNoteConfig({ config, loading, onReload }: { readonly config
     <div className="space-y-3 pb-3 text-sm text-muted-strong">
       <p>业务时区：{config.timeZone} · 日界：{String(config.dayBoundaryHour).padStart(2, "0")}:00</p>
       <ul className="space-y-2">{config.hours.map((h) => <li key={h}>{config.labels[String(h)]} · 截止 {String(h).padStart(2, "0")}:00</li>)}</ul>
-      <Button variant="outline" className="h-11" disabled={loading} onClick={onReload}>重新读取配置</Button>
+      <Button variant="ghost" className="h-11 gap-2 px-2 text-xs text-muted-foreground hover:text-foreground" disabled={loading} onClick={onReload}><RefreshCw className="size-3.5" aria-hidden="true" />重新读取配置</Button>
     </div>
   </details>;
 }

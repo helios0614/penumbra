@@ -31,6 +31,9 @@ describe("Quick Note page presentation", () => {
     expect(html).toContain("QUICK NOTES");
     expect(html).toContain("那些散落的时段，会被整理成可以回看的记录。");
     expect(html).toContain('aria-label="重试近期未完成时段"');
+    const retryButton = html.match(/<button[^>]*aria-label="重试近期未完成时段"[^>]*>[\s\S]*?<\/button>/)?.[0];
+    expect(retryButton).toContain("lucide-list-restart");
+    expect(retryButton).not.toContain("lucide-refresh-cw");
     expect(html).toContain('aria-label="更多速记操作"');
     expect(html).toContain('aria-label="返回桌面"');
     expect(html).toContain("size-11");
@@ -79,6 +82,11 @@ describe("Quick Note page presentation", () => {
     const html = renderToStaticMarkup(<QuickNoteActions note={note} disabled={false} onAction={vi.fn()} />);
     expect(html).toContain("Step 1 重跑辅助模型（清空正文）");
     expect(html).toContain("Step 2 重跑主模型（重新生成正文）");
+    const step1Button = html.match(/<button[^>]*aria-label="保存时的名称：Step 1[^"]*"[^>]*>[\s\S]*?<\/button>/)?.[0];
+    const step2Button = html.match(/<button[^>]*aria-label="保存时的名称：Step 2[^"]*"[^>]*>[\s\S]*?<\/button>/)?.[0];
+    expect(step1Button).toContain("lucide-list-restart");
+    expect(step1Button).not.toContain("lucide-refresh-cw");
+    expect(step2Button).toContain("lucide-brain");
     expect(html).toContain('aria-label="保存时的名称：编辑正文"');
     expect(html).toContain('aria-label="保存时的名称：删除速记"');
     expect(html).not.toMatch(/[🧠✏️🗑️🔄]/u);
@@ -90,6 +98,12 @@ describe("Quick Note page presentation", () => {
       expect(html).toContain("尚无已保存正文");
       expect(html).not.toContain("生成中");
     }
+  });
+  it("keeps refresh-cw for the overview's read-only refresh action", () => {
+    const refreshButton = render(loaded).match(/<button[^>]*aria-label="刷新记录"[^>]*>[\s\S]*?<\/button>/)?.[0];
+    expect(refreshButton).toContain('title="刷新记录"');
+    expect(refreshButton).toContain("lucide-refresh-cw");
+    expect(refreshButton).not.toContain("lucide-list-restart");
   });
   it("escapes legacy/malformed summary and output HTML without losing content", () => {
     const html = renderToStaticMarkup(<QuickNoteSummary summary={'<img src=x onerror="alert(1)">非法 JSON'} />);
@@ -105,12 +119,11 @@ describe("Quick Note page presentation", () => {
     expect(html).toContain("刷新记录");
   });
   it("renders candidate loading, empty and error recovery without a fake retry", () => {
-    const candidate = (state: QuickNoteState) => renderToStaticMarkup(<QuickNoteCandidateList state={state} onRefresh={vi.fn()} onRetry={vi.fn()} />);
+    const candidate = (state: QuickNoteState) => renderToStaticMarkup(<QuickNoteCandidateList state={state} onRetry={vi.fn()} />);
     expect(candidate({ ...loaded, candidatesLoading: true })).toContain("正在读取近期未完成时段");
-    expect(candidate({ ...loaded, candidates: [] })).toContain("近期没有可重试");
+    expect(candidate({ ...loaded, candidates: [] })).toContain("最近没有需要重试的速记");
     const error = candidate({ ...loaded, candidatesError: "读取失败" });
     expect(error).toContain('role="alert"');
-    expect(error).toContain("重新读取候选");
     expect(error).not.toContain("重试该时段");
     expect(candidate({ ...loaded, candidates: [{ key: "k", date: "2026-10-16", periodLabel: "夜晚", periodStart: note.periodStart, periodEnd: note.periodEnd, endHour: 5, status: "missing" }] })).toContain("重试该时段");
   });
@@ -209,6 +222,15 @@ describe("Quick Note page presentation", () => {
     expect(configuration).toContain("05:00");
     expect(configuration).not.toContain("当前为只读配置入口");
     expect(configuration).not.toMatch(/<details[^>]*open|<input/);
+    const reloadButton = configuration.match(/<button\b[^>]*>[\s\S]*?<\/button>/)?.[0];
+    expect(reloadButton).toContain("重新读取配置");
+    expect(reloadButton).toContain("lucide-refresh-cw");
+    expect(reloadButton).toContain("size-3.5");
+    expect(reloadButton).toContain("h-11");
+    expect(reloadButton).toContain("text-muted-foreground");
+    expect(configuration).not.toContain("mist-solid");
+    const loading = renderToStaticMarkup(<QuickNoteConfig config={config} loading onReload={vi.fn()} />);
+    expect(loading.match(/<button\b[^>]*>/)?.[0]).toContain("disabled");
   });
 
   it("reuses Memory material values locally and avoids white nested reading surfaces", () => {
