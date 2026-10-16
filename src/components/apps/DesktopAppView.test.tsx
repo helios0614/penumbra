@@ -15,6 +15,15 @@ const desktopStyles = readFileSync(
 );
 
 describe("desktop memory route and navigation", () => {
+  it("adds a separate Quick Note app and preserves ordinary notes", () => {
+    expect(isDesktopAppId("quick-notes")).toBe(true);
+    expect(DESKTOP_APP_META["quick-notes"].name).toBe("速记");
+    expect(DESKTOP_APP_META.notes.name).toBe("笔记");
+    const html = renderToStaticMarkup(<DesktopApps onLaunch={vi.fn()} onSettings={vi.fn()} />);
+    expect(html).toContain('aria-label="打开速记"');
+    expect(html).toContain('aria-label="打开笔记"');
+    expect(renderToStaticMarkup(<DesktopAppView appId="quick-notes" onBack={vi.fn()} />)).not.toContain("页面还在搭建中");
+  });
   it("registers memory as a real desktop app route", () => {
     expect(isDesktopAppId("memory")).toBe(true);
     expect(DESKTOP_APP_META.memory).toMatchObject({

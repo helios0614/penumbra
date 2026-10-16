@@ -10,6 +10,7 @@ import {
   LoaderCircle,
   LibraryBig,
   StickyNote,
+  NotebookPen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +21,9 @@ const ChatView = lazy(() =>
 const MemoryView = lazy(() =>
   import("@/components/memory/MemoryView").then((module) => ({ default: module.MemoryView })),
 );
+const QuickNoteView = lazy(() =>
+  import("@/components/quick-note/QuickNoteView").then((module) => ({ default: module.QuickNoteView })),
+);
 
 export type DesktopAppId =
   | "chat"
@@ -29,7 +33,8 @@ export type DesktopAppId =
   | "clock"
   | "weather"
   | "music"
-  | "memory";
+  | "memory"
+  | "quick-notes";
 
 interface DesktopAppMeta {
   name: string;
@@ -46,6 +51,7 @@ export const DESKTOP_APP_META: Record<DesktopAppId, DesktopAppMeta> = {
   weather: { name: "天气", description: "查看天气和未来预报", icon: CloudSun },
   music: { name: "音乐", description: "播放和管理音乐", icon: Music2 },
   memory: { name: "记忆库", description: "翻阅被留下来的片段", icon: LibraryBig },
+  "quick-notes": { name: "速记", description: "按时段整理，可以回看的生活记录", icon: NotebookPen },
 };
 
 export function isDesktopAppId(value: string): value is DesktopAppId {
@@ -66,11 +72,11 @@ export function DesktopAppView({
     <section
       className={cn(
         "mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden sm:rounded-[28px]",
-        appId === "chat" ? "mist-glass" : appId === "memory" ? "" : "mist-glass-strong",
+        appId === "chat" ? "mist-glass" : appId === "memory" || appId === "quick-notes" ? "" : "mist-glass-strong",
       )}
       data-testid="desktop-app-view"
     >
-      {appId !== "chat" && appId !== "memory" && (
+      {appId !== "chat" && appId !== "memory" && appId !== "quick-notes" && (
         <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3 sm:px-5">
           <button
             type="button"
@@ -95,12 +101,13 @@ export function DesktopAppView({
         <Suspense fallback={<AppLoading />}>
           {appId === "chat" && <ChatView onBack={onBack} />}
           {appId === "memory" && <MemoryView onBack={onBack} />}
+          {appId === "quick-notes" && <QuickNoteView onBack={onBack} />}
           {appId === "calendar" && (
             <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
               <Calendar embedded className="mx-auto w-full max-w-xl" />
             </div>
           )}
-          {appId !== "chat" && appId !== "calendar" && appId !== "memory" && (
+          {appId !== "chat" && appId !== "calendar" && appId !== "memory" && appId !== "quick-notes" && (
             <AppPlaceholder appId={appId} />
           )}
         </Suspense>

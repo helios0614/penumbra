@@ -13,6 +13,7 @@ const SHORTCUTS: DesktopAppId[] = [
   "weather",
   "clock",
   "memory",
+  "quick-notes",
 ];
 
 export function DesktopApps({
@@ -26,7 +27,7 @@ export function DesktopApps({
     <section className="desktop-apps" aria-labelledby="desktop-apps-title">
       <h2 id="desktop-apps-title" className="sr-only">常用空间</h2>
 
-      <div className="grid grid-cols-4 gap-x-3 gap-y-4 sm:grid-cols-9 sm:gap-x-4">
+      <div className="grid grid-cols-4 gap-x-3 gap-y-4 sm:grid-cols-10 sm:gap-x-4">
         {SHORTCUTS.map((appId) => {
           const app = DESKTOP_APP_META[appId];
           const Icon = app.icon;

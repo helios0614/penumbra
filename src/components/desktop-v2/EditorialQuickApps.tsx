@@ -7,6 +7,7 @@ import {
   Music2,
   Settings,
   StickyNote,
+  NotebookPen,
   type LucideIcon,
 } from "lucide-react";
 import type { DesktopAppId } from "@/components/apps/DesktopAppView";
@@ -23,6 +24,7 @@ const SHORTCUTS: EditorialShortcut[] = [
   { id: "calendar", label: "日程", caption: "Calendar", icon: CalendarDays },
   { id: "todo", label: "待办", caption: "Focus", icon: CheckCircle2 },
   { id: "notes", label: "日记", caption: "Journal", icon: StickyNote },
+  { id: "quick-notes", label: "速记", caption: "Quick Notes", icon: NotebookPen },
   { id: "music", label: "音乐", caption: "Listen", icon: Music2 },
   { id: "weather", label: "天气", caption: "Outside", icon: CloudSun },
   { id: "clock", label: "时钟", caption: "Time", icon: Clock3 },
@@ -43,7 +45,7 @@ export function EditorialQuickApps({
           <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">Desk tools</p>
           <h2 className="mt-1 text-xl font-semibold tracking-tight">常用空间</h2>
         </div>
-        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">08 essentials</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">09 essentials</span>
       </div>
 
       <div className="grid grid-cols-4 gap-x-2 gap-y-5 sm:gap-x-3">

@@ -1,0 +1,184 @@
+import * as client from "@/domain/quick-note";
+import { normalizeOutput, type QuickNote, type BackfillInput } from "@/domain/quick-note";
+import { businessDate, businessRange, parseDateKey } from "./quick-note-date";
+import { INITIAL_QUICK_NOTE_STATE, failureText, sameSavedNote, uncertainFailure, type QuickNoteState } from "./quick-note-state";
+
+export function createQuickNoteController(deps = client, now = () => Date.now()) {
+  let state: QuickNoteState = INITIAL_QUICK_NOTE_STATE;
+  let disposed = false;
+  const listeners = new Set<(value: QuickNoteState) => void>();
+  let listSeq = 0, configSeq = 0, candidateSeq = 0;
+  let listAbort: AbortController | null = null;
+  let configAbort: AbortController | null = null;
+  let candidateAbort: AbortController | null = null;
+  let writeAbort: AbortController | null = null;
+  const publish = (patch: Partial<QuickNoteState>) => {
+    if (disposed) return;
+    state = { ...state, ...patch };
+    listeners.forEach((listener) => listener(state));
+  };
+
+  async function load(clear = false): Promise<boolean | null> {
+    if (disposed || !state.config) return null;
+    const seq = ++listSeq;
+    listAbort?.abort();
+    const abort = new AbortController();
+    listAbort = abort;
+    publish({ status: "loading", error: null, ...(clear ? { data: null } : {}) });
+    try {
+      const data = await deps.listQuickNotes({ ...businessRange(state.date, state.config), page: state.page, pageSize: 10 }, { signal: abort.signal });
+      if (disposed || seq !== listSeq) return null;
+      if (!data.items.length && state.page > 1 && data.total <= (state.page - 1) * data.pageSize) {
+        publish({ page: Math.max(1, Math.ceil(data.total / data.pageSize)) });
+        return load(true);
+      }
+      publish({ data, status: "success", error: null });
+      return true;
+    } catch (error) {
+      if (disposed || seq !== listSeq) return null;
+      publish({ status: "error", error: failureText(error) });
+      return false;
+    }
+  }
+
+  async function loadConfig() {
+    if (disposed) return;
+    const seq = ++configSeq;
+    configAbort?.abort();
+    configAbort = new AbortController();
+    ++listSeq;
+    listAbort?.abort();
+    publish({ config: null, configLoading: true, configError: null, data: null, status: "idle", error: null });
+    try {
+      const config = await deps.getTriggerConfig({ signal: configAbort.signal });
+      if (disposed || seq !== configSeq) return;
+      const date = state.date || businessDate(config, now());
+      publish({ config, date, configLoading: false });
+      await load(true);
+    } catch (error) {
+      if (!disposed && seq === configSeq) publish({ configLoading: false, configError: `无法读取有效时段配置。${failureText(error)}` });
+    }
+  }
+
+  async function loadCandidates() {
+    if (disposed) return;
+    const seq = ++candidateSeq;
+    candidateAbort?.abort();
+    candidateAbort = new AbortController();
+    publish({ candidatesLoading: true, candidatesError: null, candidates: null });
+    try {
+      const candidates = await deps.getIncomplete({ signal: candidateAbort.signal });
+      if (!disposed && seq === candidateSeq) publish({ candidates, candidatesLoading: false });
+    } catch (error) {
+      if (!disposed && seq === candidateSeq) publish({ candidatesLoading: false, candidatesError: failureText(error) });
+    }
+  }
+
+  async function mutate(kind: "step1" | "step2" | "delete" | "backfill", target: string, input?: BackfillInput) {
+    if (disposed || state.pending) return;
+    if (kind === "backfill" && !input) return;
+    const abort = new AbortController();
+    writeAbort = abort;
+    publish({ pending: { kind, target }, notice: null });
+    try {
+      if (kind === "backfill" && input) await deps.backfillQuickNote(input, { signal: abort.signal });
+      else if (kind === "delete") await deps.deleteQuickNote(target, { signal: abort.signal });
+      else if (kind === "step1" || kind === "step2") await deps.rerunQuickNote(target, kind, { signal: abort.signal });
+      if (disposed) return;
+      const text = kind === "backfill" ? "补写请求已接受并安排执行；不代表生成完成。请查看日志，稍后刷新记录核对。" : kind === "delete" ? "记录已删除。" : kind === "step1" ? "Step 1 已完成，原正文已清空；可继续重跑 Step 2。" : "Step 2 已完成，请核对已保存正文。";
+      const synced = await load();
+      publish({ notice: { tone: synced !== false ? "info" : "error", text: synced !== false ? text : `${text} 重新读取失败，请刷新记录核对；无需再次发起操作。` } });
+    } catch (error) {
+      if (disposed) return;
+      const text = uncertainFailure(error) ? "操作结果暂时无法确认，已尝试重新读取记录核对。请查看日志与正文，勿重复提交来恢复读取失败。" : failureText(error);
+      await load();
+      publish({ notice: { tone: "error", text } });
+    } finally {
+      writeAbort = null;
+      publish({ pending: null });
+    }
+  }
+
+  async function saveEditor() {
+    if (disposed || state.pending || !state.editor || state.editor.uncertain) return;
+    const editor = state.editor;
+    const abort = new AbortController();
+    writeAbort = abort;
+    publish({ pending: { kind: "save", target: editor.baseline.id }, editor: { ...editor, error: null, conflict: null } });
+    let sent = false;
+    try {
+      const latest = await deps.readQuickNote(editor.baseline, { signal: abort.signal });
+      if (disposed) return;
+      if (!latest || !sameSavedNote(latest, editor.baseline)) {
+        publish({ editor: { ...editor, conflict: latest, error: latest ? "服务端内容已变化，草稿已保留。请核对最新正文后决定是否覆盖。" : "记录已删除，草稿已保留，请复制备份。" } });
+        return;
+      }
+      sent = true;
+      await deps.saveQuickNote(editor.baseline.id, editor.draft, { signal: abort.signal });
+      if (disposed) return;
+      publish({ editor: null, notice: { tone: "info", text: "正文已保存。" } });
+      await load();
+    } catch (error) {
+      if (disposed) return;
+      publish({ editor: { ...editor, uncertain: sent && uncertainFailure(error), error: sent && uncertainFailure(error) ? "保存结果暂时无法确认，草稿已保留。请先核对服务端正文。" : failureText(error) } });
+      if (sent && uncertainFailure(error)) await verifyEditor();
+    } finally {
+      writeAbort = null;
+      publish({ pending: null });
+    }
+  }
+
+  async function verifyEditor() {
+    if (disposed || !state.editor || state.pending && state.pending.kind !== "save") return;
+    const editor = state.editor;
+    // Share the in-flight write lifetime, or create an abortable read for manual recovery.
+    const own = !writeAbort;
+    const abort = writeAbort ?? new AbortController();
+    if (own) { writeAbort = abort; publish({ pending: { kind: "verify", target: editor.baseline.id } }); }
+    try {
+      const latest = await deps.readQuickNote(editor.baseline, { signal: abort.signal });
+      if (disposed || state.editor?.baseline.id !== editor.baseline.id) return;
+      if (latest && normalizeOutput(latest.output) === editor.draft) {
+        publish({ editor: null, notice: { tone: "info", text: "已重新读取并确认正文已保存。" } });
+        await load();
+      } else publish({ editor: { ...editor, uncertain: false, conflict: latest && !sameSavedNote(latest, editor.baseline) ? latest : null, error: latest ? "尚未确认草稿已保存，请核对服务端正文。草稿仍保留。" : "记录已删除，草稿已保留，请复制备份。" } });
+    } catch {
+      publish({ editor: { ...editor, uncertain: true, error: "重新读取失败，无法确认保存结果。草稿已保留，请再次核对。" } });
+    } finally {
+      if (own) { writeAbort = null; publish({ pending: null }); }
+    }
+  }
+
+  return {
+    getState: () => state,
+    subscribe(listener: (value: QuickNoteState) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    load, loadConfig, loadCandidates, mutate, saveEditor, verifyEditor,
+    async selectDate(date: string) {
+      if (disposed) return;
+      try { parseDateKey(date); } catch (error) { publish({ notice: { tone: "error", text: failureText(error) } }); return; }
+      publish({ date, page: 1 });
+      await load(true);
+    },
+    async setPage(page: number) {
+      if (disposed || !Number.isInteger(page) || page < 1 || page === state.page) return;
+      publish({ page });
+      await load(true);
+    },
+    beginEdit(note: QuickNote) {
+      if (!disposed && !state.editor && !state.pending) publish({ editor: { baseline: note, draft: normalizeOutput(note.output), error: null, conflict: null, uncertain: false } });
+    },
+    changeDraft(draft: string) {
+      if (state.editor && !state.pending) publish({ editor: { ...state.editor, draft } });
+    },
+    cancelEdit() { if (!state.pending) publish({ editor: null }); },
+    acceptConflict() {
+      if (state.editor?.conflict && !state.pending) publish({ editor: { ...state.editor, baseline: state.editor.conflict, conflict: null, error: null } });
+    },
+    dispose() {
+      disposed = true; ++listSeq; ++configSeq; ++candidateSeq;
+      listeners.clear(); listAbort?.abort(); configAbort?.abort(); candidateAbort?.abort(); writeAbort?.abort();
+    },
+  };
+}
+
+export type QuickNoteController = ReturnType<typeof createQuickNoteController>;
