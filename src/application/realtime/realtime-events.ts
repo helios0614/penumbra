@@ -2,6 +2,7 @@ import {
   RealtimeContractError,
   type RealtimeEvent,
 } from "@/application/realtime/realtime-types";
+import { parseActivityEvent, parseActivityEnabled } from "@/domain/activity/activity-mappers";
 
 export function mapRealtimeEvent(input: unknown): RealtimeEvent {
   try {
@@ -15,6 +16,12 @@ export function mapRealtimeEvent(input: unknown): RealtimeEvent {
     }
 
     switch (rawType) {
+      case "activity_log": {
+        const event = parseActivityEvent(eventData(input));
+        return { type: "activity-log", timestamp: event.timestamp, device: event.device };
+      }
+      case "activity_config_changed":
+        return { type: "activity-config-changed", enabled: parseActivityEnabled(eventData(input)) };
       case "msg_created":
         return mapMessageEvent(input, "message-created");
       case "msg_updated":

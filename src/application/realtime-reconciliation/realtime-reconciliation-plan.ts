@@ -11,6 +11,10 @@ export function planRealtimeReconciliation(
   assertEventInput(event);
 
   switch (event.type) {
+    case "activity-log":
+      return { kind: "ignore", rawType: "activity_log" };
+    case "activity-config-changed":
+      return { kind: "ignore", rawType: "activity_config_changed" };
     case "message-created":
       assertId(event.messageId);
       assertId(event.conversationId);

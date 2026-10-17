@@ -28,4 +28,6 @@ export type FileSyncedRealtimeEventDto = RealtimeEnvelopeDto & {
 export type KnownRealtimeEventDto =
   | MessageRealtimeEventDto
   | ConversationRealtimeEventDto
-  | FileSyncedRealtimeEventDto;
+  | FileSyncedRealtimeEventDto
+  | { readonly type: "activity_log"; readonly data: import("@/domain/activity").ActivityEvent }
+  | { readonly type: "activity_config_changed"; readonly data: { readonly activity_tracking_enabled: boolean } };

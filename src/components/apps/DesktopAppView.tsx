@@ -11,6 +11,7 @@ import {
   LibraryBig,
   StickyNote,
   NotebookPen,
+  History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +25,9 @@ const MemoryView = lazy(() =>
 const QuickNoteView = lazy(() =>
   import("@/components/quick-note/QuickNoteView").then((module) => ({ default: module.QuickNoteView })),
 );
+const ActivityView = lazy(() =>
+  import("@/components/activity/ActivityView").then((module) => ({ default: module.ActivityView })),
+);
 
 export type DesktopAppId =
   | "chat"
@@ -34,7 +38,8 @@ export type DesktopAppId =
   | "weather"
   | "music"
   | "memory"
-  | "quick-notes";
+  | "quick-notes"
+  | "activity";
 
 interface DesktopAppMeta {
   name: string;
@@ -52,6 +57,7 @@ export const DESKTOP_APP_META: Record<DesktopAppId, DesktopAppMeta> = {
   music: { name: "音乐", description: "播放和管理音乐", icon: Music2 },
   memory: { name: "记忆库", description: "翻阅被留下来的片段", icon: LibraryBig },
   "quick-notes": { name: "速记", description: "按时段整理，可以回看的生活记录", icon: NotebookPen },
+  activity: { name: "活动日志", description: "设备上的点滴活动，构成一天的轨迹。", icon: History },
 };
 
 export function isDesktopAppId(value: string): value is DesktopAppId {
@@ -72,11 +78,11 @@ export function DesktopAppView({
     <section
       className={cn(
         "mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden sm:rounded-[28px]",
-        appId === "chat" ? "mist-glass" : appId === "memory" || appId === "quick-notes" ? "" : "mist-glass-strong",
+        appId === "chat" ? "mist-glass" : appId === "memory" || appId === "quick-notes" || appId === "activity" ? "" : "mist-glass-strong",
       )}
       data-testid="desktop-app-view"
     >
-      {appId !== "chat" && appId !== "memory" && appId !== "quick-notes" && (
+      {appId !== "chat" && appId !== "memory" && appId !== "quick-notes" && appId !== "activity" && (
         <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3 sm:px-5">
           <button
             type="button"
@@ -102,12 +108,13 @@ export function DesktopAppView({
           {appId === "chat" && <ChatView onBack={onBack} />}
           {appId === "memory" && <MemoryView onBack={onBack} />}
           {appId === "quick-notes" && <QuickNoteView onBack={onBack} />}
+          {appId === "activity" && <ActivityView onBack={onBack} />}
           {appId === "calendar" && (
             <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
               <Calendar embedded className="mx-auto w-full max-w-xl" />
             </div>
           )}
-          {appId !== "chat" && appId !== "calendar" && appId !== "memory" && appId !== "quick-notes" && (
+          {appId !== "chat" && appId !== "calendar" && appId !== "memory" && appId !== "quick-notes" && appId !== "activity" && (
             <AppPlaceholder appId={appId} />
           )}
         </Suspense>

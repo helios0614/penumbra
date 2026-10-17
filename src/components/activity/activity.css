@@ -1,0 +1,9 @@
+/* Reuse the established Memory/Quick Note reading material, without a new surface. */
+.activity-reading {
+  background: color-mix(in srgb, var(--glass-surface-strong) 69%, var(--glass-surface) 31%);
+}
+
+/* Large datasets remain in application state; only requested batches enter the DOM. */
+.activity-reading [data-activity-event-key] {
+  overflow-wrap: anywhere;
+}

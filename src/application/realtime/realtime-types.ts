@@ -2,6 +2,15 @@ import type { WebSocketConnection } from "@/lib/websocket";
 
 export type RealtimeEvent =
   | {
+      readonly type: "activity-log";
+      readonly timestamp: number;
+      readonly device: string;
+    }
+  | {
+      readonly type: "activity-config-changed";
+      readonly enabled: boolean;
+    }
+  | {
       readonly type: "message-created";
       readonly messageId: string;
       readonly conversationId: string;

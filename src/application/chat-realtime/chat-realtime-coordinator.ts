@@ -262,6 +262,8 @@ export function createChatRealtimeCoordinator(
     const context = dependencies.getContext();
 
     switch (event.type) {
+      case "activity-log":
+      case "activity-config-changed":
       case "unknown":
         return;
       case "conversation-created":

@@ -15,6 +15,14 @@ const desktopStyles = readFileSync(
 );
 
 describe("desktop memory route and navigation", () => {
+  it("registers Activity as its own lazy app with a desktop shortcut and shared close behavior", () => {
+    expect(isDesktopAppId("activity")).toBe(true);
+    expect(DESKTOP_APP_META.activity.name).toBe("活动日志");
+    expect(renderToStaticMarkup(<DesktopApps onLaunch={vi.fn()} onSettings={vi.fn()} />)).toContain('aria-label="打开活动日志"');
+    const html = renderToStaticMarkup(<DesktopAppView appId="activity" onBack={vi.fn()} />);
+    expect(html).not.toContain("页面还在搭建中");
+    expect(html).not.toContain("desktop-app-mini-icon");
+  });
   it("adds a separate Quick Note app and preserves ordinary notes", () => {
     expect(isDesktopAppId("quick-notes")).toBe(true);
     expect(DESKTOP_APP_META["quick-notes"].name).toBe("速记");
