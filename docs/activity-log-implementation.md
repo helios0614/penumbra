@@ -107,3 +107,61 @@
 测试覆盖真实 DTO、权限字段、独立采样时间/到期/未知、SSID 验证、配置冲突、查询切换/取消/迟到响应、稳定身份和重复采样、WS 读取边界与重连补漏、可见性恢复、10,000 条数据与初次 200 条渲染、摘要语义、安全文本、全量清空范围/文件计数、失败后 GET-only 恢复和卸载清理。
 
 使用合成数据、mock HTTP/WebSocket、控制器测试与静态组件渲染。未启动浏览器、Playwright、截图或视觉回归；未调用生产写接口。手机/桌面布局、材质、字级、密度、实际 Wi-Fi 同步与触屏操作等待人工验收。
+
+## 7. V1.1：信息密度、SSID 入口和重复事件（2026-10-17）
+
+本节覆盖首版相关 UI 展示说明。保留 PageHeader、桌面路由、背景、数据源、原始 Domain 集合、HTTP/实时同步和全量清空确认，不修改后端或 Android。
+
+### SSID 局部只读核对
+
+以下为代码中已确认的行为；本轮未连接真实手机验证最终同步效果。
+
+1. **实际 API 与正式能力**：手工添加沿用 `saveWifiConfig()` 的 PUT `/api/device-context/wifi-config`，请求为 `{revision, mappings:[{ssid,scene}]}`。它是 DC2 的正式配置能力，不是新增或臆测的接口。`routes/device_context_settings.py` 和 `wifi_scene_config.py` 定义读写、授权、校验及 revision 冲突；`tests/contract/test_device_context_dc2.py` 的 `test_config_revision_crud_and_stale_write`、`test_config_concurrent_compare_and_swap`、`test_config_validation`、`test_http_permissions_and_effective_expiry` 覆盖这些契约。
+2. **保存与匹配**：服务端将名称和 `home/work` 场景存入 SQLite 的 `wifi_scene_config`，保留名称大小写和空格，原子比较 revision 后更新。Android `WifiSceneCache.scene()` 用准确 SSID 字符串查表，仅在缓存可信时产生家里/公司或其他场景。遥测继续只上报场景，不上传当前 SSID/BSSID。
+3. **同步**：`DeviceContextReporter.syncConfig()` 通过现有 GET 读取配置，约十分钟同步一次；校验后端实例、绑定范围、revision 和缓存有效性。配置变化会让下一次 Wi-Fi 采样提前执行。Android `DeviceContextReporterTest.configChangesAndDeletionGenerateNewWifiSamples`、`DeviceContextTest` 的缓存/场景测试及 `DeviceBindingTest` 的后端范围隔离测试已覆盖相关行为。本轮不改手机采样或同步逻辑，也不承诺保存后立即生效。
+4. **旧页的当前名称**：不是手机浏览器的通用能力。旧页通过 `window.AionDeviceContext` 原生桥接读取 WebView 宿主手机的 Wi-Fi；嵌入旧 Chat 时使用 `device-context-host.js` 同源父框架中继。无桥接的普通浏览器也只能管理已保存标记。
+5. **新页能力限制**：HTTP 状态仅返回语义场景，没有可远程读取绑定手机 SSID 的接口。原生桥接仅接受可信 HTTPS origin、主框架与 `/activity-logs`、`/chat`、`/` 路径，现有中继也绑定旧活动 iframe。新 `/app/activity`、`/editorial/app/activity` 不在该契约内；不能仅检测浏览器网络或绕过路径限制，更不能把宿主手机当作已绑定设备。本轮保留明确限制说明，不新增桥接、后端或 Android 能力。
+6. **输入风险和反馈**：正式支持的是字符串映射配置，不是网络存在性验证。名称误拼、大小写/空格不同、手机无权限或 Android 无法读取名称，均可能导致合法配置未命中。Android 还拒绝未知名称及不可确定的十六进制 SSID，手工输入无法绕过这些限制。前后端仍验证 UTF-8 1–32 字节、无 Unicode C 类字符、名称唯一、最多 128 项及 `home/work` 场景；新 Dialog 不静默覆盖已有同名标记，引导在列表修改。422、409、读取失败和结果不明确时保留反馈与输入，不自动重复 PUT。
+
+结论：保留手动添加，但改为低频“添加网络标记”Dialog；保留家庭/公司列表及改场景、移除操作。保存成功不等于网络已被手机识别，最终状态仍以手机有效采样为准。
+
+### 展示调整
+
+- 手机电量/Wi-Fi 改为紧凑自适应双列，去掉大图标底座、重复电源描述及刷新机制说明。充电状态仍来自独立字段，不用电源连接状态猜测；采样显示 `HH:mm`，完整日期/秒数通过 tooltip、title 和可访问名称保留。两组有效期及异常反馈不变。
+- AI 手机状态 Checkbox 保留在底部紧凑设置行。Wi-Fi 配置默认折叠，展开为清单与 Dialog 入口，表单不再常驻。
+- 时间 Select 与三个设备筛选减少留白，触屏目标保持 44px；原始事件数量移到时间线标题旁。删除正常连接说明和底部技术长段，异常重连/读取恢复保留。
+- 状态面局部与现有 Memory/Quick Note 阅读面使用同一 Mist 背景混合；不改共享 token、壁纸或 Header。
+- Android 原始 `title` 由 `AionPushService.postActivityToServer()` 填包名，HTTP 的 `app` 已经过名称解析。包名仅作为次级信息显示一次，没有额外内容时不渲染展开。短窗口标题直接显示；只有长或多行详情可展开，展开时隐藏重复预览，原始数据完整保留。
+
+### 连续上报分组
+
+- 仅在 Application 中生成显示投影，不修改 Domain 记录，不去重或计算使用时长。
+- 手机优先使用 `title` 保留的原始包名，或仍明确保留在 `app` 中的包名；PC 仅使用明确保留的 `.exe` 进程名。HTTP 可能把 PC 应用解析为窗口标题，不能恢复原始身份的记录保持逐条。不能只按中文显示名称合并；标识冲突也不分组。
+- 同设备、同原始身份、相同补充标题的连续事件，邻接间隔在 0–180 秒内，且服务端日期与浏览器显示日期均相同，至少两条才分组。`screen_on/screen_off/亮屏/锁屏` 排除；不同应用、设备、标题或系统事件均打断。
+- 先在完整当前数据上分组，再进行设备筛选，因此隐藏的其他设备事件也不会被跨越。查询变化或 HTTP/WS 重读后，按当前完整数据重新计算。
+- 默认折叠，只显示名称、真实采样时间范围与“连续 N 条上报”。展开按现有时间倒序显示全部原始事件及秒数。折叠时不挂载隐藏的全部事件 DOM。
+- 分组键使用设备、原始身份和组内最早原始记录键，不使用数组位置。普通最新采样加入组时，已有组键保持稳定；最早记录离开查询或身份/边界变化时重新建立投影。
+- 原始统计不因分组改变；分批渲染按展示项推进，继续读取的内存集合仍是完整服务端结果，没有假服务端分页。
+
+### 本轮修改文件
+
+新增：
+
+- `src/application/activity/activity-timeline.ts`、`activity-timeline.test.ts`：保守分组、身份判断及有效详情投影。
+- `src/components/activity/WifiNetworkDialog.tsx`、`WifiNetworkDialog.test.tsx`：添加入口、小 Dialog、校验与失败输入保留。
+
+修改：
+
+- `src/application/activity/activity-presentation.ts`：短采样时间格式。
+- `src/application/activity/activity-controller.ts`、`activity-controller.test.ts`：返回写入是否被确认，让 Dialog 仅在确认成功后关闭；增加真实读取/重同步后的分组验证，原有请求与副作用不变。
+- `src/components/activity/PhoneStatusPanel.tsx`、`WifiSceneSettings.tsx`、`ActivityControls.tsx`、`ActivityView.tsx`、`ActivityTimeline.tsx`、`activity.css`、`ActivityPresentation.test.tsx`：信息密度、异常反馈、无效展开和完整分组阅读。
+- 本说明。
+
+### 验证与待人工确认
+
+- 全量测试：60 个文件、1027 项通过。覆盖全部首版回归、独立采样/到期、配置 Dialog、原始身份不确定与同名不同包、系统事件/中间事件/时间间隔/跨日拆分、完整展开、10,000 条数据、HTTP/WS 稳定重分组及筛选统计。
+- `tsc --noEmit`：通过。
+- `npm run build`：通过，包含 `tsc -b` 与 Vite production build。
+- `git diff --check`：通过；新增文件另作空白检查。
+
+未运行浏览器、Playwright、截图或视觉回归，未改 AionHome/Android，未 commit 或部署。需人工确认手机双列和桌面密度、玻璃材质、时间 tooltip、Dialog 软键盘空间、分组展开/收起，以及输入准确 SSID 后 Android 按既有流程同步的实际结果。

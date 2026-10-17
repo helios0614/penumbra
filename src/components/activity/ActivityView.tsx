@@ -17,7 +17,6 @@ export function ActivityView({ onBack }: { readonly onBack?: () => void }) {
   const scroll = useRef<HTMLDivElement>(null);
   const queryKey = JSON.stringify(state.query);
   useEffect(() => { if (scroll.current) scroll.current.scrollTop = 0; }, [queryKey, state.device]);
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   return <TooltipProvider><main className="mx-auto flex h-full max-h-dvh min-h-0 w-full max-w-5xl flex-col overflow-hidden px-4 pb-4 pt-5 sm:px-0 sm:pb-8 sm:pt-8" aria-labelledby="activity-page-title">
     <PageHeader eyebrow="ACTIVITY LOG" title="活动日志" titleId="activity-page-title" description="设备上的点滴活动，构成一天的轨迹。" actions={<>
       <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="刷新活动数据" disabled={state.logs.loading || Boolean(state.pending)} onClick={() => void controller?.refresh()} />}><RefreshCw aria-hidden="true" /></TooltipTrigger><TooltipContent>刷新活动数据</TooltipContent></Tooltip>
@@ -30,14 +29,13 @@ export function ActivityView({ onBack }: { readonly onBack?: () => void }) {
       <PhoneStatusPanel state={state} controller={controller} />
       {state.notice && <p role={state.notice.error ? "alert" : "status"} className={`mist-glass rounded-2xl px-4 py-3 text-xs leading-5 ${state.notice.error ? "text-destructive" : "text-muted-strong"}`}>{state.notice.text}</p>}
       <ActivityControls state={state} controller={controller} />
-      <div className="flex flex-wrap items-center justify-between gap-x-3 px-1 text-[11px] leading-5 text-muted-foreground">
-        <p>{state.query.kind === "date" ? "历史归档不插入最新事件" : connection === "connected" ? "活动通知已连接 · 定期核对完整记录" : connection === "blocked" ? "实时连接受限，请检查登录后重连" : connection === "reconnecting" ? "实时连接中断，正在重连；仍会定期读取" : "正在连接活动通知…"}</p>
-        {(connection === "blocked" || connection === "reconnecting") && <Button variant="ghost" className="h-11 px-2 text-[11px]" onClick={reconnect}>重新连接</Button>}
-      </div>
+      {(connection === "blocked" || connection === "reconnecting") && <div role="status" className="flex items-center justify-between gap-2 px-1 text-xs text-warning">
+        <p>{connection === "blocked" ? "实时连接受限，请检查登录状态。" : "实时连接中断，正在重连。"}</p>
+        <Button variant="ghost" className="h-11 shrink-0 px-2 text-xs" onClick={reconnect}>重新连接</Button>
+      </div>}
       {state.legacyEnabled.data === false && <p className="px-1 text-xs leading-5 text-warning">旧版活动联动配置已关闭，相关 AI 动态读取受限；日志和本页规则摘要仍可查看。如需恢复联动，请在旧版设置中单独处理。</p>}
       {state.legacyEnabled.error && <div className="flex flex-wrap items-center gap-2 px-1 text-xs text-muted-foreground"><p>未能确认旧版活动联动配置。</p><Button variant="ghost" className="h-11 text-xs" onClick={() => void controller?.loadLegacy()}>重新读取配置</Button></div>}
       <ActivityTimeline state={state} controller={controller} />
-      <p className="px-1 text-[11px] leading-5 text-muted-foreground">事件与采样时间按浏览器时区 {timeZone} 显示；日期筛选使用服务端归档日期。条数代表上报事件，不代表使用次数或精确时长。</p>
     </div>
     <ActivitySummaryDialog open={summary} state={state} controller={controller} onClose={() => setSummary(false)} />
     <ActivityClearDialog open={clear} busy={Boolean(state.pending)} onClose={() => setClear(false)} onConfirm={() => { setClear(false); void controller?.clearAll(); }} />

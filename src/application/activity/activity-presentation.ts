@@ -40,3 +40,6 @@ export function eventDate(timestamp: number, timeZone?: string): string {
 export function sampleTime(timestamp: number | null): string {
   return timestamp === null ? "尚无采样时间" : `${eventDate(timestamp)} ${eventTime(timestamp)}`;
 }
+export function sampleMinute(timestamp: number, timeZone?: string): string {
+  return new Intl.DateTimeFormat("zh-CN", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(timestamp * 1000);
+}

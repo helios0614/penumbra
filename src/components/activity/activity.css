@@ -1,6 +1,13 @@
 /* Reuse the established Memory/Quick Note reading material, without a new surface. */
-.activity-reading {
+.activity-reading,
+.activity-phone {
   background: color-mix(in srgb, var(--glass-surface-strong) 69%, var(--glass-surface) 31%);
+}
+
+.activity-phone-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr));
+  column-gap: 0.75rem;
 }
 
 /* Large datasets remain in application state; only requested batches enter the DOM. */

@@ -85,11 +85,13 @@ export function createActivityController(client = defaultClient, clock = () => p
   const refreshPhone = () => Promise.all([loadPhone(), loadVisibility(), loadWifi()]);
   const refresh = () => Promise.all([loadLogs(), loadDates(), refreshPhone(), loadLegacy()]);
   const mutate = async (kind: NonNullable<ActivityState["pending"]>, operation: (signal: AbortSignal) => Promise<string>, reconcile: () => Promise<unknown>) => {
-    if (disposed || state.pending) return;
+    if (disposed || state.pending) return false;
+    let acknowledged = false;
     const abort = new AbortController(); mutations.add(abort);
     publish({ pending: kind, notice: null });
     try {
       const text = await operation(abort.signal);
+      acknowledged = true;
       if (!disposed) publish({ notice: { error: false, text } });
     } catch (error) {
       if (!disposed) publish({ notice: { error: true, text: `${activityFailure(error)} 操作结果需核对，请先重新读取；不会自动重复提交。` } });
@@ -98,6 +100,7 @@ export function createActivityController(client = defaultClient, clock = () => p
       mutations.delete(abort);
       publish({ pending: null });
     }
+    return acknowledged && !disposed;
   };
   return {
     getState: () => state,
@@ -105,13 +108,13 @@ export function createActivityController(client = defaultClient, clock = () => p
     start: refresh, refresh, refreshPhone, loadLogs, loadDates, loadSummary, loadWifi, loadVisibility, loadLegacy, selectQuery, invalidateLogs,
     selectDevice(device: activity.ActivityDevice) { publish({ device }); },
     setVisibility(visible: boolean) {
-      if (state.pending || disposed) return Promise.resolve();
+      if (state.pending || disposed) return Promise.resolve(false);
       cancel("visibility");
       return mutate("visibility", async (signal) => { await client.setDeviceAiVisible(visible, { signal }); return visible ? "已允许 AI 查看手机状态。" : "已关闭 AI 手机状态读取；手机采集和活动历史不受此设置影响。"; }, () => loadVisibility(true));
     },
     saveMapping(ssid: string, scene: device.WifiMapping["scene"] | null) {
       const config = state.wifi.data;
-      if (disposed || state.pending || !config || state.wifi.loading || state.wifi.error) return Promise.resolve();
+      if (disposed || state.pending || !config || state.wifi.loading || state.wifi.error) return Promise.resolve(false);
       const mappings = config.mappings.filter((entry) => entry.ssid !== ssid);
       if (scene) mappings.push({ ssid, scene });
       cancel("wifi");
