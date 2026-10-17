@@ -40,17 +40,16 @@ describe("Activity feature presentation", () => {
     expect(visible).toContain(sampleMinute(1000)); expect(visible).toContain(sampleMinute(1050));
     expect(visible).not.toContain("1970-01-01"); expect(visible).not.toContain("08:16:40");
   });
-  it("aligns each phone icon with its main state and leaves description/sample time outside that heading", () => {
+  it("keeps each phone icon beside one text group containing state, description and independent sample time", () => {
     const html = renderPhone(loaded);
     expect(html).toContain('class="activity-phone-metrics pb-2"');
     for (const [icon, value, description, timestamp] of [
       ["battery", "64%", "未充电", 1000], ["wifi", "家里", "已连接 Wi-Fi", 1050],
     ] as const) {
-      const column = html.match(new RegExp(`<div class="min-w-0 py-1"><div class="([^"]+)">(<svg[^>]+lucide-${icon}[^>]*>[\\s\\S]*?</svg>)<p[^>]*>${value}</p></div><p[^>]*>${description}</p>(<time[^>]*>[\\s\\S]*?</time>)</div>`));
-      expect(column, `${icon} heading and left-aligned metadata`).not.toBeNull();
-      expect(column![1]).toContain("items-center");
-      expect(column![3]).toContain(new Date(timestamp * 1000).toISOString());
-      expect(column![3]).toContain(`更新 ${sampleMinute(timestamp)}`);
+      const column = html.match(new RegExp(`<div class="flex min-w-0 items-start gap-2.5 py-1"><svg[^>]+lucide-${icon}[^>]*>[\\s\\S]*?</svg><div class="min-w-0"><p[^>]*>${value}</p><p[^>]*>${description}</p>(<time[^>]*>[\\s\\S]*?</time>)</div></div>`));
+      expect(column, `${icon} and grouped text`).not.toBeNull();
+      expect(column![1]).toContain(new Date(timestamp * 1000).toISOString());
+      expect(column![1]).toContain(`更新 ${sampleMinute(timestamp)}`);
     }
   });
   it("masks one group on its deadline while the other stays readable", () => {
@@ -64,10 +63,11 @@ describe("Activity feature presentation", () => {
     expect(html).toContain("未知"); expect(html).not.toContain("已连接 Wi-Fi");
     if (availability === "permission_denied") expect(html).toContain("手机权限未授予");
   });
-  it("keeps Wi-Fi settings folded, displays capability limits and saves only user-entered names", () => {
+  it("keeps Wi-Fi settings folded with compact scene lists and moves capability prose into the add dialog", () => {
     const html = renderToStaticMarkup(<WifiSceneSettings state={loaded} controller={null} />);
     expect(html.match(/<details[^>]*>/)?.[0]).not.toContain("open");
-    expect(html).toContain("当前页面无法读取手机网络名称"); expect(html).toContain("合成家庭网络");
+    expect(html).not.toContain("当前页面无法读取"); expect(html).toContain("合成家庭网络");
+    expect(html).toContain("家庭网络"); expect(html).toContain("公司网络");
     expect(html).toContain("改为公司"); expect(html).toContain("移除"); expect(html).toContain("添加网络标记");
     expect(html).not.toContain("<form"); expect(html).not.toContain("网络名称（SSID）");
     expect(html).not.toContain("已读取当前 SSID");

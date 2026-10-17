@@ -2,6 +2,19 @@
 
 本文记录已通过实际页面与 runtime 验证的 UI 模式、常见陷阱和排查方法。
 
+## Dialog / AlertDialog 的成熟组合约定
+
+以 `MemoryCreateDialog` 和 Quick Note V2.3 为现有参考。共享 `components/ui/dialog.tsx`、`alert-dialog.tsx` 提供语义、焦点和关闭机制；它们的默认 padding、标题和移动端 Footer 不等于成熟页面的最终排版。使用原语后，仍需在 feature 内明确组合以下结构，勿复制另一个 feature 的业务组件或创建新的全局弹框框架。
+
+- 外层使用现有 `mist-glass-strong` 材质，延续其边框、阴影；参考当前成熟弹框的 28px 圆角、移动端 20px / 桌面端 24px 横向留白。不重新组合透明度、blur 或 shadow，不改共享 token。
+- Header、Content、Footer 为兄弟区域。外壳 `flex flex-col`、`overflow: hidden`，最大高度不超过动态视口扣除安全边距后的空间；Header / Footer `shrink-0`，正文 `min-height: 0`、`flex: 1`、`overflow-y: auto`，避免弹框与正文双重滚动。
+- Header 左对齐：可选装饰性 eyebrow 使用现有 `font-decorative`，11px / 400、大写、0.14em 字距；中文标题使用功能字体 18px / 600 / 28px 行高；说明使用 13px / 20px 行高。右上角关闭使用 44px 点击区域及明确的可访问名称；保存期间应阻止关闭。
+- 表单字段间距参考 16px，输入和 Select 复用现有 translucent 变体。Footer 采用 `row wrap`、右对齐、8px 按钮间距，取消为 ghost，保存为现有主题主按钮；移动端也不默认改成两个全宽大按钮。按钮保留至少 44px 触摸高度，短视口时正文滚动、操作保持可达。
+- 长内容阅读弹框保留固定 Header，只让正文滚动；没有实际底部操作时不添加 Footer。破坏性确认继续使用 AlertDialog、取消及 destructive action；极短视口可让确认说明滚动，按钮留在滚动区外。
+- 涉及软键盘的密集编辑可参考 Quick Note 的 `visualViewport` 局部适配；这是编辑器的现有处理，不要求所有普通阅读弹框复制整套逻辑。
+
+截至 Activity V1.3，仓库尚无成熟的共享 Switch 或 Toast / Notification 组件。设置开关可以用原生 button 的键盘行为、`role="switch"` 和受控 `aria-checked` 做 feature 局部呈现，并保留禁用、保存中、读写失败恢复。设计文档中的 Toast z-index 仅是层级预留，不代表已有通知设施；不要据此为单页扩展全局通知系统。
+
 ## Backdrop / Glass Pitfalls
 
 ### Memory 真实案例

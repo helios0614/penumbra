@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { FileText, MoreHorizontal, RefreshCw, Trash2, X } from "lucide-react";
+import { ArrowUp, FileText, MoreHorizontal, RefreshCw, Trash2, X } from "lucide-react";
 import { PageHeader, PageHeaderAction } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -9,14 +9,16 @@ import { ActivityControls } from "./ActivityControls";
 import { ActivityTimeline } from "./ActivityTimeline";
 import { ActivityClearDialog, ActivitySummaryDialog } from "./ActivityDialogs";
 import { useActivity } from "./useActivity";
+import { scrollActivityToTop, showActivityTopButton } from "./activity-scroll";
 import "./activity.css";
 
 export function ActivityView({ onBack }: { readonly onBack?: () => void }) {
   const { state, controller, connection, reconnect } = useActivity();
   const [menu, setMenu] = useState(false), [summary, setSummary] = useState(false), [clear, setClear] = useState(false);
+  const [showTop, setShowTop] = useState(false);
   const scroll = useRef<HTMLDivElement>(null);
   const queryKey = JSON.stringify(state.query);
-  useEffect(() => { if (scroll.current) scroll.current.scrollTop = 0; }, [queryKey, state.device]);
+  useEffect(() => { if (scroll.current) scroll.current.scrollTop = 0; setShowTop(false); }, [queryKey, state.device]);
   return <TooltipProvider><main className="mx-auto flex h-full max-h-dvh min-h-0 w-full max-w-5xl flex-col overflow-hidden px-4 pb-4 pt-5 sm:px-0 sm:pb-8 sm:pt-8" aria-labelledby="activity-page-title">
     <PageHeader eyebrow="ACTIVITY LOG" title="活动日志" titleId="activity-page-title" description="设备上的点滴活动，构成一天的轨迹。" actions={<>
       <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="刷新活动数据" disabled={state.logs.loading || Boolean(state.pending)} onClick={() => void controller?.refresh()} />}><RefreshCw aria-hidden="true" /></TooltipTrigger><TooltipContent>刷新活动数据</TooltipContent></Tooltip>
@@ -25,7 +27,8 @@ export function ActivityView({ onBack }: { readonly onBack?: () => void }) {
       </Popover>
       {onBack && <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="返回桌面" onClick={onBack} />}><X aria-hidden="true" /></TooltipTrigger><TooltipContent>返回桌面</TooltipContent></Tooltip>}
     </>} />
-    <div ref={scroll} className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pb-2 sm:mt-4" aria-label="活动日志页面内容">
+    <div className="relative mt-3 min-h-0 flex-1 sm:mt-4">
+    <div ref={scroll} role="region" tabIndex={0} className={`h-full space-y-3 overflow-y-auto overscroll-contain focus:outline-none ${showTop ? "pb-16" : "pb-2"}`} aria-label="活动日志页面内容" onScroll={(event) => setShowTop(showActivityTopButton(event.currentTarget.scrollTop, event.currentTarget.clientHeight))}>
       <PhoneStatusPanel state={state} controller={controller} />
       {state.notice && <p role={state.notice.error ? "alert" : "status"} className={`mist-glass rounded-2xl px-4 py-3 text-xs leading-5 ${state.notice.error ? "text-destructive" : "text-muted-strong"}`}>{state.notice.text}</p>}
       <ActivityControls state={state} controller={controller} />
@@ -37,7 +40,14 @@ export function ActivityView({ onBack }: { readonly onBack?: () => void }) {
       {state.legacyEnabled.error && <div className="flex flex-wrap items-center gap-2 px-1 text-xs text-muted-foreground"><p>未能确认旧版活动联动配置。</p><Button variant="ghost" className="h-11 text-xs" onClick={() => void controller?.loadLegacy()}>重新读取配置</Button></div>}
       <ActivityTimeline state={state} controller={controller} />
     </div>
+    <ActivityTopButton visible={showTop} onClick={() => scrollActivityToTop(scroll.current, window.matchMedia("(prefers-reduced-motion: reduce)").matches)} />
+    </div>
     <ActivitySummaryDialog open={summary} state={state} controller={controller} onClose={() => setSummary(false)} />
     <ActivityClearDialog open={clear} busy={Boolean(state.pending)} onClose={() => setClear(false)} onConfirm={() => { setClear(false); void controller?.clearAll(); }} />
   </main></TooltipProvider>;
+}
+
+export function ActivityTopButton({ visible, onClick }: { readonly visible: boolean; readonly onClick: () => void }) {
+  if (!visible) return null;
+  return <Button variant="ghost" className="mist-glass absolute bottom-3 right-3 size-11 rounded-full text-foreground" aria-label="回到活动日志顶部" title="回到活动日志顶部" onClick={onClick}><ArrowUp aria-hidden="true" /></Button>;
 }

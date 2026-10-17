@@ -203,6 +203,10 @@ actions
 - 阅读宽度根据内容类型决定，不为追求统一强制所有页面同宽；
 - 主要触屏操作应保留足够命中区域，具体要求遵循 `design-spec.md`。
 
+### 4.5 Dialog Composition
+
+Memory 新增记忆、Quick Note V2.3 已有成熟的弹框组合：固定标题区、可滚动正文、按需出现的右对齐操作区。新页面应复用现有 Dialog / AlertDialog 原语及这套内容层级；共享原语的默认布局不自动代表成熟页面的最终样式。具体字号、间距、滚动与移动端 Footer 约定见 [`ui-patterns.md` 的 Dialog / AlertDialog 小节](./ui-patterns.md#dialog--alertdialog-的成熟组合约定)，不为单页另建全局弹框框架。
+
 ---
 
 ## 5. Memory Pattern
