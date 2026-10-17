@@ -51,6 +51,30 @@ describe("Activity reads, selection and snapshot reconciliation", () => {
     expect(controller.getState().logs.data?.[0].app).toBe("微信");
     expect(controller.getState().query).toEqual({ kind: "date", date: "2026-10-16" });
   });
+  it("isolates successive archive reads and preserves the selected device through date changes", async () => {
+    const { controller, deps } = setup();
+    const first = deferred<readonly activity.ActivityRecord[]>(), second = deferred<readonly activity.ActivityRecord[]>();
+    deps.getActivityRecords.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise).mockResolvedValueOnce(rows("最终归档"));
+    controller.selectDevice("phone");
+    const recent = controller.loadLogs(); await flush();
+    const archive = controller.selectQuery({ kind: "date", date: "2026-10-16" }); await flush();
+    await controller.selectQuery({ kind: "date", date: "2026-10-15" });
+    expect(deps.getActivityRecords.mock.calls.slice(0, 2).every(([, options]) => options?.signal?.aborted)).toBe(true);
+    first.resolve(rows("迟到的最近活动")); second.resolve(rows("迟到的归档")); await Promise.all([recent, archive]);
+    expect(controller.getState()).toMatchObject({ query: { kind: "date", date: "2026-10-15" }, device: "phone", logs: { data: [{ app: "最终归档" }] } });
+    controller.invalidateLogs(); await vi.advanceTimersByTimeAsync(1000);
+    expect(deps.getActivityRecords).toHaveBeenCalledTimes(3);
+  });
+  it("refreshes archive availability without silently replacing a removed selection or device filter", async () => {
+    const { controller, deps } = setup();
+    deps.getActivityDates.mockResolvedValueOnce(["2026-10-17", "2026-10-16"]).mockResolvedValueOnce(["2026-10-17"]);
+    await controller.loadDates(); await controller.selectQuery({ kind: "date", date: "2026-10-16" }); controller.selectDevice("pc");
+    await controller.loadDates();
+    expect(controller.getState()).toMatchObject({ query: { kind: "date", date: "2026-10-16" }, device: "pc", dates: { data: ["2026-10-17"] } });
+    await controller.selectQuery({ kind: "recent", hours: 3 });
+    expect(deps.getActivityRecords.mock.calls.map(([query]) => query)).toEqual([{ kind: "date", date: "2026-10-16" }, { kind: "recent", hours: 3 }]);
+    expect(controller.getState().device).toBe("pc");
+  });
   it("clears a previous range while a new date fails and recovery only reads", async () => {
     const { controller, deps } = setup(); await controller.loadLogs();
     deps.getActivityRecords.mockRejectedValueOnce(new Error("offline"));

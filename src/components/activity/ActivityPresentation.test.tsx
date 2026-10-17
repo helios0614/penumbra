@@ -82,7 +82,8 @@ describe("Activity feature presentation", () => {
     const timeline = renderToStaticMarkup(<ActivityTimeline state={loaded} controller={null} />);
     expect(timeline).toContain("共 2 条事件 · 电脑 1 · 手机 1"); expect(html).toContain("最近 3 小时");
     const history = renderToStaticMarkup(<TooltipProvider><ActivityControls state={{ ...loaded, query: { kind: "date", date: "2026-10-17" } }} controller={null} /></TooltipProvider>);
-    expect(history).toContain("按日查看"); expect(history).toContain('aria-label="选择日志归档日期"'); expect(history).toContain(">2026-10-17</button>");
+    expect(history).toContain('aria-label="活动时间范围"'); expect(history).toContain("2026-10-17");
+    expect(history.match(/aria-label="活动时间范围"/g)).toHaveLength(1); expect(history).not.toContain('aria-label="选择日志归档日期"');
     expect(html).toContain("电脑"); expect(html).toContain("手机"); expect(html).not.toContain("使用次数");
   });
   it("shows loading/empty/error in one continuous timeline and escapes event/title text", () => {
