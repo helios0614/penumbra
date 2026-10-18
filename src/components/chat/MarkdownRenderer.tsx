@@ -1,16 +1,16 @@
 import {
   isValidElement,
   memo,
-  useCallback,
-  useState,
   type ComponentProps,
   type ReactNode,
 } from "react";
 import Markdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
-import { Check, Copy } from "lucide-react";
+import { Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+import { useCopyFeedback } from "./copy-feedback";
 
 // ─── 辅助函数 ───
 
@@ -54,20 +54,11 @@ function CodeBlock({
   node: _node,
   ...props
 }: CodeBlockProps) {
-  const [copied, setCopied] = useState(false);
 
   // 提取原始代码文本，避免 [object Object] 问题
   const rawCode = getNodeText(children).replace(/\n$/, "");
 
-  const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(rawCode);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopied(false);
-    }
-  }, [rawCode]);
+  const handleCopy = useCopyFeedback(rawCode);
 
   // Extract language from className (e.g., "hljs language-markdown" -> "markdown")
   const languageMatch = className && /language-([\w-]+)/.exec(className);
@@ -95,21 +86,11 @@ function CodeBlock({
           <span>{displayLanguage}</span>
           <button
             type="button"
-            onClick={handleCopy}
+            onClick={() => void handleCopy()}
             className="flex items-center gap-1 rounded-sm px-1 py-0.5 text-ai-foreground/70 transition-colors hover:bg-ai-foreground/10 hover:text-ai-foreground"
             aria-label="复制代码"
           >
-            {copied ? (
-              <>
-                <Check className="size-3" />
-                <span>已复制</span>
-              </>
-            ) : (
-              <>
-                <Copy className="size-3" />
-                <span>复制</span>
-              </>
-            )}
+            <Copy className="size-3" aria-hidden="true" /><span>复制</span>
           </button>
         </div>
         <div className="bg-ai p-4 text-sm text-ai-foreground">
@@ -127,21 +108,11 @@ function CodeBlock({
         <span>{displayLanguage}</span>
         <button
           type="button"
-          onClick={handleCopy}
+          onClick={() => void handleCopy()}
           className="flex items-center gap-1 rounded-sm px-1 py-0.5 text-ai-foreground/70 transition-colors hover:bg-ai-foreground/10 hover:text-ai-foreground"
           aria-label="复制代码"
         >
-          {copied ? (
-            <>
-              <Check className="size-3" />
-              <span>已复制</span>
-            </>
-          ) : (
-            <>
-              <Copy className="size-3" />
-              <span>复制</span>
-            </>
-          )}
+          <Copy className="size-3" aria-hidden="true" /><span>复制</span>
         </button>
       </div>
       <pre className="m-0 max-w-full overflow-x-auto whitespace-pre bg-ai p-4 text-sm leading-relaxed text-ai-foreground">

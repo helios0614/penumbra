@@ -15,6 +15,7 @@ import { LocationConfirm, LocationPoiDialog } from "./LocationDialogs";
 import { createLocationNavigation } from "./location-navigation";
 import { locationTime } from "./location-presentation";
 import { useLocation } from "./useLocation";
+import { useFeedbackToast } from "@/components/ui/toast";
 import "./location.css";
 
 export function LocationView({ onBack }: { readonly onBack?: () => void }) {
@@ -38,6 +39,7 @@ export function LocationPage({ state, controller, connection, reconnect, onBack 
     navigation.current = active;
     return () => { active.dispose(); navigation.current = null; };
   }, []);
+  useFeedbackToast(state.feedback, state.feedback && !state.feedback.error && !state.feedback.persistent ? { type: state.feedback.info ? "info" : "success", text: state.feedback.text } : null);
   const busy = Boolean(state.pending);
   return <TooltipProvider><main className="location-page mx-auto flex h-full max-h-dvh min-h-0 w-full max-w-5xl flex-col overflow-hidden px-4 pb-4 pt-5 sm:px-0 sm:pb-8 sm:pt-8" aria-labelledby="location-page-title">
     <PageHeader eyebrow="LOCATION" title="定位" titleId="location-page-title" description="最近的位置与天气，还有身边的小发现。" actions={<>
@@ -55,7 +57,7 @@ export function LocationPage({ state, controller, connection, reconnect, onBack 
       <form noValidate aria-label="定位与静默配置" onSubmit={(event) => { event.preventDefault(); void controller?.save(); }} aria-busy={state.pending === "save"}>
         <LocationQuietHours state={state} controller={controller} />
       </form>
-      {state.feedback && !state.feedback.section && <p role={state.feedback.error ? "alert" : "status"} className={`px-1 text-xs leading-5 ${state.feedback.error ? "text-destructive" : "text-muted-strong"}`}>{state.feedback.text}</p>}
+      {state.feedback && (state.feedback.error || state.feedback.persistent) && !state.feedback.section && <p role={state.feedback.error ? "alert" : "status"} className="mist-glass-strong rounded-[24px] px-4 py-3 text-xs leading-5 text-muted-strong">{state.feedback.text}</p>}
       <LocationAdvanced state={state} controller={controller} onHome={() => setConfirmation("home")} onClear={() => setConfirmation("clear")} />
       <LocationPois state={state} controller={controller} onDetail={setPoi} />
     </div>

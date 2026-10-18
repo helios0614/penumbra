@@ -10,6 +10,8 @@ import { ActivityTimeline } from "./ActivityTimeline";
 import { ActivityClearDialog, ActivitySummaryDialog } from "./ActivityDialogs";
 import { useActivity } from "./useActivity";
 import { scrollActivityToTop, showActivityTopButton } from "./activity-scroll";
+import { useFeedbackToast } from "@/components/ui/toast";
+import { ActivityPageFeedback, ActivityReadIssue } from "./ActivityFeedback";
 import "./activity.css";
 
 export function ActivityView({ onBack }: { readonly onBack?: () => void }) {
@@ -19,6 +21,7 @@ export function ActivityView({ onBack }: { readonly onBack?: () => void }) {
   const scroll = useRef<HTMLDivElement>(null);
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const queryKey = JSON.stringify(state.query);
+  useFeedbackToast(state.notice, state.notice && !state.notice.error ? { type: "success", text: state.notice.text } : null, `${queryKey}:${state.device}`);
   useEffect(() => { if (scroll.current) scroll.current.scrollTop = 0; setShowTop(false); }, [queryKey, state.device]);
   return <TooltipProvider><main className="mx-auto flex h-full max-h-dvh min-h-0 w-full max-w-5xl flex-col overflow-hidden px-4 pb-4 pt-5 sm:px-0 sm:pb-8 sm:pt-8" aria-labelledby="activity-page-title">
     <PageHeader eyebrow="ACTIVITY LOG" title="活动日志" titleId="activity-page-title" description="设备上的点滴活动，构成一天的轨迹。" actions={<>
@@ -30,15 +33,12 @@ export function ActivityView({ onBack }: { readonly onBack?: () => void }) {
     </>} />
     <div className="relative mt-3 min-h-0 flex-1 sm:mt-4">
     <div ref={scroll} role="region" tabIndex={0} className={`h-full space-y-3 overflow-y-auto overscroll-contain focus:outline-none ${showTop ? "pb-16" : "pb-2"}`} aria-label="活动日志页面内容" onScroll={(event) => setShowTop(showActivityTopButton(event.currentTarget.scrollTop, event.currentTarget.clientHeight))}>
+      <ActivityPageFeedback state={state} controller={controller} connection={connection} reconnect={reconnect} />
       <PhoneStatusPanel state={state} controller={controller} />
-      {state.notice && <p role={state.notice.error ? "alert" : "status"} className={`mist-glass rounded-2xl px-4 py-3 text-xs leading-5 ${state.notice.error ? "text-destructive" : "text-muted-strong"}`}>{state.notice.text}</p>}
+      {state.notice?.error && state.notice.source !== "wifi" && state.notice.source !== "wifi-dialog" && <p role="alert" className="mist-glass-strong rounded-[24px] px-4 py-3 text-xs leading-5 text-muted-strong">{state.notice.text}</p>}
       <ActivityControls state={state} controller={controller} />
-      {(connection === "blocked" || connection === "reconnecting") && <div role="status" className="flex items-center justify-between gap-2 px-1 text-xs text-warning">
-        <p>{connection === "blocked" ? "实时连接受限，请检查登录状态。" : "实时连接中断，正在重连。"}</p>
-        <Button variant="ghost" className="h-11 shrink-0 px-2 text-xs" onClick={reconnect}>重新连接</Button>
-      </div>}
-      {state.legacyEnabled.data === false && <p className="px-1 text-xs leading-5 text-warning">旧版活动联动配置已关闭，相关 AI 动态读取受限；日志和本页规则摘要仍可查看。如需恢复联动，请在旧版设置中单独处理。</p>}
-      {state.legacyEnabled.error && <div className="flex flex-wrap items-center gap-2 px-1 text-xs text-muted-foreground"><p>未能确认旧版活动联动配置。</p><Button variant="ghost" className="h-11 text-xs" onClick={() => void controller?.loadLegacy()}>重新读取配置</Button></div>}
+      {state.legacyEnabled.data === false && <p className="mist-glass-strong rounded-[24px] px-4 py-3 text-xs leading-5 text-muted-strong">旧版活动联动配置已关闭，相关 AI 动态读取受限；日志和本页规则摘要仍可查看。如需恢复联动，请在旧版设置中单独处理。</p>}
+      {state.legacyEnabled.error && <div className="mist-glass-strong rounded-[24px] px-4"><ActivityReadIssue state={state} name="legacyEnabled" text="旧版联动配置暂不可用" onRetry={() => void controller?.loadLegacy()} /></div>}
       <ActivityTimeline state={state} controller={controller} />
     </div>
     <ActivityTopButton visible={showTop} onClick={() => scrollActivityToTop(scroll.current, window.matchMedia("(prefers-reduced-motion: reduce)").matches)} />

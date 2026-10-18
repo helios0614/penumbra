@@ -7,6 +7,8 @@ import { activityEventDetails, filterActivityTimeline, projectActivityTimeline, 
 import type { ActivityRecord } from "@/domain/activity";
 import { Button } from "@/components/ui/button";
 
+import { ActivityReadIssue } from "./ActivityFeedback";
+
 export const ACTIVITY_RENDER_BATCH = 200;
 const TIMELINE_ROW_CLASS = "grid min-h-11 min-w-0 grid-cols-[5rem_1.25rem_minmax(0,1fr)_0.875rem] items-start gap-2 border-b border-primary/10 py-2 text-[13px] sm:gap-3";
 export function ActivityTimeline({ state, controller }: { readonly state: ActivityState; readonly controller: ActivityController | null }) {
@@ -23,11 +25,11 @@ export function ActivityTimeline({ state, controller }: { readonly state: Activi
   return <section className="activity-reading mist-glass-strong overflow-hidden rounded-[24px]" aria-label="活动时间线" aria-busy={state.logs.loading}>
     <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b border-primary/10 px-4 py-2 sm:px-5">
       <h2 className="text-xs font-medium text-muted-strong">{state.query.kind === "recent" ? "最近 3 小时的轨迹" : "归档记录"}</h2>
-      <span className="text-[11px] text-muted-foreground">共 {counts.all} 条事件 · 电脑 {counts.pc} · 手机 {counts.phone}{state.logs.loading ? " · 同步中…" : ""}</span>
+      <span className="text-[11px] text-muted-foreground">{state.logs.data ? `共 ${counts.all} 条事件 · 电脑 ${counts.pc} · 手机 ${counts.phone}` : state.logs.error ? "暂无可用记录" : ""}{state.logs.loading ? " · 同步中…" : ""}</span>
     </div>
-    {state.logs.error && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-xs text-destructive"><span>{state.logs.error}{state.logs.data ? " 当前保留上次读取结果。" : ""}</span><Button variant="ghost" className="h-11 text-xs" onClick={() => void controller?.loadLogs()}>重新读取活动</Button></div>}
+    <div className="px-4"><ActivityReadIssue state={state} name="logs" text="活动记录读取失败" onRetry={() => void controller?.loadLogs()} /></div>
     {!state.logs.data && state.logs.loading && <p role="status" className="px-5 py-12 text-center text-sm text-muted-foreground">正在读取活动记录…</p>}
-    {state.logs.data && !rows.length && <p className="px-5 py-12 text-center text-sm text-muted-foreground">当前范围内暂无{state.device === "pc" ? "电脑" : state.device === "phone" ? "手机" : ""}活动记录。</p>}
+    {!state.logs.error && state.logs.data && !rows.length && <p className="px-5 py-12 text-center text-sm text-muted-foreground">当前范围内暂无{state.device === "pc" ? "电脑" : state.device === "phone" ? "手机" : ""}活动记录。</p>}
     {visible.length > 0 && <ol className="px-4 sm:px-5">{visible.map((entry, index) => {
       const event = timelineEvents(entry)[0];
       const showDate = state.query.kind === "recent" && (index === 0 || eventDate(timelineEvents(visible[index-1])[0].timestamp) !== eventDate(event.timestamp));

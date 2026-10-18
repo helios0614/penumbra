@@ -1,3 +1,4 @@
+vi.mock("@/components/ui/toast", () => ({ useFeedbackToast: vi.fn() }));
 import { readFileSync } from "node:fs";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -6,6 +7,7 @@ import type { QuickNoteController } from "@/application/quick-note/quick-note-co
 import { INITIAL_QUICK_NOTE_STATE, type QuickNoteEditor as EditorState } from "@/application/quick-note/quick-note-state";
 import { normalizeOutput, type QuickNote, type TriggerConfig } from "@/domain/quick-note";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
 import { AppSelect } from "@/components/ui/app-select";
 import { Dialog, DialogCloseButton, DialogContent, DialogFooter, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -15,6 +17,8 @@ import { QuickNoteEditor, QuickNoteEditorFields } from "./QuickNoteEditor";
 import { QuickNoteDatePicker } from "./QuickNoteControls";
 import { QuickNoteView } from "./QuickNoteView";
 import { QuickNoteReader } from "./QuickNoteReader";
+import { QuickNoteOverview } from "./QuickNoteOverview";
+import { QuickNoteFeedback } from "./QuickNoteFeedback";
 import * as hooks from "./useQuickNotes";
 import * as navigationHooks from "./useQuickNoteNavigation";
 
@@ -290,6 +294,23 @@ describe("Quick Note form and confirmation callbacks", () => {
     expect(onConfirm).not.toHaveBeenCalled();
     find(tree, AlertDialogAction).props.onClick?.({ cancel: vi.fn() } as never);
     expect(onConfirm).toHaveBeenCalledOnce();
+  });
+
+  it("gives a retry notice one active outlet and never duplicates transient success inline", () => {
+    const notice = { tone: "error" as const, text: "操作结果暂时无法确认" };
+    vi.spyOn(hooks, "useQuickNotes").mockReturnValue({ state: { ...state, notice }, controller: null });
+    vi.spyOn(hooks, "useQuickNoteLogs").mockReturnValue({ state: { connection: "connecting", entries: [] }, reconnect: vi.fn() });
+    vi.spyOn(navigationHooks, "useQuickNoteNavigation").mockReturnValue({ reader: null, overviewRef: React.createRef(), readerRef: React.createRef(), discardAction: null, open: vi.fn(), back: vi.fn(), exit: vi.fn(), cancelDiscard: vi.fn(), confirmDiscard: vi.fn() });
+    const render = session(() => QuickNoteView({}));
+    const trigger = elements(find(render(), PageHeader).props.actions).map((element) => element.props.render)
+      .find((element) => React.isValidElement<{ "aria-label": string }>(element) && element.props["aria-label"] === "重试近期未完成时段") as React.ReactElement<{ onClick: () => void }>;
+    trigger.props.onClick();
+    expect(find(render(), QuickNoteOverview).props.state.notice).toBeNull();
+    const retry = find(render(), QuickNoteRetryDialog);
+    expect(retry.props.state.notice).toBe(notice); retry.props.onClose();
+    expect(find(render(), QuickNoteOverview).props.state.notice).toBe(notice);
+    const html = renderToStaticMarkup(<QuickNoteFeedback state={{ ...state, notice: { tone: "info", text: "已提交补写请求", toast: "info" } }} controller={null} />);
+    expect(html).not.toContain("已提交补写请求");
   });
 
   it("routes overwrite backfill and reader reruns through view confirmation before mutations", () => {

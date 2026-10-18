@@ -12,6 +12,7 @@ import { AppSelect } from "@/components/ui/app-select";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ActivityDialogHeader } from "./ActivityDialogHeader";
+import { ActivityReadIssue } from "./ActivityFeedback";
 import { PhoneStatusPanel } from "./PhoneStatusPanel";
 import { WifiSceneSettings } from "./WifiSceneSettings";
 import { WifiNetworkDialog, WifiNetworkFields } from "./WifiNetworkDialog";
@@ -26,7 +27,7 @@ const config: device.WifiConfig = { revision: 3, mappings: [{ ssid: "家庭网�
 const loaded: ActivityState = { ...INITIAL_ACTIVITY_STATE, wifi: { data: config, loading: false, error: null }, visibility: { data: true, loading: false, error: null } };
 function elements(node: React.ReactNode): React.ReactElement<Record<string, unknown>>[] {
   return React.Children.toArray(node).flatMap((child) => React.isValidElement<Record<string, unknown>>(child)
-    ? [child, ...elements(child.props.children as React.ReactNode)] : []);
+    ? [child, ...elements(child.type === ActivityReadIssue ? ActivityReadIssue(child.props as React.ComponentProps<typeof ActivityReadIssue>) : child.props.children as React.ReactNode)] : []);
 }
 function find<T extends React.ElementType>(node: React.ReactNode, type: T) {
   const element = elements(node).find((child) => child.type === type);
@@ -154,7 +155,7 @@ describe("Activity network dialog and scene settings", () => {
     find(s.render(), Dialog).props.onOpenChange?.(true, {} as never);
     find(s.render(), WifiNetworkFields).props.onSsidChange(" My Wi-Fi "); find(s.render(), WifiNetworkFields).props.onSceneChange("work");
     find(s.render(), WifiNetworkFields).props.onSubmit();
-    expect(saveMapping).toHaveBeenCalledWith(" My Wi-Fi ", "work");
+    expect(saveMapping).toHaveBeenCalledWith(" My Wi-Fi ", "work", "wifi-dialog");
     s.update({ pending: "wifi" });
     const busy = s.render(); expect(find(busy, Dialog).props.disablePointerDismissal).toBe(true);
     expect(find(busy, ActivityDialogHeader).props.busy).toBe(true);
@@ -172,6 +173,19 @@ describe("Activity network dialog and scene settings", () => {
     find(s.render(), WifiNetworkFields).props.onSsidChange("家庭网络"); find(s.render(), WifiNetworkFields).props.onSubmit();
     const fields = find(s.render(), WifiNetworkFields); expect(fields.props.error).toContain("已有标记"); expect(saveMapping).not.toHaveBeenCalled();
     expect(find(WifiNetworkFields(fields.props), Input).props).toMatchObject({ "aria-describedby": "activity-network-help activity-network-error" });
+    s.dispose();
+  });
+  it("can recover a failed configuration read inside the dialog without losing input or repeating the write", () => {
+    const saveMapping = vi.fn(), loadWifi = vi.fn();
+    const s = networkSession({ saveMapping, loadWifi } as unknown as ActivityController);
+    find(s.render(), WifiNetworkFields).props.onSsidChange("保留的网络");
+    s.update({ wifi: { ...loaded.wifi, error: "读取失败" } });
+    const fields = find(s.render(), WifiNetworkFields).props;
+    expect(fields).toMatchObject({ ssid: "保留的网络", disabled: true, readFailed: true });
+    const recovery = elements(WifiNetworkFields(fields)).find((element) => element.type === Button && element.props.children === "重新读取标记")!;
+    (recovery.props.onClick as () => void)();
+    expect(loadWifi).toHaveBeenCalledExactlyOnceWith(true); expect(saveMapping).not.toHaveBeenCalled();
+    s.update({ wifi: loaded.wifi }); expect(find(s.render(), WifiNetworkFields).props).toMatchObject({ ssid: "保留的网络", disabled: false, readFailed: false });
     s.dispose();
   });
   it("keeps scene groups symmetric, protects long names and passes exact names to existing actions", () => {

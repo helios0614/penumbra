@@ -59,7 +59,44 @@ UI Foundation PR2 已将 Memory、Quick Note、Activity、Location 的成熟布�
 - 编辑器内的确认 AlertDialog 应嵌套在父 Dialog 的 React 根节点内，让 Base UI 识别层级、只让最上层处理关闭与焦点陷阱。不要为弹框新增全局键盘监听；关闭手势不能穿透到底层页面。
 - 公共外壳和遮罩在 Reduced Motion 下禁用动画与过渡；自定义主题和深色模式沿用现有语义颜色。移动端软键盘、字体放大及极短横屏仍需人工验证具体内容与按钮的可达性。
 
-UI Foundation PR1 已提供公共 `Switch`（见下文），替代 Activity 和 Location 的局部轨道实现。仓库仍无共享 Toast / Notification 设施；设计文档中的 Toast z-index 仅是层级预留，不代表已有通知设施，不应为单页扩展全局通知系统。
+UI Foundation PR1 已提供公共 `Switch`（见下文），替代 Activity 和 Location 的局部轨道实现。PR3 的公共 Toast / Feedback 规则见下文。
+
+## Toast / Feedback
+
+`components/ui/toast.tsx`、`toast-store.ts`、`toast-viewport.ts`、`toast.css` 提供轻量本地 Host 和 API，无新依赖。已检查现有依赖（包括 Base UI 的 Toast 能力）；本轮采用限定容量的本地队列，直接支持 feature 生命周期、过期异步结果和应用视口，不建立全局通知服务或传输层错误中心。
+
+```tsx
+// DesktopAppView 为经典／Editorial 的共享入口，提供当前应用边界与独立 Host。
+<ToastProvider key={appId} viewportRef={appViewportRef} mobileClearance={16}>
+  {/* 当前应用；Host 自动 portal 至 body，不占据内容滚动布局 */}
+</ToastProvider>
+
+const toast = useToast(`${date}:${device}`);
+// 必须先得到实际写入确认，业务失败继续保留表单及草稿。
+toast.show({ type: "success", text: "已保存", dedupeKey: "save" });
+toast.show({ type: "info", text: "已提交补写请求" });
+```
+
+- `ToastInput`：`type: success | info | error`、必填 `text`，可选 `description`、`dedupeKey`、`duration`（毫秒，至少 1 秒）。`description` 必须有实际解释价值，不能自动添加“操作已完成”等空副标题。默认严格单行，无截断；仅窄屏必要换行。
+- `useToast(scopeKey?)`：返回 `show`（得到 id）、`dismiss(id)`、`clear()`；每个 hook 持有独立页面／操作作用域。相同作用域内同一 key 或同类型相同文案更新计时而不叠加；相同播报文本不重复修改 live region。最多两条，溢出立即清理最早通知及 timer，不建立无限等待队列。
+- 默认成功 3000ms、信息 4000ms、临时失败 5000ms。悬停、键盘焦点、后台页面和模态弹框期间暂停计时；模态打开时也暂缓展示和播报。卸载清理 timer／订阅，作用域切换清理该作用域通知，晚到的异步 `show` 失效。`useFeedbackToast` 仅桥接业务层显式标记的短暂结果，按结果对象防止重复消费。
+- 移动端底部居中，desktop（640px 起）在应用边界的右上角。通过 `visualViewport` 交集处理键盘高度与平移，通过安全区变量避让系统区域。Provider 默认预留 112px 给 Dock，当前应用隐藏 Dock 后显式使用 16px；固定操作区可标记 `data-toast-obstacle`（Chat Sender 已接入），尺寸变化重新测量。动态 style 仅用于测量后的视口几何。
+- z-index 为 100，Host 不捕获空白区指针，不自动聚焦、不建立焦点陷阱；关闭为原生 button、44px 点击区域。单独预先挂载的 `role=status`／`aria-live=polite`／`aria-atomic=true` 负责播报，视觉消息不再次设置 live role。Mist、语义色及阴影跟随明暗／自定义主题，Reduced Motion 禁用非必要动画。
+
+反馈归属：
+
+| 结果 | 出口 |
+|---|---|
+| 创建／保存／删除／复制已确认 | 短 Toast；不另写同义成功 notice |
+| 后台任务请求已接受 | 准确的“已提交／已安排” Toast；进度仍在内容／日志区域 |
+| 字段校验／表单写入失败 | 字段／Dialog 内，可保留输入和有效的读取恢复入口 |
+| 写入未知、冲突、草稿仍未保存 | 持续内联；不能因 Toast 消失而丢失必要状态 |
+| 连接中断、服务不可用、读取失败 | 页面／模块 Surface；失败不能伪装为空结果 |
+| 读取成功 | 清除已经失效的读取错误；不推断后台生成或未知写入已经完成 |
+
+Activity 用结构化失败类型判断共同 HTTP 故障，合并同源错误与恢复入口；诊断置于折叠 details，独立错误保留局部重试，连接恢复后的 GET 清理各自错误。WebSocket 状态独立，统一恢复按钮仅显式调用既有 GET／reconnect，不增加自动重试。Wi-Fi Dialog 的失败只在表单内，列表标记操作的失败在 Wi-Fi 区域，不同时出现在页面 notice。
+
+Quick Note 的重试 Dialog 打开时独占操作 notice，关闭后必要的持续错误回到页面；成功只走 Toast。日期／阅读内容切换使旧 notice 及旧异步反馈失效；已接受但重新读取失败的提示随读取恢复清理，结果未知和编辑冲突继续保留。Location 的 `section` 成功全部由公共 Toast 消费，区域失败继续使用 `LocationSaveError`，保留独立保存与多区域草稿。Chat 消息和代码复制都等待剪贴板 Promise，仅有 Toast 一条结果路径，失败明确显示且无“已复制”局部状态。
 
 ## 基础控件：密度、状态与组合
 

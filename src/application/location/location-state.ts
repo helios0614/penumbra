@@ -14,7 +14,7 @@ export interface LocationState {
   readonly configError: string | null;
   readonly statusError: string | null;
   readonly pending: "save" | "save-position" | "save-key" | "set-home" | "clear-key" | "reveal-key" | "copy-key" | "search" | null;
-  readonly feedback: { readonly error: boolean; readonly text: string; readonly section?: LocationSaveSection } | null;
+  readonly feedback: { readonly error: boolean; readonly text: string; readonly section?: LocationSaveSection; readonly persistent?: boolean; readonly info?: boolean } | null;
   readonly validation: Partial<Record<keyof LocationDraft, string>>;
   readonly searchResult: PoiSearchResult | null;
   readonly searchError: string | null;

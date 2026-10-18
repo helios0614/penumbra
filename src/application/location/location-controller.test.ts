@@ -19,6 +19,13 @@ function setup() {
 afterEach(() => { controllers.forEach((controller) => controller.dispose()); controllers.length = 0; vi.useRealTimers(); });
 
 describe("Location save and reconciliation", () => {
+  it.each(["key", "position", "settings"] as const)("publishes an accurate confirmed success for the independent %s section", async (section) => {
+    const { controller } = setup(); await controller.refresh();
+    if (section === "key") { controller.replaceKey("new-value"); await controller.saveKey(); }
+    else if (section === "position") { controller.edit("home_threshold", "750"); await controller.savePosition(); }
+    else { controller.edit("quiet_hours_end", "09:30"); await controller.save(); }
+    expect(controller.getState().feedback).toEqual({ text: section === "key" ? "Key 已保存" : section === "position" ? "位置参数已保存" : "配置已保存", error: false, section });
+  });
   it("sends only dirty fields and reloads server values after acknowledgement", async () => {
     const { controller, api } = setup(); await controller.refresh();
     controller.edit("quiet_hours_end", "09:30"); controller.edit("weekday_days", "");
@@ -204,6 +211,12 @@ describe("Location explicit operations", () => {
   it("copies only an explicit reveal result and never stores the copied plaintext in display state", async () => {
     const { controller } = setup(); await controller.refresh(); const copy = vi.fn(async () => {});
     await controller.useKey(copy); expect(copy).toHaveBeenCalledWith("fake-key-value"); expect(controller.getState().revealedKey).toBeNull();
+  });
+  it("keeps a denied clipboard operation in the key form without reporting copy success", async () => {
+    const { controller } = setup(); await controller.refresh();
+    await controller.useKey(async () => { throw new Error("denied"); });
+    expect(controller.getState().feedback).toEqual({ text: "Key 复制失败，请重试。", error: true, section: "key" });
+    expect(controller.getState().revealedKey).toBeNull();
   });
   it("queries only explicitly, keeps cached rows on failure, and accepts empty successful results", async () => {
     const { controller, api } = setup(); await controller.refresh(); expect(api.searchLocationPois).not.toHaveBeenCalled();

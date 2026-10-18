@@ -17,7 +17,7 @@ export function useQuickNoteNavigation(state: QuickNoteState, controller: QuickN
   useEffect(() => {
     const active = createQuickNoteNavigation(window, {
       getState: () => latest.current.controller?.getState() ?? latest.current.state,
-      onReader: setReader,
+      onReader: (note) => { latest.current.controller?.clearNotice(); setReader(note); },
       confirmDiscard: (action) => setDiscardAction(() => action),
       cancelEdit: () => latest.current.controller?.cancelEdit(),
       restoreOverview: (scrollTop, noteId) => { restoreRef.current = { scrollTop, noteId }; },

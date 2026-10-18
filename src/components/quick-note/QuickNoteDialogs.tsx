@@ -102,8 +102,8 @@ export function QuickNoteRetryDialog({ open, state, controller, onClose }: {
       <DialogContent ref={viewportRef} showCloseButton={false} className="quick-note-dialog" data-quick-note-dialog="retry">
         <QuickNoteDialogHeader title="重试未完成速记" description="查找近期尚未完成的时段，不会自动覆盖已有完整记录。" />
         <DialogBody>
-          <QuickNoteCandidateList state={state} onRetry={(input) => void controller?.mutate("backfill", `${input.date}:${input.endHour}`, input)} />
-          {state.notice && <p role={state.notice.tone === "error" ? "alert" : "status"} className="mt-3 text-sm leading-6 text-muted-strong">{state.notice.text}</p>}
+          <QuickNoteCandidateList state={state} onRetry={(input) => { void (async () => { if (await controller?.mutate("backfill", `${input.date}:${input.endHour}`, input)) onClose(); })(); }} />
+          {state.notice && !state.notice.toast && <p role={state.notice.tone === "error" ? "alert" : "status"} className="mt-3 text-sm leading-6 text-muted-strong">{state.notice.text}</p>}
         </DialogBody>
         <DialogFooter>
           <Button size="comfortable" type="button" variant="ghost" className="text-muted-strong" onClick={onClose}>关闭</Button>

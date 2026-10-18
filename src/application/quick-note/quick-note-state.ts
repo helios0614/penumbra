@@ -19,7 +19,7 @@ export interface QuickNoteState {
   // Application-level date collection; backend page metadata stays in the client.
   readonly data: { readonly items: readonly QuickNote[] } | null;
   readonly error: string | null;
-  readonly notice: { readonly tone: "info" | "error"; readonly text: string } | null;
+  readonly notice: { readonly tone: "info" | "error"; readonly text: string; readonly toast?: "success" | "info"; readonly description?: string; readonly reconcile?: boolean } | null;
   readonly pending: { readonly kind: string; readonly target: string } | null;
   readonly candidates: readonly IncompletePeriod[] | null;
   readonly candidatesLoading: boolean;

@@ -14,6 +14,7 @@ import { QuickNoteReader } from "./QuickNoteReader";
 import type { NoteAction } from "./QuickNoteSection";
 import { useQuickNoteNavigation } from "./useQuickNoteNavigation";
 import { useQuickNoteLogs, useQuickNotes } from "./useQuickNotes";
+import { useFeedbackToast } from "@/components/ui/toast";
 import "./quick-note.css";
 
 export function QuickNoteView({ onBack }: { readonly onBack?: () => void }) {
@@ -25,6 +26,8 @@ export function QuickNoteView({ onBack }: { readonly onBack?: () => void }) {
   const [backfillOpen, setBackfillOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<QuickNoteConfirmation | null>(null);
+  useFeedbackToast(state.notice, state.notice?.toast ? { type: state.notice.toast, text: state.notice.text, description: state.notice.description } : null, `${state.date}:${navigation.reader?.id ?? "overview"}`);
+  const pageState = retryOpen ? { ...state, notice: null } : state;
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const readerActions = useRef<HTMLButtonElement>(null);
   const noteFinalFocus = () => {
@@ -52,11 +55,11 @@ export function QuickNoteView({ onBack }: { readonly onBack?: () => void }) {
           {state.configError && <div role="alert" className="mist-glass rounded-[24px] p-5 text-sm"><p>{state.configError}</p><Button variant="outline" className="mt-3 h-11" onClick={() => void controller?.loadConfig()}>重新读取配置</Button></div>}
           {state.config && <QuickNoteDateNavigation config={state.config} date={state.date} onChange={(date) => void controller?.selectDate(date)} />}
           <QuickNoteLogs state={logs.state} timeZone={state.config?.timeZone} onReconnect={logs.reconnect} />
-          <QuickNoteOverview state={state} controller={controller} onOpen={navigation.open} />
+          <QuickNoteOverview state={pageState} controller={controller} onOpen={navigation.open} />
           {state.config && <QuickNoteConfig config={state.config} loading={state.configLoading} onReload={() => void controller?.loadConfig()} />}
         </div>
         {navigation.reader && <div ref={navigation.readerRef} tabIndex={-1} className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden pb-2 focus:outline-none sm:mt-4" aria-label="单篇速记阅读">
-          {state.config ? <QuickNoteReader note={selectedNote} timeZone={state.config.timeZone} state={state} controller={controller} actionsRef={readerActions} onBack={navigation.back} onAction={action} /> : <div className="mist-glass rounded-[24px] p-4">
+          {state.config ? <QuickNoteReader note={selectedNote} timeZone={state.config.timeZone} state={pageState} controller={controller} actionsRef={readerActions} onBack={navigation.back} onAction={action} /> : <div className="mist-glass rounded-[24px] p-4">
             <Button variant="ghost" className="h-11" onClick={navigation.back}>返回日期概览</Button>
             <p role={state.configError ? "alert" : "status"} className="py-3 text-sm">{state.configError || "正在读取时段与日期配置…"}</p>
             {state.configError && <Button variant="outline" className="h-11" onClick={() => void controller?.loadConfig()}>重新读取配置</Button>}

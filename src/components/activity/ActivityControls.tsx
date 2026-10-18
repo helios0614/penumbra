@@ -10,6 +10,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
+import { ActivityReadIssue } from "./ActivityFeedback";
+
 function uiDate(date: string) {
   const [y, m, d] = date.split("-").map(Number);
   return new Date(y, m - 1, d, 12);
@@ -57,7 +59,7 @@ export function ActivityControls({ state, controller }: { readonly state: Activi
               <Button variant="ghost" className="h-11 w-full justify-start rounded-lg px-3 text-xs" aria-pressed={state.query.kind === "date"} disabled={!dateAvailable || !dates.size} onClick={openArchive}>归档日期</Button>
             </>}
             {state.dates.loading && <p role="status" className="px-3 py-2 text-xs text-muted-foreground">正在读取可用日期…</p>}
-            {state.dates.error && <div role="alert" className="px-2 py-1 text-xs text-destructive"><p>归档日期读取失败。</p><Button variant="ghost" className="h-11 px-1 text-xs" onClick={() => void controller?.loadDates()}>重新读取日期</Button></div>}
+            <ActivityReadIssue state={state} name="dates" text="归档日期读取失败" onRetry={() => void controller?.loadDates()} />
             {!state.dates.loading && !state.dates.error && !dates.size && <p className="px-3 py-2 text-xs text-muted-foreground">暂无可用的日志归档日期</p>}
           </PopoverContent>
         </Popover>
@@ -66,7 +68,7 @@ export function ActivityControls({ state, controller }: { readonly state: Activi
         {([{ value: "all", label: "全部", icon: null }, { value: "pc", label: "电脑", icon: Monitor }, { value: "phone", label: "手机", icon: Smartphone }] as const).map(({ value, label, icon: Icon }) => <FilterChip key={value} selected={state.device === value} onClick={() => controller?.selectDevice(value)}>{Icon && <Icon className="hidden size-3.5 sm:block" aria-hidden="true" />}{label}</FilterChip>)}
       </div>
     </div>
-    {!open && state.dates.error && <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-destructive"><span>归档日期读取失败。</span><Button variant="ghost" className="h-11 text-xs" onClick={() => void controller?.loadDates()}>重新读取日期</Button></div>}
+    {!open && <ActivityReadIssue state={state} name="dates" text="归档日期读取失败" onRetry={() => void controller?.loadDates()} />}
     {missing && <div role="status" className="flex flex-wrap items-center gap-2 text-xs text-muted-strong"><span>所选归档已不在可用日期中，可能已被清理。</span><Button variant="ghost" className="h-11 px-2 text-xs" onClick={selectRecent}>回到最近活动</Button></div>}
   </div>;
 }

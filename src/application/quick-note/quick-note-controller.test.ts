@@ -246,7 +246,7 @@ describe("Quick Note edit lifecycle and conflicts", () => {
     deps.readQuickNote.mockResolvedValueOnce(note).mockResolvedValueOnce({ ...note, output: "保存的新正文" });
     await c.saveEditor();
     expect(c.getState().editor).toBeNull();
-    expect(c.getState().notice?.text).toContain("确认正文已保存");
+    expect(c.getState().notice?.text).toContain("已核对，正文已保存");
     expect(deps.saveQuickNote).toHaveBeenCalledOnce();
     c.dispose();
   });
@@ -268,6 +268,22 @@ describe("Quick Note edit lifecycle and conflicts", () => {
 });
 
 describe("Quick Note mutations, feedback, and failure recovery", () => {
+  it("removes stale accepted/read-failed feedback after GET recovery without repeating the mutation", async () => {
+    const { deps, controller: c } = setup(); await c.loadConfig();
+    deps.listQuickNotes.mockRejectedValueOnce(new ApiError("offline", 0));
+    await c.mutate("backfill", "target", { date: "2026-10-15", periodLabel: "夜晚", endHour: 5, overwrite: false });
+    expect(c.getState().notice).toMatchObject({ tone: "error", reconcile: true });
+    expect(c.getState().notice?.toast).toBeUndefined();
+    await c.load(); expect(c.getState().notice).toBeNull(); expect(deps.backfillQuickNote).toHaveBeenCalledOnce(); c.dispose();
+  });
+  it("clears completed feedback on content switch and rejects a late old-content result", async () => {
+    const { deps, controller: c } = setup(); await c.loadConfig();
+    await c.mutate("step2", note.id); expect(c.getState().notice?.toast).toBe("success");
+    c.clearNotice(); expect(c.getState().notice).toBeNull();
+    const write = deferred<void>(); deps.rerunQuickNote.mockReturnValueOnce(write.promise);
+    const pending = c.mutate("step2", note.id); c.clearNotice(); write.resolve(); await pending;
+    expect(c.getState().notice).toBeNull(); c.dispose();
+  });
   it("loads candidate errors/empty states and retries only after another GET", async () => {
     const { deps, controller: c } = setup();
     deps.getIncomplete.mockRejectedValueOnce(new ApiError("bad", 503));
@@ -284,7 +300,7 @@ describe("Quick Note mutations, feedback, and failure recovery", () => {
     const input = { date: "2026-10-15", periodLabel: "夜晚", endHour: 5, overwrite: false };
     await c.mutate("backfill", "2026-10-15:5", input);
     expect(deps.backfillQuickNote).toHaveBeenCalledWith(input, expect.any(Object));
-    expect(c.getState()).toMatchObject({ date: "2026-10-16", page: 1, notice: { tone: "info", text: expect.stringContaining("不代表生成完成") } });
+    expect(c.getState()).toMatchObject({ date: "2026-10-16", page: 1, notice: { tone: "info", text: "已提交补写请求", toast: "info" } });
     c.dispose();
   });
   it("passes explicit overwrite only when the confirmed input requests it", async () => {
@@ -301,7 +317,8 @@ describe("Quick Note mutations, feedback, and failure recovery", () => {
     await c.mutate(kind, note.id);
     if (kind === "delete") expect(deps.deleteQuickNote).toHaveBeenCalledWith(note.id, expect.any(Object));
     else expect(deps.rerunQuickNote).toHaveBeenCalledWith(note.id, kind, expect.any(Object));
-    expect(c.getState().notice?.text).toContain(kind === "delete" ? "已删除" : kind === "step1" ? "原正文已清空" : "Step 2 已完成");
+    expect(c.getState().notice?.text).toContain(kind === "delete" ? "已删除" : kind === "step1" ? "Step 1 已完成" : "Step 2 已完成");
+    if (kind === "step1") expect(c.getState().notice?.description).toContain("原正文已清空");
     c.dispose();
   });
   it("reports Step 2 502 as incomplete and refreshes saved data", async () => {
@@ -336,7 +353,7 @@ describe("Quick Note mutations, feedback, and failure recovery", () => {
     expect(deps.backfillQuickNote).toHaveBeenCalledOnce();
     c.dispose();
   });
-  it("does not mistake a superseded reconciliation read for a failed write", async () => {
+  it("clears old-date feedback and ignores the superseded write reconciliation", async () => {
     const { deps, controller: c } = setup();
     await c.loadConfig();
     const oldRead = deferred<QuickNotePage>();
@@ -346,8 +363,8 @@ describe("Quick Note mutations, feedback, and failure recovery", () => {
     await c.selectDate("2026-10-15");
     oldRead.resolve(page([]));
     await mutation;
-    expect(c.getState()).toMatchObject({ date: "2026-10-15", notice: { tone: "info", text: expect.stringContaining("Step 2 已完成") } });
-    expect(c.getState().notice?.text).not.toContain("重新读取失败");
+    expect(c.getState()).toMatchObject({ date: "2026-10-15", notice: null });
+    expect(c.getState().notice).toBeNull();
     c.dispose();
   });
   it("starts a fresh reconciliation after a write instead of sharing a pre-write read", async () => {

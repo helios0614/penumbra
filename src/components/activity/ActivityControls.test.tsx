@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ActivityReadIssue } from "./ActivityFeedback";
 import { ActivityControls } from "./ActivityControls";
 
 // Exercise real component callbacks and composition without a browser or DOM.
@@ -18,7 +19,7 @@ afterEach(() => vi.restoreAllMocks());
 
 function elements(node: React.ReactNode): React.ReactElement<Record<string, unknown>>[] {
   return React.Children.toArray(node).flatMap((child) => React.isValidElement<Record<string, unknown>>(child)
-    ? [child, ...elements(child.props.children as React.ReactNode)] : []);
+    ? [child, ...elements(child.type === ActivityReadIssue ? ActivityReadIssue(child.props as React.ComponentProps<typeof ActivityReadIssue>) : child.props.children as React.ReactNode)] : []);
 }
 function find<T extends React.ElementType>(node: React.ReactNode, type: T) {
   const element = elements(node).find((child) => child.type === type);

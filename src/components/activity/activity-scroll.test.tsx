@@ -1,3 +1,4 @@
+vi.mock("@/components/ui/toast", () => ({ useFeedbackToast: vi.fn() }));
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";

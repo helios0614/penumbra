@@ -5,6 +5,7 @@ import type { ActivityState } from "@/application/activity/activity-state";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ActivityReadIssue } from "./ActivityFeedback";
 import { WifiSceneSettings } from "./WifiSceneSettings";
 
 export function PhoneStatusPanel({ state, controller }: { readonly state: ActivityState; readonly controller: ActivityController | null }) {
@@ -22,7 +23,7 @@ export function PhoneStatusPanel({ state, controller }: { readonly state: Activi
       <h2 id="activity-phone-title" className="flex items-center gap-2 text-sm font-semibold"><Smartphone className="size-4 text-muted-strong" aria-hidden="true" />手机状态</h2>
       <Button variant="ghost" className="h-11 gap-1.5 px-2 text-xs text-muted-strong" disabled={state.phone.loading || busy} onClick={() => void controller?.refreshPhone()}><RefreshCw aria-hidden="true" className="size-3.5" />刷新</Button>
     </div>
-    {state.phone.error && <p role="alert" className="pb-2 text-xs leading-5 text-destructive">手机状态读取失败。{state.phone.error}</p>}
+    <ActivityReadIssue state={state} name="phone" text="手机状态暂不可用" onRetry={() => void controller?.refreshPhone()} />
     <div className="activity-phone-metrics pb-2" data-phone-metrics="true">
       <div className="flex min-w-0 items-start gap-2.5 py-1">
         <BatteryIcon className="mt-1 size-4 shrink-0 text-primary-ink" aria-hidden="true" />
@@ -49,7 +50,7 @@ export function PhoneStatusPanel({ state, controller }: { readonly state: Activi
           busy={savingVisibility} disabled={visibilityDisabled} onCheckedChange={(visible) => void controller?.setVisibility(visible)} />
       </div>
     </div>
-    {state.visibility.error && <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-destructive"><span>手机状态权限读取失败。</span><Button variant="ghost" className="h-11 text-xs" onClick={() => void controller?.loadVisibility()}>重新读取权限</Button></div>}
+    <ActivityReadIssue state={state} name="visibility" text="手机状态权限暂不可用" onRetry={() => void controller?.loadVisibility()} />
     <WifiSceneSettings state={state} controller={controller} />
   </section>;
 }

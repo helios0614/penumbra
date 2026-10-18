@@ -115,6 +115,7 @@ export function Sender({
 
   return (
     <div
+      data-toast-obstacle
       className={cn(
         "shrink-0 overflow-hidden border-x-0 border-b-0 border-t border-border bg-background/10 p-4 shadow-none backdrop-blur-xl",
         className,

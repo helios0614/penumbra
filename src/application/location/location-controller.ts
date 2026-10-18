@@ -87,7 +87,7 @@ export function createLocationController(api = client) {
     publish({ validation: { ...Object.fromEntries(Object.entries(state.validation).filter(([key]) => !fields.includes(key as keyof LocationDraft))), ...validation } });
     if (Object.keys(validation).length) { feedback("请检查此区域的输入。", true, section); return; }
     const patch = buildLocationPatch(state.config, state.draft, section === "key" ? state.replacementKey : "", fields);
-    if (!Object.keys(patch).length) { feedback("没有需要保存的更改。", false, section); return; }
+    if (!Object.keys(patch).length) { publish({ feedback: { text: "没有需要保存的更改", error: false, info: true, section } }); return; }
     const resetFields = Object.keys(patch).filter((key) => key !== "amap_key") as (keyof LocationDraft)[];
     await run(section === "settings" ? "save" : section === "position" ? "save-position" : "save-key", async (signal) => {
       cancelRead("config"); hideKey();
@@ -96,7 +96,7 @@ export function createLocationController(api = client) {
       if ("home_lng" in patch || "home_lat" in patch || "home_threshold" in patch) publish({ homeAwaitingReport: state.status?.updatedAt ?? 0 });
       if (await savedConfig(resetFields, section)) {
         if (section === "key") publish({ replacementKey: "" });
-        feedback(section === "key" ? "Key 已保存。" : section === "position" ? "位置参数已保存。" : "配置已保存。", false, section);
+        feedback(section === "key" ? "Key 已保存" : section === "position" ? "位置参数已保存" : "配置已保存", false, section);
       }
     }, section);
   };
@@ -104,7 +104,7 @@ export function createLocationController(api = client) {
     getState: () => state,
     subscribe(listener: (value: LocationState) => void) { listeners.add(listener); listener(state); return () => { listeners.delete(listener); }; },
     refresh,
-    async refreshDisplay() { await refresh(); if (!state.configError && !state.statusError) feedback(state.dirty ? "显示已更新，未保存的修改已保留。" : "已重新读取最近上报的数据。"); },
+    async refreshDisplay() { await refresh(); if (!state.configError && !state.statusError) publish({ feedback: { text: state.dirty ? "显示已更新，未保存的修改已保留。" : "已重新读取最近上报的数据。", persistent: state.dirty, info: true, error: false } }); },
     edit<K extends keyof LocationDraft>(key: K, value: LocationDraft[K]) {
       if (state.pending || !state.draft) return;
       publish({ draft: { ...state.draft, [key]: value }, validation: {}, feedback: null });
@@ -127,7 +127,7 @@ export function createLocationController(api = client) {
         publish({ homeAwaitingReport: state.status?.updatedAt ?? 0,
           draft: state.draft ? { ...state.draft, home_lng: String(result.coordinate.lng), home_lat: String(result.coordinate.lat) } : null });
         // The endpoint uses the newest server coordinate, which may differ from the confirmation snapshot.
-        if (await savedConfig(["home_lng", "home_lat"])) feedback(`家庭位置已设为 ${result.coordinate.lng}, ${result.coordinate.lat}；状态与距离等待后续上报重新计算。`);
+        if (await savedConfig(["home_lng", "home_lat"])) feedback("家庭位置已更新");
       });
     },
     async clearKey() {
@@ -136,7 +136,7 @@ export function createLocationController(api = client) {
       await run("clear-key", async (signal) => {
         cancelRead("config"); hideKey();
         await api.clearLocationKey(ref, { signal });
-        if (await savedConfig()) feedback("已清除已保存的高德 Key，其他草稿保持不变。");
+        if (await savedConfig()) feedback("已清除高德 Key");
       });
     },
     hideKey,
@@ -149,7 +149,11 @@ export function createLocationController(api = client) {
         const secret = await api.revealLocationKey(ref, { signal });
         const current = () => !disposed && generation === secretGeneration && ref === state.config?.credential.secretRef;
         if (!current()) return;
-        if (copy) { await copy(secret); if (current()) feedback("Key 已复制。"); }
+        if (copy) {
+          try { await copy(secret); }
+          catch { if (current()) feedback("Key 复制失败，请重试。", true, "key"); return; }
+          if (current()) feedback("Key 已复制");
+        }
         else { publish({ revealedKey: secret }); secretTimer = setTimeout(hideKey, 15_000); }
       });
     },

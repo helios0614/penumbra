@@ -1,11 +1,13 @@
-import { memo, useState, useCallback } from "react";
-import { Copy, RefreshCw, Trash2, Check } from "lucide-react";
+import { memo } from "react";
+import { Copy, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+
+import { useCopyFeedback } from "./copy-feedback";
 
 interface MessageActionsProps {
   role: "user" | "assistant" | "system";
@@ -24,13 +26,7 @@ function MessageActionsInner({
   onDelete,
   className,
 }: MessageActionsProps) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }, [content]);
+  const handleCopy = useCopyFeedback(content);
 
   return (
     <div className={className}>
@@ -41,18 +37,15 @@ function MessageActionsInner({
             <Button
               variant="ghost"
               size="icon-xs"
-              onClick={handleCopy}
+              onClick={() => void handleCopy()}
+              aria-label="复制消息"
               className="text-muted-foreground hover:text-foreground"
             />
           }
         >
-          {copied ? (
-            <Check className="size-3 text-success" />
-          ) : (
-            <Copy className="size-3" />
-          )}
+          <Copy className="size-3" aria-hidden="true" />
         </TooltipTrigger>
-        <TooltipContent>{copied ? "已复制" : "复制"}</TooltipContent>
+        <TooltipContent>复制</TooltipContent>
       </Tooltip>
 
       {/* 重新生成 — 仅 assistant 消息 */}

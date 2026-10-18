@@ -225,7 +225,20 @@ UI Foundation PR2 已将 Memory、Quick Note、Activity、Location 的成熟弹�
 - Button 的视觉优先级由当前交互场景决定，不仅由操作名称决定。`default`（Primary）表达当前场景的主要操作，包括弹框内作为主操作的读取、刷新或重试；`soft-primary` 适合页面级辅助查询／重新读取，ghost 表达轻量工具，outline 表达中性描边次级操作，destructive 表达危险操作。视觉统一不改变真实 disabled／loading 状态，也不因空列表而自动禁用仍可重新获取数据的操作。`secondary` 继续保留现有辅色语义，不用它冒充柔和主题操作。
 - 公共 Switch 只负责受控值、输入和基础状态，通过原生 button 支持 Space / Enter，使用可访问名称及可见标签关联；44×24px 轨道不扩大。即时提交、草稿保存、失败恢复均留在业务层，Checkbox、Radio、筛选不转换为 Switch。
 
-同类控件统一状态，不同语义保留合理差异。具体 API、尺寸例外和消费方式见 `ui-patterns.md`；控件密度沿用 PR1，Dialog 布局见 §4.5，Toast 与页面滚动模型保持现状。
+同类控件统一状态，不同语义保留合理差异。具体 API、尺寸例外和消费方式见 `ui-patterns.md`；控件密度沿用 PR1，Dialog 布局见 §4.5，页面滚动模型保持现状。
+
+### 4.7 Toast 与持续反馈
+
+UI Foundation PR3 的公共 Toast 使用 Mist 强玻璃、主题语义色的小型 Lucide 图标、13px 功能文字及柔和圆角。**默认严格单行**，没有自动副标题；只有影响理解或下一步操作的额外信息才允许第二行（例如 Step 1 完成后原正文已清空）。宽度随文案自然变化，最大 26rem；窄屏可必要换行，不能截断关键错误。
+
+- 手机底部居中，避让安全区、Dock、固定操作区与软键盘；桌面位于当前应用视口的右上角。Host portal 位于 body，不能放在滚动内容或持久 transform 的祖先内。默认 Desktop 与 Editorial 共用应用入口。
+- 已确认的创建、保存、删除、复制采用 Toast；请求只被接受时写“已提交补写请求”，不能写成生成完成。成功约 3 秒、普通信息约 4 秒；最多同时两条，重复通知更新或去重。主动关闭按钮保留 44px 目标，不抢焦点，采用 polite ARIA 播报并响应 Reduced Motion。
+- 表单校验靠近字段；保存失败、草稿保留、冲突与保存结果未知留在 Dialog／表单内。加载、生成、连接中断、服务不可用和模块读取失败继续作为持续业务状态，不能用 Toast 掩盖，也不能从 HTTP transport 层统一弹错。
+- 同源故障需要结构化证据。Activity 仅合并同一 HTTP 服务的多个 `NETWORK_ERROR` 或共享会话的 401，403、超时、业务错误及独立模块保留自己的恢复入口；WebSocket 的状态不被推定成 HTTP 故障的原因。
+- 页面、日期、设备或内容切换应清理旧反馈；读取成功后移除已失效的读取错误。结果未知的写入不能因普通读取成功就被宣布保存成功。异步晚到结果不得进入已离开的作用域。
+- 持续错误置于已有 Surface，用简短、低饱和的层级表达；后端诊断长文放在按需展开的排查信息里，不堆积在主要阅读路径和壁纸上。Dialog 打开时暂缓 Toast 的显示、播报与计时，保证关键操作可达。
+
+API 与操作归属见 [`ui-patterns.md`](./ui-patterns.md#toast--feedback)，来源审计与人工验收清单见 [`ui-feedback.md`](./ui-feedback.md)。
 
 ---
 

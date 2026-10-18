@@ -1,6 +1,6 @@
 import * as activity from "@/domain/activity";
 import * as device from "@/domain/device-context";
-import { INITIAL_ACTIVITY_STATE, activityFailure, type ActivityReads, type ActivityState, type ReadState } from "./activity-state";
+import { INITIAL_ACTIVITY_STATE, activityFailure, activityReadFailure, type ActivityReads, type ActivityState, type ReadState } from "./activity-state";
 
 const defaultClient = { ...activity, ...device };
 type ReadKey = keyof ActivityReads;
@@ -8,7 +8,7 @@ type ReadValue<K extends ReadKey> = NonNullable<ActivityReads[K]["data"]>;
 
 export function createActivityController(client = defaultClient, clock = () => performance.now()) {
   let state: ActivityState = { ...INITIAL_ACTIVITY_STATE, clockNow: clock() };
-  let disposed = false, dirty = false;
+  let disposed = false, dirty = false, feedbackGeneration = 0;
   const listeners = new Set<(state: ActivityState) => void>();
   const requests = new Map<ReadKey, { abort: AbortController; promise: Promise<void> }>();
   const mutations = new Set<AbortController>();
@@ -27,11 +27,11 @@ export function createActivityController(client = defaultClient, clock = () => p
     const active = requests.get(key);
     if (active) return active.promise;
     const abort = new AbortController();
-    put(key, { ...state[key], loading: true, error: null } as ReadState<ReadValue<K>>);
+    put(key, { ...state[key], loading: true, error: null, failure: undefined } as ReadState<ReadValue<K>>);
     const promise = Promise.resolve().then(() => loader(abort.signal)).then((data) => {
       if (!disposed && !abort.signal.aborted) put(key, { data, loading: false, error: null });
     }).catch((error: unknown) => {
-      if (!disposed && !abort.signal.aborted) put(key, { data: key === "phone" ? null : state[key].data, loading: false, error: activityFailure(error) } as ReadState<ReadValue<K>>);
+      if (!disposed && !abort.signal.aborted) put(key, { data: key === "phone" ? null : state[key].data, loading: false, error: activityFailure(error), failure: activityReadFailure(error) } as ReadState<ReadValue<K>>);
     }).finally(() => { if (requests.get(key)?.abort === abort) requests.delete(key); });
     requests.set(key, { abort, promise });
     return promise;
@@ -79,22 +79,24 @@ export function createActivityController(client = defaultClient, clock = () => p
     if (JSON.stringify(query) === JSON.stringify(state.query)) return;
     clearTimeout(debounce); debounce = undefined; dirty = false;
     cancel("logs");
-    publish({ query, logs: { data: null, loading: false, error: null } });
+    feedbackGeneration++;
+    publish({ query, notice: null, logs: { data: null, loading: false, error: null } });
     await loadLogs();
   };
   const refreshPhone = () => Promise.all([loadPhone(), loadVisibility(), loadWifi()]);
   const refresh = () => Promise.all([loadLogs(), loadDates(), refreshPhone(), loadLegacy()]);
-  const mutate = async (kind: NonNullable<ActivityState["pending"]>, operation: (signal: AbortSignal) => Promise<string>, reconcile: () => Promise<unknown>) => {
+  const mutate = async (kind: NonNullable<ActivityState["pending"]>, operation: (signal: AbortSignal) => Promise<string>, reconcile: () => Promise<unknown>, source: NonNullable<ActivityState["notice"]>["source"] = kind) => {
     if (disposed || state.pending) return false;
     let acknowledged = false;
+    const generation = feedbackGeneration;
     const abort = new AbortController(); mutations.add(abort);
     publish({ pending: kind, notice: null });
     try {
       const text = await operation(abort.signal);
       acknowledged = true;
-      if (!disposed) publish({ notice: { error: false, text } });
+      if (!disposed && generation === feedbackGeneration) publish({ notice: { error: false, text, source } });
     } catch (error) {
-      if (!disposed) publish({ notice: { error: true, text: `${activityFailure(error)} 操作结果需核对，请先重新读取；不会自动重复提交。` } });
+      if (!disposed && generation === feedbackGeneration) publish({ notice: { error: true, text: `${activityFailure(error)} 操作结果需核对，请先重新读取；不会自动重复提交。`, source } });
     } finally {
       if (!disposed) await reconcile();
       mutations.delete(abort);
@@ -106,13 +108,13 @@ export function createActivityController(client = defaultClient, clock = () => p
     getState: () => state,
     subscribe(listener: (state: ActivityState) => void) { listeners.add(listener); listener(state); return () => listeners.delete(listener); },
     start: refresh, refresh, refreshPhone, loadLogs, loadDates, loadSummary, loadWifi, loadVisibility, loadLegacy, selectQuery, invalidateLogs,
-    selectDevice(device: activity.ActivityDevice) { publish({ device }); },
+    selectDevice(device: activity.ActivityDevice) { if (device !== state.device) { feedbackGeneration++; publish({ device, notice: null }); } },
     setVisibility(visible: boolean) {
       if (state.pending || disposed) return Promise.resolve(false);
       cancel("visibility");
-      return mutate("visibility", async (signal) => { await client.setDeviceAiVisible(visible, { signal }); return visible ? "已允许 AI 查看手机状态。" : "已关闭 AI 手机状态读取；手机采集和活动历史不受此设置影响。"; }, () => loadVisibility(true));
+      return mutate("visibility", async (signal) => { await client.setDeviceAiVisible(visible, { signal }); return visible ? "已允许 AI 查看手机状态" : "已关闭 AI 手机状态读取"; }, () => loadVisibility(true));
     },
-    saveMapping(ssid: string, scene: device.WifiMapping["scene"] | null) {
+    saveMapping(ssid: string, scene: device.WifiMapping["scene"] | null, source: "wifi" | "wifi-dialog" = "wifi") {
       const config = state.wifi.data;
       if (disposed || state.pending || !config || state.wifi.loading || state.wifi.error) return Promise.resolve(false);
       const mappings = config.mappings.filter((entry) => entry.ssid !== ssid);
@@ -121,15 +123,15 @@ export function createActivityController(client = defaultClient, clock = () => p
       return mutate("wifi", async (signal) => {
         const data = await client.saveWifiConfig(config, mappings, { signal });
         put("wifi", { data, loading: false, error: null });
-        return scene ? "Wi-Fi 标记已保存；手机按原有同步流程读取配置。" : "Wi-Fi 标记已移除。";
-      }, () => loadWifi(true));
+        return scene ? "网络标记已更新" : "网络标记已移除";
+      }, () => loadWifi(true), source);
     },
     clearAll() {
       return mutate("clear", async (signal) => {
         const deleted = await client.clearActivityLogs({ signal });
         cancel("logs"); cancel("summary");
         publish({ logs: { data: null, loading: true, error: null }, summary: { data: null, loading: false, error: null } });
-        return `已清空全部活动日志，删除了 ${deleted} 个日志文件。`;
+        return `已清空 ${deleted} 个活动日志文件`;
       }, () => Promise.all([loadLogs(true), loadDates(true), loadSummary(true)]));
     },
     dispose() {

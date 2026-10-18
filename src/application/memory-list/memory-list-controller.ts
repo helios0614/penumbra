@@ -44,7 +44,7 @@ export interface MemoryListController {
   setSearch(search: string): Promise<void>;
   setFilters(filters: Partial<Omit<MemoryListFilters, "search">>): Promise<void>;
   setPage(page: number): Promise<void>;
-  setMemoryUnresolved(memoryId: string, unresolved: boolean): Promise<void>;
+  setMemoryUnresolved(memoryId: string, unresolved: boolean): Promise<boolean>;
   createMemory(input: CreateMemoryInput): Promise<boolean>;
   clearCreateError(): void;
   subscribe(listener: (state: MemoryListState) => void): () => void;
@@ -186,7 +186,7 @@ export function createMemoryListController(
     },
 
     async setMemoryUnresolved(memoryId, unresolved) {
-      if (disposed || mutationControllers.has(memoryId)) return;
+      if (disposed || mutationControllers.has(memoryId)) return false;
 
       const controller = new AbortController();
       mutationControllers.set(memoryId, controller);
@@ -203,14 +203,15 @@ export function createMemoryListController(
         });
         if (disposed || controller.signal.aborted) {
           cancelled = true;
-          return;
+          return false;
         }
         pendingSyncError = memoryMutationRefreshError();
         await execute(state.request, "reconcile");
+        return !disposed;
       } catch (error) {
         if (disposed || controller.signal.aborted || isAbortError(error)) {
           cancelled = true;
-          return;
+          return false;
         }
 
         mutationFailure = error;
@@ -218,6 +219,7 @@ export function createMemoryListController(
         if (shouldReconcileMutationFailure(error)) {
           await execute(state.request, "reconcile");
         }
+        return false;
       } finally {
         mutationControllers.delete(memoryId);
         pendingMemoryIds.delete(memoryId);

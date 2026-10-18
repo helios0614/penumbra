@@ -1,4 +1,5 @@
-import { lazy, Suspense, type ComponentType } from "react";
+import { lazy, Suspense, useRef, type ComponentType } from "react";
+import { ToastProvider } from "@/components/ui/toast";
 import {
   ArrowLeft,
   CalendarDays,
@@ -79,9 +80,12 @@ export function DesktopAppView({
 }) {
   const app = DESKTOP_APP_META[appId];
   const Icon = app.icon;
+  const viewportRef = useRef<HTMLElement>(null);
 
   return (
+    <ToastProvider key={appId} viewportRef={viewportRef} mobileClearance={16}>
     <section
+      ref={viewportRef}
       className={cn(
         "mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden sm:rounded-[28px]",
         appId === "chat" ? "mist-glass" : appId === "memory" || appId === "quick-notes" || appId === "activity" || appId === "location" ? "" : "mist-glass-strong",
@@ -127,6 +131,7 @@ export function DesktopAppView({
         </Suspense>
       </div>
     </section>
+    </ToastProvider>
   );
 }
 

@@ -6,6 +6,7 @@ import { ApiError, type ApiRequestOptions } from "@/lib/api";
 import { deviceGroupCurrent } from "./activity-presentation";
 import { filterActivityTimeline, projectActivityTimeline, timelineEvents } from "./activity-timeline";
 import { createActivityController, type ActivityController } from "./activity-controller";
+import { activityReadGroup } from "./activity-feedback";
 
 const rows = (app = "微信", count = 1) => parseActivityRecords({ entries: Array.from({ length: count }, () => ({ timestamp: 1000, date: "2026-10-17", time: "00:16:40", device: "phone", app, title: "合成窗口" })) });
 const group = { availability: "available" as const, observedAt: 1000, receivedAt: 1000, sampleSeq: 1, fresh: true, reason: "fresh", expiresAt: 1100 };
@@ -34,6 +35,31 @@ beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(500_000); });
 afterEach(() => { active.forEach((controller) => controller.dispose()); active.length = 0; vi.useRealTimers(); });
 
 describe("Activity reads, selection and snapshot reconciliation", () => {
+  it("retains transport evidence for shared failures and removes it after successful recovery", async () => {
+    const { controller, deps } = setup();
+    deps.getDeviceStatus.mockRejectedValueOnce(new ApiError("offline phone", 0));
+    deps.getDeviceAiVisible.mockRejectedValueOnce(new ApiError("offline permission", 0));
+    deps.getActivityDates.mockRejectedValueOnce(new ApiError("slow dates", 0, null, "TIMEOUT"));
+    await controller.start();
+    expect(activityReadGroup(controller.getState())).toEqual(["phone", "visibility"]);
+    expect(controller.getState().dates.failure).toMatchObject({ kind: "other", code: "TIMEOUT" });
+    await controller.refresh();
+    expect(activityReadGroup(controller.getState())).toEqual([]);
+    for (const key of ["phone", "visibility", "dates"] as const) {
+      expect(controller.getState()[key].error).toBeNull(); expect(controller.getState()[key].failure).toBeUndefined();
+    }
+    expect(deps.setDeviceAiVisible).not.toHaveBeenCalled();
+  });
+  it("clears old-device notices and ignores mutation feedback from an abandoned date/device scope", async () => {
+    const { controller, deps } = setup(); await controller.start();
+    await controller.setVisibility(false); expect(controller.getState().notice?.error).toBe(false);
+    controller.selectDevice("phone"); expect(controller.getState().notice).toBeNull();
+    const write = deferred<void>(); deps.setDeviceAiVisible.mockReturnValueOnce(write.promise);
+    const pending = controller.setVisibility(true);
+    await controller.selectQuery({ kind: "date", date: "2026-10-17" });
+    write.resolve(); await pending;
+    expect(controller.getState().notice).toBeNull(); expect(controller.getState().visibility.data).toBe(true);
+  });
   it("defaults to the real three-hour query and reads independent phone/config/permission resources", async () => {
     const { controller, deps } = setup(); await controller.start();
     expect(deps.getActivityRecords.mock.calls[0][0]).toEqual({ kind: "recent", hours: 3 });
@@ -184,7 +210,7 @@ describe("Phone deadlines and explicit mutations", () => {
     const { controller, deps } = setup(); await controller.start();
     deps.getActivityRecords.mockRejectedValueOnce(new Error("read failed")); await controller.clearAll();
     expect(deps.clearActivityLogs).toHaveBeenCalledTimes(1);
-    expect(controller.getState().notice?.text).toBe("已清空全部活动日志，删除了 2 个日志文件。");
+    expect(controller.getState().notice?.text).toBe("已清空 2 个活动日志文件");
     await controller.loadLogs(); expect(deps.clearActivityLogs).toHaveBeenCalledTimes(1);
     expect(deps.getDeviceStatus).toHaveBeenCalledTimes(1);
   });

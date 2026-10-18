@@ -9,6 +9,7 @@ import {
   type MemoryListState,
 } from "@/application/memory-list";
 import type { CreateMemoryInput } from "@/domain/memory";
+import { useToast } from "@/components/ui/toast";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -29,6 +30,8 @@ export interface UseMemoryListResult {
 export function useMemoryList(): UseMemoryListResult {
   const [state, setState] = useState<MemoryListState>(INITIAL_MEMORY_LIST_STATE);
   const [searchInput, setSearchInputState] = useState("");
+  const toast = useToast(JSON.stringify(state.request));
+  const createToast = useToast("create");
   const controllerRef = useRef<MemoryListController | null>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -73,12 +76,16 @@ export function useMemoryList(): UseMemoryListResult {
   }, []);
 
   const setMemoryUnresolved = useCallback((memoryId: string, unresolved: boolean) => {
-    void controllerRef.current?.setMemoryUnresolved(memoryId, unresolved);
-  }, []);
+    void controllerRef.current?.setMemoryUnresolved(memoryId, unresolved).then((saved) => {
+      if (saved) toast.show({ type: "success", text: unresolved ? "已标记为待继续" : "已取消待继续标记", dedupeKey: memoryId });
+    });
+  }, [toast]);
 
-  const createMemory = useCallback((input: CreateMemoryInput) => {
-    return controllerRef.current?.createMemory(input) ?? Promise.resolve(false);
-  }, []);
+  const createMemory = useCallback(async (input: CreateMemoryInput) => {
+    const saved = await controllerRef.current?.createMemory(input) ?? false;
+    if (saved) createToast.show({ type: "success", text: "已创建记忆" });
+    return saved;
+  }, [createToast]);
 
   const clearCreateError = useCallback(() => {
     controllerRef.current?.clearCreateError();
