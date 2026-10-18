@@ -24,7 +24,7 @@ export function ActivityPageFeedback({ state, controller, connection, reconnect 
   return <section className="mist-glass-strong rounded-[24px] px-4 py-3 text-xs leading-5 text-muted-strong" aria-label="活动连接状态" role="status">
     <div className="flex flex-wrap items-center justify-between gap-2"><p>{text}</p><Button variant="soft-primary" disabled={busy || Boolean(state.pending)} onClick={() => { if (grouped.length) void controller?.refresh(); if (disconnected) reconnect(); }}>{grouped.length ? disconnected ? "重新读取并恢复连接" : "重新读取" : "重新连接"}</Button></div>
     {grouped.length > 0 && <details className="text-muted-foreground"><summary className="cursor-pointer py-1">排查信息</summary>
-      {grouped.map((key) => <p key={key} className="break-words">{key}：{state[key].failure?.code} {state[key].failure?.status || ""} {state[key].failure?.message}</p>)}
+      {grouped.map((key) => <p key={key} className="break-words">{key === "legacyEnabled" ? "AI 活动参考：暂时无法确认状态" : key}：{state[key].failure?.code} {state[key].failure?.status || ""} {state[key].failure?.message}</p>)}
       {disconnected && <p>{connection === "blocked" ? "实时连接受限，请检查登录状态。" : "实时连接正在恢复。"}</p>}
     </details>}
   </section>;

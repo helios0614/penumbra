@@ -135,10 +135,10 @@ describe("Activity feature presentation", () => {
     expect(html).toContain("4 条已观测事件"); expect(html).toContain("估算活动"); expect(html).not.toContain("2020-01-01");
     expect(ACTIVITY_CLEAR_DESCRIPTION).toContain("全部设备、全部日期"); expect(ACTIVITY_CLEAR_DESCRIPTION).toContain("不可撤销"); expect(ACTIVITY_CLEAR_DESCRIPTION).toContain("不仅是当前筛选结果");
   });
-  it("reports a disabled legacy flag without adding an editor or disabling rule summaries", () => {
+  it("keeps a disabled linkage out of the reading path without gating logs or rule summaries", () => {
     vi.spyOn(hooks, "useActivity").mockReturnValue({ state: { ...loaded, legacyEnabled: { data: false, loading: false, error: null } }, controller: null, connection: "connected", reconnect: vi.fn() });
     const html = renderToStaticMarkup(<ActivityView onBack={vi.fn()} />);
-    expect(html).toContain("旧版活动联动配置已关闭"); expect(html).toContain("日志和本页规则摘要仍可查看"); expect(html).not.toContain("条数代表上报事件");
+    expect(html).not.toContain("旧版活动联动配置已关闭"); expect(html).not.toContain("AI 活动参考"); expect(html).toContain("共 2 条事件"); expect(html).not.toContain("条数代表上报事件");
     const source = readFileSync(new URL("ActivityView.tsx", import.meta.url), "utf8");
     expect(source).toMatch(/setClear\(true\)/); expect(source).toMatch(/onConfirm=.*clearAll/s); expect(source).not.toContain("scrollIntoView");
   });

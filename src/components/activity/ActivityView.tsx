@@ -11,7 +11,8 @@ import { ActivityClearDialog, ActivitySummaryDialog } from "./ActivityDialogs";
 import { useActivity } from "./useActivity";
 import { scrollActivityToTop, showActivityTopButton } from "./activity-scroll";
 import { useFeedbackToast } from "@/components/ui/toast";
-import { ActivityPageFeedback, ActivityReadIssue } from "./ActivityFeedback";
+import { ActivityPageFeedback } from "./ActivityFeedback";
+import { ActivityLinkageDetails } from "./ActivityLinkageDetails";
 import "./activity.css";
 
 export function ActivityView({ onBack }: { readonly onBack?: () => void }) {
@@ -27,7 +28,7 @@ export function ActivityView({ onBack }: { readonly onBack?: () => void }) {
     <PageHeader eyebrow="ACTIVITY LOG" title="活动日志" titleId="activity-page-title" description="设备上的点滴活动，构成一天的轨迹。" actions={<>
       <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="刷新活动数据" disabled={state.logs.loading || Boolean(state.pending)} onClick={() => void controller?.refresh()} />}><RefreshCw aria-hidden="true" /></TooltipTrigger><TooltipContent>刷新活动数据</TooltipContent></Tooltip>
       <Popover open={menu} onOpenChange={setMenu}><Tooltip><TooltipTrigger render={<PopoverTrigger render={<PageHeaderAction ref={menuTrigger} aria-label="更多活动日志操作" />} />}><MoreHorizontal aria-hidden="true" /></TooltipTrigger><TooltipContent>更多操作</TooltipContent></Tooltip>
-        <PopoverContent align="end" className="w-48 p-1.5"><Button variant="ghost" className="h-11 w-full justify-start text-xs" onClick={() => { setMenu(false); setSummary(true); void controller?.loadSummary(true); }}><FileText aria-hidden="true" />最近 3 小时摘要</Button><Button variant="ghost" className="h-11 w-full justify-start text-xs text-destructive" disabled={Boolean(state.pending)} onClick={() => { setMenu(false); setClear(true); }}><Trash2 aria-hidden="true" />清空全部活动日志</Button></PopoverContent>
+        <PopoverContent align="end" className="max-h-(--available-height) w-64 max-w-[calc(100vw-2rem)] overflow-y-auto p-1.5"><Button variant="ghost" className="h-11 w-full justify-start text-xs" onClick={() => { setMenu(false); setSummary(true); void controller?.loadSummary(true); }}><FileText aria-hidden="true" />最近 3 小时摘要</Button><Button variant="ghost" className="h-11 w-full justify-start text-xs text-destructive" disabled={Boolean(state.pending)} onClick={() => { setMenu(false); setClear(true); }}><Trash2 aria-hidden="true" />清空全部活动日志</Button><ActivityLinkageDetails state={state} controller={controller} /></PopoverContent>
       </Popover>
       {onBack && <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="返回桌面" onClick={onBack} />}><X aria-hidden="true" /></TooltipTrigger><TooltipContent>返回桌面</TooltipContent></Tooltip>}
     </>} />
@@ -37,8 +38,6 @@ export function ActivityView({ onBack }: { readonly onBack?: () => void }) {
       <PhoneStatusPanel state={state} controller={controller} />
       {state.notice?.error && state.notice.source !== "wifi" && state.notice.source !== "wifi-dialog" && <p role="alert" className="mist-glass-strong rounded-[24px] px-4 py-3 text-xs leading-5 text-muted-strong">{state.notice.text}</p>}
       <ActivityControls state={state} controller={controller} />
-      {state.legacyEnabled.data === false && <p className="mist-glass-strong rounded-[24px] px-4 py-3 text-xs leading-5 text-muted-strong">旧版活动联动配置已关闭，相关 AI 动态读取受限；日志和本页规则摘要仍可查看。如需恢复联动，请在旧版设置中单独处理。</p>}
-      {state.legacyEnabled.error && <div className="mist-glass-strong rounded-[24px] px-4"><ActivityReadIssue state={state} name="legacyEnabled" text="旧版联动配置暂不可用" onRetry={() => void controller?.loadLegacy()} /></div>}
       <ActivityTimeline state={state} controller={controller} />
     </div>
     <ActivityTopButton visible={showTop} onClick={() => scrollActivityToTop(scroll.current, window.matchMedia("(prefers-reduced-motion: reduce)").matches)} />
