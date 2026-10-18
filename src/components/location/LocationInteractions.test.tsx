@@ -112,7 +112,7 @@ describe("Location scoped interactions", () => {
     current.status = { ...current.status, pois: { "餐饮美食": [poi] } };
     const tree = capture(() => LocationPois({ state: current, controller: null, onDetail }));
     const row = button(tree, "查看测试地点详情");
-    const slot = elements(row).find((element) => element.type === "span" && String(element.props.className).includes("mist-glass"))!;
+    const slot = elements(row).find((element) => element.type === "span" && String(element.props.className).includes("bg-primary/10"))!;
     const image = elements(slot).find((element) => element.type === "img")!;
     const target = { hidden: false };
     (image.props.onError as (event: { currentTarget: typeof target }) => void)({ currentTarget: target });

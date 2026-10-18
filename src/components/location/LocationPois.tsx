@@ -36,8 +36,8 @@ export function LocationPois({ state, controller, onDetail }: { readonly state: 
       const categoryLabel = locationPoiCategory(poi.category);
       return <li key={`${poi.name}-${index}`}>
       <Button type="button" variant="ghost" className="h-auto min-h-16 w-full justify-start gap-3 whitespace-normal rounded-none px-0 py-3 text-left hover:bg-background/20" onClick={() => onDetail(poi)} aria-label={`查看${poi.name}详情`}>
-        <span aria-hidden="true" className="mist-glass relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl sm:size-14">
-          <MapPin className="size-5 text-muted-foreground/60 sm:size-6" />
+        <span aria-hidden="true" className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/10 sm:size-14">
+          <MapPin className="size-5 text-primary-ink sm:size-6" />
           {poi.photo && <img key={poi.photo} src={poi.photo} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.hidden = true; }} className="absolute inset-0 size-full object-cover" />}
         </span>
         <span className="min-w-0 flex-1"><span className="block break-words text-sm font-medium leading-6">{poi.name}</span>

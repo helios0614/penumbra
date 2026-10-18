@@ -117,7 +117,7 @@ describe("Location page presentation", () => {
     const html = renderToStaticMarkup(<LocationPois state={state} controller={null} onDetail={vi.fn()} />);
     expect(html).toContain("快餐厅 · 中餐厅"); expect(html).not.toContain(poi.category);
     expect(html).toContain("测试地点"); expect(html).toContain("无分类地点"); expect(html).toContain("4.5"); expect(html).toContain("280 m");
-    expect(html.match(/class="mist-glass relative flex size-12[^>]*rounded-xl sm:size-14"/g)).toHaveLength(2);
+    expect(html.match(/class="relative flex size-12[^>]*rounded-xl bg-primary\/10 sm:size-14"/g)).toHaveLength(2);
     expect(html.match(/<img\b/g)).toHaveLength(1); expect(html.match(/lucide-map-pin/g)).toHaveLength(2);
     expect(html).not.toContain("暂无图片");
     expect(state.status.pois["餐饮美食"][0]).toBe(poi); expect(poi.category).toBe("餐饮服务;快餐厅;中餐厅");
