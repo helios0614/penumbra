@@ -205,7 +205,13 @@ actions
 
 ### 4.5 Dialog Composition
 
-Memory 新增记忆、Quick Note V2.3 已有成熟的弹框组合：固定标题区、可滚动正文、按需出现的右对齐操作区。新页面应复用现有 Dialog / AlertDialog 原语及这套内容层级；共享原语的默认布局不自动代表成熟页面的最终样式。具体字号、间距、滚动与移动端 Footer 约定见 [`ui-patterns.md` 的 Dialog / AlertDialog 小节](./ui-patterns.md#dialog--alertdialog-的成熟组合约定)，不为单页另建全局弹框框架。
+UI Foundation PR2 已将 Memory、Quick Note、Activity、Location 的成熟弹框布局落实到公共 Dialog / AlertDialog：原有 Mist 强玻璃、28px 圆角、受动态视口与安全区约束的自然高度、左对齐 Header、功能字体标题（18px / 600 / 28px）、可选独立滚动 Body，以及水平右对齐、可换行的 Footer。区域横向留白为移动端 20px / 桌面端 24px，英文 eyebrow 仍为显式可选装饰。
+
+- 表单：Header、正文、操作分区；字段及区域错误留在正文，保存期间的关闭规则由业务控制。沿用 PR1 密度，已验收的主要表单操作显式选择 comfortable，不因 Footer 统一而扩大全部按钮。
+- 阅读：固定 Header，长内容使用 `DialogBody` 独立滚动；内容少时自然收缩，没有实际底部操作就不生成 Footer。
+- 确认：使用 AlertDialog 的取消和危险操作语义；说明区可在极短视口滚动，Footer 紧凑且保持可达。遮罩、Escape 和焦点行为继续由 Base UI 管理。
+
+关闭按钮默认提供单个 Lucide X 与 44px 点击区域，可传入业务名称和 disabled；自定义 Header 关闭按钮时关闭自动 X，统一复用 `DialogCloseButton`。所有关闭入口遵守同一业务规则，拒绝关闭沿用底层事件取消机制；从 Popover 打开的弹框通过 `finalFocus` 返回稳定触发区域。嵌套确认保留 Base UI 父子关系，不重建焦点框架。业务宽度、表单结构、Location 时间列与 Quick Note 已验证的编辑器／软键盘适配仍允许局部保留。具体组合见 [`ui-patterns.md` 的 Dialog / AlertDialog 小节](./ui-patterns.md#dialog--alertdialog-的成熟组合约定)。
 
 ### 4.6 Control Density and Semantics
 
@@ -216,10 +222,10 @@ Memory 新增记忆、Quick Note V2.3 已有成熟的弹框组合：固定标题
 - FilterChip：Memory 时间／钉选与 Activity 设备筛选复用轻主题描边、背景和 `primary-ink`；36px 表面放在最小 44px 的独立目标内，选中 Hover 仍保持主题色。窄屏及文字放大时可换行，不能相互覆盖。
 - SegmentedControlItem：用于 Quick Note 日期内容切换，保留等宽布局和更明确的实心主题选中态，不与筛选 Chip 混用。
 - Select：触发器使用中性 Mist 表面，截断长选中标签但保留完整可访问文字；下拉选项可换行。Activity 复合日期范围继续使用 Popover，不强行转换为 Select。
-- `default` Button 表达保存／确认，`soft-primary` 表达查询／重新读取，ghost 表达轻量工具，outline 表达中性描边次级操作，destructive 表达危险操作。`secondary` 继续保留现有辅色语义，不用它冒充柔和主题操作。
+- Button 的视觉优先级由当前交互场景决定，不仅由操作名称决定。`default`（Primary）表达当前场景的主要操作，包括弹框内作为主操作的读取、刷新或重试；`soft-primary` 适合页面级辅助查询／重新读取，ghost 表达轻量工具，outline 表达中性描边次级操作，destructive 表达危险操作。视觉统一不改变真实 disabled／loading 状态，也不因空列表而自动禁用仍可重新获取数据的操作。`secondary` 继续保留现有辅色语义，不用它冒充柔和主题操作。
 - 公共 Switch 只负责受控值、输入和基础状态，通过原生 button 支持 Space / Enter，使用可访问名称及可见标签关联；44×24px 轨道不扩大。即时提交、草稿保存、失败恢复均留在业务层，Checkbox、Radio、筛选不转换为 Switch。
 
-同类控件统一状态，不同语义保留合理差异。具体 API、尺寸例外和消费方式见 `ui-patterns.md`；本阶段不改变 Dialog 布局、Toast 或页面滚动模型。
+同类控件统一状态，不同语义保留合理差异。具体 API、尺寸例外和消费方式见 `ui-patterns.md`；控件密度沿用 PR1，Dialog 布局见 §4.5，Toast 与页面滚动模型保持现状。
 
 ---
 

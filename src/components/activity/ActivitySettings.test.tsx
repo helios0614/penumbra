@@ -135,7 +135,8 @@ describe("Activity network dialog and scene settings", () => {
   it("composes the form between a mature header and a sibling footer with linked submit", () => {
     const s = networkSession({} as ActivityController);
     const popup = find(s.render(), DialogContent);
-    expect(popup.props).toMatchObject({ className: "activity-dialog", showCloseButton: false });
+    expect(popup.props.showCloseButton).toBe(false);
+    expect(popup.props.className).toBeUndefined();
     expect(React.Children.toArray(popup.props.children).map((child) => (child as React.ReactElement).type)).toEqual([ActivityDialogHeader, WifiNetworkFields, DialogFooter]);
     const buttons = elements(find(popup, DialogFooter)).filter((element) => element.type === Button);
     expect(buttons.map((element) => element.props.children)).toEqual(["取消", "保存标记"]);
@@ -157,7 +158,8 @@ describe("Activity network dialog and scene settings", () => {
     s.update({ pending: "wifi" });
     const busy = s.render(); expect(find(busy, Dialog).props.disablePointerDismissal).toBe(true);
     expect(find(busy, ActivityDialogHeader).props.busy).toBe(true);
-    find(busy, Dialog).props.onOpenChange?.(false, {} as never); expect(find(s.render(), Dialog).props.open).toBe(true);
+    const cancel = vi.fn();
+    find(busy, Dialog).props.onOpenChange?.(false, { cancel } as never); expect(find(s.render(), Dialog).props.open).toBe(true); expect(cancel).toHaveBeenCalledOnce();
     find(s.render(), WifiNetworkFields).props.onSubmit(); expect(saveMapping).toHaveBeenCalledTimes(1);
     first.resolve(false); await first.promise; await Promise.resolve(); s.update({ pending: null });
     expect(find(s.render(), WifiNetworkFields).props).toMatchObject({ ssid: " My Wi-Fi ", scene: "work", error: expect.stringContaining("其他页面修改") });

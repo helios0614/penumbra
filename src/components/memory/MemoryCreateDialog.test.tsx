@@ -1,10 +1,12 @@
 import { readFileSync } from "node:fs";
+import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   DEFAULT_MEMORY_IMPORTANCE,
   DEFAULT_MEMORY_TYPE,
+  MemoryCreateDialog,
   normalizeMemoryKeywordText,
 } from "@/components/memory/MemoryCreateDialog";
 import { MemoryView } from "@/components/memory/MemoryView";
@@ -13,6 +15,8 @@ import {
   MEMORY_TYPE_OPTIONS,
 } from "@/components/memory/memory-presentation";
 import { Slider } from "@/components/ui/slider";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogBody, DialogCloseButton, DialogFooter } from "@/components/ui/dialog";
 
 const dialogSource = readFileSync(
   new URL("./MemoryCreateDialog.tsx", import.meta.url),
@@ -34,10 +38,19 @@ const dialogPrimitiveSource = readFileSync(
   new URL("../ui/dialog.tsx", import.meta.url),
   "utf8",
 );
+const dialogStyles = readFileSync(new URL("../ui/dialog-styles.ts", import.meta.url), "utf8");
 const memoryServiceSource = readFileSync(
   new URL("../../application/memory-list/memory-list-service.ts", import.meta.url),
   "utf8",
 );
+
+function elements(node: React.ReactNode): React.ReactElement<Record<string, unknown>>[] {
+  return React.Children.toArray(node).flatMap((child) => React.isValidElement<Record<string, unknown>>(child)
+    ? [child, ...elements(child.props.children as React.ReactNode)] : []);
+}
+function find<T extends React.ElementType>(node: React.ReactNode, type: T) {
+  return elements(node).find((child) => child.type === type)! as React.ReactElement<React.ComponentProps<T>>;
+}
 
 describe("memory create presentation", () => {
   it("adds the Memory-only Plus before Close with the shared header action recipe", () => {
@@ -62,11 +75,10 @@ describe("memory create presentation", () => {
   });
 
   it("uses the existing compact Dialog composition and shared decorative family", () => {
-    expect(dialogPrimitiveSource).toContain("mist-glass-strong");
-    expect(dialogSource).toContain("max-h-[calc(100dvh-2rem)]");
-    expect(dialogSource).toContain("sm:max-w-lg");
-    expect(dialogSource).toContain("overflow-y-auto");
-    expect(dialogSource).toContain("rounded-[28px]");
+    expect(dialogStyles).toContain("mist-glass-strong");
+    expect(dialogStyles).toContain("max-w-lg");
+    expect(dialogStyles).toContain("rounded-[28px]");
+    expect(dialogSource).toContain("<DialogBody");
     expect(pageHeaderSource).toContain(
       'className="font-decorative text-xs font-normal uppercase tracking-[0.18em] text-muted-foreground"',
     );
@@ -77,7 +89,7 @@ describe("memory create presentation", () => {
       'className="font-decorative text-[11px] font-normal uppercase leading-4 tracking-[0.14em] text-muted-foreground"',
     );
     expect(dialogSource).toContain(
-      'className="mt-0.5 font-sans text-lg font-semibold leading-7 text-foreground"',
+      '<DialogTitle>',
     );
     expect(dialogSource).toContain("新增记忆");
     expect(dialogSource).toContain("留下一段值得记住的内容。");
@@ -87,7 +99,7 @@ describe("memory create presentation", () => {
 
   it("tightens only metadata and footer rhythm while preserving content hierarchy", () => {
     expect(dialogSource).toContain(
-      'className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-3 pt-5 sm:px-6"',
+      '<DialogBody className="pb-3">',
     );
     expect(dialogSource).toMatch(
       /<div className="mt-5">[\s\S]*?id="memory-create-importance-label"/,
@@ -95,7 +107,7 @@ describe("memory create presentation", () => {
     expect(dialogSource).toContain('<div className="mt-3">');
     expect(dialogSource).toContain('<div className="mt-3.5">');
     expect(dialogSource).toContain(
-      'className="shrink-0 border-t border-border/60 px-5 py-3 sm:px-6"',
+      '<DialogFooter>',
     );
     expect(dialogSource).toMatch(
       /htmlFor="memory-create-content"[\s\S]*?className="mb-2 block text-sm font-medium text-foreground"/,
@@ -184,7 +196,7 @@ describe("memory create presentation", () => {
 
   it("keeps pending, inline errors, close guards, and keyboard semantics local", () => {
     expect(dialogSource).toContain("disablePointerDismissal={isCreating}");
-    expect(dialogSource).toContain("if (!nextOpen && isCreating) return");
+    expect(dialogSource).toContain("if (!nextOpen && isCreating) { details?.cancel(); return; }");
     expect(dialogSource).toContain("disabled={isCreating}");
     expect(dialogSource).toContain("保存中…");
     expect(dialogSource).toContain('role="alert"');
@@ -193,7 +205,25 @@ describe("memory create presentation", () => {
     expect(dialogSource).toContain('aria-label="关闭新增记忆"');
     expect(dialogSource).toContain('title="关闭新增记忆"');
     expect(dialogSource).toContain('aria-describedby={contentInvalid ? "memory-create-content-error"');
-    expect(dialogSource).toContain("<DialogClose");
+    expect(dialogSource).toContain("<DialogCloseButton");
     expect(dialogSource).not.toMatch(/alert\(|toast|Edit|Delete|编辑|删除/);
+  });
+
+  it.each(["close-press", "escape-key", "outside-press"])("cancels %s during save and keeps error copy in the scrollable form area", (reason) => {
+    const onOpenChange = vi.fn(), onClearError = vi.fn(), cancel = vi.fn();
+    let tree: React.ReactNode;
+    function Capture() {
+      tree = MemoryCreateDialog({ open: true, isCreating: true, createError: { code: "uncertain", message: "保存结果暂时无法确认" }, onOpenChange, onClearError, onCreate: vi.fn(async () => false) });
+      return null;
+    }
+    renderToStaticMarkup(<Capture />);
+    find(tree, Dialog).props.onOpenChange?.(false, { reason, cancel } as never);
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(onOpenChange).not.toHaveBeenCalled(); expect(onClearError).not.toHaveBeenCalled();
+    expect(find(tree, DialogCloseButton).props.disabled).toBe(true);
+    const footer = find(tree, DialogFooter);
+    expect(elements(footer).filter((child) => child.type === Button).every((child) => child.props.disabled)).toBe(true);
+    expect(elements(footer).some((child) => child.props.role === "alert")).toBe(false);
+    expect(elements(find(tree, DialogBody)).some((child) => child.props.role === "alert")).toBe(true);
   });
 });

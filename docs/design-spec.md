@@ -235,7 +235,7 @@ font-variant-numeric: normal;
 | 卡片 | `16px` | `p-4` |
 | 卡片（紧凑） | `12px` | `p-3` |
 | 页面内容区 | `16px` | `p-4` |
-| 弹窗/Modal | `24px` | `p-6` |
+| Dialog / AlertDialog 区域 | 移动端横向 `20px`，桌面端 `24px` | `px-5 sm:px-6`（外壳无 padding） |
 
 ### 3.2 组件之间间距
 
@@ -278,6 +278,21 @@ font-variant-numeric: normal;
 
 ---
 
+### 3.5 Dialog / AlertDialog 公共布局
+
+公共组件默认采用成熟的 Mist 弹框布局：
+
+- 外壳为 `.mist-glass-strong`、28px 圆角、默认 max-width 32rem，无额外内部卡片或白底；不修改 Mist 透明度、blur、边框和阴影 token。四边至少留 16px 且避让安全区，以动态视口 `100dvh` 扣除上下安全间距限制最大高度并居中，不强设高度。
+- 区域横向 padding 移动端 20px、桌面端 24px；普通 Header 上 20px / 24px、下 16px / 20px。标题固定为功能 `font-sans`、18px / 600 / 28px，描述 13px / 20px、muted；只有显式英文 eyebrow 使用 Cormorant Garamond。
+- Header 和 Footer 固定，正文按需组合 `DialogBody`：`min-h-0`、可收缩、独立纵向滚动；外壳不滚动，短内容自然收缩。短确认无需固定高度或额外 Body；AlertDialog 的标题／说明区在极短视口可滚动，操作区在外。
+- Footer 上下 padding 12px，操作水平右对齐、8px 间距、窄屏可换行，不强制反向纵排或全宽。取消通常 ghost，确认／保存 default，危险操作 destructive。遵守 PR1 的 Button 最小高度和文字换行规则，普通确认默认 min 36px，主要表单按需 comfortable min 44px；阅读弹框无操作时不添加 Footer。
+- Dialog 关闭使用 Lucide X（16px 图标、44px 点击区、明确可访问名称）。自动关闭按钮与自定义 Header 中的公共关闭按钮二选一。保存和草稿保护沿用 Base UI 的 `onOpenChange` 事件取消机制；Popover 发起的弹框指定稳定 `finalFocus`，嵌套确认保留父子层级。AlertDialog 仍保留独立遮罩和取消语义，不改为普通 Dialog。
+- 主题色、深色模式沿用语义 token；Reduced Motion 禁用弹框／遮罩动画与过渡。业务可保留不同宽度、字段节奏、时间列滚动、Quick Note 编辑高度与 `visualViewport` 特殊适配；普通 Dialog 不复制密集编辑器的键盘逻辑。
+
+组合示例和关闭约定见 [`ui-patterns.md`](./ui-patterns.md#dialog--alertdialog-的成熟组合约定)。
+
+---
+
 ## 4. 圆角与阴影
 
 ### 4.1 圆角
@@ -289,13 +304,14 @@ font-variant-numeric: normal;
 | `--radius-sm` | 8-10px | `8px` | `rounded-sm` | 按钮、标签、输入框 |
 | `--radius-md` | 现有计算值 | `9.6px`（radius × 0.8） | `rounded-md` | 旧组件兼容 |
 | `--radius-control` | 控件语义 | `12px` | `rounded-[var(--radius-control)]` | 基础按钮、输入、选择控件 |
-| `--radius-lg` | 16-20px | `16px` | `rounded-lg` | 弹窗、大容器、图片 |
+| `--radius-lg` | 16-20px | `16px` | `rounded-lg` | 大容器、图片 |
+| Dialog / AlertDialog 布局 | 成熟公共布局 | `28px` | `rounded-[28px]` | 弹框外壳，不改全局 token |
 | `--radius-full` | — | `9999px` | `rounded-full` | 头像、Badge、胶囊按钮 |
 
 层次原则：
 - 小标签及旧紧凑工具通常可用 `--radius-sm`（8px）；常规交互控件使用下述控件语义
 - 基础控件优先 `--radius-control`（12px）；不要把旧 `rounded-md` 或 `rounded-xl` 当成 12px
-- 大元素（弹窗、全屏容器）通常优先 `--radius-lg`（推荐 16px），体现留白感
+- 全屏容器等大元素通常优先 `--radius-lg`（推荐 16px），体现留白感；Dialog / AlertDialog 默认采用已验收的 28px
 - 大型 page shell、主要 section 与玻璃外壳可根据现有成熟页面的视觉关系适当使用更大的圆角
 - 嵌套圆角应具有清晰层级关系，避免随机跳变；内层通常应不大于外层的视觉半径
 
@@ -389,7 +405,7 @@ font-variant-numeric: normal;
 
 次要按钮（variant="secondary"）同理，颜色走 `--color-secondary` 系列。
 
-`soft-primary` 用于查询／重新读取：浅主题底、primary-ink 文字，Hover / Active 保持柔和主题强调。ghost、outline、destructive 分别表示轻工具、中性描边与危险操作，不混用业务语义。
+Button 的视觉优先级由当前交互场景决定，不仅由操作名称决定。弹框中的主要操作可使用 Primary（`variant="default"`），即使执行读取、刷新或重试；保留真实 disabled／loading 状态。`soft-primary` 适合页面级辅助查询／重新读取：浅主题底、primary-ink 文字，Hover / Active 保持柔和主题强调，例如 Location「查询」。ghost、outline、destructive 分别表示轻工具、中性描边与危险操作，不混用业务语义。
 
 控件可见尺寸不等于交互目标尺寸；Penumbra 不要求所有移动端控件视觉高度达到 44px。Button 使用 compact / default / lg / comfortable（最小 32 / 36 / 40 / 44px）；输入和 AppSelect 使用 controlSize（32 / 40 / 44px），多行 Textarea 只按此属性调整内边距。文字控件应自然增高以容纳字体放大；旧 xs / sm / icon 紧凑工具栏保留。FilterChip 与 SegmentedControlItem 的约 36px 表面位于各自 min 44px 的目标内，不扩大或重叠热区。具体组合与例外见 ui-patterns。
 

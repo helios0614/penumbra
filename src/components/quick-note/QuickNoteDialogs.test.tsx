@@ -7,7 +7,7 @@ import { INITIAL_QUICK_NOTE_STATE, type QuickNoteEditor as EditorState } from "@
 import { normalizeOutput, type QuickNote, type TriggerConfig } from "@/domain/quick-note";
 import { Button } from "@/components/ui/button";
 import { AppSelect } from "@/components/ui/app-select";
-import { Dialog, DialogClose, DialogContent, DialogFooter, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogCloseButton, DialogContent, DialogFooter, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { QuickNoteBackfillDialog, QuickNoteCandidateList, QuickNoteConfirmDialog, QuickNoteDiscardDialog, QuickNoteRetryDialog, type QuickNoteConfirmation } from "./QuickNoteDialogs";
 import { QuickNoteDialogHeader } from "./QuickNoteDialogHeader";
@@ -23,7 +23,7 @@ import * as navigationHooks from "./useQuickNoteNavigation";
 vi.mock("./quick-note-dialog-viewport", () => ({ useQuickNoteDialogViewport: () => undefined }));
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof React>();
-  return { ...actual, useState: vi.fn(actual.useState) };
+  return { ...actual, useState: vi.fn(actual.useState), useRef: vi.fn(actual.useRef) };
 });
 
 const config: TriggerConfig = { hours: [5, 13, 20], labels: { "5": "夜晚", "13": "上午", "20": "下午" }, dayBoundaryHour: 5, timeZone: "Asia/Shanghai" };
@@ -57,10 +57,16 @@ function session<T>(render: () => T) {
     if (!(index in values)) values[index] = typeof initial === "function" ? initial() : initial;
     return [values[index], (next: unknown) => { values[index] = typeof next === "function" ? next(values[index]) : next; }];
   }) as typeof React.useState;
+  const useRef = ((initial: unknown) => {
+    const index = cursor++;
+    if (!(index in values)) values[index] = { current: initial };
+    return values[index];
+  }) as typeof React.useRef;
   return () => {
     cursor = 0;
     const spy = vi.spyOn(React, "useState").mockImplementation(useState);
-    try { return render(); } finally { spy.mockRestore(); }
+    const refSpy = vi.spyOn(React, "useRef").mockImplementation(useRef);
+    try { return render(); } finally { spy.mockRestore(); refSpy.mockRestore(); }
   };
 }
 function controllerMock() {
@@ -82,7 +88,8 @@ describe("Quick Note dialog layout contracts", () => {
     expect(popup.props.className).toBe("quick-note-dialog");
     expect(parts[1].props).toMatchObject({ className: "quick-note-editor-body" });
     const surface = block(".quick-note-dialog[data-slot]");
-    for (const rule of ["100dvh", "safe-area-inset-top", "safe-area-inset-bottom", "flex-direction: column", "overflow: hidden", "max-height:", "border-radius: 28px"]) expect(surface).toContain(rule);
+    for (const rule of ["--dialog-viewport-height: var(--quick-note-viewport-height, 100dvh)", "--dialog-viewport-top: var(--quick-note-viewport-top, 0px)", "--quick-note-available-height: var(--dialog-available-height)"]) expect(surface).toContain(rule);
+    expect(surface).not.toMatch(/border-radius|padding|max-height|flex-direction/);
     expect(block('.quick-note-dialog[data-quick-note-dialog="editor"]')).toContain("min(48rem, var(--quick-note-available-height))");
     const body = block(".quick-note-editor-body");
     expect(body).toContain("min-height: 0");
@@ -90,10 +97,7 @@ describe("Quick Note dialog layout contracts", () => {
     expect(body).toContain("overflow: hidden");
     const textarea = block('.quick-note-editor-body [data-slot="textarea"]');
     for (const rule of ["field-sizing: fixed", "min-height: 0", "height: 0", "resize: none", "overflow-y: auto"]) expect(textarea).toContain(rule);
-    const footer = block('.quick-note-dialog > [data-slot="alert-dialog-footer"]');
-    expect(footer).toContain("flex-shrink: 0");
-    expect(footer).toContain("flex-flow: row wrap");
-    expect(footer).toContain("margin: 0");
+    expect((find(tree, Dialog).props.children as React.ReactElement[]).map((child) => child.type)).toEqual([DialogContent, AlertDialog]);
     expect(button(find(tree, DialogFooter), "取消编辑")).toBeDefined();
     expect(button(find(tree, DialogFooter), "保存正文")).toBeDefined();
   });
@@ -119,7 +123,7 @@ describe("Quick Note dialog layout contracts", () => {
     const tree = QuickNoteDialogHeader({ title: "补写速记", description: "说明", busy: true });
     expect(find(tree, DialogTitle).props.children).toBe("补写速记");
     expect(find(tree, DialogDescription).props.children).toBe("说明");
-    const close = find(tree, DialogClose);
+    const close = find(tree, DialogCloseButton);
     expect(close.props["aria-label"]).toBe("关闭补写速记");
     expect(close.props.disabled).toBe(true);
   });
@@ -130,17 +134,21 @@ describe("Quick Note editor callbacks and protection", () => {
     const { controller, calls } = controllerMock();
     let current: EditorState | null = editor;
     const render = session(() => QuickNoteEditor({ editor: current, busy: false, controller }));
-    find(render(), Dialog).props.onOpenChange?.(false, {} as never);
+    const cleanCancel = vi.fn();
+    find(render(), Dialog).props.onOpenChange?.(false, { cancel: cleanCancel } as never);
     expect(calls.cancelEdit).toHaveBeenCalledOnce();
+    expect(cleanCancel).not.toHaveBeenCalled();
     current = { ...editor, draft: "未保存的草稿" };
-    find(render(), Dialog).props.onOpenChange?.(false, {} as never);
+    const cancel = vi.fn();
+    find(render(), Dialog).props.onOpenChange?.(false, { cancel } as never);
+    expect(cancel).toHaveBeenCalledOnce();
     expect(calls.cancelEdit).toHaveBeenCalledOnce();
     expect(find(render(), AlertDialog).props.open).toBe(true);
-    find(render(), AlertDialog).props.onOpenChange?.(false, {} as never);
+    find(render(), AlertDialog).props.onOpenChange?.(false, { cancel: vi.fn() } as never);
     expect(find(render(), AlertDialog).props.open).toBe(false);
     expect(current.draft).toBe("未保存的草稿");
-    button(render(), "取消编辑").props.onClick?.({} as never);
-    find(render(), AlertDialogAction).props.onClick?.({} as never);
+    button(render(), "取消编辑").props.onClick?.({ cancel: vi.fn() } as never);
+    find(render(), AlertDialogAction).props.onClick?.({ cancel: vi.fn() } as never);
     expect(calls.cancelEdit).toHaveBeenCalledTimes(2);
     current = null;
     expect(find(render(), Dialog).props.open).toBe(false);
@@ -153,7 +161,9 @@ describe("Quick Note editor callbacks and protection", () => {
     const tree = session(() => QuickNoteEditor({ editor: { ...editor, draft: "草稿" }, busy: true, controller }))();
     const dialog = find(tree, Dialog);
     expect(dialog.props.disablePointerDismissal).toBe(true);
-    dialog.props.onOpenChange?.(false, {} as never);
+    const cancel = vi.fn();
+    dialog.props.onOpenChange?.(false, { cancel } as never);
+    expect(cancel).toHaveBeenCalledOnce();
     expect(calls.cancelEdit).not.toHaveBeenCalled();
     expect(find(tree, QuickNoteDialogHeader).props.busy).toBe(true);
     expect(button(tree, "取消编辑").props.disabled).toBe(true);
@@ -166,11 +176,11 @@ describe("Quick Note editor callbacks and protection", () => {
     const render = session(() => QuickNoteEditor({ editor: current, busy: false, controller }));
     find(render(), QuickNoteEditorFields).props.onChange("[DRIFT:原文]\n新正文\n");
     expect(calls.changeDraft).toHaveBeenCalledWith("[DRIFT:原文]\n新正文\n");
-    button(render(), "保存正文").props.onClick?.({} as never);
+    button(render(), "保存正文").props.onClick?.({ cancel: vi.fn() } as never);
     expect(calls.saveEditor).toHaveBeenCalledOnce();
     current = { ...editor, uncertain: true };
     expect(button(render(), "保存正文").props.disabled).toBe(true);
-    button(render(), "核对保存结果").props.onClick?.({} as never);
+    button(render(), "核对保存结果").props.onClick?.({ cancel: vi.fn() } as never);
     expect(calls.verifyEditor).toHaveBeenCalledOnce();
     expect(calls.saveEditor).toHaveBeenCalledOnce();
   });
@@ -179,14 +189,14 @@ describe("Quick Note editor callbacks and protection", () => {
     const { controller, calls } = controllerMock();
     const current = { ...editor, draft: "草稿", conflict: { ...note, output: "最新正文" } };
     const render = session(() => QuickNoteEditor({ editor: current, busy: false, controller }));
-    button(render(), "用草稿覆盖最新正文…").props.onClick?.({} as never);
+    button(render(), "用草稿覆盖最新正文…").props.onClick?.({ cancel: vi.fn() } as never);
     expect(calls.acceptConflict).not.toHaveBeenCalled();
     expect(calls.saveEditor).not.toHaveBeenCalled();
     expect(find(render(), AlertDialog).props.open).toBe(true);
-    find(render(), AlertDialog).props.onOpenChange?.(false, {} as never);
+    find(render(), AlertDialog).props.onOpenChange?.(false, { cancel: vi.fn() } as never);
     expect(current.draft).toBe("草稿");
-    button(render(), "用草稿覆盖最新正文…").props.onClick?.({} as never);
-    find(render(), AlertDialogAction).props.onClick?.({} as never);
+    button(render(), "用草稿覆盖最新正文…").props.onClick?.({ cancel: vi.fn() } as never);
+    find(render(), AlertDialogAction).props.onClick?.({ cancel: vi.fn() } as never);
     expect(calls.acceptConflict).toHaveBeenCalledOnce();
     expect(calls.saveEditor).toHaveBeenCalledOnce();
     expect(calls.acceptConflict.mock.invocationCallOrder[0]).toBeLessThan(calls.saveEditor.mock.invocationCallOrder[0]);
@@ -203,7 +213,7 @@ describe("Quick Note form and confirmation callbacks", () => {
     find(render(), QuickNoteDatePicker).props.onChange("2026-10-14");
     find(render(), AppSelect).props.onValueChange("20");
     find(render(), "input").props.onChange?.({ target: { checked: true } } as React.ChangeEvent<HTMLInputElement>);
-    find(render(), Dialog).props.onOpenChange?.(false, {} as never);
+    find(render(), Dialog).props.onOpenChange?.(false, { cancel: vi.fn() } as never);
     expect(onClose).toHaveBeenCalledOnce();
     expect(find(render(), Dialog).props.open).toBe(false);
     open = true;
@@ -211,7 +221,7 @@ describe("Quick Note form and confirmation callbacks", () => {
     expect(find(render(), AppSelect).props.value).toBe("20");
     expect(find(render(), AppSelect).props.surface).toBe("translucent");
     expect(onSubmit).not.toHaveBeenCalled();
-    button(render(), "继续确认重建").props.onClick?.({} as never);
+    button(render(), "继续确认重建").props.onClick?.({ cancel: vi.fn() } as never);
     expect(onSubmit).toHaveBeenCalledWith({ date: "2026-10-14", endHour: 20, periodLabel: "下午", overwrite: true });
   });
 
@@ -223,19 +233,28 @@ describe("Quick Note form and confirmation callbacks", () => {
     expect(elements(footer).filter((child) => child.type === Button).map((child) => child.props.children)).toEqual(["关闭", "重新读取"]);
     expect(button(footer, "关闭").props.variant).toBe("ghost");
     const refresh = button(footer, "重新读取");
-    expect(refresh.props.variant).toBe("soft-primary");
+    expect(refresh.props.variant).toBe("default");
     expect(refresh.props.type).toBe("button");
-    refresh.props.onClick?.({} as never);
+    refresh.props.onClick?.({ cancel: vi.fn() } as never);
     expect(calls.loadCandidates).toHaveBeenCalledOnce();
     expect(calls.mutate).not.toHaveBeenCalled();
-    button(footer, "关闭").props.onClick?.({} as never);
+    button(footer, "关闭").props.onClick?.({ cancel: vi.fn() } as never);
     expect(onClose).toHaveBeenCalledOnce();
     const list = find(tree, QuickNoteCandidateList);
     const candidate = { key: "k", date: "2026-10-15", endHour: 5, periodLabel: "夜晚", periodStart: 1, periodEnd: 2, status: "missing" as const };
-    button(QuickNoteCandidateList({ ...list.props, state: { ...state, candidates: [candidate] } }), "重试该时段").props.onClick?.({} as never);
+    button(QuickNoteCandidateList({ ...list.props, state: { ...state, candidates: [candidate] } }), "重试该时段").props.onClick?.({ cancel: vi.fn() } as never);
     expect(calls.mutate).toHaveBeenCalledWith("backfill", "2026-10-15:5", { date: "2026-10-15", endHour: 5, periodLabel: "夜晚", overwrite: false });
     const loading = QuickNoteRetryDialog({ open: true, state: { ...state, candidatesLoading: true }, controller, onClose });
     expect(button(loading, "重新读取").props.disabled).toBe(true);
+    for (const candidatesState of [{ ...state, candidates: [] }, { ...state, candidatesError: "读取失败" }]) {
+      const retry = QuickNoteRetryDialog({ open: true, state: candidatesState, controller, onClose });
+      const reread = button(retry, "重新读取");
+      expect(reread.props.variant).toBe("default");
+      expect(reread.props.disabled).toBe(false);
+      reread.props.onClick?.({} as never);
+    }
+    expect(calls.loadCandidates).toHaveBeenCalledTimes(3);
+    expect(calls.mutate).toHaveBeenCalledOnce();
   });
 
   it.each(["step1", "step2", "delete", "backfill"] as const)("keeps %s behind AlertDialog confirmation and cancellation", (kind) => {
@@ -255,10 +274,10 @@ describe("Quick Note form and confirmation callbacks", () => {
       expect(description).toContain(kind === "step1" ? "清空现有正文" : "替换已保存正文");
     }
     expect(onConfirm).not.toHaveBeenCalled();
-    find(tree, AlertDialog).props.onOpenChange?.(false, {} as never);
+    find(tree, AlertDialog).props.onOpenChange?.(false, { cancel: vi.fn() } as never);
     expect(onCancel).toHaveBeenCalledOnce();
     expect(onConfirm).not.toHaveBeenCalled();
-    find(tree, AlertDialogAction).props.onClick?.({} as never);
+    find(tree, AlertDialogAction).props.onClick?.({ cancel: vi.fn() } as never);
     expect(onConfirm).toHaveBeenCalledWith(value);
   });
 
@@ -266,10 +285,10 @@ describe("Quick Note form and confirmation callbacks", () => {
     const onCancel = vi.fn();
     const onConfirm = vi.fn();
     const tree = QuickNoteDiscardDialog({ open: true, onCancel, onConfirm });
-    find(tree, AlertDialog).props.onOpenChange?.(false, {} as never);
+    find(tree, AlertDialog).props.onOpenChange?.(false, { cancel: vi.fn() } as never);
     expect(onCancel).toHaveBeenCalledOnce();
     expect(onConfirm).not.toHaveBeenCalled();
-    find(tree, AlertDialogAction).props.onClick?.({} as never);
+    find(tree, AlertDialogAction).props.onClick?.({ cancel: vi.fn() } as never);
     expect(onConfirm).toHaveBeenCalledOnce();
   });
 
@@ -301,5 +320,23 @@ describe("Quick Note form and confirmation callbacks", () => {
       expect(calls.mutate).toHaveBeenCalledWith(kind, note.id);
       expect(find(render(), QuickNoteConfirmDialog).props.value).toBeNull();
     }
+  });
+
+  it("returns Popover-launched dialogs to a surviving action or the reader when that action is unavailable", () => {
+    vi.spyOn(hooks, "useQuickNotes").mockReturnValue({ state, controller: null });
+    vi.spyOn(hooks, "useQuickNoteLogs").mockReturnValue({ state: { connection: "connecting", entries: [] }, reconnect: vi.fn() });
+    const readerRef = React.createRef<HTMLDivElement>();
+    vi.spyOn(navigationHooks, "useQuickNoteNavigation").mockReturnValue({ reader: note, overviewRef: React.createRef(), readerRef, discardAction: null, open: vi.fn(), back: vi.fn(), exit: vi.fn(), cancelDiscard: vi.fn(), confirmDiscard: vi.fn() });
+    const tree = session(() => QuickNoteView({}))();
+    const actionsRef = find(tree, QuickNoteReader).props.actionsRef as React.RefObject<HTMLButtonElement | null>;
+    const action = { isConnected: true, disabled: false } as HTMLButtonElement;
+    const region = {} as HTMLDivElement;
+    actionsRef.current = action; readerRef.current = region;
+    const finalFocus = find(tree, QuickNoteConfirmDialog).props.finalFocus as (kind: "keyboard") => unknown;
+    expect(find(tree, QuickNoteEditor).props.finalFocus).toBe(finalFocus);
+    expect(finalFocus("keyboard")).toBe(action);
+    action.disabled = true; expect(finalFocus("keyboard")).toBe(region);
+    actionsRef.current = null; expect(finalFocus("keyboard")).toBe(region);
+    expect(find(tree, QuickNoteBackfillDialog).props.finalFocus).toHaveProperty("current");
   });
 });

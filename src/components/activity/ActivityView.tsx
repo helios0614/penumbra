@@ -17,12 +17,13 @@ export function ActivityView({ onBack }: { readonly onBack?: () => void }) {
   const [menu, setMenu] = useState(false), [summary, setSummary] = useState(false), [clear, setClear] = useState(false);
   const [showTop, setShowTop] = useState(false);
   const scroll = useRef<HTMLDivElement>(null);
+  const menuTrigger = useRef<HTMLButtonElement>(null);
   const queryKey = JSON.stringify(state.query);
   useEffect(() => { if (scroll.current) scroll.current.scrollTop = 0; setShowTop(false); }, [queryKey, state.device]);
   return <TooltipProvider><main className="mx-auto flex h-full max-h-dvh min-h-0 w-full max-w-5xl flex-col overflow-hidden px-4 pb-4 pt-5 sm:px-0 sm:pb-8 sm:pt-8" aria-labelledby="activity-page-title">
     <PageHeader eyebrow="ACTIVITY LOG" title="活动日志" titleId="activity-page-title" description="设备上的点滴活动，构成一天的轨迹。" actions={<>
       <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="刷新活动数据" disabled={state.logs.loading || Boolean(state.pending)} onClick={() => void controller?.refresh()} />}><RefreshCw aria-hidden="true" /></TooltipTrigger><TooltipContent>刷新活动数据</TooltipContent></Tooltip>
-      <Popover open={menu} onOpenChange={setMenu}><Tooltip><TooltipTrigger render={<PopoverTrigger render={<PageHeaderAction aria-label="更多活动日志操作" />} />}><MoreHorizontal aria-hidden="true" /></TooltipTrigger><TooltipContent>更多操作</TooltipContent></Tooltip>
+      <Popover open={menu} onOpenChange={setMenu}><Tooltip><TooltipTrigger render={<PopoverTrigger render={<PageHeaderAction ref={menuTrigger} aria-label="更多活动日志操作" />} />}><MoreHorizontal aria-hidden="true" /></TooltipTrigger><TooltipContent>更多操作</TooltipContent></Tooltip>
         <PopoverContent align="end" className="w-48 p-1.5"><Button variant="ghost" className="h-11 w-full justify-start text-xs" onClick={() => { setMenu(false); setSummary(true); void controller?.loadSummary(true); }}><FileText aria-hidden="true" />最近 3 小时摘要</Button><Button variant="ghost" className="h-11 w-full justify-start text-xs text-destructive" disabled={Boolean(state.pending)} onClick={() => { setMenu(false); setClear(true); }}><Trash2 aria-hidden="true" />清空全部活动日志</Button></PopoverContent>
       </Popover>
       {onBack && <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="返回桌面" onClick={onBack} />}><X aria-hidden="true" /></TooltipTrigger><TooltipContent>返回桌面</TooltipContent></Tooltip>}
@@ -42,8 +43,8 @@ export function ActivityView({ onBack }: { readonly onBack?: () => void }) {
     </div>
     <ActivityTopButton visible={showTop} onClick={() => scrollActivityToTop(scroll.current, window.matchMedia("(prefers-reduced-motion: reduce)").matches)} />
     </div>
-    <ActivitySummaryDialog open={summary} state={state} controller={controller} onClose={() => setSummary(false)} />
-    <ActivityClearDialog open={clear} busy={Boolean(state.pending)} onClose={() => setClear(false)} onConfirm={() => { setClear(false); void controller?.clearAll(); }} />
+    <ActivitySummaryDialog open={summary} state={state} controller={controller} finalFocus={menuTrigger} onClose={() => setSummary(false)} />
+    <ActivityClearDialog open={clear} busy={Boolean(state.pending)} finalFocus={menuTrigger} onClose={() => setClear(false)} onConfirm={() => { setClear(false); void controller?.clearAll(); }} />
   </main></TooltipProvider>;
 }
 

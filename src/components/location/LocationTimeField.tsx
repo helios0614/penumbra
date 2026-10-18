@@ -2,8 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Clock3 } from "lucide-react";
 import { validTime } from "@/application/location/location-draft";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { LocationDialogClose } from "./LocationDialogs";
+import { Dialog, DialogBody, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 const HOURS = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
 const MINUTES = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
@@ -33,14 +32,14 @@ export function LocationTimeField({ id, label, value, inheritedValue, disabled, 
         render={<Button type="button" variant="ghost" className="h-11 w-full min-w-0 justify-between rounded-xl border-border-strong/50 bg-background/25 px-2.5 text-sm font-normal shadow-sm hover:bg-background/35" />}>
         <span>{value || "—:—"}</span><Clock3 className="size-4 text-muted-strong" aria-hidden="true" />
       </DialogTrigger>
-      <DialogContent className="location-dialog location-time-dialog" showCloseButton={false} aria-describedby={undefined}
+      <DialogContent className="max-w-[22rem]" closeButtonProps={{ "aria-label": `关闭${label}选择器` }} aria-describedby={undefined}
         initialFocus={() => body.current?.querySelector<HTMLInputElement>("input:checked") ?? true}>
-        <DialogHeader><DialogTitle>{label}</DialogTitle><LocationDialogClose label={`关闭${label}选择器`} /></DialogHeader>
-        <div ref={body} className="location-dialog-body location-time-columns">
+        <DialogHeader><DialogTitle>{label}</DialogTitle></DialogHeader>
+        <DialogBody ref={body} className="location-time-columns">
           <LocationTimeColumn label="小时" value={selection.slice(0, 2)} options={HOURS} onChange={(hour) => setSelection(`${hour}:${selection.slice(3)}`)} />
           <LocationTimeColumn label="分钟" value={selection.slice(3)} options={MINUTES} onChange={(minute) => setSelection(`${selection.slice(0, 2)}:${minute}`)} />
-        </div>
-        <DialogFooter className="location-dialog-footer">
+        </DialogBody>
+        <DialogFooter>
           <DialogClose render={<Button type="button" variant="ghost" />}>取消</DialogClose>
           <Button type="button" disabled={disabled || !validTime(selection)} onClick={confirm}>确认</Button>
         </DialogFooter>

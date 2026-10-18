@@ -1,0 +1,32 @@
+@layer components {
+  /* Geometry only: keep the existing Mist material and theme tokens intact. */
+  .dialog-viewport {
+    --dialog-inset-top: max(1rem, env(safe-area-inset-top, 0px));
+    --dialog-inset-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+    --dialog-inset-left: max(1rem, env(safe-area-inset-left, 0px));
+    --dialog-inset-right: max(1rem, env(safe-area-inset-right, 0px));
+    --dialog-available-height: calc(var(--dialog-viewport-height, 100dvh) - var(--dialog-inset-top) - var(--dialog-inset-bottom));
+    top: calc(var(--dialog-viewport-top, 0px) + var(--dialog-inset-top) + var(--dialog-available-height) / 2);
+    left: calc((100% + var(--dialog-inset-left) - var(--dialog-inset-right)) / 2);
+    width: calc(100% - var(--dialog-inset-left) - var(--dialog-inset-right));
+    max-height: max(0px, var(--dialog-available-height));
+  }
+
+}
+
+/* Keep the X's reserved space above px-* utilities, including sm:px-6. */
+[data-slot="dialog-content"][data-has-close-button] [data-slot="dialog-header"],
+[data-slot="dialog-header"]:has([data-slot="dialog-close-button"]) {
+  padding-right: 4rem;
+}
+
+/* Override the existing unlayered universal transition, scoped to dialogs. */
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="dialog-content"],
+  [data-slot="dialog-overlay"],
+  [data-slot="alert-dialog-content"],
+  [data-slot="alert-dialog-overlay"] {
+    animation: none;
+    transition: none;
+  }
+}

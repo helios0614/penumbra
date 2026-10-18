@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import { normalizeOutput } from "@/domain/quick-note";
 import type { QuickNoteController } from "@/application/quick-note/quick-note-controller";
 import type { QuickNoteEditor as EditorState } from "@/application/quick-note/quick-note-state";
@@ -9,8 +9,9 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { QuickNoteDialogHeader } from "./QuickNoteDialogHeader";
 import { useQuickNoteDialogViewport } from "./quick-note-dialog-viewport";
 
-export function QuickNoteEditor({ editor, busy, controller }: {
+export function QuickNoteEditor({ editor, busy, controller, finalFocus }: {
   readonly editor: EditorState | null; readonly busy: boolean; readonly controller: QuickNoteController | null;
+  readonly finalFocus?: ComponentProps<typeof DialogContent>["finalFocus"];
 }) {
   const [confirm, setConfirm] = useState<"discard" | "overwrite" | null>(null);
   const viewportRef = useQuickNoteDialogViewport();
@@ -21,27 +22,30 @@ export function QuickNoteEditor({ editor, busy, controller }: {
     else controller?.cancelEdit();
   };
   return (
-    <>
-      <Dialog open={Boolean(editor)} onOpenChange={(next) => { if (!next) close(); }} disablePointerDismissal={busy}>
-        <DialogContent ref={viewportRef} initialFocus={() => document.getElementById("quick-note-editor")} showCloseButton={false} className="quick-note-dialog" data-quick-note-dialog="editor" aria-busy={busy}>
-          <QuickNoteDialogHeader title={`编辑正文 · ${editor?.baseline.periodLabel ?? ""}`} description="保存前会重新核对服务端内容。刷新日志和记录不会替换当前草稿。" busy={busy} />
-          <div className="quick-note-editor-body">
-            {editor && <QuickNoteEditorFields editor={editor} busy={busy} onChange={(value) => controller?.changeDraft(value)} />}
-            {editor?.conflict && (
-              <section className="quick-note-editor-conflict">
-                <h3 id="quick-note-conflict-title" className="shrink-0 text-sm font-medium">服务端最新正文</h3>
-                <div role="region" aria-labelledby="quick-note-conflict-title" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg whitespace-pre-wrap break-words text-sm leading-7 focus-visible:outline-2 focus-visible:outline-ring">{normalizeOutput(editor.conflict.output) || "尚无已保存正文"}</div>
-              </section>
-            )}
-          </div>
-          <DialogFooter>
-            {editor?.conflict && <Button variant="destructive" disabled={busy} onClick={() => setConfirm("overwrite")}>用草稿覆盖最新正文…</Button>}
-            <Button variant="ghost" className="text-muted-strong" disabled={busy} onClick={close}>取消编辑</Button>
-            {editor?.uncertain && <Button variant="outline" disabled={busy} onClick={() => void controller?.verifyEditor()}>核对保存结果</Button>}
-            <Button aria-busy={busy} disabled={busy || !editor || editor.uncertain || Boolean(editor.conflict)} onClick={() => void controller?.saveEditor()}>{busy ? "正在处理…" : "保存正文"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+    <Dialog open={Boolean(editor)} onOpenChange={(next, details) => {
+      if (!next) {
+        if (busy || (editor && editor.draft !== normalizeOutput(editor.baseline.output))) details.cancel();
+        close();
+      }
+    }} disablePointerDismissal={busy}>
+      <DialogContent ref={viewportRef} initialFocus={() => document.getElementById("quick-note-editor")} finalFocus={finalFocus} showCloseButton={false} className="quick-note-dialog" data-quick-note-dialog="editor" aria-busy={busy}>
+        <QuickNoteDialogHeader title={`编辑正文 · ${editor?.baseline.periodLabel ?? ""}`} description="保存前会重新核对服务端内容。刷新日志和记录不会替换当前草稿。" busy={busy} />
+        <div className="quick-note-editor-body">
+          {editor && <QuickNoteEditorFields editor={editor} busy={busy} onChange={(value) => controller?.changeDraft(value)} />}
+          {editor?.conflict && (
+            <section className="quick-note-editor-conflict">
+              <h3 id="quick-note-conflict-title" className="shrink-0 text-sm font-medium">服务端最新正文</h3>
+              <div role="region" aria-labelledby="quick-note-conflict-title" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg whitespace-pre-wrap break-words text-sm leading-7 focus-visible:outline-2 focus-visible:outline-ring">{normalizeOutput(editor.conflict.output) || "尚无已保存正文"}</div>
+            </section>
+          )}
+        </div>
+        <DialogFooter>
+          {editor?.conflict && <Button size="comfortable" variant="destructive" disabled={busy} onClick={() => setConfirm("overwrite")}>用草稿覆盖最新正文…</Button>}
+          <Button size="comfortable" variant="ghost" className="text-muted-strong" disabled={busy} onClick={close}>取消编辑</Button>
+          {editor?.uncertain && <Button size="comfortable" variant="outline" disabled={busy} onClick={() => void controller?.verifyEditor()}>核对保存结果</Button>}
+          <Button size="comfortable" aria-busy={busy} disabled={busy || !editor || editor.uncertain || Boolean(editor.conflict)} onClick={() => void controller?.saveEditor()}>{busy ? "正在处理…" : "保存正文"}</Button>
+        </DialogFooter>
+      </DialogContent>
       <AlertDialog open={Boolean(confirm)} onOpenChange={(next) => { if (!next) setConfirm(null); }}>
         <AlertDialogContent ref={confirmViewportRef} className="quick-note-dialog" data-quick-note-dialog="editor-confirm">
           <AlertDialogHeader>
@@ -58,7 +62,7 @@ export function QuickNoteEditor({ editor, busy, controller }: {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </Dialog>
   );
 }
 

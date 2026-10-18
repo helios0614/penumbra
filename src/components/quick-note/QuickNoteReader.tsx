@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type Ref } from "react";
 import { ArrowLeft, ArrowUp, MoreHorizontal } from "lucide-react";
 import type { QuickNoteController } from "@/application/quick-note/quick-note-controller";
 import type { QuickNoteState } from "@/application/quick-note/quick-note-state";
@@ -10,10 +10,11 @@ import { NOTE_ACTIONS, QuickNoteOutput, QuickNoteSummary, type NoteAction } from
 import { QuickNoteFeedback } from "./QuickNoteFeedback";
 import { scrollQuickNoteToTop, showQuickNoteTopButton } from "./quick-note-reader-scroll";
 
-export function QuickNoteReader({ note, timeZone, state, controller, onBack, onAction }: {
+export function QuickNoteReader({ note, timeZone, state, controller, onBack, onAction, actionsRef }: {
   readonly note: QuickNote | null; readonly timeZone: string;
   readonly state: QuickNoteState; readonly controller: QuickNoteController | null;
   readonly onBack: () => void; readonly onAction: (kind: NoteAction, note: QuickNote) => void;
+  readonly actionsRef?: Ref<HTMLButtonElement>;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [showTop, setShowTop] = useState(false);
@@ -28,7 +29,7 @@ export function QuickNoteReader({ note, timeZone, state, controller, onBack, onA
       <div className="mb-3 flex items-center justify-between gap-2">
         <Button variant="ghost" className="h-11 px-2 text-muted-strong" onClick={onBack}><ArrowLeft aria-hidden="true" />返回日期概览</Button>
         {note && <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-          <PopoverTrigger render={<Button variant="ghost" className="size-11" aria-label="本篇速记操作" title="本篇速记操作" disabled={disabled} />}><MoreHorizontal aria-hidden="true" /></PopoverTrigger>
+          <PopoverTrigger render={<Button ref={actionsRef} variant="ghost" className="size-11" aria-label="本篇速记操作" title="本篇速记操作" disabled={disabled} />}><MoreHorizontal aria-hidden="true" /></PopoverTrigger>
           <PopoverContent align="end" className="w-72 max-w-[calc(100vw-2rem)]">
             <QuickNoteActions note={note} disabled={disabled} onAction={(kind, selected) => { setMenuOpen(false); onAction(kind, selected); }} />
           </PopoverContent>

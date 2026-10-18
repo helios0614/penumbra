@@ -100,10 +100,9 @@ describe("Location minute-precision time selection", () => {
   });
   it("uses a bounded two-column scroll area and an explicit cancel/confirm footer at narrow widths", () => {
     const render = session(() => LocationTimeField({ ...props, onChange: vi.fn() })), tree = render();
-    expect(find(tree, DialogContent).props.className).toBe("location-dialog location-time-dialog");
-    expect(css).toContain(".location-time-dialog[data-slot] { max-width: 22rem;");
+    expect(find(tree, DialogContent).props.className).toBe("max-w-[22rem]");
     expect(css).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
     expect(css).toContain("height: min(15rem, 40dvh)"); expect(css).toContain("overscroll-behavior: contain");
-    expect(find(tree, DialogFooter).props.className).toBe("location-dialog-footer");
+    expect(find(tree, DialogFooter).props.className).toBeUndefined();
   });
 });

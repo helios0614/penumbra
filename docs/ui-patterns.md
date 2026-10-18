@@ -4,15 +4,60 @@
 
 ## Dialog / AlertDialog 的成熟组合约定
 
-以 `MemoryCreateDialog` 和 Quick Note V2.3 为现有参考。共享 `components/ui/dialog.tsx`、`alert-dialog.tsx` 提供语义、焦点和关闭机制；它们的默认 padding、标题和移动端 Footer 不等于成熟页面的最终排版。使用原语后，仍需在 feature 内明确组合以下结构，勿复制另一个 feature 的业务组件或创建新的全局弹框框架。
+UI Foundation PR2 已将 Memory、Quick Note、Activity、Location 的成熟布局收敛到共享 `components/ui/dialog.tsx`、`alert-dialog.tsx`。新消费者直接组合公共区域，不再复制 feature 的外壳、标题、Footer 或关闭按钮 CSS。Base UI 继续负责模态、可访问性、焦点和取消语义。
 
-- 外层使用现有 `mist-glass-strong` 材质，延续其边框、阴影；参考当前成熟弹框的 28px 圆角、移动端 20px / 桌面端 24px 横向留白。不重新组合透明度、blur 或 shadow，不改共享 token。
-- Header、Content、Footer 为兄弟区域。外壳 `flex flex-col`、`overflow: hidden`，最大高度不超过动态视口扣除安全边距后的空间；Header / Footer `shrink-0`，正文 `min-height: 0`、`flex: 1`、`overflow-y: auto`，避免弹框与正文双重滚动。
-- Header 左对齐：可选装饰性 eyebrow 使用现有 `font-decorative`，11px / 400、大写、0.14em 字距；中文标题使用功能字体 18px / 600 / 28px 行高；说明使用 13px / 20px 行高。右上角关闭使用 44px 点击区域及明确的可访问名称；保存期间应阻止关闭。
-- `DialogTitle` / `AlertDialogTitle` 默认使用 `font-sans`、18px / 600 / 28px，不再默认继承 `font-heading` 的文楷／衬线字形。装饰字体仅用于显式标记的英文 eyebrow；已有页面的局部标题样式仍可覆盖基础字号与间距。
-- 表单字段间距参考 16px，输入和 Select 复用现有 translucent 变体。Footer 采用 `row wrap`、右对齐、8px 按钮间距，取消为 ghost，保存为现有主题主按钮；移动端也不默认改成两个全宽大按钮。按钮保留至少 44px 触摸高度，短视口时正文滚动、操作保持可达。
-- 长内容阅读弹框保留固定 Header，只让正文滚动；没有实际底部操作时不添加 Footer。破坏性确认继续使用 AlertDialog、取消及 destructive action；极短视口可让确认说明滚动，按钮留在滚动区外。
-- 涉及软键盘的密集编辑可参考 Quick Note 的 `visualViewport` 局部适配；这是编辑器的现有处理，不要求所有普通阅读弹框复制整套逻辑。
+公共默认保证：
+
+- `DialogContent` / `AlertDialogContent` 使用原有 `mist-glass-strong`，28px 圆角、默认最大宽度 32rem。外壳为无 padding 的纵向 Flex，隐藏溢出；四边至少保留 16px 视口间距并避让安全区，最大高度受 `100dvh` 扣除上下安全间距限制，按可用区域居中。材质、边框、阴影 token 不变。
+- Header / Body / Footer 的横向 padding 为移动端 20px、桌面端 24px。普通 Header 固定、左对齐并带轻分隔线；默认标题 `font-sans`、18px / 600 / 28px，描述 13px / 20px、muted。英文 eyebrow 按需显式使用 `font-decorative`（11px / 400、大写、0.14em 字距），中文标题不使用 `font-heading`。
+- 可选 `DialogBody` 提供 `min-h-0`、`flex-auto`、独立纵向滚动及 overscroll containment；短内容自然收缩，没有固定高度。不需要滚动组合的短弹框无需强制创建 Body。外壳不再叠加纵向滚动。
+- Footer 固定、透明、带轻分隔线，水平右对齐、8px 间距、空间不足时换行；移动端不反转顺序、不强制按钮全宽。不渲染 Footer 就没有底部操作区。
+- Footer 不改变 Button 密度；普通确认保留默认 min 36px，Memory、Wi-Fi、Quick Note 表单显式 `size="comfortable"` 保留 min 44px。按钮使用最小高度，文字可换行、自然增高。取消通常为 ghost，保存／确认为 default，危险操作为 destructive；`AlertDialogCancel` 默认为 ghost。
+- Dialog 默认有一个 Lucide X：图标 16px、独立点击区域 44px、默认可访问名称“关闭”。通过 `closeButtonProps` 指定业务名称、disabled 等原生关闭属性。已有自定义 Header 可选择 `showCloseButton={false}` 并组合公共 `DialogCloseButton`；两种方式只选一种，避免两个 X。Header 仅在有关闭按钮时预留右侧空间。
+
+三类用途的组合：
+
+```tsx
+// 表单：Header / Body / Footer 可放在同一个受限 Flex form 内。
+<DialogContent showCloseButton={false}>
+  <form className="flex min-h-0 flex-1 flex-col" onSubmit={save}>
+    <DialogHeader>
+      <DialogTitle>编辑内容</DialogTitle>
+      <DialogCloseButton aria-label="关闭编辑" disabled={saving} />
+    </DialogHeader>
+    <DialogBody>{/* 字段和区域内错误 */}</DialogBody>
+    <DialogFooter>{/* ghost 取消、primary 保存 */}</DialogFooter>
+  </form>
+</DialogContent>
+
+// 阅读：只有正文滚动，不加仅用于“关闭”的 Footer。
+<DialogContent closeButtonProps={{ "aria-label": "关闭详情" }}>
+  <DialogHeader><DialogTitle>详情</DialogTitle></DialogHeader>
+  <DialogBody render={<dl />}>{/* 内容 */}</DialogBody>
+</DialogContent>
+
+// 确认：说明区在极短视口可滚动，Footer 保持在外。
+<AlertDialogContent>
+  <AlertDialogHeader>
+    <AlertDialogTitle>放弃草稿？</AlertDialogTitle>
+    <AlertDialogDescription>尚未保存的修改会被放弃。</AlertDialogDescription>
+  </AlertDialogHeader>
+  <AlertDialogFooter>
+    <AlertDialogCancel>返回编辑</AlertDialogCancel>
+    <AlertDialogAction variant="destructive" onClick={discard}>放弃草稿</AlertDialogAction>
+  </AlertDialogFooter>
+</AlertDialogContent>
+```
+
+`DialogBody render={<form ... />}` / `render={<dl />}` 可保留语义元素和其原生属性；字段间距通常参考 16px，输入和 Select 沿用 translucent。宽度继续由业务通过 `className` 选择，AlertDialog 的 `size="sm"` 保留较窄的 20rem。Location 时间选择器保留两列独立滚动，POI 保留紧凑字段节奏；Quick Note 保留编辑器高度、textarea 与冲突预览的并行滚动，以及 `visualViewport` 的高度／偏移适配和短视口纵向间距压缩。公共几何可接收 `--dialog-viewport-height` / `--dialog-viewport-top`，只有 Quick Note 将现有局部变量接入，不要求普通 Dialog 复制监听逻辑。
+
+关闭与焦点约定：
+
+- X、取消、Escape、遮罩应进入同一业务关闭规则。保存中禁用 X／取消，按业务设置 `disablePointerDismissal`；`onOpenChange` 拒绝关闭时调用底层 `eventDetails.cancel()`，不要只依赖受控 open 不变。草稿确认和保存状态仍由 feature 管理。
+- AlertDialog 继续使用 Base UI 的独立 primitive，遮罩不关闭；Escape 表示取消，不能触发危险 action。Action 的业务提交与关闭仍由消费者控制。
+- 从 Popover 打开 Dialog 后，Popover 项可能卸载；通过原生 `finalFocus` 返回仍存在的页面菜单按钮或阅读区域。直接 `DialogTrigger` 继续使用底层默认恢复，不额外改写焦点设施。
+- 编辑器内的确认 AlertDialog 应嵌套在父 Dialog 的 React 根节点内，让 Base UI 识别层级、只让最上层处理关闭与焦点陷阱。不要为弹框新增全局键盘监听；关闭手势不能穿透到底层页面。
+- 公共外壳和遮罩在 Reduced Motion 下禁用动画与过渡；自定义主题和深色模式沿用现有语义颜色。移动端软键盘、字体放大及极短横屏仍需人工验证具体内容与按钮的可达性。
 
 UI Foundation PR1 已提供公共 `Switch`（见下文），替代 Activity 和 Location 的局部轨道实现。仓库仍无共享 Toast / Notification 设施；设计文档中的 Toast z-index 仅是层级预留，不代表已有通知设施，不应为单页扩展全局通知系统。
 
@@ -31,7 +76,7 @@ UI Foundation PR1 已提供公共 `Switch`（见下文），替代 Activity 和 
 
 Button 旧 `xs` / `sm`（min 24 / 28px）及 icon 24 / 28 / 32 / 36px 保持兼容，供 Chat 工具栏、日历等密集组合使用；这不是常规表单默认，也不表示这些旧目标已完成触屏验收。PageHeaderAction 与成熟弹框关闭按钮保留现有 44px。Memory 搜索／重要度与已验收的 Memory、Wi-Fi、Quick Note 表单显式选择 comfortable；Location 普通输入及查询采用 40px，主要保存仍为 44px。
 
-按钮配色由 variant 承担，不在 feature 内重复 `bg-primary/90 hover:bg-primary`：主操作用 default，查询和重新读取可用 soft-primary，轻工具用 ghost，中性描边用 outline，危险操作用 destructive。主色状态引用 primary / primary-hover / primary-active；浅主题色文字引用 primary-ink。secondary 的 Hover 引用真实的 color-secondary-hover，不引入第二套主题变量。
+按钮配色由 variant 承担，不在 feature 内重复 `bg-primary/90 hover:bg-primary`：主操作用 default，页面级辅助查询和重新读取可用 soft-primary，轻工具用 ghost，中性描边用 outline，危险操作用 destructive。Button 的视觉优先级由当前交互场景决定，不仅由操作名称决定；弹框中的主要操作可以使用 Primary（`variant="default"`），即使它执行的是读取、刷新或重试。例如 Quick Note「重试未完成速记」的「重新读取」使用实心主题色，读取中仍禁用，空列表仍允许再次获取；Location 页面级辅助「查询」继续使用 soft-primary。主色状态引用 primary / primary-hover / primary-active；浅主题色文字引用 primary-ink。secondary 的 Hover 引用真实的 color-secondary-hover，不引入第二套主题变量。
 
 `Button loading` 是可选的基础状态：禁用点击、设置 aria-busy，在保留标签布局的同时显示居中 spinner；传入稳定的操作标签，避免 loading 时额外改变文字宽度。已有业务的“保存中…”文案及 aria-busy 可以继续使用。Focus 使用 ring token 的克制外环，Disabled 明确降权，非必要过渡和 spinner 响应 Reduced Motion。
 

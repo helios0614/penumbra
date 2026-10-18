@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ListRestart, MoreHorizontal, RefreshCw, X } from "lucide-react";
 import type { QuickNote, TriggerConfig } from "@/domain/quick-note";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,13 @@ export function QuickNoteView({ onBack }: { readonly onBack?: () => void }) {
   const [backfillOpen, setBackfillOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<QuickNoteConfirmation | null>(null);
+  const menuTrigger = useRef<HTMLButtonElement>(null);
+  const readerActions = useRef<HTMLButtonElement>(null);
+  const noteFinalFocus = () => {
+    if (!navigation.reader) return menuTrigger.current ?? true;
+    const trigger = readerActions.current;
+    return trigger?.isConnected && !trigger.disabled ? trigger : navigation.readerRef.current ?? true;
+  };
   const action = (kind: NoteAction, note: QuickNote) => {
     if (kind === "edit") controller?.beginEdit(note);
     else setConfirmation({ kind, note });
@@ -35,7 +42,7 @@ export function QuickNoteView({ onBack }: { readonly onBack?: () => void }) {
         <PageHeader eyebrow="QUICK NOTES" title="速记" titleId="quick-note-page-title" description="那些散落的时段，会被整理成可以回看的记录。" actions={<>
           {!navigation.reader && <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="重试近期未完成时段" disabled={!state.config || Boolean(state.pending)} onClick={() => { setRetryOpen(true); void controller?.loadCandidates(); }} />}><ListRestart aria-hidden="true" /></TooltipTrigger><TooltipContent>重试近期未完成时段</TooltipContent></Tooltip>}
           {!navigation.reader && <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-            <Tooltip><TooltipTrigger render={<PopoverTrigger render={<PageHeaderAction aria-label="更多速记操作" disabled={!state.config} />} />}><MoreHorizontal aria-hidden="true" /></TooltipTrigger><TooltipContent>更多速记操作</TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger render={<PopoverTrigger render={<PageHeaderAction ref={menuTrigger} aria-label="更多速记操作" disabled={!state.config} />} />}><MoreHorizontal aria-hidden="true" /></TooltipTrigger><TooltipContent>更多速记操作</TooltipContent></Tooltip>
             <PopoverContent align="end" className="w-44"><Button variant="ghost" className="h-11 justify-start" disabled={Boolean(state.pending)} onClick={() => { setMenuOpen(false); setBackfillOpen(true); }}>补写历史时段</Button></PopoverContent>
           </Popover>}
           {onBack && <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="返回桌面" onClick={() => navigation.exit(onBack)} />}><X aria-hidden="true" /></TooltipTrigger><TooltipContent>返回桌面</TooltipContent></Tooltip>}
@@ -49,24 +56,24 @@ export function QuickNoteView({ onBack }: { readonly onBack?: () => void }) {
           {state.config && <QuickNoteConfig config={state.config} loading={state.configLoading} onReload={() => void controller?.loadConfig()} />}
         </div>
         {navigation.reader && <div ref={navigation.readerRef} tabIndex={-1} className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden pb-2 focus:outline-none sm:mt-4" aria-label="单篇速记阅读">
-          {state.config ? <QuickNoteReader note={selectedNote} timeZone={state.config.timeZone} state={state} controller={controller} onBack={navigation.back} onAction={action} /> : <div className="mist-glass rounded-[24px] p-4">
+          {state.config ? <QuickNoteReader note={selectedNote} timeZone={state.config.timeZone} state={state} controller={controller} actionsRef={readerActions} onBack={navigation.back} onAction={action} /> : <div className="mist-glass rounded-[24px] p-4">
             <Button variant="ghost" className="h-11" onClick={navigation.back}>返回日期概览</Button>
             <p role={state.configError ? "alert" : "status"} className="py-3 text-sm">{state.configError || "正在读取时段与日期配置…"}</p>
             {state.configError && <Button variant="outline" className="h-11" onClick={() => void controller?.loadConfig()}>重新读取配置</Button>}
           </div>}
         </div>}
         <QuickNoteRetryDialog open={retryOpen} state={state} controller={controller} onClose={() => setRetryOpen(false)} />
-        {state.config && <QuickNoteBackfillDialog open={backfillOpen} config={state.config} initialDate={state.date} disabled={Boolean(state.pending)} onClose={() => setBackfillOpen(false)} onSubmit={(input) => {
+        {state.config && <QuickNoteBackfillDialog open={backfillOpen} config={state.config} initialDate={state.date} disabled={Boolean(state.pending)} finalFocus={menuTrigger} onClose={() => setBackfillOpen(false)} onSubmit={(input) => {
           setBackfillOpen(false);
           if (input.overwrite) setConfirmation({ kind: "backfill", input });
           else void controller?.mutate("backfill", `${input.date}:${input.endHour}`, input);
         }} />}
-        <QuickNoteConfirmDialog value={confirmation} onCancel={() => setConfirmation(null)} onConfirm={(value) => {
+        <QuickNoteConfirmDialog value={confirmation} finalFocus={noteFinalFocus} onCancel={() => setConfirmation(null)} onConfirm={(value) => {
           setConfirmation(null);
           if (value.kind === "backfill") void controller?.mutate("backfill", `${value.input.date}:${value.input.endHour}`, value.input);
           else void controller?.mutate(value.kind, value.note.id);
         }} />
-        <QuickNoteEditor editor={state.editor} busy={Boolean(state.pending)} controller={controller} />
+        <QuickNoteEditor editor={state.editor} busy={Boolean(state.pending)} controller={controller} finalFocus={noteFinalFocus} />
         <QuickNoteDiscardDialog open={Boolean(navigation.discardAction)} onCancel={navigation.cancelDiscard} onConfirm={navigation.confirmDiscard} />
       </main>
     </TooltipProvider>

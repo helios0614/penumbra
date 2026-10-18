@@ -1,5 +1,4 @@
 import { useRef, useState, type FormEvent } from "react";
-import { X } from "lucide-react";
 
 import type { SafeMemoryCreateError } from "@/application/memory-list";
 import {
@@ -10,9 +9,11 @@ import { AppSelect } from "@/components/ui/app-select";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
-  DialogClose,
+  DialogBody,
+  DialogCloseButton,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -67,8 +68,8 @@ export function MemoryCreateDialog({
     setShowContentError(false);
   };
 
-  const requestOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen && isCreating) return;
+  const requestOpenChange = (nextOpen: boolean, details?: { cancel(): void }) => {
+    if (!nextOpen && isCreating) { details?.cancel(); return; }
     if (!nextOpen) {
       resetForm();
       onClearError();
@@ -108,7 +109,6 @@ export function MemoryCreateDialog({
       <DialogContent
         showCloseButton={false}
         initialFocus={contentRef}
-        className="flex max-h-[calc(100dvh-2rem)] w-full flex-col gap-0 overflow-hidden rounded-[28px] p-0 sm:max-w-lg"
         data-memory-create-dialog="true"
       >
         <form
@@ -117,34 +117,24 @@ export function MemoryCreateDialog({
           noValidate
           aria-busy={isCreating}
         >
-          <DialogHeader className="relative shrink-0 gap-0 border-b border-border/60 px-5 pb-4 pt-5 pr-16 sm:px-6 sm:pb-5 sm:pt-6 sm:pr-16">
+          <DialogHeader>
             <p className="font-decorative text-[11px] font-normal uppercase leading-4 tracking-[0.14em] text-muted-foreground">
               ADD MEMORY
             </p>
-            <DialogTitle className="mt-0.5 font-sans text-lg font-semibold leading-7 text-foreground">
+            <DialogTitle>
               新增记忆
             </DialogTitle>
-            <DialogDescription className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
+            <DialogDescription>
               留下一段值得记住的内容。
             </DialogDescription>
-            <DialogClose
+            <DialogCloseButton
               disabled={isCreating}
               aria-label="关闭新增记忆"
               title="关闭新增记忆"
-              render={
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-lg"
-                  className="absolute right-3 top-3 size-11 rounded-xl text-muted-strong hover:bg-background/45 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/20 sm:right-4 sm:top-4"
-                />
-              }
-            >
-              <X className="size-4" aria-hidden="true" />
-            </DialogClose>
+            />
           </DialogHeader>
 
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-3 pt-5 sm:px-6">
+          <DialogBody className="pb-3">
             <div>
               <div>
                 <label
@@ -244,14 +234,11 @@ export function MemoryCreateDialog({
                 />
               </div>
             </div>
-          </div>
-
-          <div className="shrink-0 border-t border-border/60 px-5 py-3 sm:px-6">
             {createError && (
               <div
                 role="alert"
                 className={cn(
-                  "mb-3 rounded-xl border px-3 py-2 text-xs leading-5",
+                  "mt-3 rounded-xl border px-3 py-2 text-xs leading-5",
                   createError.code === "uncertain"
                     ? "border-warning/20 bg-warning-subtle text-warning-foreground"
                     : "border-destructive/15 bg-destructive-subtle text-destructive-foreground",
@@ -261,28 +248,29 @@ export function MemoryCreateDialog({
                 {createError.message}
               </div>
             )}
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                size="comfortable"
-                type="button"
-                variant="ghost"
-                disabled={isCreating}
-                onClick={() => requestOpenChange(false)}
-                className="text-muted-strong"
-              >
-                取消
-              </Button>
-              <Button
-                size="comfortable"
-                type="submit"
-                disabled={isCreating || !content.trim()}
-                aria-busy={isCreating}
-                className="min-w-24"
-              >
-                {isCreating ? "保存中…" : "保存记忆"}
-              </Button>
-            </div>
-          </div>
+          </DialogBody>
+
+          <DialogFooter>
+            <Button
+              size="comfortable"
+              type="button"
+              variant="ghost"
+              disabled={isCreating}
+              onClick={() => requestOpenChange(false)}
+              className="text-muted-strong"
+            >
+              取消
+            </Button>
+            <Button
+              size="comfortable"
+              type="submit"
+              disabled={isCreating || !content.trim()}
+              aria-busy={isCreating}
+              className="min-w-24"
+            >
+              {isCreating ? "保存中…" : "保存记忆"}
+            </Button>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
