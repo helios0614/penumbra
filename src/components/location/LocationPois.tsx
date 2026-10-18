@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { ChevronRight, Search, Star, Store } from "lucide-react";
+import { ChevronRight, MapPin, Search, Star, Store } from "lucide-react";
 import type { LocationController } from "@/application/location/location-controller";
 import type { LocationState } from "@/application/location/location-state";
 import type { LocationPoi } from "@/domain/location";
 import { AppSelect } from "@/components/ui/app-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { locationDistance } from "./location-presentation";
+import { locationDistance, locationPoiCategory } from "./location-presentation";
 
 export function LocationPois({ state, controller, onDetail }: { readonly state: LocationState; readonly controller: LocationController | null; readonly onDetail: (poi: LocationPoi) => void }) {
   const [category, setCategory] = useState("餐饮美食"), [query, setQuery] = useState(""), [shown, setShown] = useState<string | null>(null);
@@ -25,23 +25,28 @@ export function LocationPois({ state, controller, onDetail }: { readonly state: 
     </div>
     <form className="mt-3 flex min-w-0 gap-2" onSubmit={(event) => { event.preventDefault(); const term = query.trim() || selected; setShown(term); void controller?.search(term); }}>
       <Input surface="translucent" className="h-11 min-w-0 flex-1 rounded-xl text-sm" aria-label="POI 搜索关键词" placeholder={`搜索${selected}，或输入关键词`} value={query} disabled={busy} onChange={(event) => setQuery(event.target.value)} />
-      <Button type="submit" variant="outline" className="h-11 gap-1.5 rounded-xl px-3" disabled={busy || blocked || query.includes("|")}><Search aria-hidden="true" />{searching ? "查询中" : "查询"}</Button>
+      <Button type="submit" variant="ghost" className="h-11 gap-1.5 rounded-xl bg-primary/15 px-3 text-primary-ink hover:bg-primary/20 hover:text-primary-ink" disabled={busy || blocked || query.includes("|")}><Search aria-hidden="true" />{searching ? "查询中" : "查询"}</Button>
     </form>
     {blocked && <p className="mt-2 text-xs leading-5 text-muted-foreground">查询需要已配置的 Key 和有效位置。</p>}
     {query.includes("|") && <p className="mt-1 text-xs text-destructive">关键词不能包含「|」。</p>}
     {state.searchError && <p role="alert" className="mt-2 text-xs leading-5 text-destructive">查询未完成。{state.searchError}</p>}
     <div className="mt-3 flex items-center justify-between border-b border-primary/10 pb-2 text-xs text-muted-strong"><span className="min-w-0 flex-1 break-words">{displayCategory}{fallback && ` · 使用「${fallback}」继续查询`}</span><span className="ml-2 shrink-0">{items.length} 条</span></div>
     {searching && <p role="status" className="py-3 text-xs text-muted-foreground">正在查询…</p>}
-    {items.length ? <ul className="divide-y divide-primary/10">{items.map((poi, index) => <li key={`${poi.name}-${index}`}>
+    {items.length ? <ul className="divide-y divide-primary/10">{items.map((poi, index) => {
+      const categoryLabel = locationPoiCategory(poi.category);
+      return <li key={`${poi.name}-${index}`}>
       <Button type="button" variant="ghost" className="h-auto min-h-16 w-full justify-start gap-3 whitespace-normal rounded-none px-0 py-3 text-left hover:bg-background/20" onClick={() => onDetail(poi)} aria-label={`查看${poi.name}详情`}>
-        {poi.photo && <img src={poi.photo} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.hidden = true; }} className="size-12 shrink-0 rounded-xl object-cover sm:size-14" />}
+        <span aria-hidden="true" className="mist-glass relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl sm:size-14">
+          <MapPin className="size-5 text-muted-foreground/60 sm:size-6" />
+          {poi.photo && <img key={poi.photo} src={poi.photo} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.hidden = true; }} className="absolute inset-0 size-full object-cover" />}
+        </span>
         <span className="min-w-0 flex-1"><span className="block break-words text-sm font-medium leading-6">{poi.name}</span>
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs font-normal leading-5 text-muted-strong">
-            {poi.rating && <span className="inline-flex items-center gap-1"><Star className="size-3 text-primary" aria-hidden="true" />{poi.rating}</span>}
-            {poi.category && <span className="line-clamp-1 min-w-0 max-w-full">{poi.category}</span>}{poi.distance !== null && <span>{locationDistance(poi.distance)}</span>}
+          <span className="flex min-w-0 items-center gap-x-3 text-xs font-normal leading-5 text-muted-strong">
+            {poi.rating && <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap"><Star className="size-3 text-primary" aria-hidden="true" />{poi.rating}</span>}
+            {categoryLabel && <span className="min-w-0 flex-1 truncate" title={categoryLabel}>{categoryLabel}</span>}{poi.distance !== null && <span className="shrink-0 whitespace-nowrap">{locationDistance(poi.distance)}</span>}
           </span>{poi.address && <span className="mt-0.5 block break-words text-xs font-normal leading-5 text-muted-foreground">{poi.address}</span>}
         </span><ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       </Button>
-    </li>)}</ul> : <p role="status" className="py-3 text-sm leading-6 text-muted-foreground">{state.statusLoading && !state.status ? "正在读取附近地点…" : "暂未获取到地点，可稍后重试。"}</p>}
+    </li>; })}</ul> : <p role="status" className="py-3 text-sm leading-6 text-muted-foreground">{state.statusLoading && !state.status ? "正在读取附近地点…" : "暂未获取到地点，可稍后重试。"}</p>}
   </section>;
 }

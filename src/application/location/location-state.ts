@@ -1,6 +1,6 @@
 import { ApiError } from "@/lib/api";
 import { LocationBusinessError, type LocationConfig, type LocationStatus, type PoiSearchResult } from "@/domain/location";
-import type { LocationDraft } from "./location-draft";
+import type { LocationDraft, LocationSaveSection } from "./location-draft";
 
 export interface LocationState {
   readonly config: LocationConfig | null;
@@ -13,8 +13,8 @@ export interface LocationState {
   readonly statusLoading: boolean;
   readonly configError: string | null;
   readonly statusError: string | null;
-  readonly pending: "save" | "set-home" | "clear-key" | "reveal-key" | "copy-key" | "search" | null;
-  readonly feedback: { readonly error: boolean; readonly text: string } | null;
+  readonly pending: "save" | "save-position" | "save-key" | "set-home" | "clear-key" | "reveal-key" | "copy-key" | "search" | null;
+  readonly feedback: { readonly error: boolean; readonly text: string; readonly section?: LocationSaveSection } | null;
   readonly validation: Partial<Record<keyof LocationDraft, string>>;
   readonly searchResult: PoiSearchResult | null;
   readonly searchError: string | null;

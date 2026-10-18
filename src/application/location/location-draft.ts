@@ -3,6 +3,9 @@ import { parseWeekdays, serializeWeekdays, type LocationConfig, type LocationPat
 export type LocationDraft = { [K in keyof LocationValues]: LocationValues[K] extends boolean ? boolean : string };
 export const TIME_KEYS = ["quiet_hours_start", "quiet_hours_end", "quiet_hours_weekday_start", "quiet_hours_weekday_end", "quiet_hours_weekend_start", "quiet_hours_weekend_end"] as const;
 export const NUMBER_KEYS = ["home_lng", "home_lat", "home_threshold", "poi_radius"] as const;
+export const SETTINGS_KEYS = ["enabled", "quiet_hours_enabled", ...TIME_KEYS, "weekday_days"] as const;
+const ALL_KEYS: readonly (keyof LocationDraft)[] = [...SETTINGS_KEYS, ...NUMBER_KEYS];
+export type LocationSaveSection = "settings" | "position" | "key";
 export type TimeKey = typeof TIME_KEYS[number];
 export const validTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 
@@ -20,10 +23,13 @@ export function changedFields(baseline: LocationDraft, draft: LocationDraft): (k
     return draft[key] !== baseline[key];
   });
 }
+export function hasDraftChanges(baseline: LocationDraft | null, draft: LocationDraft | null, fields: readonly (keyof LocationDraft)[]): boolean {
+  return Boolean(baseline && draft && changedFields(baseline, draft).some((key) => fields.includes(key)));
+}
 export function rebaseDraft(baseline: LocationDraft, draft: LocationDraft, next: LocationDraft): LocationDraft {
   return { ...next, ...Object.fromEntries(changedFields(baseline, draft).map((key) => [key, draft[key]])) };
 }
-export function validateDraft(draft: LocationDraft): Partial<Record<keyof LocationDraft, string>> {
+export function validateDraft(draft: LocationDraft, fields: readonly (keyof LocationDraft)[] = ALL_KEYS): Partial<Record<keyof LocationDraft, string>> {
   const errors: Partial<Record<keyof LocationDraft, string>> = {};
   for (const key of TIME_KEYS) {
     const optional = key.includes("weekday") || key.includes("weekend");
@@ -37,14 +43,13 @@ export function validateDraft(draft: LocationDraft): Partial<Record<keyof Locati
   const threshold = Number(draft.home_threshold), radius = Number(draft.poi_radius);
   if (!draft.home_threshold.trim() || !Number.isInteger(threshold) || threshold < 50) errors.home_threshold = "请填写不小于 50 的整数";
   if (!draft.poi_radius.trim() || !Number.isInteger(radius) || radius < 500 || radius > 10000) errors.poi_radius = "请填写 500–10000 之间的整数";
-  return errors;
+  return Object.fromEntries(Object.entries(errors).filter(([key]) => fields.includes(key as keyof LocationDraft)));
 }
-export function buildLocationPatch(config: LocationConfig, draft: LocationDraft, replacementKey: string): LocationPatch {
-  if (Object.keys(validateDraft(draft)).length) throw new Error("请先检查配置中的输入。");
-  const next: LocationValues = { ...draft, home_lng: Number(draft.home_lng), home_lat: Number(draft.home_lat),
-    home_threshold: Number(draft.home_threshold), poi_radius: Number(draft.poi_radius), weekday_days: serializeWeekdays(parseWeekdays(draft.weekday_days)) };
-  const patch = Object.fromEntries((Object.keys(next) as (keyof LocationValues)[])
-    .filter((key) => next[key] !== config.values[key]).map((key) => [key, next[key]])) as LocationPatch;
+export function buildLocationPatch(config: LocationConfig, draft: LocationDraft, replacementKey: string, fields: readonly (keyof LocationDraft)[] = ALL_KEYS): LocationPatch {
+  if (Object.keys(validateDraft(draft, fields)).length) throw new Error("请先检查配置中的输入。");
+  const values = fields.map((key) => [key, NUMBER_KEYS.some((field) => field === key) ? Number(draft[key])
+    : key === "weekday_days" ? serializeWeekdays(parseWeekdays(draft[key])) : draft[key]] as const);
+  const patch = Object.fromEntries(values.filter(([key, value]) => value !== config.values[key])) as LocationPatch;
   if (replacementKey.trim()) patch.amap_key = replacementKey.trim();
   return patch;
 }

@@ -76,6 +76,94 @@ describe("Location save and reconciliation", () => {
     expect(api.saveLocationConfig).toHaveBeenCalledTimes(1); expect(api.getLocationConfig).toHaveBeenCalledTimes(1);
     write.resolve(); await saving; expect(api.getLocationConfig).toHaveBeenCalledTimes(2);
   });
+  it.each(["weekday", "weekend"] as const)("clears both %s overrides locally and submits empty strings without touching the unified period", async (kind) => {
+    const { controller, api } = setup();
+    const start = `quiet_hours_${kind}_start` as const, end = `quiet_hours_${kind}_end` as const;
+    api.getLocationConfig.mockResolvedValueOnce(parseLocationConfig({ ...configDto, [start]: "23:00", [end]: "09:30" }));
+    await controller.refresh();
+    const states: unknown[] = []; const unsubscribe = controller.subscribe((state) => states.push(state.draft)); states.length = 0;
+    controller.clearPeriod(kind); unsubscribe();
+    expect(states).toHaveLength(1);
+    expect(api.saveLocationConfig).not.toHaveBeenCalled();
+    expect(controller.getState().draft).toMatchObject({ [start]: "", [end]: "", quiet_hours_start: "00:00", quiet_hours_end: "08:00" });
+    api.getLocationConfig.mockResolvedValueOnce(locationConfig()); await controller.save();
+    expect(api.saveLocationConfig.mock.calls[0][0]).toEqual({ [start]: "", [end]: "" });
+    expect(controller.getState().dirty).toBe(false);
+  });
+  it("saves Key, position parameters and settings separately while retaining every other draft until its own save", async () => {
+    const { controller, api } = setup();
+    let server = locationConfig();
+    api.getLocationConfig.mockImplementation(async () => server);
+    api.saveLocationConfig.mockImplementation(async (patch) => {
+      const { amap_key, ...values } = patch;
+      server = { ...server, values: { ...server.values, ...values },
+        credential: amap_key ? { configured: true, masked: "••••next", secretRef: "next-ref" } : server.credential };
+    });
+    await controller.refresh();
+    controller.edit("enabled", false); controller.edit("quiet_hours_end", "09:30"); controller.edit("weekday_days", "");
+    controller.edit("home_threshold", "750"); controller.edit("poi_radius", "4000"); controller.replaceKey(" next-key ");
+    await controller.saveKey();
+    expect(api.saveLocationConfig.mock.calls[0][0]).toEqual({ amap_key: "next-key" });
+    expect(controller.getState()).toMatchObject({ dirty: true, replacementKey: "", config: { credential: { secretRef: "next-ref" } },
+      draft: { enabled: false, quiet_hours_end: "09:30", weekday_days: "", home_threshold: "750", poi_radius: "4000" } });
+    controller.replaceKey("future-key");
+    await controller.savePosition();
+    expect(api.saveLocationConfig.mock.calls[1][0]).toEqual({ home_threshold: 750, poi_radius: 4000 });
+    expect(controller.getState()).toMatchObject({ dirty: true, replacementKey: "future-key", homeAwaitingReport: locationStatus().updatedAt,
+      draft: { enabled: false, quiet_hours_end: "09:30", weekday_days: "", home_threshold: "750" } });
+    await controller.save();
+    expect(api.saveLocationConfig.mock.calls[2][0]).toEqual({ enabled: false, quiet_hours_end: "09:30", weekday_days: "" });
+    expect(controller.getState()).toMatchObject({ dirty: true, replacementKey: "future-key" });
+    controller.replaceKey(""); expect(controller.getState().dirty).toBe(false);
+    await controller.save(); await controller.savePosition(); await controller.saveKey();
+    expect(api.saveLocationConfig).toHaveBeenCalledTimes(3); expect(api.getLocationConfig).toHaveBeenCalledTimes(4);
+  });
+  it("validates only the saved section and never resets other drafts on a blank Key save", async () => {
+    const { controller, api } = setup(); await controller.refresh();
+    controller.edit("quiet_hours_end", "25:00"); controller.edit("weekday_days", "invalid"); controller.edit("home_threshold", "49");
+    controller.replaceKey(" "); await controller.saveKey();
+    expect(api.saveLocationConfig).not.toHaveBeenCalled(); expect(controller.getState().draft?.home_threshold).toBe("49");
+    controller.replaceKey("new-key"); await controller.saveKey();
+    expect(api.saveLocationConfig.mock.calls[0][0]).toEqual({ amap_key: "new-key" });
+    expect(controller.getState().draft).toMatchObject({ quiet_hours_end: "25:00", weekday_days: "invalid", home_threshold: "49" });
+    controller.edit("home_threshold", "750"); await controller.savePosition();
+    expect(api.saveLocationConfig.mock.calls[1][0]).toEqual({ home_threshold: 750 });
+    expect(controller.getState().draft?.quiet_hours_end).toBe("25:00");
+    controller.edit("quiet_hours_end", "09:30"); controller.edit("weekday_days", ""); controller.edit("home_threshold", "49");
+    await controller.save();
+    expect(api.saveLocationConfig.mock.calls[2][0]).toEqual({ quiet_hours_end: "09:30", weekday_days: "" });
+    expect(controller.getState().draft?.home_threshold).toBe("49");
+  });
+  it.each(["save", "savePosition", "saveKey"] as const)("retains all inputs after %s fails and permits a scoped retry", async (action) => {
+    const { controller, api } = setup(); await controller.refresh();
+    controller.edit("quiet_hours_end", "09:30"); controller.edit("home_threshold", "750"); controller.replaceKey("new-key");
+    const before = controller.getState();
+    api.saveLocationConfig.mockRejectedValueOnce(new LocationBusinessError()); await controller[action]();
+    expect(controller.getState()).toMatchObject({ draft: before.draft, baseline: before.baseline, replacementKey: "new-key", dirty: true, feedback: { error: true }, pending: null });
+    expect(api.getLocationConfig).toHaveBeenCalledTimes(1);
+    await controller[action]();
+    expect(api.saveLocationConfig).toHaveBeenCalledTimes(2);
+    const patch = action === "save" ? { quiet_hours_end: "09:30" } : action === "savePosition" ? { home_threshold: 750 } : { amap_key: "new-key" };
+    expect(api.saveLocationConfig.mock.calls[0][0]).toEqual(patch); expect(api.saveLocationConfig.mock.calls[1][0]).toEqual(patch);
+    expect(controller.getState().feedback?.error).toBe(false);
+  });
+  it("keeps the Key input when the acknowledgement cannot be verified through a safe config read", async () => {
+    const { controller, api } = setup(); await controller.refresh(); controller.replaceKey("new-key"); controller.edit("weekday_days", "");
+    api.getLocationConfig.mockRejectedValueOnce(new Error("offline")); await controller.saveKey();
+    expect(controller.getState()).toMatchObject({ replacementKey: "new-key", dirty: true, draft: { weekday_days: "" }, feedback: { error: true, section: "key" } });
+    await controller.saveKey(); expect(api.saveLocationConfig).toHaveBeenCalledTimes(1);
+  });
+  it("adopts canonical server values only for submitted fields and blocks cross-section duplicate saves", async () => {
+    const { controller, api } = setup(), write = deferred<void>(); await controller.refresh();
+    controller.edit("quiet_hours_end", "09:30"); controller.edit("home_threshold", "750"); controller.replaceKey("new-key");
+    api.saveLocationConfig.mockImplementationOnce(() => write.promise);
+    const saving = controller.save(); await flush();
+    await controller.saveKey(); await controller.savePosition();
+    expect(api.saveLocationConfig).toHaveBeenCalledTimes(1);
+    api.getLocationConfig.mockResolvedValueOnce(parseLocationConfig({ ...configDto, quiet_hours_end: "09:45", poi_radius: 4000 }));
+    write.resolve(); await saving;
+    expect(controller.getState()).toMatchObject({ dirty: true, replacementKey: "new-key", draft: { quiet_hours_end: "09:45", home_threshold: "750", poi_radius: "4000" } });
+  });
 });
 describe("Location explicit operations", () => {
   it("sets home with the dedicated endpoint, preserves other drafts and awaits a new report before showing distance", async () => {

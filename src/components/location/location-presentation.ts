@@ -7,6 +7,16 @@ export function locationTime(timestamp: number | null): string {
 export function locationDistance(value: number): string {
   return value >= 1000 ? `${(value / 1000).toFixed(1)} km` : `${Math.round(value)} m`;
 }
+const POI_PARENT_CATEGORIES = new Set([
+  "餐饮服务", "购物服务", "生活服务", "住宿服务", "医疗保健服务", "科教文化服务", "体育休闲服务", "交通设施服务", "金融保险服务",
+  "风景名胜", "商务住宅", "政府机构及社会团体", "公司企业", "公共设施", "地名地址信息", "道路附属设施", "汽车服务", "汽车销售", "汽车维修", "摩托车服务",
+]);
+export function locationPoiCategory(value: string | null | undefined): string {
+  const categories = [...new Set((value ?? "").split(/[;；]/).map((part) => part.trim()).filter(Boolean))];
+  // Keep broad labels when they are all we have; never infer a replacement category.
+  const specific = categories.filter((category) => !POI_PARENT_CATEGORIES.has(category));
+  return (specific.length ? specific : categories).slice(-2).join(" · ");
+}
 export function locationSummary(state: LocationState, now = Date.now()) {
   const status = state.status, config = state.config;
   const hasPosition = Boolean(status?.coordinate);

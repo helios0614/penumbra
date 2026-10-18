@@ -51,12 +51,12 @@ export function LocationPage({ state, controller, connection, reconnect, onBack 
       </div>}
       {state.configLoading && !state.config && <p role="status" className="px-1 text-sm text-muted-foreground">正在读取定位配置…</p>}
       {state.configError && <div role="alert" className="mist-glass rounded-[24px] px-4 py-3 text-sm"><p>配置读取失败，保存暂不可用。{state.configError}</p><Button type="button" variant="ghost" className="mt-1 h-11 text-xs" disabled={busy || state.configLoading} onClick={() => void controller?.refresh()}>重新读取配置</Button></div>}
-      <form noValidate className="space-y-3 sm:space-y-4" onSubmit={(event) => { event.preventDefault(); void controller?.save(); }} aria-busy={state.pending === "save"}>
-        <LocationOverview state={state} controller={controller} />
+      <LocationOverview state={state} controller={controller} />
+      <form noValidate aria-label="定位与静默配置" onSubmit={(event) => { event.preventDefault(); void controller?.save(); }} aria-busy={state.pending === "save"}>
         <LocationQuietHours state={state} controller={controller} />
-        {state.feedback && <p role={state.feedback.error ? "alert" : "status"} className={`px-1 text-xs leading-5 ${state.feedback.error ? "text-destructive" : "text-muted-strong"}`}>{state.feedback.text}</p>}
-        <LocationAdvanced state={state} controller={controller} onHome={() => setConfirmation("home")} onClear={() => setConfirmation("clear")} />
       </form>
+      {state.feedback && !state.feedback.section && <p role={state.feedback.error ? "alert" : "status"} className={`px-1 text-xs leading-5 ${state.feedback.error ? "text-destructive" : "text-muted-strong"}`}>{state.feedback.text}</p>}
+      <LocationAdvanced state={state} controller={controller} onHome={() => setConfirmation("home")} onClear={() => setConfirmation("clear")} />
       <LocationPois state={state} controller={controller} onDetail={setPoi} />
     </div>
     <LocationConfirm open={Boolean(discardAction)} title="放弃未保存的配置？" description="尚未保存的定位配置与新 Key 输入将被放弃。" action="放弃并离开" destructive busy={busy}
