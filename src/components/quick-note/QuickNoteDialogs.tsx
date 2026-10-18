@@ -75,7 +75,7 @@ export function QuickNoteBackfillDialog({ open, config, initialDate, disabled, o
           <div className="quick-note-dialog-date"><p className="mb-2 text-sm font-medium text-foreground">时段起始日期</p><QuickNoteDatePicker date={date} onChange={setDate} label="补写日期" /></div>
           <div>
             <p className="mb-2 text-sm font-medium text-foreground">截止时段</p>
-            <AppSelect value={endHour} onValueChange={setEndHour} ariaLabel="补写时段" surface="translucent" align="start" className="text-sm font-normal" options={config.hours.map((h) => ({ value: String(h), label: `${config.labels[String(h)]}（截止 ${String(h).padStart(2, "0")}:00）` }))} />
+            <AppSelect controlSize="comfortable" value={endHour} onValueChange={setEndHour} ariaLabel="补写时段" surface="translucent" align="start" className="text-sm font-normal" contentClassName="text-sm" options={config.hours.map((h) => ({ value: String(h), label: `${config.labels[String(h)]}（截止 ${String(h).padStart(2, "0")}:00）` }))} />
           </div>
           <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm leading-6 text-muted-strong">
             <input type="checkbox" checked={overwrite} onChange={(event) => setOverwrite(event.target.checked)} className="size-5 shrink-0 rounded border-border-strong accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" />重建已有完整记录（需要确认覆盖）
@@ -84,7 +84,7 @@ export function QuickNoteBackfillDialog({ open, config, initialDate, disabled, o
         </div>
         <DialogFooter>
           <Button variant="ghost" className="text-muted-strong" onClick={onClose}>取消</Button>
-          <Button className="bg-primary/90 hover:bg-primary" disabled={disabled || !valid} onClick={() => onSubmit({ date, endHour: Number(endHour), periodLabel: config.labels[endHour], overwrite })}>{overwrite ? "继续确认重建" : "提交补写"}</Button>
+          <Button disabled={disabled || !valid} onClick={() => onSubmit({ date, endHour: Number(endHour), periodLabel: config.labels[endHour], overwrite })}>{overwrite ? "继续确认重建" : "提交补写"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -105,7 +105,7 @@ export function QuickNoteRetryDialog({ open, state, controller, onClose }: {
         </div>
         <DialogFooter>
           <Button type="button" variant="ghost" className="text-muted-strong" onClick={onClose}>关闭</Button>
-          <Button type="button" variant="default" className="bg-primary/90 hover:bg-primary" disabled={state.candidatesLoading} onClick={() => void controller?.loadCandidates()}>重新读取</Button>
+          <Button type="button" variant="soft-primary" disabled={state.candidatesLoading} onClick={() => void controller?.loadCandidates()}>重新读取</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

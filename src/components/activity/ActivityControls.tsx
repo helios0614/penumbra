@@ -5,6 +5,7 @@ import { formatDate } from "@/lib/calendar-utils";
 import type { ActivityState } from "@/application/activity/activity-state";
 import type { ActivityController } from "@/application/activity/activity-controller";
 import { Button } from "@/components/ui/button";
+import { FilterChip } from "@/components/ui/selection-control";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -62,7 +63,7 @@ export function ActivityControls({ state, controller }: { readonly state: Activi
         </Popover>
       </div>
       <div role="group" aria-label="活动设备筛选" className="flex min-w-0 shrink-0 justify-end gap-0.5">
-        {([{ value: "all", label: "全部", icon: null }, { value: "pc", label: "电脑", icon: Monitor }, { value: "phone", label: "手机", icon: Smartphone }] as const).map(({ value, label, icon: Icon }) => <Button key={value} variant="ghost" aria-pressed={state.device === value} onClick={() => controller?.selectDevice(value)} className={`h-11 min-w-11 gap-1 rounded-xl px-2 text-xs ${state.device === value ? "bg-primary/12 text-primary-ink" : "text-muted-strong"}`}>{Icon && <Icon className="hidden size-3.5 sm:block" aria-hidden="true" />}{label}</Button>)}
+        {([{ value: "all", label: "全部", icon: null }, { value: "pc", label: "电脑", icon: Monitor }, { value: "phone", label: "手机", icon: Smartphone }] as const).map(({ value, label, icon: Icon }) => <FilterChip key={value} selected={state.device === value} onClick={() => controller?.selectDevice(value)}>{Icon && <Icon className="hidden size-3.5 sm:block" aria-hidden="true" />}{label}</FilterChip>)}
       </div>
     </div>
     {!open && state.dates.error && <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-destructive"><span>归档日期读取失败。</span><Button variant="ghost" className="h-11 text-xs" onClick={() => void controller?.loadDates()}>重新读取日期</Button></div>}

@@ -4,6 +4,7 @@ import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from "lucide-rea
 import { businessDate, parseDateKey, shiftDate } from "@/application/quick-note/quick-note-date";
 import type { TriggerConfig } from "@/domain/quick-note";
 import { Button } from "@/components/ui/button";
+import { SegmentedControlItem } from "@/components/ui/selection-control";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -24,7 +25,9 @@ export function QuickNoteDatePicker({ date, onChange, disabled = false, label = 
   const moveMonth = (delta: number) => setMonth(new Date(month.getFullYear(), month.getMonth() + delta, 1, 12));
   return (
     <Popover open={open} onOpenChange={(next) => { setOpen(next); if (next) setMonth(selected); }}>
-      <PopoverTrigger render={<Button variant={compact ? customSelected ? "default" : "ghost" : "outline"} className={compact ? "h-11 min-w-11 w-full gap-1 px-1" : "h-11 px-3"} disabled={disabled} aria-label={label} aria-pressed={compact ? customSelected : undefined} />}>
+      <PopoverTrigger render={compact
+        ? <SegmentedControlItem selected={customSelected} className="w-full text-sm" disabled={disabled} aria-label={label} />
+        : <Button variant="outline" size="comfortable" disabled={disabled} aria-label={label} />}>
         {compact ? <>日期<ChevronDown aria-hidden="true" className="size-3" /></> : <><CalendarDays aria-hidden="true" />{date}</>}
       </PopoverTrigger>
       <PopoverContent className="w-auto max-w-[calc(100vw-2rem)] p-2" align="start" aria-label={label}>
@@ -61,7 +64,7 @@ export function QuickNoteDateNavigation({ config, date, onChange }: {
     <nav className="mist-glass grid grid-cols-4 items-center gap-1 rounded-[24px] p-2 sm:gap-2 sm:px-4" aria-label="速记日期">
       {["今天", "昨天", "前天"].map((label, index) => {
         const key = shiftDate(today, -index);
-        return <Button key={label} variant={date === key ? "default" : "ghost"} className="h-11 min-w-11 w-full px-1" aria-pressed={date === key} onClick={() => onChange(shiftDate(businessDate(config), -index))}>{label}</Button>;
+        return <SegmentedControlItem key={label} selected={date === key} className="w-full text-sm" onClick={() => onChange(shiftDate(businessDate(config), -index))}>{label}</SegmentedControlItem>;
       })}
       <QuickNoteDatePicker date={date} onChange={onChange} compact selected={![0, 1, 2].some((offset) => date === shiftDate(today, -offset))} />
     </nav>

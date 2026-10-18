@@ -85,26 +85,22 @@ AI 角色颜色使用现有 `--color-ai` 系列及其角色色配置，可以由
 
 #### 语义色 Semantic
 
-语义色必须使用命名 token，组件中不要直接写 hex。Tailwind class 命名与 token 对齐，如 `text-success`、`bg-error-subtle`、`border-warning`。
+语义色必须使用命名 token，组件中不要直接写 hex。Tailwind class 命名与 token 对齐，如 `text-success`、`bg-destructive-subtle`、`border-warning`。错误／危险以现有 destructive 系列为规范名称；error / error-foreground / error-subtle / error-subtle-foreground 保留为对应 destructive token 的兼容别名，动态跟随主题，不另建色板。
 
 | Token | 浅色值 | 用途 |
 |---|---|---|
 | `--color-success` | `#22c55e` | 操作成功、在线状态 |
-| `--color-success-foreground` | `#ffffff` | 成功色上的文字/图标 |
+| `--color-success-foreground` | `#166534` | 成功浅底上的可读文字 |
 | `--color-success-subtle` | `#f0fdf4` | 成功提示条浅底 |
-| `--color-success-subtle-foreground` | `#166534` | 成功浅底上的文字 |
 | `--color-warning` | `#f59e0b` | 闹铃、即将过期 |
-| `--color-warning-foreground` | `#ffffff` | 警告色上的文字/图标 |
+| `--color-warning-foreground` | `#92400e` | 警告浅底上的可读文字 |
 | `--color-warning-subtle` | `#fffbeb` | 警告提示条浅底 |
-| `--color-warning-subtle-foreground` | `#92400e` | 警告浅底上的文字 |
-| `--color-error` | `#ef4444` | 删除、致命错误 |
-| `--color-error-foreground` | `#ffffff` | 错误色上的文字/图标 |
-| `--color-error-subtle` | `#fef2f2` | 错误提示条浅底 |
-| `--color-error-subtle-foreground` | `#991b1b` | 错误浅底上的文字 |
+| `--color-destructive` | `#ef4444` | 删除、错误强调；error 的兼容目标 |
+| `--color-destructive-foreground` | `#991b1b` | 错误浅底上的可读文字；error-foreground / error-subtle-foreground 的兼容目标 |
+| `--color-destructive-subtle` | `#fef2f2` | 错误提示条浅底；error-subtle 的兼容目标 |
 | `--color-info` | `#3b82f6` | 提示、帮助 |
-| `--color-info-foreground` | `#ffffff` | 信息色上的文字/图标 |
+| `--color-info-foreground` | `#1e40af` | 信息浅底上的可读文字 |
 | `--color-info-subtle` | `#eff6ff` | 信息提示条浅底 |
-| `--color-info-subtle-foreground` | `#1e40af` | 信息浅底上的文字 |
 
 ### 1.2 深色主题
 
@@ -133,13 +129,13 @@ AI 角色颜色使用现有 `--color-ai` 系列及其角色色配置，可以由
 | Token | 深色值 |
 |---|---|
 | `--color-success-subtle` | `rgba(34, 197, 94, 0.12)` |
-| `--color-success-subtle-foreground` | `#86efac` |
-| `--color-warning-subtle` | `rgba(245, 158, 11, 0.14)` |
-| `--color-warning-subtle-foreground` | `#fcd34d` |
-| `--color-error-subtle` | `rgba(239, 68, 68, 0.14)` |
-| `--color-error-subtle-foreground` | `#fca5a5` |
-| `--color-info-subtle` | `rgba(59, 130, 246, 0.14)` |
-| `--color-info-subtle-foreground` | `#93c5fd` |
+| `--color-success-foreground` | `#86efac` |
+| `--color-warning-subtle` | `rgba(245, 158, 11, 0.12)` |
+| `--color-warning-foreground` | `#fbbf24` |
+| `--color-destructive-subtle`（及 error-subtle） | `rgba(239, 68, 68, 0.12)` |
+| `--color-destructive-foreground`（及 error 前景别名） | `#fca5a5` |
+| `--color-info-subtle` | `rgba(59, 130, 246, 0.12)` |
+| `--color-info-foreground` | `#93c5fd` |
 
 ---
 
@@ -291,18 +287,19 @@ font-variant-numeric: normal;
 | Token | 范围 | 推荐值 | Tailwind | 适用 |
 |---|---|---|---|---|
 | `--radius-sm` | 8-10px | `8px` | `rounded-sm` | 按钮、标签、输入框 |
-| `--radius-md` | 12-14px | `12px` | `rounded-md` | 卡片、下拉菜单、列表项 |
+| `--radius-md` | 现有计算值 | `9.6px`（radius × 0.8） | `rounded-md` | 旧组件兼容 |
+| `--radius-control` | 控件语义 | `12px` | `rounded-[var(--radius-control)]` | 基础按钮、输入、选择控件 |
 | `--radius-lg` | 16-20px | `16px` | `rounded-lg` | 弹窗、大容器、图片 |
 | `--radius-full` | — | `9999px` | `rounded-full` | 头像、Badge、胶囊按钮 |
 
 层次原则：
-- 小元素（按钮、标签、输入框）通常优先 `--radius-sm`（推荐 8px），体现紧凑感
-- 中等元素（卡片、面板）通常优先 `--radius-md`（推荐 12px），体现舒适感
+- 小标签及旧紧凑工具通常可用 `--radius-sm`（8px）；常规交互控件使用下述控件语义
+- 基础控件优先 `--radius-control`（12px）；不要把旧 `rounded-md` 或 `rounded-xl` 当成 12px
 - 大元素（弹窗、全屏容器）通常优先 `--radius-lg`（推荐 16px），体现留白感
 - 大型 page shell、主要 section 与玻璃外壳可根据现有成熟页面的视觉关系适当使用更大的圆角
 - 嵌套圆角应具有清晰层级关系，避免随机跳变；内层通常应不大于外层的视觉半径
 
-shadcn/ui 的 `--radius` 默认值设为 `12px`（对应 `--radius-md`），组件默认走这个值。
+`--radius` 基值为 12px；旧 `--radius-md` 为基值 × 0.8（9.6px），`--radius-xl` 为基值 × 1.4（16.8px）。保留这些既有计算关系，控件通过语义 token 收敛，不修改全局圆角体系。
 
 ### 4.2 晨雾表面系统（Mist Surface）
 
@@ -385,22 +382,26 @@ shadcn/ui 的 `--radius` 默认值设为 `12px`（对应 `--radius-md`），组�
 |---|---|
 | Default | 背景 `--color-primary`，文字 `--color-primary-foreground` |
 | Hover | 背景切换到 `--color-primary-hover`，`cursor: pointer` |
-| Active | 背景切换到 `--color-primary-active`，轻微 `scale-[0.98]` |
-| Focus | 键盘导航时显示 `focus-visible` 外轮廓，可叠加 `--shadow-glow` |
+| Active | 背景切换到 `--color-primary-active`，不强制位移／缩放 |
+| Focus | 使用 ring token 的 `focus-visible` 2px / 20% 外环；不叠加全局 outline 或固定颜色 glow |
 | Disabled | `opacity-50`，`cursor-not-allowed`，`pointer-events-none` |
-| Loading | 文字替换为 spinner，按钮保持原尺寸不变 |
+| Loading | 设置 aria-busy 并禁用点击；可用 Button loading 在保留标签布局后展示 spinner，或保留已有“保存中…”文案 |
 
 次要按钮（variant="secondary"）同理，颜色走 `--color-secondary` 系列。
+
+`soft-primary` 用于查询／重新读取：浅主题底、primary-ink 文字，Hover / Active 保持柔和主题强调。ghost、outline、destructive 分别表示轻工具、中性描边与危险操作，不混用业务语义。
+
+控件可见尺寸不等于交互目标尺寸；Penumbra 不要求所有移动端控件视觉高度达到 44px。Button 使用 compact / default / lg / comfortable（最小 32 / 36 / 40 / 44px）；输入和 AppSelect 使用 controlSize（32 / 40 / 44px），多行 Textarea 只按此属性调整内边距。文字控件应自然增高以容纳字体放大；旧 xs / sm / icon 紧凑工具栏保留。FilterChip 与 SegmentedControlItem 的约 36px 表面位于各自 min 44px 的目标内，不扩大或重叠热区。具体组合与例外见 ui-patterns。
 
 ### 5.2 输入框
 
 | 状态 | 视觉变化 |
 |---|---|
-| Default | 背景 `--color-surface-secondary`，边框 `--color-border` |
-| Hover | 边框颜色不变，`cursor: text` |
-| Focus | 边框切换到 `--color-primary`，外发光 `--shadow-glow` |
+| Default | solid / translucent 表面；常规默认 min 40px，保留已有表单的显式密度 |
+| Hover | translucent 表面适度提亮，`cursor: text` |
+| Focus | ring token 的克制边框与 2px / 20% 外环，不叠加固定颜色 glow |
 | Disabled | `opacity-50`，背景变浅，`cursor-not-allowed` |
-| Error | 边框切换到 `--color-error`，下方显示错误文字 |
+| Error | aria-invalid 使用 destructive 边框及浅外环，下方保留字段错误文字 |
 
 ### 5.3 卡片
 
@@ -483,7 +484,7 @@ UI 默认满足键盘、触屏和低动效用户的基本需求：
 - 文字与背景对比度至少达到 WCAG AA：正文 4.5:1，大号文字与图标按钮 3:1。
 - 半透明表面上的主题色小字通过 `primary-ink` 以 5.5:1 为派生目标，给壁纸透色预留对比度余量。
 - `muted-foreground` 仍是正常可读文字，不得降级为装饰灰；真正的禁用状态再单独使用透明度。
-- 触屏可点击目标不小于 `44px × 44px`；视觉上较小的图标按钮也要通过 padding 扩大命中区域。
+- 主要独立触屏操作优先保留 `44px × 44px` 有效目标；可见表面可较小。紧凑工具栏、列表与密集选择按明确尺寸语义保留密度和间距，不把所有视觉控件统一增高；扩大的命中区域必须占据独立布局空间，不能与相邻目标重叠。
 - 交互元素必须可键盘访问，`Tab` 顺序与视觉顺序一致，焦点不能被弹窗或侧栏吞掉。
 - 图标按钮必须提供 `aria-label`；只有视觉 tooltip 不算可访问名称。
 - 展开/折叠、侧栏、弹窗等状态变化要同步 `aria-expanded`、`aria-controls`、`aria-modal` 等语义。

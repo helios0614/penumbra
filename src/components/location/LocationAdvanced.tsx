@@ -38,7 +38,7 @@ export function LocationAdvanced({ state, controller, onHome, onClear }: {
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Button type="button" variant="ghost" className="h-auto min-h-11 gap-1.5 whitespace-normal rounded-xl p-0 text-xs" disabled={disabled || !state.status?.coordinate} onClick={onHome}><MapPin aria-hidden="true" />使用最近上报位置设为家</Button>
-          <Button type="submit" className="ml-auto h-11 gap-2 rounded-xl px-4" disabled={disabled || !dirty}><Save aria-hidden="true" />{state.pending === "save-position" ? "保存中…" : "保存位置参数"}</Button>
+          <Button type="submit" size="comfortable" aria-busy={state.pending === "save-position"} className="ml-auto gap-2" disabled={disabled || !dirty}><Save aria-hidden="true" />{state.pending === "save-position" ? "保存中…" : "保存位置参数"}</Button>
         </div>
         {!state.status?.coordinate && <p className="mt-2 text-xs text-muted-foreground">暂无可用于设家的定位记录。</p>}
         <LocationSaveError state={state} section="position" />

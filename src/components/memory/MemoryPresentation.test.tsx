@@ -382,18 +382,16 @@ describe("memory presentation", () => {
     expect(selectTrigger).toContain("hover:bg-background/45");
     expect(selectTrigger).not.toContain("w-full");
     expect(dateButtons).toHaveLength(4);
-    expect(dateButtons[0]).toContain("border-primary/45");
-    expect(dateButtons[0]).toContain("bg-primary/12");
+    expect(dateButtons[0]).toContain('aria-pressed="true"');
+    expect(html).toContain("border-primary/45 bg-primary/12 text-primary-ink");
     for (const control of [...dateButtons.slice(1), pinFirstButton]) {
-      expect(control).toContain("border-border-strong/25");
-      expect(control).toContain("bg-background/10");
-      expect(control).toContain("text-muted-strong");
-      expect(control).toContain("hover:bg-background/45");
+      expect(control).toContain('aria-pressed="false"');
+      expect(control).toContain('data-selection="filter"');
     }
     for (const control of [searchInput, selectTrigger, ...dateButtons, pinFirstButton]) {
       expect(control).toContain("h-11");
       expect(control).toContain("min-h-11");
-      expect(control).toMatch(/(?:min-w-11|min-w-28)/);
+      expect(control).toMatch(/(?:min-w-11|min-w-16|min-w-28)/);
       expect(control).toContain("text-xs");
       expect(control).toContain("leading-5");
       expect(control).toContain("focus-visible:outline-none!");
@@ -411,7 +409,8 @@ describe("memory presentation", () => {
     expect(primaryRow).toContain('aria-label="搜索与重要度"');
     expect(secondaryRow).toContain("flex");
     expect(secondaryRow).toContain('aria-label="时间与置顶排序"');
-    expect(timeFilters).toContain("min-w-0");
+    expect(timeFilters).toContain("min-w-[min(100%,13rem)]");
+    expect(timeFilters).toContain("flex-wrap");
     expect(timeFilters).toContain("flex-1");
     expect(timeFilters).not.toContain("overflow-x-auto");
     expect(timeFilters).not.toContain("overscroll");

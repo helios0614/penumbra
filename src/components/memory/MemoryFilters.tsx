@@ -6,6 +6,7 @@ import type {
 } from "@/application/memory-list";
 import { AppSelect } from "@/components/ui/app-select";
 import { Input } from "@/components/ui/input";
+import { FilterChip } from "@/components/ui/selection-control";
 import { cn } from "@/lib/utils";
 
 const DATE_FILTERS: ReadonlyArray<{ value: MemoryDateFilter; label: string }> = [
@@ -71,12 +72,13 @@ export function MemoryFilters({
           <Input
             type="search"
             surface="translucent"
+            controlSize="comfortable"
             value={searchInput}
             onChange={(event) => onSearchChange(event.target.value)}
             maxLength={200}
             placeholder="搜索被留下来的片段"
             className={cn(
-              "h-11 min-h-11 w-full min-w-11 rounded-xl py-0 pl-11 text-xs font-medium leading-5 shadow-none placeholder:font-normal md:text-xs",
+              "w-full min-w-11 rounded-xl py-0 pl-11 text-xs font-medium leading-5 shadow-none placeholder:font-normal md:text-xs",
               "[&::-webkit-search-cancel-button]:hidden",
               searchInput ? "pr-11" : loading ? "pr-10" : "pr-4",
             )}
@@ -103,6 +105,7 @@ export function MemoryFilters({
           <AppSelect
             value={importance}
             surface="translucent"
+            controlSize="comfortable"
             options={IMPORTANCE_FILTERS}
             onValueChange={onImportanceChange}
             ariaLabel="按重要度筛选"
@@ -112,54 +115,41 @@ export function MemoryFilters({
       </div>
 
       <div
-        className="flex min-w-0 items-center gap-1"
+        className="flex min-w-0 flex-wrap items-center gap-1"
         role="group"
         aria-label="时间与置顶排序"
         data-memory-filter-row="time-pin"
       >
         <div
-          className="flex min-w-0 flex-1 gap-1"
+          className="flex min-w-[min(100%,13rem)] flex-1 basis-52 flex-wrap gap-1"
           aria-label="时间范围"
           data-memory-time-filters="true"
         >
           {DATE_FILTERS.map((option) => {
             const active = date === option.value;
             return (
-              <button
+              <FilterChip
                 key={option.value}
                 type="button"
                 onClick={() => onDateChange(option.value)}
-                aria-pressed={active}
+                selected={active}
                 data-memory-date-filter={option.value}
-                className={cn(
-                  "h-11 min-h-11 min-w-11 flex-1 whitespace-nowrap rounded-xl border px-1 text-xs font-medium leading-5 transition-colors sm:px-2.5",
-                  FILTER_FOCUS_CLASSES,
-                  active
-                    ? "border-primary/45 bg-primary/12 text-primary-ink"
-                    : "border-border-strong/25 bg-background/10 text-muted-strong hover:bg-background/45",
-                )}
+                className={cn("flex-1", option.value === "all" && "min-w-16 grow-[1.35]")}
               >
                 {option.label}
-              </button>
+              </FilterChip>
             );
           })}
         </div>
 
-        <button
+        <FilterChip
           type="button"
           onClick={() => onPinFirstChange(!pinFirst)}
-          aria-pressed={pinFirst}
-          className={cn(
-            "h-11 min-h-11 min-w-11 shrink-0 whitespace-nowrap rounded-xl border px-2 text-xs font-medium leading-5 transition-colors sm:px-3",
-            FILTER_FOCUS_CLASSES,
-            pinFirst
-              ? "border-primary/45 bg-primary/12 text-primary-ink"
-              : "border-border-strong/25 bg-background/10 text-muted-strong hover:bg-background/45",
-          )}
+          selected={pinFirst}
           data-memory-pin-first-filter="true"
         >
           钉选优先
-        </button>
+        </FilterChip>
       </div>
     </section>
   );

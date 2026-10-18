@@ -47,8 +47,8 @@ describe("AppSelect", () => {
     expect(html).toContain('data-surface="translucent"');
     expect(html).toContain("border-border-strong/50");
     expect(html).toContain("bg-background/25");
-    expect(html).toContain("h-11");
-    expect(html).toContain("min-h-11");
+    expect(html).toContain("h-auto");
+    expect(html).toContain("min-h-10");
     expect(html).toContain("text-xs");
     expect(html).toContain("leading-5");
     expect(html).toContain("shadow-none");

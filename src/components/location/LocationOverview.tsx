@@ -1,7 +1,7 @@
 import { Clock3, CloudSun, Home, MapPin, Navigation } from "lucide-react";
 import type { LocationController } from "@/application/location/location-controller";
 import type { LocationState } from "@/application/location/location-state";
-import { LocationSwitch } from "./LocationControls";
+import { Switch } from "@/components/ui/switch";
 import { locationDistance, locationSummary, locationTime } from "./location-presentation";
 
 export function LocationOverview({ state, controller }: { readonly state: LocationState; readonly controller: LocationController | null }) {
@@ -17,7 +17,11 @@ export function LocationOverview({ state, controller }: { readonly state: Locati
   return <section className="mist-glass-strong rounded-[24px] px-4 py-4 sm:px-6" aria-labelledby="location-overview-title" aria-busy={state.statusLoading}>
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
       <h2 id="location-overview-title" className="flex items-center gap-2 text-base font-semibold"><MapPin className="size-4 text-primary" aria-hidden="true" />最近位置</h2>
-      <LocationSwitch label="启用定位" checked={state.draft?.enabled ?? false} disabled={disabled} onChange={(value) => controller?.edit("enabled", value)} />
+      <div className="flex min-h-11 shrink-0 items-center gap-2.5">
+        <label id="location-enabled-label" htmlFor="location-enabled" className="text-xs font-medium text-muted-strong">启用定位</label>
+        <Switch id="location-enabled" aria-labelledby="location-enabled-label" checked={state.draft?.enabled ?? false} busy={state.pending === "save"}
+          disabled={disabled} onCheckedChange={(value) => controller?.edit("enabled", value)} />
+      </div>
     </div>
     <div className="mt-2 flex items-start gap-3">
       <Home className="mt-1 size-5 shrink-0 text-muted-strong" aria-hidden="true" />

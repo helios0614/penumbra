@@ -14,7 +14,34 @@
 - 长内容阅读弹框保留固定 Header，只让正文滚动；没有实际底部操作时不添加 Footer。破坏性确认继续使用 AlertDialog、取消及 destructive action；极短视口可让确认说明滚动，按钮留在滚动区外。
 - 涉及软键盘的密集编辑可参考 Quick Note 的 `visualViewport` 局部适配；这是编辑器的现有处理，不要求所有普通阅读弹框复制整套逻辑。
 
-截至 Activity V1.3，仓库尚无成熟的共享 Switch 或 Toast / Notification 组件。设置开关可以用原生 button 的键盘行为、`role="switch"` 和受控 `aria-checked` 做 feature 局部呈现，并保留禁用、保存中、读写失败恢复。设计文档中的 Toast z-index 仅是层级预留，不代表已有通知设施；不要据此为单页扩展全局通知系统。
+UI Foundation PR1 已提供公共 `Switch`（见下文），替代 Activity 和 Location 的局部轨道实现。仓库仍无共享 Toast / Notification 设施；设计文档中的 Toast z-index 仅是层级预留，不代表已有通知设施，不应为单页扩展全局通知系统。
+
+## 基础控件：密度、状态与组合
+
+控件可见尺寸不等于交互目标尺寸；Penumbra 不要求所有移动端控件视觉高度达到 44px。避免把已经验收的紧凑工具栏和列表操作统一增高。目标之间不得重叠；默认不添加超出布局盒的隐形点击区。
+
+| 控件 | 紧凑 | 常规默认 | 宽松／主要操作 |
+|---|---|---|---|
+| Button `size` | `compact`：min 32px | `default`：min 36px | `lg`：min 40px；`comfortable`：min 44px |
+| Input / AppSelect `controlSize` | `compact`：min 32px，仅紧凑组合 | `default`：min 40px | `comfortable`：min 44px |
+| AppSelect 选项 | min 36px，可换行 | min 36px，可换行 | comfortable：min 44px |
+| Textarea `controlSize` | 较小内边距 | 常规内边距 | 较宽松内边距，不强设单行高度 |
+| FilterChip / SegmentedControlItem | 约 36px 可见表面 | min 44px 的布局／点击区域 | 文字换行时自然增高 |
+| Switch | 44×24px 轨道，18px thumb | 44×44px 点击区域 | busy 不扩大轨道 |
+
+Button 旧 `xs` / `sm`（min 24 / 28px）及 icon 24 / 28 / 32 / 36px 保持兼容，供 Chat 工具栏、日历等密集组合使用；这不是常规表单默认，也不表示这些旧目标已完成触屏验收。PageHeaderAction 与成熟弹框关闭按钮保留现有 44px。Memory 搜索／重要度与已验收的 Memory、Wi-Fi、Quick Note 表单显式选择 comfortable；Location 普通输入及查询采用 40px，主要保存仍为 44px。
+
+按钮配色由 variant 承担，不在 feature 内重复 `bg-primary/90 hover:bg-primary`：主操作用 default，查询和重新读取可用 soft-primary，轻工具用 ghost，中性描边用 outline，危险操作用 destructive。主色状态引用 primary / primary-hover / primary-active；浅主题色文字引用 primary-ink。secondary 的 Hover 引用真实的 color-secondary-hover，不引入第二套主题变量。
+
+`Button loading` 是可选的基础状态：禁用点击、设置 aria-busy，在保留标签布局的同时显示居中 spinner；传入稳定的操作标签，避免 loading 时额外改变文字宽度。已有业务的“保存中…”文案及 aria-busy 可以继续使用。Focus 使用 ring token 的克制外环，Disabled 明确降权，非必要过渡和 spinner 响应 Reduced Motion。
+
+FilterChip 和 SegmentedControlItem 接收 `selected`、标准按钮属性及回调，不管理筛选状态或路由。FilterChip 选中为轻主题底与描边，Hover 进一步强调，不回退到 ghost 中性色。SegmentedControlItem 选中为实心主题色；Quick Note 保留四列等宽，日期项继续组合现有 Popover。样式表面在 button 内部，点击目标不向邻居扩张。
+
+AppSelect 的触发器可收缩，长选中值截断并保留完整名称；下拉宽度受可用视口约束，选项完整换行（包含长连续字符串），选中与键盘 highlighted 状态可区分。筛选默认 12px；表单通过 className 与 contentClassName 同时选择 text-sm，选项继承 popup 字号，避免触发器 14px、选项却固定 12px。可禁用单个选项；回调只转发当前存在、未禁用的选项。不要借 className 再强加同一套固定高度。
+
+Switch 使用 `checked` / `onCheckedChange`，`disabled` 或 `busy` 时阻止切换；busy 同步 aria-busy 并在 thumb 内显示小型等待标记。消费者必须提供 aria-label 或 aria-labelledby；可见文字通过 label 的 htmlFor 关联同一 id。Activity 权限保持服务端确认后更新，Location 定位／静默保持编辑草稿并由保存按钮统一提交；公共控件不请求 API、不缓存或推测保存成功。
+
+基础圆角使用 `--radius-control: 12px`，不改旧 radius-md / radius-xl 的计算关系；局部已验收的圆角仍可保留。`error` 系列是 destructive 的兼容别名，保留 Memory 等既有调用，并跟随明暗主题，不进行大范围变量重命名。
 
 ## Backdrop / Glass Pitfalls
 

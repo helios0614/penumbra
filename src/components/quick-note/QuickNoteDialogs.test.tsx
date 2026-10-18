@@ -223,8 +223,7 @@ describe("Quick Note form and confirmation callbacks", () => {
     expect(elements(footer).filter((child) => child.type === Button).map((child) => child.props.children)).toEqual(["关闭", "重新读取"]);
     expect(button(footer, "关闭").props.variant).toBe("ghost");
     const refresh = button(footer, "重新读取");
-    expect(refresh.props.variant).toBe("default");
-    expect(refresh.props.className).toContain("bg-primary/90");
+    expect(refresh.props.variant).toBe("soft-primary");
     expect(refresh.props.type).toBe("button");
     refresh.props.onClick?.({} as never);
     expect(calls.loadCandidates).toHaveBeenCalledOnce();

@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/select";
 import type { SelectTriggerSurface } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import type { ControlSize } from "./control-styles";
 
 export interface AppSelectOption<TValue extends string> {
   readonly value: TValue;
@@ -24,6 +25,7 @@ export function AppSelect<TValue extends string>({
   ariaLabel,
   disabled,
   surface = "solid",
+  controlSize = "default",
   className,
   contentClassName,
   align = "end",
@@ -35,6 +37,7 @@ export function AppSelect<TValue extends string>({
   readonly ariaLabel: string;
   readonly disabled?: boolean;
   readonly surface?: SelectTriggerSurface;
+  readonly controlSize?: ControlSize;
   readonly className?: string;
   readonly contentClassName?: string;
   readonly align?: "start" | "center" | "end";
@@ -45,30 +48,31 @@ export function AppSelect<TValue extends string>({
     <Select
       value={value}
       onValueChange={(nextValue) => {
-        if (nextValue) onValueChange(nextValue as TValue);
+        if (!disabled && options.some((option) => option.value === nextValue && !option.disabled)) onValueChange(nextValue as TValue);
       }}
       disabled={disabled}
     >
       <SelectTrigger
         aria-label={ariaLabel}
         surface={surface}
+        controlSize={controlSize}
         className={cn(
-          "h-11 min-h-11 w-full rounded-xl px-2.5 py-0 text-xs font-medium leading-5 text-muted-strong hover:text-foreground focus-visible:border-ring/55 focus-visible:outline-none! focus-visible:ring-2 focus-visible:ring-ring/20 aria-expanded:text-foreground data-[size=default]:h-11",
+          "w-full px-2.5 text-xs font-medium leading-5 text-muted-strong hover:text-foreground aria-expanded:text-foreground",
           surface === "solid"
             ? "hover:bg-muted aria-expanded:bg-muted dark:hover:bg-input/50"
             : "shadow-none hover:border-border-strong/70 hover:bg-background/45 aria-expanded:bg-background/45",
           className,
         )}
       >
-        <SelectValue placeholder={placeholder}>{selected?.label}</SelectValue>
+        <SelectValue placeholder={placeholder}>{selected && <span className="min-w-0 truncate" title={typeof selected.label === "string" ? selected.label : undefined}>{selected.label}</span>}</SelectValue>
       </SelectTrigger>
-      <SelectContent align={align} className={cn("rounded-xl p-1", contentClassName)}>
+      <SelectContent align={align} className={cn("rounded-xl p-1 text-xs", contentClassName)}>
         {options.map((option) => (
           <SelectItem
             key={option.value}
             value={option.value}
             disabled={option.disabled}
-            className="min-h-9 rounded-lg px-2.5 pr-8 text-xs data-selected:bg-primary/12 data-selected:text-primary-ink"
+            className={cn("rounded-lg px-2.5 pr-8 py-2 text-[length:inherit] leading-5", controlSize === "comfortable" ? "min-h-11" : "min-h-9")}
           >
             {option.label}
           </SelectItem>

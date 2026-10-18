@@ -169,7 +169,9 @@ describe("Quick Note page presentation", () => {
     expect(html).toContain("grid-cols-4");
     expect(html).not.toMatch(/flex-wrap|overflow-x-auto|type="date"/);
     expect((html.match(/<button\b/g) ?? []).length).toBe(4);
-    expect((html.match(/h-11 min-w-11 w-full/g) ?? []).length).toBe(4);
+    expect((html.match(/data-selection="segment"/g) ?? []).length).toBe(4);
+    expect((html.match(/min-h-11 min-w-11/g) ?? []).length).toBe(4);
+    expect((html.match(/data-slot="selection-surface"/g) ?? []).length).toBe(4);
   });
 
   it("uses saved previews only, with no summary/actions or configured empty periods", () => {

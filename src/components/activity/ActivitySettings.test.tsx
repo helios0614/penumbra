@@ -7,6 +7,7 @@ import { ApiError } from "@/lib/api";
 import { createActivityController, type ActivityController } from "@/application/activity/activity-controller";
 import { INITIAL_ACTIVITY_STATE, type ActivityState } from "@/application/activity/activity-state";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { AppSelect } from "@/components/ui/app-select";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -34,7 +35,8 @@ function find<T extends React.ElementType>(node: React.ReactNode, type: T) {
 }
 function switchButton(state: ActivityState, controller: ActivityController | null) {
   const tree = PhoneStatusPanel({ state, controller });
-  return elements(tree).find((element) => element.type === Button && element.props.role === "switch") as React.ReactElement<React.ComponentProps<typeof Button>>;
+  const toggle = find(tree, Switch);
+  return Switch(toggle.props);
 }
 function networkSession(controller: ActivityController, initial = loaded) {
   let state = initial, cursor = 0;
@@ -70,7 +72,7 @@ describe("Activity phone permission setting", () => {
   it.each([true, false])("uses a controlled, keyboard-native button switch for %s", (visible) => {
     const setVisibility = vi.fn(), controller = { setVisibility } as unknown as ActivityController;
     const toggle = switchButton({ ...loaded, visibility: { data: visible, loading: false, error: null } }, controller);
-    expect(toggle.props).toMatchObject({ type: "button", role: "switch", "aria-label": "允许 AI 查看手机状态", "aria-checked": visible, disabled: false });
+    expect(toggle.props).toMatchObject({ type: "button", role: "switch", "aria-labelledby": "activity-visibility-label", "aria-checked": visible, disabled: false });
     expect(toggle.props.className).toContain("h-11 w-11");
     toggle.props.onClick?.({} as never); expect(setVisibility).toHaveBeenCalledWith(!visible);
     const html = renderToStaticMarkup(toggle);

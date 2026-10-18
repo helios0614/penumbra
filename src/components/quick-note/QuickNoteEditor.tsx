@@ -38,7 +38,7 @@ export function QuickNoteEditor({ editor, busy, controller }: {
             {editor?.conflict && <Button variant="destructive" disabled={busy} onClick={() => setConfirm("overwrite")}>用草稿覆盖最新正文…</Button>}
             <Button variant="ghost" className="text-muted-strong" disabled={busy} onClick={close}>取消编辑</Button>
             {editor?.uncertain && <Button variant="outline" disabled={busy} onClick={() => void controller?.verifyEditor()}>核对保存结果</Button>}
-            <Button className="bg-primary/90 hover:bg-primary" disabled={busy || !editor || editor.uncertain || Boolean(editor.conflict)} onClick={() => void controller?.saveEditor()}>{busy ? "正在处理…" : "保存正文"}</Button>
+            <Button aria-busy={busy} disabled={busy || !editor || editor.uncertain || Boolean(editor.conflict)} onClick={() => void controller?.saveEditor()}>{busy ? "正在处理…" : "保存正文"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

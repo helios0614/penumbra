@@ -30,7 +30,7 @@ export function LocationCredentials({ state, controller, onClear }: {
           await navigator.clipboard.writeText(value);
         })}><Copy aria-hidden="true" />复制</Button>
       <Button type="button" variant="ghost" className="h-11 gap-1 rounded-xl px-1 text-xs text-destructive" disabled={unavailable} onClick={onClear}><Trash2 aria-hidden="true" />清除 Key</Button>
-      <Button type="submit" className="ml-auto h-11 gap-2 rounded-xl px-4" disabled={disabled || !dirty}><Save aria-hidden="true" />{state.pending === "save-key" ? "保存中…" : "保存 Key"}</Button>
+      <Button type="submit" size="comfortable" aria-busy={state.pending === "save-key"} className="ml-auto gap-2" disabled={disabled || !dirty}><Save aria-hidden="true" />{state.pending === "save-key" ? "保存中…" : "保存 Key"}</Button>
     </div>
     <LocationSaveError state={state} section="key" />
     {state.revealedKey !== null && <div className="mt-3 rounded-xl border border-border-strong/40 bg-background/25 px-3 py-2">

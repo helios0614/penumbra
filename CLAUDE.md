@@ -13,7 +13,7 @@ UI 开发的通用入口是 `docs/ui-development.md`，适用于人类开发者�
 - Tailwind class 优先，禁止无理由使用 `style={{}}`
 - 组件化拆分，一个文件不超过 300 行
 - 主色只从 `--color-theme` 派生，语义色使用命名 token，不在组件里硬编码 hex
-- UI 必须满足基础可访问性：键盘可用、图标按钮有 `aria-label`、触屏目标不小于 44px
+- UI 必须满足基础可访问性：键盘可用、图标按钮有 `aria-label`；控件可见尺寸与交互目标分开，主要触控目标优先 44px，紧凑组合按 `docs/ui-patterns.md` 保留密度且目标不得重叠
 
 ## 页面重构参考
 

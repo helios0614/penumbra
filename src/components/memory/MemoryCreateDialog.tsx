@@ -212,6 +212,7 @@ export function MemoryCreateDialog({
                   类型
                 </label>
                 <AppSelect
+                  controlSize="comfortable"
                   value={type}
                   options={MEMORY_TYPE_OPTIONS}
                   onValueChange={setType}
@@ -232,13 +233,14 @@ export function MemoryCreateDialog({
                   关键词
                 </label>
                 <Input
+                  controlSize="comfortable"
                   id="memory-create-keywords"
                   value={keywordText}
                   onChange={(event) => setKeywordText(event.target.value)}
                   disabled={isCreating}
                   surface="translucent"
                   placeholder="输入关键词，用逗号分隔"
-                  className="h-11 rounded-xl px-3 shadow-none"
+                  className="rounded-xl px-3 shadow-none"
                 />
               </div>
             </div>
@@ -261,18 +263,21 @@ export function MemoryCreateDialog({
             )}
             <div className="flex items-center justify-end gap-2">
               <Button
+                size="comfortable"
                 type="button"
                 variant="ghost"
                 disabled={isCreating}
                 onClick={() => requestOpenChange(false)}
-                className="h-11 rounded-xl px-4 text-muted-strong hover:bg-background/45 hover:text-foreground"
+                className="text-muted-strong"
               >
                 取消
               </Button>
               <Button
+                size="comfortable"
                 type="submit"
                 disabled={isCreating || !content.trim()}
-                className="h-11 min-w-24 rounded-xl bg-primary/90 px-4 text-primary-foreground hover:bg-primary"
+                aria-busy={isCreating}
+                className="min-w-24"
               >
                 {isCreating ? "保存中…" : "保存记忆"}
               </Button>

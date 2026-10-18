@@ -130,6 +130,12 @@
   --color-destructive-subtle: #fef2f2;
   --color-info-subtle: #eff6ff;
 
+  /* Compatibility names: existing error consumers follow the same live theme. */
+  --color-error: var(--color-destructive);
+  --color-error-foreground: var(--color-destructive-foreground);
+  --color-error-subtle: var(--color-destructive-subtle);
+  --color-error-subtle-foreground: var(--color-destructive-foreground);
+
   /* ── 扩展色板（薰衣草 / 琥珀 / 玫瑰） ── */
   --color-lavender: #8b6bc4;
   --color-lavender-foreground: #5b21b6;
@@ -148,6 +154,7 @@
 
   /* ── 圆角 ── */
   --radius: 12px;
+  --radius-control: 12px;
   --radius-sm: 8px;
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: 16px;
@@ -954,6 +961,23 @@
 }
 
 /* ── focus ring ── */
+/* Scoped controls must also override the unlayered universal transition above. */
+@media (prefers-reduced-motion: reduce) {
+  [class~="group/button"],
+  [data-slot="input"],
+  [data-slot="textarea"],
+  [data-slot="select-trigger"],
+  [data-slot="select-content"],
+  [data-slot="select-content"] *,
+  [data-slot="selection-surface"],
+  [data-slot="switch"],
+  [data-slot="switch"] *,
+  [data-loading="true"] * {
+    transition: none;
+    animation: none;
+  }
+}
+
 :focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;

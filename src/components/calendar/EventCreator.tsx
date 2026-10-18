@@ -56,6 +56,7 @@ export default function EventCreator({ date, onSubmit, className }: EventCreator
   return (
     <div className={cn("flex flex-col gap-2 p-3 rounded-md bg-surface-secondary/50", className)}>
       <Input
+        controlSize="compact"
         ref={inputRef}
         placeholder="日程标题"
         value={title}
@@ -70,6 +71,7 @@ export default function EventCreator({ date, onSubmit, className }: EventCreator
         <div className="relative flex-1">
           <Clock className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-strong" />
           <Input
+            controlSize="compact"
             type="time"
             value={time}
             onChange={(e) => setTime(e.target.value)}

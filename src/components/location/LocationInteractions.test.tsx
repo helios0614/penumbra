@@ -12,6 +12,8 @@ import { LocationCredentials } from "./LocationCredentials";
 import { LocationQuietHours } from "./LocationQuietHours";
 import { LocationPois } from "./LocationPois";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { LocationOverview } from "./LocationOverview";
 
 // Inspect the real feature callbacks without mounting a browser or emulating Base UI.
 function elements(node: ReactNode): ReactElement<Record<string, unknown>>[] {
@@ -37,6 +39,24 @@ function fakeApi(config = locationConfig()) {
 }
 
 describe("Location scoped interactions", () => {
+  it("keeps both shared switches as draft edits until the existing settings save is invoked", async () => {
+    const api = fakeApi(), controller = createLocationController(api);
+    try {
+      await controller.refresh();
+      const before = controller.getState().draft!;
+      const overview = LocationOverview({ state: controller.getState(), controller });
+      const enabled = elements(overview).find((element) => element.type === Switch)!;
+      (enabled.props.onCheckedChange as (checked: boolean) => void)(!before.enabled);
+      const quiet = LocationQuietHours({ state: controller.getState(), controller });
+      const quietSwitch = elements(quiet).find((element) => element.type === Switch)!;
+      (quietSwitch.props.onCheckedChange as (checked: boolean) => void)(!before.quiet_hours_enabled);
+      expect(api.saveLocationConfig).not.toHaveBeenCalled();
+      expect(controller.getState().draft).toMatchObject({ enabled: !before.enabled, quiet_hours_enabled: !before.quiet_hours_enabled });
+      await controller.save();
+      expect(api.saveLocationConfig).toHaveBeenCalledOnce();
+      expect(api.saveLocationConfig).toHaveBeenCalledWith(expect.objectContaining({ enabled: !before.enabled, quiet_hours_enabled: !before.quiet_hours_enabled }), expect.anything());
+    } finally { controller.dispose(); }
+  });
   it("binds each group clear to its own pair without an immediate request", async () => {
     const initial = state();
     initial.config.values.quiet_hours_weekday_start = "23:00"; initial.config.values.quiet_hours_weekday_end = "09:00";

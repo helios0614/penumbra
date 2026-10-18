@@ -53,14 +53,15 @@ export function MemoryListError({
         <p className="text-sm font-semibold text-foreground">无法加载记忆</p>
         <p className="mt-1 text-sm text-muted-foreground">{error.message}</p>
       </div>
-      <button
+      <Button
         type="button"
+        size="comfortable"
         onClick={onRetry}
-        className="mx-auto mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover active:bg-primary-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:mx-0 sm:mt-0"
+        className="mx-auto mt-4 gap-2 sm:mx-0 sm:mt-0"
       >
         <RefreshCw className="size-4" aria-hidden="true" />
         重试
-      </button>
+      </Button>
     </div>
   );
 }
@@ -99,10 +100,11 @@ export function MemoryMutationError({
       {error.code === "sync" && (
         <Button
           type="button"
+          size="comfortable"
           onClick={onRetry}
           disabled={isLoading}
           aria-busy={isLoading || undefined}
-          className="mx-auto min-h-11 gap-2 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover active:bg-primary-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:mx-0"
+          className="mx-auto gap-2 sm:mx-0"
         >
           <RefreshCw className="size-4" aria-hidden="true" />
           重新读取列表

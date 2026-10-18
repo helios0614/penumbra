@@ -3,6 +3,7 @@ import { deviceGroupCurrent, deviceUnavailable, sampleMinute, sampleTime, wifiSc
 import type { ActivityController } from "@/application/activity/activity-controller";
 import type { ActivityState } from "@/application/activity/activity-state";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { WifiSceneSettings } from "./WifiSceneSettings";
 
@@ -41,14 +42,11 @@ export function PhoneStatusPanel({ state, controller }: { readonly state: Activi
       </div>
     </div>
     <div className="flex min-h-11 items-center justify-between gap-3 border-t border-primary/10" aria-busy={savingVisibility}>
-      <span className="text-xs text-muted-strong">允许 AI 查看手机状态</span>
+      <label id="activity-visibility-label" htmlFor="activity-visibility" className="text-xs text-muted-strong">允许 AI 查看手机状态</label>
       <div className="flex shrink-0 items-center gap-2">
         {(savingVisibility || state.visibility.loading) && <span role="status" className="text-[11px] text-muted-foreground">{savingVisibility ? "保存中…" : "读取中…"}</span>}
-        <Button type="button" variant="ghost" role="switch" aria-label="允许 AI 查看手机状态" aria-checked={state.visibility.data === true} aria-busy={savingVisibility} disabled={visibilityDisabled} className="group/visibility h-11 w-11 rounded-xl px-0 focus-visible:ring-2 focus-visible:ring-ring/20" onClick={() => { if (!visibilityDisabled) void controller?.setVisibility(state.visibility.data !== true); }}>
-          <span aria-hidden="true" className="flex h-6 w-11 items-center rounded-full border border-border-strong bg-background/35 p-0.5 transition-colors group-aria-checked/visibility:border-primary/60 group-aria-checked/visibility:bg-primary/80 motion-reduce:transition-none">
-            <span className="size-4.5 shrink-0 rounded-full bg-background shadow-sm transition-transform group-aria-checked/visibility:translate-x-5 motion-reduce:transition-none" />
-          </span>
-        </Button>
+        <Switch id="activity-visibility" aria-labelledby="activity-visibility-label" checked={state.visibility.data === true}
+          busy={savingVisibility} disabled={visibilityDisabled} onCheckedChange={(visible) => void controller?.setVisibility(visible)} />
       </div>
     </div>
     {state.visibility.error && <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-destructive"><span>手机状态权限读取失败。</span><Button variant="ghost" className="h-11 text-xs" onClick={() => void controller?.loadVisibility()}>重新读取权限</Button></div>}

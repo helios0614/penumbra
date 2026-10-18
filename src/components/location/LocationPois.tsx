@@ -24,8 +24,8 @@ export function LocationPois({ state, controller, onDetail }: { readonly state: 
         options={categories.map((value) => ({ value, label: value }))} onValueChange={(value) => { setCategory(value); setShown(value); setQuery(""); }} /></div>}
     </div>
     <form className="mt-3 flex min-w-0 gap-2" onSubmit={(event) => { event.preventDefault(); const term = query.trim() || selected; setShown(term); void controller?.search(term); }}>
-      <Input surface="translucent" className="h-11 min-w-0 flex-1 rounded-xl text-sm" aria-label="POI 搜索关键词" placeholder={`搜索${selected}，或输入关键词`} value={query} disabled={busy} onChange={(event) => setQuery(event.target.value)} />
-      <Button type="submit" variant="ghost" className="h-11 gap-1.5 rounded-xl bg-primary/15 px-3 text-primary-ink hover:bg-primary/20 hover:text-primary-ink" disabled={busy || blocked || query.includes("|")}><Search aria-hidden="true" />{searching ? "查询中" : "查询"}</Button>
+      <Input surface="translucent" className="min-w-0 flex-1 text-sm" aria-label="POI 搜索关键词" placeholder={`搜索${selected}，或输入关键词`} value={query} disabled={busy} onChange={(event) => setQuery(event.target.value)} />
+      <Button type="submit" variant="soft-primary" size="lg" loading={searching} disabled={busy || blocked || query.includes("|")}><Search aria-hidden="true" />查询</Button>
     </form>
     {blocked && <p className="mt-2 text-xs leading-5 text-muted-foreground">查询需要已配置的 Key 和有效位置。</p>}
     {query.includes("|") && <p className="mt-1 text-xs text-destructive">关键词不能包含「|」。</p>}

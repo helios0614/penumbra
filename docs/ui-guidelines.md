@@ -207,6 +207,20 @@ actions
 
 Memory 新增记忆、Quick Note V2.3 已有成熟的弹框组合：固定标题区、可滚动正文、按需出现的右对齐操作区。新页面应复用现有 Dialog / AlertDialog 原语及这套内容层级；共享原语的默认布局不自动代表成熟页面的最终样式。具体字号、间距、滚动与移动端 Footer 约定见 [`ui-patterns.md` 的 Dialog / AlertDialog 小节](./ui-patterns.md#dialog--alertdialog-的成熟组合约定)，不为单页另建全局弹框框架。
 
+### 4.6 Control Density and Semantics
+
+控件可见尺寸不等于交互目标尺寸；Penumbra 不要求所有移动端控件视觉高度达到 44px。保持已经验证的信息密度，不通过放大字号、表面和留白制造统一感，也不全局调整正文或标题字号。主要独立触控目标优先提供 44px 的有效区域，允许表面更小；目标必须占据各自布局空间，不以重叠的绝对定位热区扩张。Chat 工具栏、日历和列表内操作可明确选择紧凑尺寸，保留足够间距并人工验证。
+
+- Button：`compact` 以 32px 为基准，`default` 为 36px，`lg` 为 40px，`comfortable` 为 44px；旧 `xs` / `sm` 与 icon 尺寸保留给紧凑消费者。文字按钮使用最小高度和可增长布局，不以固定高度裁切放大或换行的文字。
+- Input / AppSelect：`controlSize="compact" | "default" | "comfortable"` 对应 32 / 40 / 44px 的最小高度。32px 用于日历等紧凑组合，不作为常规表单推荐值。Textarea 的同名属性只控制内边距，多行高度由内容、rows 或编辑器布局决定。
+- FilterChip：Memory 时间／钉选与 Activity 设备筛选复用轻主题描边、背景和 `primary-ink`；36px 表面放在最小 44px 的独立目标内，选中 Hover 仍保持主题色。窄屏及文字放大时可换行，不能相互覆盖。
+- SegmentedControlItem：用于 Quick Note 日期内容切换，保留等宽布局和更明确的实心主题选中态，不与筛选 Chip 混用。
+- Select：触发器使用中性 Mist 表面，截断长选中标签但保留完整可访问文字；下拉选项可换行。Activity 复合日期范围继续使用 Popover，不强行转换为 Select。
+- `default` Button 表达保存／确认，`soft-primary` 表达查询／重新读取，ghost 表达轻量工具，outline 表达中性描边次级操作，destructive 表达危险操作。`secondary` 继续保留现有辅色语义，不用它冒充柔和主题操作。
+- 公共 Switch 只负责受控值、输入和基础状态，通过原生 button 支持 Space / Enter，使用可访问名称及可见标签关联；44×24px 轨道不扩大。即时提交、草稿保存、失败恢复均留在业务层，Checkbox、Radio、筛选不转换为 Switch。
+
+同类控件统一状态，不同语义保留合理差异。具体 API、尺寸例外和消费方式见 `ui-patterns.md`；本阶段不改变 Dialog 布局、Toast 或页面滚动模型。
+
 ---
 
 ## 5. Memory Pattern

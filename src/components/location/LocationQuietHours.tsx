@@ -4,7 +4,8 @@ import { effectivePeriod, hasDraftChanges, SETTINGS_KEYS, validTime, type TimeKe
 import type { LocationState } from "@/application/location/location-state";
 import { parseWeekdays, serializeWeekdays } from "@/domain/location";
 import { Button } from "@/components/ui/button";
-import { LocationSaveError, LocationSwitch } from "./LocationControls";
+import { LocationSaveError } from "./LocationControls";
+import { Switch } from "@/components/ui/switch";
 import { LocationTimeField } from "./LocationTimeField";
 
 const DAYS = ["一", "二", "三", "四", "五", "六", "日"];
@@ -16,10 +17,11 @@ export function LocationQuietHours({ state, controller }: { readonly state: Loca
     <div className="flex items-center gap-3">
       <Clock3 className="size-4 shrink-0 text-primary" aria-hidden="true" />
       <div className="min-w-0 flex-1">
-        <h2 id="location-quiet-title" className="text-sm font-semibold">静默时段</h2>
+        <h2 id="location-quiet-title" className="text-sm font-semibold"><label htmlFor="location-quiet-enabled">静默时段</label></h2>
         <p className="mt-0.5 text-xs leading-5 text-muted-foreground">选择希望暂停定位的时间段</p>
       </div>
-      <LocationSwitch label="静默时段" showLabel={false} checked={draft?.quiet_hours_enabled ?? false} disabled={disabled} onChange={(value) => controller?.edit("quiet_hours_enabled", value)} />
+      <Switch id="location-quiet-enabled" aria-labelledby="location-quiet-title" checked={draft?.quiet_hours_enabled ?? false}
+        busy={state.pending === "save"} disabled={disabled} onCheckedChange={(value) => controller?.edit("quiet_hours_enabled", value)} />
     </div>
     <TimePeriod title="统一时段" startKey="quiet_hours_start" endKey="quiet_hours_end" state={state} controller={controller} disabled={disabled} primary />
     <fieldset className="border-t border-primary/10 py-3" disabled={disabled}>
@@ -35,7 +37,7 @@ export function LocationQuietHours({ state, controller }: { readonly state: Loca
     <TimePeriod title="工作日专用时段" kind="weekday" startKey="quiet_hours_weekday_start" endKey="quiet_hours_weekday_end" state={state} controller={controller} disabled={disabled} />
     <TimePeriod title="休息日专用时段" kind="weekend" startKey="quiet_hours_weekend_start" endKey="quiet_hours_weekend_end" state={state} controller={controller} disabled={disabled} />
     <div className="flex justify-end border-t border-primary/10 pt-4">
-      <Button type="submit" disabled={disabled || !dirty} className="h-11 gap-2 rounded-xl px-5"><Save aria-hidden="true" />{state.pending === "save" ? "保存中…" : "保存配置"}</Button>
+      <Button type="submit" size="comfortable" aria-busy={state.pending === "save"} disabled={disabled || !dirty} className="gap-2 px-5"><Save aria-hidden="true" />{state.pending === "save" ? "保存中…" : "保存配置"}</Button>
     </div>
     <LocationSaveError state={state} section="settings" />
   </section>;
