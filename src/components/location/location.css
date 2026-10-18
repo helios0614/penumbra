@@ -1,5 +1,4 @@
 /* Location composes the existing Mist materials; these rules only manage layout. */
-.location-page input[type="time"] { min-width: 0; width: 100%; }
 .location-dialog[data-slot] {
   display: flex;
   flex-direction: column;
@@ -13,6 +12,7 @@
 }
 .location-dialog > [data-slot="dialog-header"],
 .location-dialog > [data-slot="alert-dialog-header"] {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -21,6 +21,7 @@
   padding: 1.25rem;
   text-align: left;
 }
+.location-dialog > [data-slot="dialog-header"] { padding-right: 4rem; }
 .location-dialog > [data-slot="alert-dialog-header"] { min-height: 0; flex-shrink: 1; overflow-y: auto; }
 .location-dialog [data-slot="dialog-title"],
 .location-dialog [data-slot="alert-dialog-title"] { font-size: 1.125rem; font-weight: 600; line-height: 1.75rem; overflow-wrap: anywhere; }
@@ -41,8 +42,14 @@
   padding: 0.75rem 1.25rem;
 }
 .location-dialog button { min-height: 2.75rem; height: auto; border-radius: 0.75rem; padding: 0.625rem 1rem; white-space: normal; line-height: 1.25rem; }
+.location-dialog .location-dialog-close { width: 2.75rem; height: 2.75rem; padding: 0; }
+.location-dialog .location-poi-fields { padding-block: 0.75rem; }
+.location-time-dialog[data-slot] { max-width: 22rem; }
+.location-time-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; overflow: hidden; }
+.location-time-options { position: relative; min-height: 0; height: min(15rem, 40dvh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 @media (min-width: 640px) {
   .location-dialog > [data-slot="dialog-header"], .location-dialog > [data-slot="alert-dialog-header"] { padding: 1.5rem 1.5rem 1.25rem; }
+  .location-dialog > [data-slot="dialog-header"] { padding-right: 4rem; }
   .location-dialog-body { padding: 1.25rem 1.5rem; }
   .location-dialog-footer, .location-dialog > [data-slot="alert-dialog-footer"] { padding-inline: 1.5rem; }
 }

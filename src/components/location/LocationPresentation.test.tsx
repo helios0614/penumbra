@@ -34,16 +34,16 @@ describe("Location page presentation", () => {
     expect(html).not.toMatch(/后端允许采集|非浏览器实时定位|缓存天气|默认回退|开始包含|生效时间：|最多十条|修改后统一保存|最小 50 米|500–10000 米|编辑后使用上方/);
     expect(html).not.toMatch(/<iframe|<canvas|📍|🏠|🗺/u);
   });
-  it("preserves six raw input values and renders seven accessible manually selected days including none", () => {
+  it("exposes six time selectors without writing inherited values and allows all weekdays to be unselected", () => {
     const state = loaded(); state.draft.weekday_days = ""; state.draft.quiet_hours_weekday_end = "09:25";
     const html = renderToStaticMarkup(<TooltipProvider><LocationQuietHours state={state} controller={null} /></TooltipProvider>);
-    expect(html.match(/type="time"/g)).toHaveLength(6); expect(html.match(/aria-pressed="false"/g)).toHaveLength(7);
+    expect(html).not.toContain('type="time"'); expect(html.match(/aria-haspopup="dialog"/g)).toHaveLength(6); expect(html.match(/aria-pressed="false"/g)).toHaveLength(7);
     expect(html).not.toContain('aria-pressed="true"'); expect(html).toContain("所有日期均为休息日");
     expect(html).toContain("沿用统一 00:00"); expect(html).not.toContain("00:00–09:25");
-    expect(html.match(/<input[^>]*id="location-quiet_hours_weekday_start"[^>]*>/)?.[0]).toContain('value=""');
-    expect(html.match(/<input[^>]*id="location-quiet_hours_weekday_end"[^>]*>/)?.[0]).toContain('value="09:25"');
+    expect(html.match(/<button[^>]*id="location-quiet_hours_weekday_start"[^>]*>/)?.[0]).toContain('aria-label="工作日专用时段开始，沿用统一配置"');
+    expect(html.match(/<button[^>]*id="location-quiet_hours_weekday_end"[^>]*>/)?.[0]).toContain('aria-label="工作日专用时段结束，09:25"');
     for (const title of ["统一时段", "工作日专用时段", "休息日专用时段"]) for (const endpoint of ["开始", "结束"]) {
-      expect(html).toContain(`class="sr-only">${title}${endpoint}</label>`);
+      expect(html).toContain(`aria-label="${title}${endpoint}，`);
     }
     expect(html.match(/aria-hidden="true"[^>]*>—<\/span>/g)).toHaveLength(3);
     expect(html).toContain("minmax(0,1fr)"); expect(html).toContain("min-w-11");

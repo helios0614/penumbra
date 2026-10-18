@@ -4,7 +4,8 @@ import { effectivePeriod, hasDraftChanges, SETTINGS_KEYS, validTime, type TimeKe
 import type { LocationState } from "@/application/location/location-state";
 import { parseWeekdays, serializeWeekdays } from "@/domain/location";
 import { Button } from "@/components/ui/button";
-import { LocationField, LocationSaveError, LocationSwitch } from "./LocationControls";
+import { LocationSaveError, LocationSwitch } from "./LocationControls";
+import { LocationTimeField } from "./LocationTimeField";
 
 const DAYS = ["一", "二", "三", "四", "五", "六", "日"];
 export function LocationQuietHours({ state, controller }: { readonly state: LocationState; readonly controller: LocationController | null }) {
@@ -56,9 +57,9 @@ function TimePeriod({ title, startKey, endKey, kind, state, controller, disabled
     </div>
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-x-2 sm:gap-x-3">
       {[startKey, endKey].map((key, index) => <div key={key} className={`min-w-0 ${index ? "col-start-3 row-start-1" : "col-start-1 row-start-1"}`}>
-        <LocationField id={`location-${key}`} label={`${title}${index ? "结束" : "开始"}`} hideLabel type="time" step={60}
-          value={draft?.[key] ?? ""} disabled={disabled} error={state.validation[key]} onChange={(event) => controller?.edit(key, event.target.value)}
-          hint={kind && draft && !draft[key] ? `沿用统一 ${draft[index ? "quiet_hours_end" : "quiet_hours_start"]}` : undefined} />
+        <LocationTimeField id={`location-${key}`} label={`${title}${index ? "结束" : "开始"}`}
+          value={draft?.[key] ?? ""} disabled={disabled} error={state.validation[key]} onChange={(value) => controller?.edit(key, value)}
+          inheritedValue={kind && draft ? draft[index ? "quiet_hours_end" : "quiet_hours_start"] : undefined} />
       </div>)}
       <span aria-hidden="true" className="col-start-2 row-start-1 flex h-11 items-center text-sm text-muted-foreground">—</span>
     </div>

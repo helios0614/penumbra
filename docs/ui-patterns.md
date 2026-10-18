@@ -9,6 +9,7 @@
 - 外层使用现有 `mist-glass-strong` 材质，延续其边框、阴影；参考当前成熟弹框的 28px 圆角、移动端 20px / 桌面端 24px 横向留白。不重新组合透明度、blur 或 shadow，不改共享 token。
 - Header、Content、Footer 为兄弟区域。外壳 `flex flex-col`、`overflow: hidden`，最大高度不超过动态视口扣除安全边距后的空间；Header / Footer `shrink-0`，正文 `min-height: 0`、`flex: 1`、`overflow-y: auto`，避免弹框与正文双重滚动。
 - Header 左对齐：可选装饰性 eyebrow 使用现有 `font-decorative`，11px / 400、大写、0.14em 字距；中文标题使用功能字体 18px / 600 / 28px 行高；说明使用 13px / 20px 行高。右上角关闭使用 44px 点击区域及明确的可访问名称；保存期间应阻止关闭。
+- `DialogTitle` / `AlertDialogTitle` 默认使用 `font-sans`、18px / 600 / 28px，不再默认继承 `font-heading` 的文楷／衬线字形。装饰字体仅用于显式标记的英文 eyebrow；已有页面的局部标题样式仍可覆盖基础字号与间距。
 - 表单字段间距参考 16px，输入和 Select 复用现有 translucent 变体。Footer 采用 `row wrap`、右对齐、8px 按钮间距，取消为 ghost，保存为现有主题主按钮；移动端也不默认改成两个全宽大按钮。按钮保留至少 44px 触摸高度，短视口时正文滚动、操作保持可达。
 - 长内容阅读弹框保留固定 Header，只让正文滚动；没有实际底部操作时不添加 Footer。破坏性确认继续使用 AlertDialog、取消及 destructive action；极短视口可让确认说明滚动，按钮留在滚动区外。
 - 涉及软键盘的密集编辑可参考 Quick Note 的 `visualViewport` 局部适配；这是编辑器的现有处理，不要求所有普通阅读弹框复制整套逻辑。
