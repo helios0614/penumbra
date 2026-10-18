@@ -158,7 +158,7 @@ export function MemoryCreateDialog({
                   autoFocus
                   aria-invalid={contentInvalid || undefined}
                   aria-describedby={contentInvalid ? "memory-create-content-error" : undefined}
-                  className="min-h-28 max-h-44 resize-none overflow-y-auto rounded-xl px-3 py-2.5 text-[15px] leading-6 shadow-none md:text-sm"
+                  className="scrollbar-none min-h-28 max-h-44 resize-none overflow-y-auto rounded-xl px-3 py-2.5 text-[15px] leading-6 shadow-none md:text-sm"
                 />
                 {contentInvalid && (
                   <p

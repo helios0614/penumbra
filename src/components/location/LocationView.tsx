@@ -5,6 +5,7 @@ import type { LocationState } from "@/application/location/location-state";
 import type { LocationConnectionState } from "@/application/location/location-realtime";
 import type { LocationPoi } from "@/domain/location";
 import { PageHeader, PageHeaderAction } from "@/components/ui/page-header";
+import { PageScrollArea } from "@/components/ui/page-scroll-area";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { LocationOverview } from "./LocationOverview";
@@ -46,7 +47,7 @@ export function LocationPage({ state, controller, connection, reconnect, onBack 
       <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="刷新显示" disabled={busy || state.configLoading || state.statusLoading} onClick={() => void controller?.refreshDisplay()} />}><RefreshCw aria-hidden="true" /></TooltipTrigger><TooltipContent>更新显示，保留未保存的修改</TooltipContent></Tooltip>
       {onBack && <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="返回桌面" disabled={busy} onClick={() => navigation.current?.exit(onBack)} />}><X aria-hidden="true" /></TooltipTrigger><TooltipContent>返回桌面</TooltipContent></Tooltip>}
     </>} />
-    <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pb-1 sm:mt-4 sm:space-y-4">
+    <PageScrollArea label="定位页面内容" topLabel="回到定位顶部" className="mt-3 sm:mt-4" contentClassName="space-y-3 pb-1 sm:space-y-4">
       {connection !== "connected" && <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-muted-strong" role="status">
         <span>{connection === "blocked" ? "实时连接需要重新登录后恢复。" : connection === "reconnecting" ? "实时连接正在恢复，可手动刷新显示。" : "正在连接位置更新…"}</span>
         {connection === "blocked" && <Button type="button" variant="ghost" className="h-11 text-xs" onClick={reconnect}>恢复连接</Button>}
@@ -60,7 +61,7 @@ export function LocationPage({ state, controller, connection, reconnect, onBack 
       {state.feedback && (state.feedback.error || state.feedback.persistent) && !state.feedback.section && <p role={state.feedback.error ? "alert" : "status"} className="mist-glass-strong rounded-[24px] px-4 py-3 text-xs leading-5 text-muted-strong">{state.feedback.text}</p>}
       <LocationAdvanced state={state} controller={controller} onHome={() => setConfirmation("home")} onClear={() => setConfirmation("clear")} />
       <LocationPois state={state} controller={controller} onDetail={setPoi} />
-    </div>
+    </PageScrollArea>
     <LocationConfirm open={Boolean(discardAction)} title="放弃未保存的配置？" description="尚未保存的定位配置与新 Key 输入将被放弃。" action="放弃并离开" destructive busy={busy}
       onCancel={() => setDiscardAction(null)} onConfirm={() => { const proceed = discardAction; setDiscardAction(null); proceed?.(); }} />
     <LocationConfirm open={confirmation === "clear"} title="清除已保存的高德 Key？" description="清除后地址、天气和附近地点的查询将受影响。其他配置及新 Key 草稿会保留。" action="清除 Key" destructive busy={busy}

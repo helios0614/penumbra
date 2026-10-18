@@ -197,9 +197,12 @@ actions
 ### 4.4 Layout and Scrolling
 
 - 页面优先采用移动端布局，再逐步扩展到大屏；
-- 页面外壳避免不必要的整体滚动；
-- 固定头部和底部使用 `shrink-0`；
-- 正文滚动区使用明确的 `flex-1`、`min-h-0` 和内部 overflow；
+- Penumbra 使用固定工作区和自然页面流两种布局模型。滚动由明确的实际容器承担，避免无意义的嵌套和高度挤压；滚动条默认隐藏，但滚动能力、焦点与内容可达性必须保留；
+- 固定工作区：Memory 列表独立滚动且分页稳定，Quick Note 阅读正文独立滚动，Chat 消息滚动且输入区固定；固定头部和底部使用 `shrink-0`，正文使用明确的 `flex-1`、`min-h-0` 和内部 overflow；
+- 自然页面流：Activity、Location、Quick Note 概览与 Settings 在稳定 Header 下复用 `PageScrollArea`，多个纵向模块共享一个主要容器。展开 Activity Wi-Fi 配置不能压缩时间线；
+- Classic / Editorial 的应用入口都由 feature 承担主要滚动；Editorial 仅在首页保留原有外层滚动，首页和导航布局不改变。Calendar 当前紧凑内容保留入口滚动，不新增回顶；
+- 回顶绑定实际容器，超过 `max(720px, 1.5 × 可视容器高度)` 才显示，响应容器高度、Reduced Motion 与现有导航恢复规则。单篇速记保留原 360px 阈值；Memory 与 Chat 不套用普通页面回顶；
+- 滚动容器统一使用 `.scrollbar-none`，ScrollArea 同时隐藏自绘条；有意限高的日志与时间选择列可独立滚动。Mist 浮钮避让安全区，显示时才增加页面尾部空间，通过现有 Toast obstacle 规则避让提示，模态 Dialog 打开时隐藏；
 - 阅读宽度根据内容类型决定，不为追求统一强制所有页面同宽；
 - 主要触屏操作应保留足够命中区域，具体要求遵循 `design-spec.md`。
 
@@ -225,7 +228,7 @@ UI Foundation PR2 已将 Memory、Quick Note、Activity、Location 的成熟弹�
 - Button 的视觉优先级由当前交互场景决定，不仅由操作名称决定。`default`（Primary）表达当前场景的主要操作，包括弹框内作为主操作的读取、刷新或重试；`soft-primary` 适合页面级辅助查询／重新读取，ghost 表达轻量工具，outline 表达中性描边次级操作，destructive 表达危险操作。视觉统一不改变真实 disabled／loading 状态，也不因空列表而自动禁用仍可重新获取数据的操作。`secondary` 继续保留现有辅色语义，不用它冒充柔和主题操作。
 - 公共 Switch 只负责受控值、输入和基础状态，通过原生 button 支持 Space / Enter，使用可访问名称及可见标签关联；44×24px 轨道不扩大。即时提交、草稿保存、失败恢复均留在业务层，Checkbox、Radio、筛选不转换为 Switch。
 
-同类控件统一状态，不同语义保留合理差异。具体 API、尺寸例外和消费方式见 `ui-patterns.md`；控件密度沿用 PR1，Dialog 布局见 §4.5，页面滚动模型保持现状。
+同类控件统一状态，不同语义保留合理差异。具体 API、尺寸例外和消费方式见 `ui-patterns.md`；控件密度沿用 PR1，Dialog 布局见 §4.5，页面滚动模型见 §4.4。
 
 ### 4.7 Toast 与持续反馈
 

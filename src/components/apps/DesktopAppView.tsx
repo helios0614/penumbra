@@ -87,7 +87,7 @@ export function DesktopAppView({
     <section
       ref={viewportRef}
       className={cn(
-        "mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden sm:rounded-[28px]",
+        "mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col overflow-hidden sm:rounded-[28px]",
         appId === "chat" ? "mist-glass" : appId === "memory" || appId === "quick-notes" || appId === "activity" || appId === "location" ? "" : "mist-glass-strong",
       )}
       data-testid="desktop-app-view"
@@ -121,7 +121,7 @@ export function DesktopAppView({
           {appId === "activity" && <ActivityView onBack={onBack} />}
           {appId === "location" && <LocationView onBack={onBack} />}
           {appId === "calendar" && (
-            <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
+            <div className="scrollbar-none min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
               <Calendar embedded className="mx-auto w-full max-w-xl" />
             </div>
           )}
@@ -148,7 +148,7 @@ function AppPlaceholder({ appId }: { appId: DesktopAppId }) {
   const Icon = app.icon;
 
   return (
-    <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto p-6 text-center">
+    <div className="scrollbar-none grid min-h-0 flex-1 place-items-center overflow-y-auto p-6 text-center">
       <div className="flex max-w-sm flex-col items-center">
         <span className="desktop-app-placeholder-icon grid size-20 place-items-center rounded-[24px]">
           <Icon className="size-9" />

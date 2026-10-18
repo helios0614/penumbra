@@ -61,6 +61,46 @@ UI Foundation PR2 已将 Memory、Quick Note、Activity、Location 的成熟布�
 
 UI Foundation PR1 已提供公共 `Switch`（见下文），替代 Activity 和 Location 的局部轨道实现。PR3 的公共 Toast / Feedback 规则见下文。
 
+## 页面滚动与回顶
+
+PR4 使用 `components/ui/page-scroll-area.tsx` 与 `page-scroll.ts`，不建立全局滚动管理器。实际容器监听 `scroll`，ResizeObserver 观察容器高度；隐藏或卸载时清理，重新显示时读取导航恢复后的实际位置。`PageTopButton` 仅提供 Mist 浮钮、可访问名称与位置规则，可供独立阅读区复用。
+
+```tsx
+<main className="flex h-full min-h-0 flex-col overflow-hidden" aria-labelledby="example-page-title">
+  <PageHeader eyebrow="EXAMPLE" title="示例" titleId="example-page-title" description="保留页面现有标题与操作。" />
+  <PageScrollArea
+    label="页面内容"
+    topLabel="回到页面顶部"
+    className="mt-4"
+    contentClassName="space-y-4 pb-2"
+  >
+    {/* 多个模块自然展开，普通模块不再套纵向 overflow */}
+  </PageScrollArea>
+</main>
+```
+
+- `scrollRef` 可传已有真实容器 ref；Quick Note 概览继续使用 `navigation.overviewRef`，隐藏时保持挂载，返回后 `syncKey` 使公共能力读取已恢复的位置。`syncKey` 只同步可见性，不重置位置。
+- `resetKey` 是显式的位置重置语义，目前只有 Activity 以日期范围与设备组成 key。普通数据快照更新不改变 key。Quick Note 日期／分页重置仍由原 navigation 的 layout effect 负责。离开应用会卸载其页面，重新打开从顶部开始；不建立跨应用位置存储。
+- 阈值严格为 `scrollTop > max(720, clientHeight * 1.5)`；点击先 `focus({ preventScroll: true })`，再滚动真实容器。Reduced Motion 使用 `instant`，普通使用 `smooth`。自然流容器有可访问名称、`role="region"` 与键盘焦点。
+- `.scrollbar-none` 只隐藏滚动条，绝不改 overflow。所有原生纵横滚动节点显式消费，公共 DialogBody／确认 Header／Textarea／Select 与 ScrollArea Viewport 内建消费。公共 slot 样式隐藏 ScrollArea 自绘条与 Corner，保留原 Viewport 和 Chat 跟随逻辑；不在 feature 中再写 Firefox / WebKit 配方。
+- 回顶在容器内绝对定位，局部层级 10，安全区之外保留 12px。出现时内容底部让出 68px + 安全区，短页不增加大量空白。`data-toast-obstacle` 使既有 Toast Host 在移动端将提示放到按钮上方，不修改队列或 timer。公共 CSS 在模态 Dialog / AlertDialog 存在时隐藏浮钮，Popover / Dialog 继续位于其上层。
+
+| 消费者 | 主要滚动模型与所有者 | 回顶与位置规则 |
+|---|---|---|
+| Activity | 自然流，Header 下的 PageScrollArea | 公共阈值；范围／设备变化重置，快照更新保留 |
+| Location | 自然流，Header 下的 PageScrollArea | 公共阈值；刷新与表单状态更新保留 |
+| Quick Note 概览 | 自然流，PageScrollArea 的 overviewRef | 公共阈值；保留日期／分页重置和阅读返回恢复 |
+| Quick Note 单篇 | 固定工作区，正文与摘要的 scrollRef | 保留独立 360px 阈值与篇目切换重置，共用按钮位置／避让 |
+| Settings | 自然流，Header 下的 PageScrollArea | 公共阈值；两种桌面外层均不重复滚动 |
+| Memory | 固定工作区，memory-list-scroll | 不新增页面回顶；页码变化仅重置列表，分页在列表外 |
+| Chat | 固定工作区，ScrollArea Viewport | 不使用页面回顶；保留 96px 跟随判断、主动向上阅读和固定输入区 |
+| Calendar | 当前紧凑月历，由 DesktopAppView 的容器承担小视口溢出 | 当前入口没有长日程数据，不新增回顶；可复用 Calendar 的事件列表仍保留原 ScrollArea |
+| 桌面首页 | Classic 横向 pager／组件区，Editorial 原首页外层 | 仅隐藏滚动条，保留分页、首页与导航布局 |
+
+局部例外：Quick Note 展开的原始日志保持 16rem 限高且可键盘滚动；Location 小时／分钟列各自滚动并自动居中已选值；Dialog 长正文独立滚动且 Footer 在外。它们有明确控件语义，不将 Activity 时间线等普通页面内容拆成竞争滚动区。
+
+人工验收两种桌面入口的窄屏／宽屏与短高度视口：长页阈值与回顶、Wi-Fi 展开后的时间线、最后一项与保存按钮可达、Toast 关闭区／Dialog／Popover、安全区／键盘、隐藏滚动条后的触摸与键盘滚动、Memory 分页、速记返回恢复、Chat 跟随和向上阅读。自动测试不替代这些实际布局检查。
+
 ## Toast / Feedback
 
 `components/ui/toast.tsx`、`toast-store.ts`、`toast-viewport.ts`、`toast.css` 提供轻量本地 Host 和 API，无新依赖。已检查现有依赖（包括 Base UI 的 Toast 能力）；本轮采用限定容量的本地队列，直接支持 feature 生命周期、过期异步结果和应用视口，不建立全局通知服务或传输层错误中心。

@@ -42,7 +42,7 @@ export function ActivityControls({ state, controller }: { readonly state: Activi
           <PopoverTrigger render={<Button variant="ghost" className="h-11 w-full justify-between gap-1 rounded-xl border-border-strong/50 bg-background/25 px-2 text-xs text-muted-strong shadow-none hover:bg-background/45 aria-expanded:bg-background/45" aria-label="活动时间范围" />}>
             {selected ?? "最近 3 小时"}<ChevronDown aria-hidden="true" className="size-4 text-muted-foreground" />
           </PopoverTrigger>
-          <PopoverContent align="start" aria-label="选择活动时间范围" className="w-auto min-w-40 max-w-[calc(100vw-1rem)] gap-0 overflow-x-auto p-1">
+          <PopoverContent align="start" aria-label="选择活动时间范围" className="scrollbar-none w-auto min-w-40 max-w-[calc(100vw-1rem)] gap-0 overflow-x-auto p-1">
             {calendar && month ? <>
               <div className="flex items-center justify-between gap-2 px-1">
                 <Button variant="ghost" className="h-11 gap-1 px-2 text-xs" onClick={() => setCalendar(false)}><ArrowLeft aria-hidden="true" className="size-3.5" />时间范围</Button>

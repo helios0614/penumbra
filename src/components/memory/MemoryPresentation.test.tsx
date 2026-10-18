@@ -552,11 +552,12 @@ describe("memory presentation", () => {
     expect(scrollRegion).toContain("overflow-y-auto");
     expect(scrollRegion).toContain("pt-5");
     expect(scrollRegion).toContain("memory-list-scroll");
+    expect(scrollRegion).toContain("scrollbar-none");
     expect(indexCssSource).toMatch(
-      /\.memory-list-scroll\s*\{[^}]*scrollbar-width: none;[^}]*\}/,
+      /\.scrollbar-none\s*\{[^}]*scrollbar-width: none;[^}]*\}/,
     );
     expect(indexCssSource).toMatch(
-      /\.memory-list-scroll::\-webkit-scrollbar\s*\{[^}]*display: none;[^}]*\}/,
+      /\.scrollbar-none::\-webkit-scrollbar\s*\{[^}]*display: none;[^}]*\}/,
     );
     expect(paginationFooter).toContain("shrink-0");
     expect(html.indexOf('data-memory-total-decoration="true"')).toBeLessThan(

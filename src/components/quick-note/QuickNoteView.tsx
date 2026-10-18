@@ -3,6 +3,7 @@ import { ListRestart, MoreHorizontal, RefreshCw, X } from "lucide-react";
 import type { QuickNote, TriggerConfig } from "@/domain/quick-note";
 import { Button } from "@/components/ui/button";
 import { PageHeader, PageHeaderAction } from "@/components/ui/page-header";
+import { PageScrollArea } from "@/components/ui/page-scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { QuickNoteDateNavigation } from "./QuickNoteControls";
@@ -50,14 +51,14 @@ export function QuickNoteView({ onBack }: { readonly onBack?: () => void }) {
           </Popover>}
           {onBack && <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="返回桌面" onClick={() => navigation.exit(onBack)} />}><X aria-hidden="true" /></TooltipTrigger><TooltipContent>返回桌面</TooltipContent></Tooltip>}
         </>} />
-        <div ref={navigation.overviewRef} hidden={Boolean(navigation.reader)} className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pb-2 sm:mt-4" aria-label="速记页面内容">
+        <PageScrollArea scrollRef={navigation.overviewRef} hidden={Boolean(navigation.reader)} syncKey={`${state.date}:${state.page}:${navigation.reader?.id ?? "overview"}`} label="速记页面内容" topLabel="回到速记概览顶部" className="mt-3 sm:mt-4" contentClassName="space-y-3 pb-2">
           {state.configLoading && <p role="status" className="mist-glass rounded-[24px] p-5 text-sm text-muted-foreground">正在读取时段与日期配置…</p>}
           {state.configError && <div role="alert" className="mist-glass rounded-[24px] p-5 text-sm"><p>{state.configError}</p><Button variant="outline" className="mt-3 h-11" onClick={() => void controller?.loadConfig()}>重新读取配置</Button></div>}
           {state.config && <QuickNoteDateNavigation config={state.config} date={state.date} onChange={(date) => void controller?.selectDate(date)} />}
           <QuickNoteLogs state={logs.state} timeZone={state.config?.timeZone} onReconnect={logs.reconnect} />
           <QuickNoteOverview state={pageState} controller={controller} onOpen={navigation.open} />
           {state.config && <QuickNoteConfig config={state.config} loading={state.configLoading} onReload={() => void controller?.loadConfig()} />}
-        </div>
+        </PageScrollArea>
         {navigation.reader && <div ref={navigation.readerRef} tabIndex={-1} className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden pb-2 focus:outline-none sm:mt-4" aria-label="单篇速记阅读">
           {state.config ? <QuickNoteReader note={selectedNote} timeZone={state.config.timeZone} state={pageState} controller={controller} actionsRef={readerActions} onBack={navigation.back} onAction={action} /> : <div className="mist-glass rounded-[24px] p-4">
             <Button variant="ghost" className="h-11" onClick={navigation.back}>返回日期概览</Button>

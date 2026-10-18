@@ -255,9 +255,9 @@ font-variant-numeric: normal;
 
 **移动端优先**：先写移动端布局，再用 `sm:`、`md:`、`lg:` 断点适配大屏。
 
-**禁止页面级滚动**：页面整体不能出现 `overflow-y: auto`，滚动必须在组件内部解决。
+**两种成熟布局模型**：Penumbra 使用固定工作区和自然页面流两种布局模型。滚动由明确的实际容器承担，避免无意义的嵌套和高度挤压；滚动条默认隐藏，但滚动能力、焦点与内容可达性必须保留。
 
-**优先滚动正文区**：典型布局是「固定顶栏 + 固定底栏 + 中间正文滚动」：
+固定工作区适用于 Memory（列表独立滚动、分页在外）、Quick Note 单篇阅读（正文独立滚动）与 Chat（消息独立滚动、输入区固定）。典型布局是「固定顶栏 + 固定底栏 + 中间正文滚动」：
 
 ```
 ┌─────────────────────┐
@@ -275,6 +275,10 @@ font-variant-numeric: normal;
 - 页面容器 `h-dvh flex flex-col`（移动端用 `dvh` 避免地址栏高度跳动）
 - 顶栏/底栏 `shrink-0`
 - 正文区 `flex-1 min-h-0 overflow-y-auto`（`min-h-0` 是 flex 子元素溢出滚动的关键）
+
+自然页面流适用于 Activity、Location、Quick Note 概览与 Settings：稳定 Header 下方使用公共 `PageScrollArea`，多个模块在同一主要容器中自然展开。Activity 的 Wi-Fi 配置展开不能挤压时间线成独立小滚动框。Quick Note 原始日志与 Location 时间列属于有意限高的局部控件，不改变页面主要滚动所有权。
+
+Classic / Editorial 的应用壳保持受视口高度约束；应用与 Settings 自己承担滚动，Editorial 首页继续使用原外层滚动。不要用 `window.scrollY` 判断 feature 位置。Calendar 当前入口仅紧凑月历与日期事件空态，可在小视口滚动，不新增普通页面回顶。
 
 ---
 
@@ -469,10 +473,13 @@ Button 的视觉优先级由当前交互场景决定，不仅由操作名称决�
 
 缓动函数统一 `ease-in-out`，弹出类元素用 `ease-out`。
 
-### 6.2 滚动条
+### 6.2 滚动条与回顶
 
-自定义滚动条宽度 `6px`，轨道透明，滑块 `rgba(0,0,0,0.15)`，hover 加深。
-深色主题滑块改为 `rgba(255,255,255,0.15)`。
+实际原生滚动容器使用公共 `.scrollbar-none`，统一处理 Firefox 的 `scrollbar-width`、WebKit 伪元素与兼容属性，纵横滚动条均隐藏。公共 ScrollArea 的 Viewport 同样隐藏原生条，自绘 ScrollBar / Corner 通过公共 slot 样式隐藏。不能用 `overflow: hidden` 代替隐藏滚动条；滚轮、触摸、触控板、键盘、焦点定位和程序滚动必须保留。DialogBody、长确认说明、输入区、阅读区、时间列、消息列表与桌面横向分页均消费该约定。
+
+自然页面流由 `PageScrollArea` 绑定实际容器；位置严格超过 `max(720px, 1.5 × 容器可视高度)` 才显示 Mist 回顶按钮。容器 ResizeObserver 更新阈值，卸载或隐藏时清理监听；点击聚焦该容器并滚到顶部，Reduced Motion 使用即时滚动。业务已有的位置重置／恢复规则继续由原导航语义决定。Quick Note 单篇阅读保留独立 360px 阈值。
+
+回顶按钮位于容器右下角，44px 目标，避让底部安全区；仅按钮显示时给自然流内容增加相应底部空间。通过 `data-toast-obstacle` 复用 Toast 的移动端避让，Toast 位于按钮上方；桌面 Toast 仍在右上角。按钮局部层级 10、低于 Popover / Dialog，存在模态 Dialog / AlertDialog 时隐藏，不引入新的浮层或滚动管理器。
 
 ### 6.3 z-index 层级
 

@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type Ref } from "react";
-import { ArrowLeft, ArrowUp, MoreHorizontal } from "lucide-react";
+import { ArrowLeft, MoreHorizontal } from "lucide-react";
+import { PageTopButton } from "@/components/ui/page-scroll-area";
 import type { QuickNoteController } from "@/application/quick-note/quick-note-controller";
 import type { QuickNoteState } from "@/application/quick-note/quick-note-state";
 import { formatPeriod } from "@/application/quick-note/quick-note-date";
@@ -41,7 +42,7 @@ export function QuickNoteReader({ note, timeZone, state, controller, onBack, onA
       </div>}
     </header>
     <div className="relative min-h-0 flex-1">
-      <div ref={scrollRef} className="h-full overflow-y-auto overscroll-contain px-4 pb-16 pt-5 sm:px-7" role="region" aria-label="速记正文与摘要" tabIndex={0}
+      <div ref={scrollRef} className="scrollbar-none page-scroll-region h-full overflow-y-auto overscroll-contain px-4 pb-16 pt-5 sm:px-7" role="region" aria-label="速记正文与摘要" tabIndex={0} data-back-to-top={showTop || undefined}
         data-quick-note-reader-scroll="true" onScroll={(event) => setShowTop(showQuickNoteTopButton(event.currentTarget.scrollTop))}>
         <QuickNoteFeedback state={state} controller={controller} />
         {note ? <article aria-label={`${note.periodLabel}速记`} aria-busy={Boolean(state.pending)}>
@@ -55,8 +56,7 @@ export function QuickNoteReader({ note, timeZone, state, controller, onBack, onA
 }
 
 export function QuickNoteTopButton({ visible, onClick }: { readonly visible: boolean; readonly onClick: () => void }) {
-  if (!visible) return null;
-  return <Button variant="ghost" className="mist-glass absolute bottom-3 right-3 size-11 rounded-full text-foreground" aria-label="回到正文顶部" title="回到正文顶部" onClick={onClick}><ArrowUp aria-hidden="true" /></Button>;
+  return <PageTopButton visible={visible} label="回到正文顶部" onClick={onClick} />;
 }
 
 export function QuickNoteActions({ note, disabled, onAction }: {

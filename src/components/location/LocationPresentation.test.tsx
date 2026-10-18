@@ -27,6 +27,10 @@ describe("Location page presentation", () => {
     expect(html).toContain("统一时段"); expect(html).toContain("工作日专用时段"); expect(html).toContain("休息日专用时段");
     expect(html.match(/<details/g)).toHaveLength(1); expect(html.match(/<details[^>]*>/)?.[0]).not.toMatch(/\sopen(?:=|>)/);
     expect(html).toContain('aria-label="刷新显示"'); expect(html).toContain("最近的位置与天气，还有身边的小发现。"); expect(html).toContain("小雨 21°C");
+    expect(html.match(/data-page-scroll-region="true"/g)).toHaveLength(1);
+    expect(html).toMatch(/role="region" tabindex="0" aria-label="定位页面内容"/);
+    expect(html.match(/data-page-scroll-region="true"/g)).toHaveLength(1);
+    expect(html).toMatch(/role="region" tabindex="0" aria-label="定位页面内容"/);
     expect(html).toContain("选择希望暂停定位的时间段"); expect(html).toContain('placeholder="输入新key，留空不更换"');
     expect(html).toContain('class="sr-only">新高德 Key</label>');
     expect(html).not.toMatch(/更换 Key|留空则不更换|>已保存<|有未保存的修改/);

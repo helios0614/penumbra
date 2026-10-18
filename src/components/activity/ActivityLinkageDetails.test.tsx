@@ -6,6 +6,7 @@ import { INITIAL_ACTIVITY_STATE, activityReadFailure, type ActivityState } from 
 import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
+import { PageScrollArea } from "@/components/ui/page-scroll-area";
 import { PopoverContent } from "@/components/ui/popover";
 import { ActivityControls } from "./ActivityControls";
 import { ActivityPageFeedback } from "./ActivityFeedback";
@@ -67,7 +68,7 @@ describe("Activity infrequent linkage diagnostics", () => {
     let tree: React.ReactNode;
     function Capture() { tree = ActivityView({}); return null; }
     renderToStaticMarkup(<Capture />);
-    const nodes = elements(tree), content = nodes.find((element) => element.props["aria-label"] === "活动日志页面内容")!;
+    const nodes = elements(tree), content = nodes.find((element) => element.type === PageScrollArea && element.props.label === "活动日志页面内容")!;
     const primary = React.Children.toArray(content.props.children as React.ReactNode).filter(React.isValidElement);
     expect(primary.map((element) => element.type)).toEqual([ActivityPageFeedback, PhoneStatusPanel, ActivityControls, ActivityTimeline]);
     const header = nodes.find((element) => element.type === PageHeader)!;

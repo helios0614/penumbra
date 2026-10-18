@@ -81,7 +81,7 @@ function CodeBlock({
 
   if (shouldPreviewMarkdown) {
     return (
-      <div className="ai-code-block group relative my-2 overflow-hidden rounded-lg border border-ai-foreground/15 bg-ai font-mono shadow-sm">
+      <div className="scrollbar-none ai-code-block group relative my-2 overflow-hidden rounded-lg border border-ai-foreground/15 bg-ai font-mono shadow-sm">
         <div className="flex items-center justify-between border-b border-ai-foreground/15 bg-ai-active px-4 py-2 text-xs text-ai-foreground/70">
           <span>{displayLanguage}</span>
           <button
@@ -103,7 +103,7 @@ function CodeBlock({
   }
 
   return (
-    <div className="ai-code-block group relative my-2 overflow-hidden rounded-lg border border-ai-foreground/15 bg-ai font-mono shadow-sm">
+    <div className="scrollbar-none ai-code-block group relative my-2 overflow-hidden rounded-lg border border-ai-foreground/15 bg-ai font-mono shadow-sm">
       <div className="flex items-center justify-between border-b border-ai-foreground/15 bg-ai-active px-4 py-2 text-xs text-ai-foreground/70">
         <span>{displayLanguage}</span>
         <button
@@ -115,7 +115,7 @@ function CodeBlock({
           <Copy className="size-3" aria-hidden="true" /><span>复制</span>
         </button>
       </div>
-      <pre className="m-0 max-w-full overflow-x-auto whitespace-pre bg-ai p-4 text-sm leading-relaxed text-ai-foreground">
+      <pre className="scrollbar-none m-0 max-w-full overflow-x-auto whitespace-pre bg-ai p-4 text-sm leading-relaxed text-ai-foreground">
         <code className={className} {...props}>
           {children}
         </code>

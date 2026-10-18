@@ -35,7 +35,7 @@ export function QuickNoteEditor({ editor, busy, controller, finalFocus }: {
           {editor?.conflict && (
             <section className="quick-note-editor-conflict">
               <h3 id="quick-note-conflict-title" className="shrink-0 text-sm font-medium">服务端最新正文</h3>
-              <div role="region" aria-labelledby="quick-note-conflict-title" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg whitespace-pre-wrap break-words text-sm leading-7 focus-visible:outline-2 focus-visible:outline-ring">{normalizeOutput(editor.conflict.output) || "尚无已保存正文"}</div>
+              <div role="region" aria-labelledby="quick-note-conflict-title" tabIndex={0} className="scrollbar-none min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg whitespace-pre-wrap break-words text-sm leading-7 focus-visible:outline-2 focus-visible:outline-ring">{normalizeOutput(editor.conflict.output) || "尚无已保存正文"}</div>
             </section>
           )}
         </div>
@@ -71,7 +71,7 @@ export function QuickNoteEditorFields({ editor, busy, onChange }: {
 }) {
   return <>
     <label htmlFor="quick-note-editor" className="shrink-0 text-sm font-medium">正文</label>
-    <Textarea id="quick-note-editor" value={editor.draft} onChange={(event) => onChange(event.target.value)} disabled={busy} surface="translucent" rows={12} className="min-h-0 flex-1 field-sizing-fixed resize-none overflow-y-auto overscroll-contain rounded-xl px-3 py-2.5 text-base leading-7 shadow-none md:text-sm" aria-describedby={editor.error ? "quick-note-edit-error" : undefined} />
+    <Textarea id="quick-note-editor" value={editor.draft} onChange={(event) => onChange(event.target.value)} disabled={busy} surface="translucent" rows={12} className="scrollbar-none min-h-0 flex-1 field-sizing-fixed resize-none overflow-y-auto overscroll-contain rounded-xl px-3 py-2.5 text-base leading-7 shadow-none md:text-sm" aria-describedby={editor.error ? "quick-note-edit-error" : undefined} />
     {editor.error && <p id="quick-note-edit-error" role="alert" className="shrink-0 text-xs leading-5 text-destructive-foreground">{editor.error}</p>}
   </>;
 }

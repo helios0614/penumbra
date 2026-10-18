@@ -70,7 +70,7 @@ function AlertDialogHeader({
       data-slot="alert-dialog-header"
       className={cn(
         DIALOG_HEADER,
-        "min-h-0 shrink overflow-y-auto overscroll-contain border-b-0",
+        "scrollbar-none min-h-0 shrink overflow-y-auto overscroll-contain border-b-0",
         className
       )}
       {...props}

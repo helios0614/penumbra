@@ -59,7 +59,7 @@ export function LocationTimeColumn({ label, value, options, onChange }: {
   }, [value]);
   return <section className="flex min-h-0 min-w-0 flex-col">
     <h3 id={`${name}-label`} className="mb-2 text-center text-xs font-medium text-muted-strong">{label}</h3>
-    <div ref={list} role="radiogroup" aria-labelledby={`${name}-label`} aria-orientation="vertical" className="location-time-options">
+    <div ref={list} role="radiogroup" aria-labelledby={`${name}-label`} aria-orientation="vertical" className="scrollbar-none location-time-options">
       {options.map((option) => <label key={option} className="relative block cursor-pointer">
         <input className="peer sr-only" type="radio" name={name} value={option} checked={value === option} onChange={(event) => {
           if (event.currentTarget.checked && options.includes(event.currentTarget.value)) onChange(event.currentTarget.value);

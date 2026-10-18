@@ -175,7 +175,7 @@ export function MemoryReadingPanel({
       <div
         ref={listScrollRef}
         className={cn(
-          "memory-list-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain",
+          "scrollbar-none memory-list-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain",
           data && "pt-5",
         )}
         role="region"

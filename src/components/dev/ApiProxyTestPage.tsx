@@ -124,7 +124,7 @@ export function ApiProxyTestPage() {
           </div>
 
           {result.response !== undefined ? (
-            <pre className="mt-4 max-h-60 overflow-auto rounded-md bg-black/85 p-3 text-xs text-white">
+            <pre className="scrollbar-none mt-4 max-h-60 overflow-auto rounded-md bg-black/85 p-3 text-xs text-white">
               {JSON.stringify(result.response, null, 2)}
             </pre>
           ) : null}

@@ -20,7 +20,7 @@ export function QuickNoteLogs({ state, timeZone, onReconnect }: {
             <span className={`min-w-0 truncate text-[11px] ${previewColor}`} role="status">{failed ? CONNECTION_LABELS[state.connection] : preview || (state.connection === "connecting" ? "日志连接中" : "暂无日志")}</span>
           </span>
         </summary>
-        <div className="max-h-64 overflow-y-auto overscroll-contain border-t border-primary/10 py-3" aria-label="详细原始日志">
+        <div className="scrollbar-none max-h-64 overflow-y-auto overscroll-contain border-t border-primary/10 py-3" role="region" tabIndex={0} aria-label="详细原始日志">
           <p className="mb-3 text-xs text-muted-foreground">{CONNECTION_LABELS[state.connection]}</p>
           {state.entries.length === 0 ? <p className="py-2 text-sm text-muted-foreground">暂无日志</p> : (
             <ol className="space-y-2 border-l border-border pl-4 text-[11px] leading-5">

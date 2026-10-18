@@ -145,6 +145,7 @@ export function Sender({
             aria-describedby={statusMessage ? statusId : undefined}
             rows={1}
             className={cn(
+              "scrollbar-none",
               "flex-1 min-w-0 bg-transparent text-[15px] leading-6 text-foreground",
               "placeholder:text-muted-foreground",
               "resize-none outline-none focus:outline-none focus:ring-0",

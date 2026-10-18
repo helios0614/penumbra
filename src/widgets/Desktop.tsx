@@ -542,7 +542,7 @@ export function Desktop() {
             activeApp
               ? 'overflow-hidden p-0 sm:px-6 sm:pb-6 sm:pt-4'
               : isSettingsOpen
-                ? 'overflow-y-auto px-4 pb-28 pt-5 sm:px-6 sm:pb-32 sm:pt-8'
+                ? 'overflow-hidden px-4 pb-4 pt-5 sm:px-6 sm:pb-8 sm:pt-8'
                 : 'overflow-hidden px-4 pb-[98px] pt-3 sm:px-6 sm:pb-[112px] sm:pt-5',
           )}
         >
@@ -554,7 +554,7 @@ export function Desktop() {
             <div className="desktop-home-grid relative mx-auto h-full max-w-5xl">
               <div
                 ref={desktopPagerRef}
-                className="desktop-home-pager flex h-full w-full snap-x snap-mandatory overflow-x-auto overflow-y-hidden scroll-smooth"
+                className="scrollbar-none desktop-home-pager flex h-full w-full snap-x snap-mandatory overflow-x-auto overflow-y-hidden scroll-smooth"
                 onScroll={handleDesktopPageScroll}
               >
                 <section
@@ -616,7 +616,7 @@ export function Desktop() {
                   className="desktop-home-page h-full w-full shrink-0 snap-start snap-always overflow-hidden px-px pb-1 pt-6"
                   aria-label="桌面第二页"
                 >
-                  <section className="desktop-secondary-widgets mx-auto h-full w-full max-w-[680px] overflow-y-auto" aria-labelledby="desktop-secondary-widgets-title">
+                  <section className="scrollbar-none desktop-secondary-widgets mx-auto h-full w-full max-w-[680px] overflow-y-auto" aria-labelledby="desktop-secondary-widgets-title">
                     <h2 id="desktop-secondary-widgets-title" className="sr-only">其他小组件</h2>
                     <div
                       style={gridStyle}

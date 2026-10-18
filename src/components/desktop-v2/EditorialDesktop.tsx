@@ -107,8 +107,8 @@ export function EditorialDesktop() {
       <main
         ref={scrollAreaRef}
         className={cn(
-          "min-h-0 flex-1 overflow-y-auto px-4 sm:px-6",
-          activeApp || isSettingsOpen ? "pb-4" : "pb-28 sm:pb-32",
+          "min-h-0 flex-1 px-4 sm:px-6",
+          activeApp || isSettingsOpen ? "overflow-hidden pb-4" : "scrollbar-none overflow-y-auto pb-28 sm:pb-32",
         )}
       >
         {activeApp ? (

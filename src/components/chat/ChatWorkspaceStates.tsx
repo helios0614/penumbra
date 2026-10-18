@@ -73,7 +73,7 @@ export function ChatWorkspaceError({
           {onBack && <ChatBackButton onBack={onBack} />}
           <span className="min-w-0 flex-1 truncate">Penumbra</span>
         </div>
-        <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto p-5">
+        <div className="scrollbar-none grid min-h-0 flex-1 place-items-center overflow-y-auto p-5">
           <div
             className="mist-glass w-full max-w-md rounded-[22px] p-4 sm:p-5"
             role="alert"
@@ -122,7 +122,7 @@ export function ChatWorkspaceEmpty({
   }[kind];
 
   return (
-    <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto px-6 py-12 text-center">
+    <div className="scrollbar-none grid min-h-0 flex-1 place-items-center overflow-y-auto px-6 py-12 text-center">
       <div className="flex max-w-sm flex-col items-center">
         <span className="grid size-16 place-items-center rounded-full border border-border bg-surface-secondary/65 text-muted-strong shadow-sm">
           <MessageCircle className="size-7" aria-hidden="true" />

@@ -38,6 +38,10 @@ describe("Quick Note page presentation", () => {
     expect(html).toContain('aria-label="返回桌面"');
     expect(html).toContain("size-11");
     expect(html).toContain("正在读取时段与日期配置");
+    expect(html.match(/data-page-scroll-region="true"/g)).toHaveLength(1);
+    expect(html).toMatch(/role="region" tabindex="0" aria-label="速记页面内容"/);
+    expect(html.match(/data-page-scroll-region="true"/g)).toHaveLength(1);
+    expect(html).toMatch(/role="region" tabindex="0" aria-label="速记页面内容"/);
   });
   it("renders loading, empty, and recoverable read errors inside one reading surface", () => {
     expect(render({ ...loaded, status: "loading", data: null })).toContain("正在读取速记");
@@ -294,7 +298,7 @@ describe("Quick Note page presentation", () => {
     const button = renderToStaticMarkup(<QuickNoteTopButton visible onClick={vi.fn()} />);
     expect(button).toContain('aria-label="回到正文顶部"');
     expect(button).toContain("mist-glass");
-    expect(button).toContain("absolute bottom-3 right-3 size-11");
+    expect(button).toContain("page-back-to-top absolute right-3 z-10 size-11");
   });
 
   it("keeps long semantic prose and dialogue disclosures inside the existing reader scroll region", () => {

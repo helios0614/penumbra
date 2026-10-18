@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { PageHeader, PageHeaderAction } from "@/components/ui/page-header";
+import { PageScrollArea } from "@/components/ui/page-scroll-area";
 import { SettingsSafeBasics } from "@/components/settings/SettingsSafeBasics";
 import { useSettingsOverview } from "@/components/settings/useSettingsOverview";
 import { cn } from "@/lib/utils";
@@ -161,7 +162,7 @@ export function SettingsView({ onBack }: SettingsViewProps) {
 
   return (
     <div
-      className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8"
+      className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col overflow-hidden"
       aria-labelledby="settings-page-title"
     >
       <PageHeader
@@ -199,6 +200,7 @@ export function SettingsView({ onBack }: SettingsViewProps) {
         }
       />
 
+      <PageScrollArea label="设置页面内容" topLabel="回到设置顶部" className="mt-4" contentClassName="space-y-4 pb-8">
       <div className="mist-glass rounded-[24px] p-4 sm:p-5">
         <SettingsSectionHeading
           title="界面外观"
@@ -469,6 +471,7 @@ export function SettingsView({ onBack }: SettingsViewProps) {
       <div className="grid gap-3 md:grid-cols-3">
         <PlaceholderSection title="日历设置" />
       </div>
+      </PageScrollArea>
     </div>
   );
 }

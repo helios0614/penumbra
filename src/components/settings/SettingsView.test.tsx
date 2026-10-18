@@ -32,6 +32,12 @@ describe("SettingsView page header", () => {
     expect(html).toContain("界面外观")
     expect(html).toContain("桌面背景")
     expect(html).toContain("运行状态概览")
+    expect(html.match(/data-page-scroll-region="true"/g)).toHaveLength(1)
+    expect(html).toMatch(/role="region" tabindex="0" aria-label="设置页面内容"/)
+    expect(html).toContain("h-full min-h-0")
+    expect(html.match(/data-page-scroll-region="true"/g)).toHaveLength(1)
+    expect(html).toMatch(/role="region" tabindex="0" aria-label="设置页面内容"/)
+    expect(html).toContain("h-full min-h-0")
   })
 
   it("keeps refresh and close wired to their existing callbacks", () => {

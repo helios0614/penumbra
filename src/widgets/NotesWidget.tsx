@@ -32,7 +32,7 @@ export function NotesWidget() {
       </div>
 
       {/* 笔记列表 */}
-      <div className="flex-1 min-h-0 space-y-2 overflow-y-auto">
+      <div className="scrollbar-none flex-1 min-h-0 space-y-2 overflow-y-auto">
         {notes.map((note) => (
           <button
             key={note.id}

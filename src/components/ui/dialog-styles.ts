@@ -7,6 +7,6 @@ export const DIALOG_OVERLAY = "fixed inset-0 isolate z-50 bg-black/10 duration-1
 
 export const DIALOG_HEADER = "relative flex shrink-0 flex-col items-stretch gap-0 border-b border-border/60 px-5 pb-4 pt-5 text-left sm:px-6 sm:pb-5 sm:pt-6"
 
-export const DIALOG_BODY = "min-h-0 flex-auto overflow-y-auto overscroll-contain p-5 sm:px-6"
+export const DIALOG_BODY = "scrollbar-none min-h-0 flex-auto overflow-y-auto overscroll-contain p-5 sm:px-6"
 
 export const DIALOG_FOOTER = "flex shrink-0 flex-row flex-wrap items-center justify-end gap-2 border-t border-border/60 bg-transparent px-5 py-3 sm:px-6 [&_button]:min-w-0 [&_button]:max-w-full"
