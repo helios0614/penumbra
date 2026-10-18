@@ -2,11 +2,11 @@ import type { ComponentProps, ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-export function LocationSwitch({ label, checked, disabled, onChange }: {
-  readonly label: string; readonly checked: boolean; readonly disabled: boolean; readonly onChange: (value: boolean) => void;
+export function LocationSwitch({ label, checked, disabled, onChange, showLabel = true }: {
+  readonly label: string; readonly checked: boolean; readonly disabled: boolean; readonly onChange: (value: boolean) => void; readonly showLabel?: boolean;
 }) {
-  return <div className="flex min-h-11 items-center gap-2.5">
-    <span className="text-xs font-medium text-muted-strong">{label}</span>
+  return <div className="flex min-h-11 shrink-0 items-center gap-2.5">
+    {showLabel && <span className="text-xs font-medium text-muted-strong">{label}</span>}
     <Button type="button" variant="ghost" role="switch" aria-label={label} aria-checked={checked} disabled={disabled}
       className="group/location-switch h-11 w-11 rounded-xl px-0" onClick={() => onChange(!checked)}>
       <span aria-hidden="true" className="flex h-6 w-11 items-center rounded-full border border-border-strong bg-background/35 p-0.5 transition-colors group-aria-checked/location-switch:border-primary/60 group-aria-checked/location-switch:bg-primary/80 motion-reduce:transition-none">

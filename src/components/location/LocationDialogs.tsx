@@ -19,7 +19,7 @@ export function LocationConfirm({ open, title, description, action, destructive 
 export function LocationPoiDialog({ poi, onClose }: { readonly poi: LocationPoi | null; readonly onClose: () => void }) {
   return <Dialog open={Boolean(poi)} onOpenChange={(open) => { if (!open) onClose(); }}>
     <DialogContent className="location-dialog" showCloseButton={false}>
-      <DialogHeader><DialogTitle>{poi?.name}</DialogTitle><DialogDescription>已缓存的地点信息，可能与当前上报位置不同步。</DialogDescription></DialogHeader>
+      <DialogHeader><DialogTitle>{poi?.name}</DialogTitle><DialogDescription>已查询到的地点信息。</DialogDescription></DialogHeader>
       <dl className="location-dialog-body space-y-3 text-sm">
         {poi && [["类别", poi.category], ["地址", poi.address], ["距离", poi.distance === null ? null : locationDistance(poi.distance)], ["电话", poi.phone], ["评分", poi.rating], ["参考人均", poi.cost ? `¥${poi.cost}` : null]]
           .filter(([, value]) => value).map(([label, value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 break-words leading-6">{value}</dd></div>)}

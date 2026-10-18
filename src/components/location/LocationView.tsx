@@ -40,8 +40,8 @@ export function LocationPage({ state, controller, connection, reconnect, onBack 
   }, []);
   const busy = Boolean(state.pending);
   return <TooltipProvider><main className="location-page mx-auto flex h-full max-h-dvh min-h-0 w-full max-w-5xl flex-col overflow-hidden px-4 pb-4 pt-5 sm:px-0 sm:pb-8 sm:pt-8" aria-labelledby="location-page-title">
-    <PageHeader eyebrow="LOCATION" title="定位" titleId="location-page-title" description="查看最近上报的位置，管理静默时段与附近地点。" actions={<>
-      <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="刷新显示" disabled={busy || state.configLoading || state.statusLoading} onClick={() => void controller?.refreshDisplay()} />}><RefreshCw aria-hidden="true" /></TooltipTrigger><TooltipContent>重新读取已有缓存，保留当前草稿</TooltipContent></Tooltip>
+    <PageHeader eyebrow="LOCATION" title="定位" titleId="location-page-title" description="最近的位置与天气，还有身边的小发现。" actions={<>
+      <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="刷新显示" disabled={busy || state.configLoading || state.statusLoading} onClick={() => void controller?.refreshDisplay()} />}><RefreshCw aria-hidden="true" /></TooltipTrigger><TooltipContent>更新显示，保留未保存的修改</TooltipContent></Tooltip>
       {onBack && <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="返回桌面" disabled={busy} onClick={() => navigation.current?.exit(onBack)} />}><X aria-hidden="true" /></TooltipTrigger><TooltipContent>返回桌面</TooltipContent></Tooltip>}
     </>} />
     <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pb-1 sm:mt-4 sm:space-y-4">

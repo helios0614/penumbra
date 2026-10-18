@@ -23,16 +23,15 @@ export function LocationPois({ state, controller, onDetail }: { readonly state: 
       {categories.length > 0 && <div className="w-full min-[360px]:w-44"><AppSelect value={selected} ariaLabel="POI 分类" surface="translucent" disabled={busy}
         options={categories.map((value) => ({ value, label: value }))} onValueChange={(value) => { setCategory(value); setShown(value); setQuery(""); }} /></div>}
     </div>
-    <p className="mt-2 text-xs leading-5 text-muted-foreground">基于后端最近坐标查询，最多十条；搜索不会让手机重新定位。</p>
     <form className="mt-3 flex min-w-0 gap-2" onSubmit={(event) => { event.preventDefault(); const term = query.trim() || selected; setShown(term); void controller?.search(term); }}>
       <Input surface="translucent" className="h-11 min-w-0 flex-1 rounded-xl text-sm" aria-label="POI 搜索关键词" placeholder={`搜索${selected}，或输入关键词`} value={query} disabled={busy} onChange={(event) => setQuery(event.target.value)} />
       <Button type="submit" variant="outline" className="h-11 gap-1.5 rounded-xl px-3" disabled={busy || blocked || query.includes("|")}><Search aria-hidden="true" />{searching ? "查询中" : "查询"}</Button>
     </form>
-    {blocked && <p className="mt-2 text-xs leading-5 text-muted-foreground">主动查询需要已配置的高德 Key 和有效的最近上报坐标；已有缓存仍可查看。</p>}
-    {query.includes("|") && <p className="mt-1 text-xs text-destructive">关键词请勿包含竖线；查询半径请在高级配置中设置。</p>}
+    {blocked && <p className="mt-2 text-xs leading-5 text-muted-foreground">查询需要已配置的 Key 和有效位置。</p>}
+    {query.includes("|") && <p className="mt-1 text-xs text-destructive">关键词不能包含「|」。</p>}
     {state.searchError && <p role="alert" className="mt-2 text-xs leading-5 text-destructive">查询未完成。{state.searchError}</p>}
     <div className="mt-3 flex items-center justify-between border-b border-primary/10 pb-2 text-xs text-muted-strong"><span className="min-w-0 flex-1 break-words">{displayCategory}{fallback && ` · 使用「${fallback}」继续查询`}</span><span className="ml-2 shrink-0">{items.length} 条</span></div>
-    {searching && <p role="status" className="py-3 text-xs text-muted-foreground">正在查询，暂时保留已有列表…</p>}
+    {searching && <p role="status" className="py-3 text-xs text-muted-foreground">正在查询…</p>}
     {items.length ? <ul className="divide-y divide-primary/10">{items.map((poi, index) => <li key={`${poi.name}-${index}`}>
       <Button type="button" variant="ghost" className="h-auto min-h-16 w-full justify-start gap-3 whitespace-normal rounded-none px-0 py-3 text-left hover:bg-background/20" onClick={() => onDetail(poi)} aria-label={`查看${poi.name}详情`}>
         {poi.photo && <img src={poi.photo} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.hidden = true; }} className="size-12 shrink-0 rounded-xl object-cover sm:size-14" />}
@@ -43,6 +42,6 @@ export function LocationPois({ state, controller, onDetail }: { readonly state: 
           </span>{poi.address && <span className="mt-0.5 block break-words text-xs font-normal leading-5 text-muted-foreground">{poi.address}</span>}
         </span><ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       </Button>
-    </li>)}</ul> : <p role="status" className="py-5 text-sm leading-6 text-muted-foreground">{state.statusLoading && !state.status ? "正在读取地点缓存…" : "暂无可展示结果。可能尚未查询、未命中，或服务未返回地点；可稍后手动重试。"}</p>}
+    </li>)}</ul> : <p role="status" className="py-3 text-sm leading-6 text-muted-foreground">{state.statusLoading && !state.status ? "正在读取附近地点…" : "暂未获取到地点，可稍后重试。"}</p>}
   </section>;
 }

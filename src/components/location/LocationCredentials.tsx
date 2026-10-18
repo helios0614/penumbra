@@ -16,7 +16,7 @@ export function LocationCredentials({ state, controller, onClear }: {
       <span className="break-all text-xs text-muted-strong">{credential ? credential.configured ? `已配置 · ${credential.masked}` : "未配置" : "尚未读取"}</span>
     </div>
     <LocationField id="location-replacement-key" label="更换 Key" type="password" autoComplete="new-password" value={state.replacementKey}
-      disabled={disabled} placeholder="输入新 Key" hint="留空保持已保存的 Key；输入新值后点击保存配置。" onChange={(event) => controller?.replaceKey(event.target.value)} />
+      disabled={disabled} placeholder="输入新 Key" hint="留空则不更换" onChange={(event) => controller?.replaceKey(event.target.value)} />
     <div className="flex flex-wrap gap-2">
       <Button type="button" variant="ghost" className="h-11 gap-1.5 rounded-xl px-2 text-xs" disabled={unavailable}
         onClick={() => { if (state.revealedKey !== null) controller?.hideKey(); else void controller?.useKey(); }}>
@@ -27,11 +27,11 @@ export function LocationCredentials({ state, controller, onClear }: {
           if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
           await navigator.clipboard.writeText(value);
         })}><Copy aria-hidden="true" />复制</Button>
-      <Button type="button" variant="ghost" className="h-11 gap-1.5 rounded-xl px-2 text-xs text-destructive" disabled={unavailable} onClick={onClear}><Trash2 aria-hidden="true" />清除已保存的 Key</Button>
+      <Button type="button" variant="ghost" className="h-11 gap-1.5 rounded-xl px-2 text-xs text-destructive" disabled={unavailable} onClick={onClear}><Trash2 aria-hidden="true" />清除 Key</Button>
     </div>
     {state.revealedKey !== null && <div className="rounded-xl border border-border-strong/40 bg-background/25 px-3 py-2">
       <p className="break-all font-mono text-xs text-foreground">{state.revealedKey}</p>
-      <p className="mt-1 text-xs text-muted-foreground">15 秒后自动隐藏，离开当前页面也会隐藏。</p>
+      <p className="mt-1 text-xs text-muted-foreground">15 秒后自动隐藏。</p>
     </div>}
   </div>;
 }
