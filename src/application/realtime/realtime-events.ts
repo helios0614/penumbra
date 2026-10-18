@@ -16,6 +16,12 @@ export function mapRealtimeEvent(input: unknown): RealtimeEvent {
     }
 
     switch (rawType) {
+      case "location_update": {
+        const data = eventData(input); // Only freshness metadata crosses this boundary, never a partial status DTO.
+        const stamp = data.updated_at;
+        if (stamp !== undefined && (typeof stamp !== "number" || !Number.isFinite(stamp) || stamp < 0)) throw contractError();
+        return { type: "location-updated", reportedAt: typeof stamp === "number" && stamp > 0 ? stamp : null };
+      }
       case "activity_log": {
         const event = parseActivityEvent(eventData(input));
         return { type: "activity-log", timestamp: event.timestamp, device: event.device };

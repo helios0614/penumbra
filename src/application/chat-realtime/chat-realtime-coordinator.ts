@@ -262,6 +262,7 @@ export function createChatRealtimeCoordinator(
     const context = dependencies.getContext();
 
     switch (event.type) {
+      case "location-updated":
       case "activity-log":
       case "activity-config-changed":
       case "unknown":

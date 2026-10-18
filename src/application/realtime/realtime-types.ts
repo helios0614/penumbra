@@ -1,6 +1,7 @@
 import type { WebSocketConnection } from "@/lib/websocket";
 
 export type RealtimeEvent =
+  | { readonly type: "location-updated"; readonly reportedAt: number | null }
   | {
       readonly type: "activity-log";
       readonly timestamp: number;
