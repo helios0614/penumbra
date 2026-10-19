@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { Children, isValidElement, type ComponentProps, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -61,30 +62,72 @@ describe("time pages use real schedule semantics", () => {
     const html = page("todo", [], { issue: { text: "创建结果未知，不会自动重发" } });
     expect(html).toContain('role="alert"'); expect(html).toContain("创建结果未知"); expect(html).toContain("重新读取核对");
   });
-  it.each(["reminder", "todo", "alarm"] as const)("uses one bounded scroll owner and Memory's natural-height paper for %s", (kind) => {
+  it.each(["reminder", "todo", "alarm"] as const)("pins the count at the paper's upper right without a list title bar for %s", (kind) => {
     const html = page(kind);
     const paper = html.match(/<section[^>]*data-schedule-reading-panel="true"[^>]*>/)?.[0];
     const scroll = html.match(/<div[^>]*data-schedule-list-scroll="true"[^>]*>/)?.[0];
-    expect(paper).toContain("memory-reading-panel mist-glass-strong"); expect(paper).not.toMatch(/mist-solid|flex-1|h-full|min-h-full|overflow-y/);
+    expect(paper).toContain("memory-reading-panel mist-glass-strong"); expect(paper).toContain("flex min-h-0 flex-1 flex-col overflow-hidden"); expect(paper).not.toContain("mist-solid");
+    expect(paper).toContain("relative"); expect(html).not.toContain("data-schedule-list-header"); expect(html).not.toContain("<h2");
+    const count = html.match(/<span[^>]*data-schedule-total="true"[^>]*>/)?.[0];
+    expect(count).toContain("memory-total-decoration font-decorative"); expect(count).toContain("absolute right-3 top-2.5 z-10 text-xl sm:right-5");
+    expect(html.indexOf('data-schedule-total="true"')).toBeLessThan(html.indexOf('data-schedule-list-scroll="true"'));
     expect(scroll).toContain("min-h-0 flex-1"); expect(scroll).toContain("scrollbar-none"); expect(scroll).toContain("overscroll-contain"); expect(scroll).toContain("safe-area-inset-bottom");
     expect(html.match(/overflow-y-auto/g)).toHaveLength(1); expect(html).not.toContain("data-page-scroll-area"); expect(html).not.toContain("回到");
     expect(html.indexOf('data-slot="page-header"')).toBeLessThan(html.indexOf('data-schedule-list-scroll="true"'));
-    if (kind === "todo") {
+    if (kind !== "reminder") {
       const filter = html.match(/<div[^>]*data-schedule-filters="true"[^>]*>/)?.[0]; expect(filter).toContain("shrink-0");
-      expect(html.indexOf('data-schedule-filters="true"')).toBeLessThan(html.indexOf('data-schedule-list-scroll="true"'));
+      expect(html.indexOf('data-schedule-filters="true"')).toBeLessThan(html.indexOf('data-schedule-reading-panel="true"'));
+      expect(html.match(/data-selection="segment"/g)).toHaveLength(2); expect(html).not.toContain('data-selection="filter"');
     }
     if (kind === "alarm") expect(html).not.toContain("创建时会重新确认时区");
   });
-  it("keeps dozens of complete reminders and hundreds of triggered alarms in the same scroll region", () => {
+  it("keeps long reminder, TODO and alarm content complete in the same scroll region", () => {
     const content = "较长的正文\n".repeat(20) + "https://example.test/" + "longword".repeat(50);
     for (const [kind, count] of [["reminder", 60], ["todo", 40], ["alarm", 400]] as const) {
-      const items = Array.from({ length: count }, (_, index) => ({ ...row(kind, kind === "alarm" ? "triggered" : "active", `item_${index}`), content: `${index} ${content}` }));
+      const items = Array.from({ length: count }, (_, index) => ({ ...row(kind, "active", `item_${index}`), content: `${index} ${content}` }));
       const html = page(kind, items);
       expect(html.match(/data-schedule-row=/g)).toHaveLength(count); expect(html.match(/data-schedule-list-scroll=/g)).toHaveLength(1); expect(html.match(/overflow-y-auto/g)).toHaveLength(1);
       expect(html).toContain(`${count - 1} ${content}`); expect(html).not.toMatch(/line-clamp|text-ellipsis/);
-      expect(html).toContain("text-sm leading-[1.6] [overflow-wrap:anywhere]");
-      if (kind === "alarm") expect(html).not.toContain("更多闹钟操作");
+      const body = html.match(/<p[^>]*data-schedule-body="true"[^>]*>/)?.[0];
+      expect(body).toContain("text-[13px] font-normal"); expect(body).toContain(kind === "alarm" ? "leading-5" : "leading-7"); expect(html).toContain("[overflow-wrap:anywhere]");
     }
+  });
+  it("uses Memory's actual body typography, foreground and decorative count rules without copying its clamp", () => {
+    const memoryItem = readFileSync(new URL("../memory/MemoryItem.tsx", import.meta.url), "utf8");
+    const memoryView = readFileSync(new URL("../memory/MemoryView.tsx", import.meta.url), "utf8");
+    const styles = readFileSync(new URL("../../index.css", import.meta.url), "utf8");
+    const html = page("reminder", [row("reminder")]);
+    for (const token of ["text-[13px]", "leading-7", "sm:text-sm", "text-[color-mix(in_srgb,var(--color-foreground)_70%,var(--color-muted-strong))]"]) {
+      expect(memoryItem).toContain(token); expect(html).toContain(token);
+    }
+    expect(memoryView).toContain("memory-total-decoration font-decorative");
+    expect(styles).toMatch(/\.memory-total-decoration\s*\{[^}]*var\(--color-theme\) 36%, transparent[^}]*font-variant-numeric: normal/);
+    expect(html).not.toContain("line-clamp"); expect(html).toContain("text-xs leading-5 text-muted-foreground");
+  });
+  it("puts alarm time beside the full-width body and displays the calendar date without repeating the minute", () => {
+    const html = renderToStaticMarkup(<TooltipProvider><ScheduleRows items={[{ ...row("alarm", "triggered"), triggerAt: "2026-10-19 22:37" }]} kind="alarm" busy={null} blocked={false} onToggle={vi.fn()} onCancel={vi.fn()} /></TooltipProvider>);
+    expect(html).toContain("grid-cols-[auto_minmax(0,1fr)]"); expect(html.match(/22:37/g)).toHaveLength(1); expect(html.match(/2026-10-19/g)).toHaveLength(1);
+    const body = html.match(/<p[^>]*data-schedule-body="true"[^>]*>/)?.[0]; expect(body).toContain("leading-5"); expect(body).not.toContain("leading-7");
+    expect(html).toContain('aria-label="已触发闹钟"'); expect(html).not.toContain("更多闹钟操作"); expect(html).not.toContain("max-w-");
+  });
+  it("shares the alarm time track across different numerals and top-aligns equal-height first line boxes", () => {
+    const items = ["09:00", "18:57", "12:00"].map((time, index) => ({ ...row("alarm", "triggered", `time_${index}`), triggerAt: `2026-10-19 ${time}` }));
+    const html = renderToStaticMarkup(<TooltipProvider><ScheduleRows items={items} kind="alarm" busy={null} blocked={false} onToggle={vi.fn()} onCancel={vi.fn()} /></TooltipProvider>);
+    expect(html.match(/<ul[^>]*>/)?.[0]).toContain("grid-cols-[auto_minmax(0,1fr)]");
+    const rows = [...html.matchAll(/<li[^>]*data-schedule-row="[^"]+"[^>]*>/g)]; expect(rows).toHaveLength(3);
+    for (const [row] of rows) { expect(row).toContain("col-span-2"); expect(row).toContain("grid-cols-subgrid items-start"); expect(row).not.toContain("items-baseline"); }
+    const times = [...html.matchAll(/<p[^>]*data-schedule-alarm-time="true"[^>]*>/g)];
+    for (const [time] of times) { expect(time).toContain("tabular-nums"); expect(time).toContain("leading-5"); expect(time).not.toContain("leading-7"); }
+  });
+  it.each(["active", "triggered"] as const)("sorts %s alarms by newest server-local trigger minute, independently of creation order", (status) => {
+    const alarms = [
+      { ...row("alarm", status, "older"), triggerAt: "2025-12-31 23:59", createdAt: 999 },
+      { ...row("alarm", status, "newer"), triggerAt: "2026-10-19T23:00", createdAt: 1 },
+      { ...row("alarm", status, "middle"), triggerAt: "2026-10-19 22:00", createdAt: 50 },
+      { ...row("alarm", status, "invalid"), triggerAt: "invalid", createdAt: 1000 },
+    ];
+    expect(selectSchedules(alarms, "alarm", status).map((item) => item.id)).toEqual(["newer", "middle", "older", "invalid"]);
+    expect(alarms[0].id).toBe("older");
   });
 });
 

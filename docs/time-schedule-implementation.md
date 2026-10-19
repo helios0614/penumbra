@@ -108,3 +108,34 @@ POST 没有幂等键：超时、网络断开、响应不匹配等未知结果不
 - 新增覆盖固定筛选/单滚动所有权、自然高度空态、60 条记挂/长 TODO/400 条已触发记录的完整渲染、筛选复位与刷新保位、Popover 到确认框的操作/焦点、TODO 在途及失败状态、简短时区信息与失败恢复后保留草稿。
 
 未使用 Playwright、浏览器自动化或线上接口，未 commit、push、部署。测试只验证结构和交互契约，不能替代实际布局测量。待人工检查：Classic / Editorial 下 320–390px 窄屏与短视口、浅深色/复杂壁纸的可读性、原生日期时间输入和软键盘、触屏/键盘 Popover 与确认框焦点、长列表触摸滚动及最后一项安全区。
+
+## PR1.1：右上角固定数量与闹钟双视图（2026-10-19）
+
+本节为当前布局：按最新视觉确认移除三个 Surface 内的列表标题和标题栏分隔线，仅保留右上角固定数量。页面 Header 与视图切换保留。仅修改 `ScheduleView.tsx`、`ScheduleRows.tsx`、`schedule-presentation.ts`、`ScheduleView.test.tsx`、`ScheduleWorkspace.test.tsx` 和本说明。未修改 Memory、其他业务页面、全局组件、DTO/API、控制器、Dialog、Toast 或 realtime。
+
+### 实际复用来源
+
+- `MemoryView.tsx` 的 `MemoryReadingPanel`：`flex min-h-0 flex-1 flex-col overflow-hidden` 固定阅读工作区，正文唯一承担 `overflow-y-auto`，固定区域为 `shrink-0`。
+- `index.css` 的 `.memory-reading-panel` 与 `.mist-glass-strong`：继续直接复用已验收的半透明材质。
+- `MemoryView.tsx` 的数量与 `index.css` 的 `.memory-total-decoration`：`font-decorative`、`text-xl`（20px），主题色 36% 与透明色混合，正常字重和原生数字形态；直接复用 `absolute right-3 top-2.5 z-10 sm:right-5` 固定在 Surface 右上角，不加额外字距。数字位于滚动节点之外，另有非装饰的屏幕阅读器文本。
+- `MemoryItem.tsx` 正文：移动端 13px、`sm:text-sm`、正常字重、foreground 70% 与 muted-strong 混合。记挂和待办沿用 `leading-7`（28px）；闹钟按最新视觉确认局部收紧为 `leading-5`（20px），与下方日期行高一致。保留完整换行及长 URL 断行，不复制 Memory 的折叠、重要度、标签或分页。时间等元信息继续使用 `text-xs text-muted-foreground`。
+
+### 三页最终结构
+
+| 页面 | 滚动区之外的固定区域 | 唯一正文滚动区 |
+| --- | --- | --- |
+| 记挂 | PageHeader；Surface 右上角装饰数量 | 关注事项、已有的已取消记挂折叠区、必要反馈 |
+| 待办 | PageHeader；独立等宽未完成/已完成 Segmented；Surface 右上角当前数量 | 当前视图任务与必要反馈 |
+| 闹钟 | 与待办相同：PageHeader；独立整行等宽等待触发/已触发 Segmented；Surface 右上角当前数量 | 仅当前视图记录与必要反馈 |
+
+Surface 按 Memory 模式占剩余高度，内部只有一个 `scrollbar-none min-h-0 flex-1 overflow-y-auto overscroll-contain` 区域，保留键盘焦点与底部安全区。正文与 Memory 一样从 `pt-5` 开始，空提示自身自然高度；不再保留列表标题行或空白标题栏。切换 TODO 或闹钟视图在布局阶段将该滚动区复位，普通读取/反馈更新不主动复位；保持原有 Classic / Editorial 共用入口与高度链。
+
+闹钟整张列表共享自然宽度时间列加 `minmax(0,1fr)` 正文列，每条通过 subgrid 使用相同列轨道，避免不同时间字形宽度造成正文起点不同。功能时间使用 `tabular-nums`，不影响右上角装饰数量的原生数字形态；时间与正文均用 20px 行高，按首行行盒顶部对齐，避免大字号时间在基线对齐时顶部高出正文。正文利用剩余宽度，无固定内容列宽。日期在次级行仅展示一次，行内不重复分钟与当前视图状态。已触发记录没有取消按钮；等待记录仍经原 Popover 和确认框软取消。非法历史时间保留原文并显示待核对信息。
+
+根据本轮补充要求，等待与已触发两个视图都按 `trigger_at` 的服务器本地分钟文本倒序：最新提醒日期/时间在最上方。兼容 `T` / 空格分隔，不经浏览器时区转换；无效时间放在有效时间之后，相同时间按创建时间及 ID 稳定排序。只改变前端排序，未改后端状态。
+
+### 验证与待验收
+
+全量 91 个测试文件 / 1326 项通过；`npx tsc --noEmit`、`npm run build`、`git diff --check` 通过。新增回归核对无列表标题栏、纸面右上角固定数量、闹钟复用独立 Segmented 结构、Memory 实际样式来源、日期/分钟不重复、两视图倒序、400 条已触发记录切换与单滚动区、空历史、视图切换只改变展示。原有 TODO 完成/恢复、取消确认、时区与实时提醒测试继续通过。
+
+未使用浏览器自动化或线上业务接口，未 commit、push、部署。人工继续检查双桌面的窄屏/短高度视口、固定区占高、长正文与大数量的阅读效果、滚动到底及安全区、浅深色壁纸下装饰数字与正文的视觉层级。

@@ -1,7 +1,7 @@
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createScheduleController, initialScheduleState } from "@/application/schedule/schedule-controller";
+import { createScheduleController, initialScheduleState, type ScheduleController } from "@/application/schedule/schedule-controller";
 import type { Schedule } from "@/domain/schedule";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger } from "@/components/ui/popover";
@@ -63,6 +63,43 @@ describe("schedule workspace interaction", () => {
     const completed = find(render(), ScheduleRows); expect(completed.props.items[0].id).toBe("done"); expect(scroll.scrollTop).toBe(0);
     scroll.scrollTop = 300; render(); expect(scroll.scrollTop).toBe(300);
     find(render(), SegmentedControlItem, (props) => props.selected === false).props.onClick?.({} as never); render(); expect(scroll.scrollTop).toBe(0);
+  });
+  it("gives alarms the same separate Segmented structure as TODO and switches only the visible newest-first snapshot", () => {
+    const alarms: Schedule[] = [
+      { ...item, kind: "alarm", id: "active_old", triggerAt: "2026-10-18 22:00", createdAt: 100 },
+      { ...item, kind: "alarm", id: "active_new", triggerAt: "2026-10-20 09:00", createdAt: 1 },
+      ...Array.from({ length: 400 }, (_, index): Schedule => ({ ...item, kind: "alarm", id: `history_${index}`, status: "triggered", triggerAt: `2026-10-19 ${String(Math.floor(index / 60)).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}` })),
+    ];
+    const changeScope = vi.fn(), act = vi.fn(), refresh = vi.fn();
+    const controller = { changeScope, act, refresh } as unknown as ScheduleController;
+    const render = session(() => SchedulePage({ kind: "alarm", state: { ...initialScheduleState, loaded: true, items: alarms }, controller, realtime }));
+    const tree = render(), scroll = { scrollTop: 500 } as HTMLDivElement;
+    (find(tree, "div", (props) => Boolean(props["data-schedule-list-scroll"])).props.ref as React.RefObject<HTMLDivElement>).current = scroll;
+    expect(find(tree, ScheduleRows).props.items.map((row) => row.id)).toEqual(["active_new", "active_old"]);
+    const rootChildren = elements(tree);
+    const switchIndex = rootChildren.findIndex((node) => Boolean(node.props["data-schedule-filters"]));
+    const surfaceIndex = rootChildren.findIndex((node) => Boolean(node.props["data-schedule-reading-panel"]));
+    expect(switchIndex).toBeLessThan(surfaceIndex);
+    const surface = find(tree, "section", (props) => Boolean(props["data-schedule-reading-panel"]));
+    expect(elements(surface).some((node) => node.type === SegmentedControlItem)).toBe(false);
+    find(tree, SegmentedControlItem, (props) => props.selected === false).props.onClick?.({} as never);
+    const changed = render(), rows = find(changed, ScheduleRows);
+    expect(rows.props.items).toHaveLength(400); expect(rows.props.items[0].id).toBe("history_399"); expect(rows.props.items[rows.props.items.length - 1].id).toBe("history_0"); expect(scroll.scrollTop).toBe(0);
+    expect(find(changed, SegmentedControlItem, (props) => props.selected === true).props.children).toBe("已触发");
+    const historyHtml = renderToStaticMarkup(<>{changed}</>);
+    expect(historyHtml).toContain('data-schedule-total="true">400</span>'); expect(historyHtml.match(/data-schedule-row=/g)).toHaveLength(400);
+    expect(historyHtml.match(/overflow-y-auto/g)).toHaveLength(1); expect(historyHtml).not.toContain("更多闹钟操作"); expect(historyHtml).not.toContain("<details");
+    scroll.scrollTop = 600; render(); expect(scroll.scrollTop).toBe(600);
+    find(render(), SegmentedControlItem, (props) => props.selected === false).props.onClick?.({} as never);
+    const waiting = render(); expect(find(waiting, SegmentedControlItem, (props) => props.selected === true).props.children).toBe("等待触发"); expect(find(waiting, ScheduleRows).props.items).toHaveLength(2); expect(scroll.scrollTop).toBe(0);
+    expect(changeScope).toHaveBeenCalledTimes(2); expect(act).not.toHaveBeenCalled(); expect(refresh).not.toHaveBeenCalled();
+  });
+  it("keeps the triggered empty state in its selected view with a fixed zero count", () => {
+    const render = session(() => SchedulePage({ kind: "alarm", state: { ...initialScheduleState, loaded: true }, controller: null, realtime }));
+    find(render(), SegmentedControlItem, (props) => props.selected === false).props.onClick?.({} as never);
+    const html = renderToStaticMarkup(<>{render()}</>);
+    expect(html).toContain("还没有已触发的闹钟"); expect(html).toContain('data-schedule-total="true">0</span>'); expect(html).not.toContain("没有等待触发的闹钟");
+    expect(html.match(/overflow-y-auto/g)).toHaveLength(1);
   });
   it("opens a low-weight action popover before requesting cancellation, retaining its stable focus target", () => {
     const onCancel = vi.fn(), render = session(() => ScheduleRowActions({ item, disabled: false, onCancel }));
