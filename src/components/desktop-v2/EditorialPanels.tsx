@@ -23,6 +23,7 @@ export function TodayPanel({ onOpen }: { onOpen: () => void }) {
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">Daily list</p>
           <h2 className="mt-1 text-xl font-semibold tracking-tight">Today</h2>
+          <p className="mt-1 text-xs text-muted-foreground">示例清单 · 未同步，打开待办查看真实记录</p>
         </div>
         <button
           type="button"

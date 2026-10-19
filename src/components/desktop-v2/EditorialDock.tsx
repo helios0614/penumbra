@@ -14,7 +14,7 @@ export function EditorialDock({
     <nav className="pointer-events-none fixed inset-x-0 bottom-3 z-40 flex justify-center px-4 sm:bottom-5" aria-label="新桌面导航">
       <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-border bg-card/90 p-2 shadow-lg backdrop-blur-xl">
         <DockButton label="回到顶部" active onClick={onHome} icon={Home} />
-        <DockButton label="打开日历" onClick={() => onLaunch("calendar")} icon={CalendarDays} />
+        <DockButton label="打开记挂" onClick={() => onLaunch("calendar")} icon={CalendarDays} />
         <DockButton label="打开对话" onClick={() => onLaunch("chat")} icon={MessageCircle} />
         <DockButton label="打开设置" onClick={onSettings} icon={Settings} />
       </div>

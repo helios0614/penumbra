@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const Calendar = lazy(() => import("@/components/calendar/Calendar"));
+const ScheduleView = lazy(() => import("@/components/schedule/ScheduleView"));
 const ChatView = lazy(() =>
   import("@/components/chat/ChatView").then((module) => ({ default: module.ChatView })),
 );
@@ -55,10 +55,10 @@ interface DesktopAppMeta {
 
 export const DESKTOP_APP_META: Record<DesktopAppId, DesktopAppMeta> = {
   chat: { name: "对话", description: "与 Penumbra 开始一段对话", icon: MessageSquare },
-  calendar: { name: "日历", description: "查看日期和日程安排", icon: CalendarDays },
+  calendar: { name: "记挂", description: "持续放在心上的事情", icon: CalendarDays },
   todo: { name: "待办", description: "整理接下来要完成的事情", icon: CheckCircle2 },
   notes: { name: "笔记", description: "记录临时想法和重要内容", icon: StickyNote },
-  clock: { name: "时钟", description: "时钟与提醒功能", icon: Clock3 },
+  clock: { name: "闹钟", description: "一次性提醒与定时唤醒", icon: Clock3 },
   weather: { name: "天气", description: "查看天气和未来预报", icon: CloudSun },
   music: { name: "音乐", description: "播放和管理音乐", icon: Music2 },
   memory: { name: "记忆库", description: "翻阅被留下来的片段", icon: LibraryBig },
@@ -81,6 +81,8 @@ export function DesktopAppView({
   const app = DESKTOP_APP_META[appId];
   const Icon = app.icon;
   const viewportRef = useRef<HTMLElement>(null);
+  const scheduleApp = appId === "calendar" || appId === "todo" || appId === "clock";
+  const ownHeader = scheduleApp || appId === "chat" || appId === "memory" || appId === "quick-notes" || appId === "activity" || appId === "location";
 
   return (
     <ToastProvider key={appId} viewportRef={viewportRef} mobileClearance={16}>
@@ -88,11 +90,11 @@ export function DesktopAppView({
       ref={viewportRef}
       className={cn(
         "mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col overflow-hidden sm:rounded-[28px]",
-        appId === "chat" ? "mist-glass" : appId === "memory" || appId === "quick-notes" || appId === "activity" || appId === "location" ? "" : "mist-glass-strong",
+        appId === "chat" ? "mist-glass" : ownHeader ? "" : "mist-glass-strong",
       )}
       data-testid="desktop-app-view"
     >
-      {appId !== "chat" && appId !== "memory" && appId !== "quick-notes" && appId !== "activity" && appId !== "location" && (
+      {!ownHeader && (
         <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3 sm:px-5">
           <button
             type="button"
@@ -120,12 +122,8 @@ export function DesktopAppView({
           {appId === "quick-notes" && <QuickNoteView onBack={onBack} />}
           {appId === "activity" && <ActivityView onBack={onBack} />}
           {appId === "location" && <LocationView onBack={onBack} />}
-          {appId === "calendar" && (
-            <div className="scrollbar-none min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
-              <Calendar embedded className="mx-auto w-full max-w-xl" />
-            </div>
-          )}
-          {appId !== "chat" && appId !== "calendar" && appId !== "memory" && appId !== "quick-notes" && appId !== "activity" && appId !== "location" && (
+          {scheduleApp && <ScheduleView key={appId} kind={appId === "calendar" ? "reminder" : appId === "todo" ? "todo" : "alarm"} onBack={onBack} />}
+          {!ownHeader && (
             <AppPlaceholder appId={appId} />
           )}
         </Suspense>

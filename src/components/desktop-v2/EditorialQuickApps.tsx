@@ -23,7 +23,7 @@ interface EditorialShortcut {
 
 const SHORTCUTS: EditorialShortcut[] = [
   { id: "chat", label: "对话", caption: "Chat", icon: MessageCircle },
-  { id: "calendar", label: "日程", caption: "Calendar", icon: CalendarDays },
+  { id: "calendar", label: "记挂", caption: "On my mind", icon: CalendarDays },
   { id: "todo", label: "待办", caption: "Focus", icon: CheckCircle2 },
   { id: "notes", label: "日记", caption: "Journal", icon: StickyNote },
   { id: "quick-notes", label: "速记", caption: "Quick Notes", icon: NotebookPen },
@@ -31,7 +31,7 @@ const SHORTCUTS: EditorialShortcut[] = [
   { id: "location", label: "定位", caption: "Location", icon: MapPin },
   { id: "music", label: "音乐", caption: "Listen", icon: Music2 },
   { id: "weather", label: "天气", caption: "Outside", icon: CloudSun },
-  { id: "clock", label: "时钟", caption: "Time", icon: Clock3 },
+  { id: "clock", label: "闹钟", caption: "Alarms", icon: Clock3 },
   { id: "settings", label: "设置", caption: "Settings", icon: Settings },
 ];
 

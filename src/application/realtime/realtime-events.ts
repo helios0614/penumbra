@@ -16,6 +16,18 @@ export function mapRealtimeEvent(input: unknown): RealtimeEvent {
     }
 
     switch (rawType) {
+      case "schedule_changed":
+        return { type: "schedule-changed" };
+      case "schedule_alarm": {
+        const data = input.data;
+        // A malformed legacy task must not break the shared message stream.
+        if (!isPlainRecord(data) || typeof data.id !== "string" || !data.id.trim() || typeof data.content !== "string" || typeof data.trigger_at !== "string") return { type: "unknown", rawType };
+        return { type: "schedule-alarm", id: data.id, content: data.content, triggerAt: data.trigger_at };
+      }
+      case "monitor_alert": {
+        const data = input.data;
+        return isPlainRecord(data) && typeof data.content === "string" ? { type: "monitor-alert", content: data.content } : { type: "unknown", rawType };
+      }
       case "location_update": {
         const data = eventData(input); // Only freshness metadata crosses this boundary, never a partial status DTO.
         const stamp = data.updated_at;

@@ -11,6 +11,12 @@ export function planRealtimeReconciliation(
   assertEventInput(event);
 
   switch (event.type) {
+    case "schedule-changed":
+      return { kind: "ignore", rawType: "schedule_changed" };
+    case "schedule-alarm":
+      return { kind: "ignore", rawType: "schedule_alarm" };
+    case "monitor-alert":
+      return { kind: "ignore", rawType: "monitor_alert" };
     case "location-updated":
       return { kind: "ignore", rawType: "location_update" };
     case "activity-log":

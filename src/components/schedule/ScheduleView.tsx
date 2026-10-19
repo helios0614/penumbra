@@ -1,0 +1,64 @@
+import { useEffect, useState } from "react";
+import { Plus, RefreshCw, X } from "lucide-react";
+import type { ScheduleController, ScheduleState } from "@/application/schedule/schedule-controller";
+import type { ScheduleRealtimeState } from "@/application/schedule/schedule-realtime";
+import type { ManagedScheduleKind, Schedule } from "@/domain/schedule";
+import { PageHeader, PageHeaderAction } from "@/components/ui/page-header";
+import { PageScrollArea } from "@/components/ui/page-scroll-area";
+import { Button } from "@/components/ui/button";
+import { SegmentedControlItem } from "@/components/ui/selection-control";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useFeedbackToast } from "@/components/ui/toast";
+import { ScheduleCreateDialog } from "./ScheduleCreateDialog";
+import { ScheduleCancelDialog } from "./ScheduleCancelDialog";
+import { ScheduleRows } from "./ScheduleRows";
+import { ScheduleIssue } from "./ScheduleFeedback";
+import { scheduleMeta, selectSchedules } from "./schedule-presentation";
+import { useSchedules } from "./useSchedules";
+
+export default function ScheduleView({ kind, onBack }: { readonly kind: ManagedScheduleKind; readonly onBack?: () => void }) {
+  return <SchedulePage kind={kind} onBack={onBack} {...useSchedules(kind)} />;
+}
+export function SchedulePage({ kind, state, controller, realtime, onBack }: {
+  readonly kind: ManagedScheduleKind; readonly state: ScheduleState; readonly controller: ScheduleController | null;
+  readonly realtime: Pick<ScheduleRealtimeState, "connection"> & { reconnect: () => void }; readonly onBack?: () => void;
+}) {
+  const [creating, setCreating] = useState(false), [cancel, setCancel] = useState<Schedule | null>(null), [view, setView] = useState<"active" | "done">("active");
+  const meta = scheduleMeta[kind], busy = Boolean(state.pending);
+  const active = selectSchedules(state.items, kind, "active"), done = selectSchedules(state.items, kind, "done");
+  const primary = kind === "todo" && view === "done" ? done : active;
+  const history = selectSchedules(state.items, kind, kind === "alarm" ? "triggered" : "cancelled");
+  useEffect(() => {
+    if (cancel && !busy && !state.issue && state.items.some((item) => item.id === cancel.id && item.status === "cancelled")) setCancel(null);
+  }, [cancel, busy, state.issue, state.items]);
+  useFeedbackToast(state.feedback, state.feedback && !state.feedback.error ? { type: "success", text: state.feedback.text } : null, `${kind}:${view}`);
+  const rows = (items: readonly Schedule[]) => <ScheduleRows items={items} kind={kind} busy={state.pending} blocked={Boolean(state.issue)} onCancel={(item) => { controller?.changeScope(); setCancel(item); }} onToggle={(item) => void controller?.act(item.id, item.status === "done" ? "restore" : "done")} />;
+  return <TooltipProvider><main className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col overflow-hidden px-4 pb-4 pt-5 sm:px-0 sm:pb-8 sm:pt-8" aria-labelledby={`${kind}-page-title`}>
+    <PageHeader eyebrow={meta.eyebrow} title={meta.title} titleId={`${kind}-page-title`} description={meta.description} actions={<>
+      <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label={meta.create} disabled={busy || !controller || Boolean(state.issue)} onClick={() => { controller?.changeScope(); setCreating(true); }} />}><Plus aria-hidden="true" /></TooltipTrigger><TooltipContent>{meta.create}</TooltipContent></Tooltip>
+      <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label={`刷新${meta.title}`} disabled={busy || state.loading} onClick={() => void controller?.refresh()} />}><RefreshCw aria-hidden="true" /></TooltipTrigger><TooltipContent>重新读取</TooltipContent></Tooltip>
+      {onBack && <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="返回桌面" disabled={busy} onClick={onBack} />}><X aria-hidden="true" /></TooltipTrigger><TooltipContent>返回桌面</TooltipContent></Tooltip>}
+    </>} />
+    <PageScrollArea label={`${meta.title}页面内容`} topLabel={`回到${meta.title}顶部`} className="mt-3 sm:mt-4" contentClassName="space-y-3 pb-2" resetKey={`${kind}:${view}`}>
+      {realtime.connection !== "connected" && <div role="status" className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs leading-5 text-muted-strong">
+        <span>{realtime.connection === "blocked" ? "实时连接需要重新登录后恢复。" : realtime.connection === "connecting" ? "正在连接实时更新…" : "实时连接正在恢复，可手动刷新。"}</span>
+        <Button variant="ghost" size="compact" onClick={realtime.reconnect}>恢复连接</Button>
+      </div>}
+      {kind === "alarm" && <p className="px-1 text-xs leading-5 text-muted-strong">时间按服务器本地时间记录；创建时会重新确认时区。</p>}
+      {!creating && !cancel && <ScheduleIssue state={state} controller={controller} />}
+      {state.feedback?.error && !creating && !cancel && <p role="alert" className="px-1 text-xs leading-5 text-destructive">{state.feedback.text}</p>}
+      {state.error && <div role="alert" className="mist-glass rounded-2xl px-4 py-3 text-xs leading-5 text-muted-strong"><p>{state.error}{state.loaded ? " 以下仍是上次读取的数据。" : ""}</p><Button variant="soft-primary" size="compact" className="mt-2" disabled={busy || state.loading} onClick={() => void controller?.refresh()}>重新读取</Button></div>}
+      {kind === "todo" && <div className="mist-glass grid grid-cols-2 rounded-2xl px-2" aria-label="待办视图">{(["active", "done"] as const).map((value) => <SegmentedControlItem key={value} selected={view === value} disabled={busy} onClick={() => { controller?.changeScope(); setView(value); }}>{value === "active" ? `未完成 ${active.length}` : `已完成 ${done.length}`}</SegmentedControlItem>)}</div>}
+      <section className="mist-solid rounded-[24px] px-4 py-1 sm:px-5" aria-label={`${meta.title}列表`} aria-busy={state.loading}>
+        <div className="flex items-baseline justify-between gap-2 border-b border-border/60 py-3"><h2 className="text-sm font-semibold text-foreground">{kind === "todo" && view === "done" ? "已完成" : meta.active}</h2><span className="text-xs text-muted-strong">{primary.length}</span></div>
+        {!state.loaded ? <p role="status" className="py-8 text-center text-sm text-muted-strong">{state.error ? "尚未读取到列表" : "正在读取…"}</p>
+          : primary.length ? rows(primary) : <div className="py-8 text-center"><p className="text-sm text-muted-strong">{kind === "todo" && view === "done" ? "还没有已完成的待办" : meta.empty}</p>
+            {view === "active" && <Button variant="ghost" className="mt-2 text-xs" disabled={busy || !controller || Boolean(state.issue)} onClick={() => { controller?.changeScope(); setCreating(true); }}>{meta.create}</Button>}</div>}
+      </section>
+      {kind !== "todo" && history.length > 0 && <details className="mist-solid rounded-[24px] px-4 py-3 sm:px-5"><summary className="cursor-pointer text-sm font-medium text-foreground">{kind === "alarm" ? "已触发" : "已取消记挂"} <span className="ml-2 text-xs font-normal text-muted-strong">{history.length}</span></summary>{rows(history)}</details>}
+      {state.unsupported > 0 && <p className="px-1 text-xs leading-5 text-muted-strong">有 {state.unsupported} 条记录的类型、状态或字段无法识别，已保留服务端数据，未提供操作。</p>}
+    </PageScrollArea>
+    <ScheduleCreateDialog open={creating} kind={kind} state={state} controller={controller} onClose={() => setCreating(false)} />
+    <ScheduleCancelDialog item={cancel} state={state} controller={controller} onClose={() => setCancel(null)} />
+  </main></TooltipProvider>;
+}

@@ -91,12 +91,12 @@ export function CalendarWidget() {
         })}
       </div>
 
-      {/* 今日日程预览 */}
+      {/* 日期展示不代表持久化的记挂或待办 */}
       <div className="mt-2 pt-2 border-t border-border">
         <div className="flex items-center gap-2 text-sm">
           <div className="w-2 h-2 rounded-full bg-primary" />
-          <span className="text-muted-foreground">今日日程</span>
-          <span className="ml-auto font-medium text-foreground">3项</span>
+          <span className="text-muted-foreground">日期展示</span>
+          <span className="ml-auto text-xs text-muted-foreground">未同步记挂</span>
         </div>
       </div>
     </div>

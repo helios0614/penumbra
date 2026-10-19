@@ -1,0 +1,12 @@
+import type { ManagedScheduleKind, Schedule } from "@/domain/schedule";
+
+export const scheduleMeta = {
+  reminder: { title: "记挂", eyebrow: "ON MY MIND", description: "知远想持续放在心上的事情。", create: "创建记挂", empty: "暂时没有记挂的事情", active: "持续关注" },
+  todo: { title: "待办", eyebrow: "TO DO", description: "记下需要处理的事情，一件件完成。", create: "添加待办", empty: "暂时没有待办", active: "未完成" },
+  alarm: { title: "闹钟", eyebrow: "ALARMS", description: "一次性提醒，到时间后由知远回应。", create: "创建闹钟", empty: "没有等待触发的闹钟", active: "等待触发" },
+} as const;
+
+export function selectSchedules(items: readonly Schedule[], kind: ManagedScheduleKind, status: Schedule["status"]): Schedule[] {
+  return items.filter((item) => item.kind === kind && item.status === status).sort((a, b) =>
+    kind === "alarm" ? a.triggerAt.localeCompare(b.triggerAt) : (b.createdAt ?? 0) - (a.createdAt ?? 0) || a.id.localeCompare(b.id));
+}

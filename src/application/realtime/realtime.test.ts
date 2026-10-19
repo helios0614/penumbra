@@ -113,7 +113,6 @@ describe("AionHome realtime event projection", () => {
       "poi_search",
       "location_check",
       "activity_check",
-      "schedule_changed",
       "chat_status",
       "pong",
       "future_event",

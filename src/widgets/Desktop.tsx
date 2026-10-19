@@ -66,7 +66,7 @@ interface DesktopAppShortcut {
 
 const DESKTOP_APPS: DesktopAppShortcut[] = [
   { id: 'chat', label: '对话', icon: MessageSquare },
-  { id: 'calendar', label: '日历', icon: CalendarDays },
+  { id: 'calendar', label: '记挂', icon: CalendarDays },
   { id: 'todo', label: '待办', icon: CircleCheckBig },
 ];
 

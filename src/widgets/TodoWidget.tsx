@@ -20,7 +20,7 @@ export function TodoWidget() {
           <div className="p-1.5 rounded-md bg-success/10">
             <CheckCircle className="size-4 text-success" />
           </div>
-          <h3 className="font-semibold text-foreground">待办</h3>
+          <h3 className="font-semibold text-foreground">待办示例</h3>
         </div>
         <button className="p-1 hover:bg-surface-secondary rounded transition-colors">
           <Plus className="size-4 text-muted-foreground" />
@@ -58,7 +58,7 @@ export function TodoWidget() {
 
       {/* 统计 */}
       <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-sm">
-        <span className="text-muted-foreground">完成进度</span>
+        <span className="text-xs text-muted-foreground">示例清单 · 未同步</span>
         <span className="font-medium text-foreground">
           {todos.filter(t => t.done).length}/{todos.length}
         </span>
