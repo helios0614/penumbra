@@ -11,6 +11,7 @@ import { TodoWidget } from "@/widgets/TodoWidget";
 import { CalendarWidget } from "@/widgets/CalendarWidget";
 import { TodayPanel } from "@/components/desktop-v2/EditorialPanels";
 import { ScheduleRuntime } from "./ScheduleRuntime";
+import ScheduleView from "./ScheduleView";
 
 afterEach(() => vi.unstubAllGlobals());
 function elements(node: ReactNode): ReactElement<Record<string, unknown>>[] {
@@ -33,6 +34,11 @@ describe("existing flat app entrances", () => {
     }
     const html = renderToStaticMarkup(<DesktopAppView appId={id} onBack={vi.fn()} />);
     expect(html).not.toContain("desktop-app-mini-icon"); expect(html).not.toContain("页面还在搭建中");
+    if (id === "clock") {
+      // The shells lazy-load this shared page; static SSR of the shell itself shows its fallback.
+      const clock = renderToStaticMarkup(<ScheduleView kind="alarm" onBack={vi.fn()} />);
+      expect(clock).toContain('aria-label="定时功能"'); expect(clock).toContain("定时查岗"); expect(clock.match(/data-selection="filter"/g)).toHaveLength(2);
+    }
   });
   it.each(["/", "/app/todo", "/editorial", "/editorial/app/clock"])("keeps online alarm reception mounted above pages at %s", (pathname) => {
     vi.stubGlobal("window", { location: { pathname } }); const tree = App();

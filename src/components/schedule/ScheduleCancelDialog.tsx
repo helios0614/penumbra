@@ -10,8 +10,8 @@ export function ScheduleCancelDialog({ item, state, controller, onClose, finalFo
 }) {
   const busy = Boolean(state.pending);
   return <AlertDialog open={Boolean(item)} onOpenChange={(open, details) => { if (!open) { if (busy) details.cancel(); else onClose(); } }}>
-    <AlertDialogContent finalFocus={finalFocus}><AlertDialogHeader><AlertDialogTitle>取消这条{item?.kind === "reminder" ? "记挂" : item?.kind === "todo" ? "待办" : "闹钟"}？</AlertDialogTitle>
-      <AlertDialogDescription>记录会标记为已取消，保留在后端。{item?.kind === "alarm" ? "若已进入触发流程，无法撤回正在执行的提醒。" : ""}</AlertDialogDescription>
+    <AlertDialogContent finalFocus={finalFocus}><AlertDialogHeader><AlertDialogTitle>取消这条{item?.kind === "reminder" ? "记挂" : item?.kind === "todo" ? "待办" : item?.kind === "monitor" ? "查岗" : "闹钟"}？</AlertDialogTitle>
+      <AlertDialogDescription>记录会标记为已取消，保留在后端。{item?.kind === "alarm" ? "若已进入触发流程，无法撤回正在执行的提醒。" : item?.kind === "monitor" ? "若已进入触发流程，即使随后标记取消，也不保证撤回正在进行的截图或回复。" : ""}</AlertDialogDescription>
       <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-foreground">{item?.content}</p>
       {state.feedback?.error && state.feedback.source === "action" && <p role="alert" className="mt-2 text-xs leading-5 text-destructive">{state.feedback.text}</p>}
       <ScheduleIssue state={state} controller={controller} />

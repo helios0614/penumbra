@@ -48,6 +48,10 @@ export function createDevProxyConfig(
   return {
     "/api": { ...httpProxy },
     "/uploads": { ...httpProxy },
+    // Explicit legacy settings link only; never proxy the SPA or all /static assets.
+    "^/camera(?:\\?|$)": { ...httpProxy },
+    "^/static/common\\.(?:css|js)(?:\\?|$)": { ...httpProxy },
+    "^/public/(?:AionMonitoralart\\.mp3|icon-192\\.png)(?:\\?|$)": { ...httpProxy },
     "/ws": {
       ...httpProxy,
       ws: true,

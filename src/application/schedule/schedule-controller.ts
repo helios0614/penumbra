@@ -26,11 +26,12 @@ export function scheduleFailure(error: unknown): string {
 }
 const uncertain = (error: unknown) => !(error instanceof ApiError && [400, 401, 403, 404, 422].includes(error.status));
 export function canScheduleAction(item: Schedule, action: Action): boolean {
-  if (action === "cancel") return ["reminder", "todo", "alarm"].includes(item.kind) && (item.status === "active" || item.kind === "todo" && item.status === "done");
+  if (action === "cancel") return ["reminder", "todo", "alarm", "monitor"].includes(item.kind) && (item.status === "active" || item.kind === "todo" && item.status === "done");
   return item.kind === "todo" && item.status === (action === "done" ? "active" : "done");
 }
 
 export function createScheduleController(kind: ManagedScheduleKind, api = { ...client, getTriggerConfig }) {
+  const timed = kind === "alarm" || kind === "monitor", name = kind === "monitor" ? "查岗" : "闹钟";
   let state = { ...initialScheduleState }, disposed = false, scope = 0, again = false;
   const listeners = new Set<(value: ScheduleState) => void>();
   let read: { abort: AbortController; promise: Promise<boolean> } | null = null;
@@ -64,7 +65,7 @@ export function createScheduleController(kind: ManagedScheduleKind, api = { ...c
     const item = snapshot.items.find((row) => row.id === id && row.kind === kind);
     const expected = action === "cancel" ? "cancelled" : action === "done" ? "done" : "active";
     if (!item || item.status !== expected) {
-      publish({ issue: { id, action, text: !item ? "未找到原记录，无法确认操作结果。请重新核对，不会自动重发。" : "记录状态已变化，尚未核对到预期结果；正在执行的闹钟无法撤回。" } });
+      publish({ issue: { id, action, text: !item ? "未找到原记录，无法确认操作结果。请重新核对，不会自动重发。" : `记录状态已变化，尚未核对到预期结果；正在执行的${name}无法撤回。` } });
       return false;
     }
     publish({ issue: null }); return true;
@@ -84,13 +85,13 @@ export function createScheduleController(kind: ManagedScheduleKind, api = { ...c
       try {
         const config = await api.getTriggerConfig({ signal: abort.signal, cache: "no-store" });
         if (!disposed && !abort.signal.aborted) publish({ zone: config.timeZone });
-      } catch (error) { if (!abort.signal.aborted) publish({ zoneError: `无法确认服务器时区，暂不能创建闹钟。${scheduleFailure(error)}` }); }
+      } catch (error) { if (!abort.signal.aborted) publish({ zoneError: `无法确认服务器时区，暂不能创建${name}。${scheduleFailure(error)}` }); }
       finally { if (zoneRead === abort) { zoneRead = null; publish({ zoneLoading: false }); } }
     },
     async create(content: string, triggerAt?: string): Promise<boolean> {
       if (disposed || state.pending || state.issue) return false;
       const input: ScheduleInput = { kind, content: content.trim(), ...(triggerAt ? { triggerAt } : {}) };
-      const invalid = !input.content || kind === "alarm" && (!state.zone || state.zoneLoading || !triggerAt || !validMinute(triggerAt))
+      const invalid = !input.content || timed && (!state.zone || state.zoneLoading || !triggerAt || !validMinute(triggerAt))
         || kind === "reminder" && triggerAt && !validDate(triggerAt) && !validMinute(triggerAt);
       if (invalid) { publish({ feedback: { source: "create", error: true, text: "请检查内容、日期时间及服务器时区。" } }); return false; }
       cancelRead(); const abort = new AbortController(); mutation = abort; const owner = scope;
@@ -99,7 +100,7 @@ export function createScheduleController(kind: ManagedScheduleKind, api = { ...c
         const item = await api.createSchedule(input, { signal: abort.signal });
         if (disposed || abort.signal.aborted) return false;
         publish({ items: [...state.items.filter((row) => row.id !== item.id), item] });
-        success(kind === "reminder" ? "记挂已创建" : kind === "todo" ? "待办已添加" : "闹钟已创建", "create", owner);
+        success(kind === "reminder" ? "记挂已创建" : kind === "todo" ? "待办已添加" : `${name}已创建`, "create", owner);
         again = true; return true;
       } catch (error) {
         if (disposed) return false;
@@ -119,7 +120,7 @@ export function createScheduleController(kind: ManagedScheduleKind, api = { ...c
         if (disposed || abort.signal.aborted) return false;
         publish({ issue: { id, action, text: "操作已返回，正在重新读取并核对记录状态。" } });
         if (!await verify(id, action, abort.signal)) return false;
-        success(action === "done" ? "待办已完成" : action === "restore" ? "待办已恢复" : "已取消", "action", owner); return true;
+        success(action === "done" ? "待办已完成" : action === "restore" ? "待办已恢复" : kind === "monitor" ? "查岗已标记取消" : "已取消", "action", owner); return true;
       } catch (error) {
         if (disposed) return false;
         if (state.issue || uncertain(error)) publish({ issue: { id, action, text: "操作结果尚未核实，请重新读取核对；不会自动重发。" } });

@@ -11,7 +11,7 @@ import { Dialog, DialogBody, DialogDescription } from "@/components/ui/dialog";
 import { SchedulePage } from "./ScheduleView";
 import { ScheduleRows } from "./ScheduleRows";
 import { ScheduleCancelDialog } from "./ScheduleCancelDialog";
-import { AlarmReminder } from "./ScheduleRuntime";
+import { ScheduleReminder } from "./ScheduleRuntime";
 import { selectSchedules } from "./schedule-presentation";
 
 const row = (kind: Schedule["kind"], status: Schedule["status"] = "active", id = "sch_1"): Schedule => ({ id, kind, status, content: `事项 ${id} [?]`, triggerAt: "2001-01-01 09:00", createdAt: 1 });
@@ -46,6 +46,17 @@ describe("time pages use real schedule semantics", () => {
     expect(html).not.toContain('aria-label="更多闹钟操作：事项 triggered'); expect(html).not.toContain("事项 camera");
     expect(html).not.toMatch(/执行成功|恢复闹钟|贪睡|每天重复|启用开关/);
   });
+  it("shows only active monitors in the check view and leaves triggered/cancelled history read-only", () => {
+    const items = [row("monitor", "active", "check"), row("monitor", "triggered", "past-check"), row("monitor", "cancelled", "cancelled-check"), row("alarm", "active", "alarm")];
+    expect(selectSchedules(items, "monitor", "active").map((item) => item.id)).toEqual(["check"]);
+    const html = page("monitor", items);
+    expect(html).toContain("事项 check [?]"); expect(html).toContain("更多查岗操作"); expect(html).toContain("尝试查看一次摄像头");
+    expect(html).not.toContain("事项 alarm"); expect(html).not.toContain("事项 past-check"); expect(html).not.toContain("事项 cancelled-check");
+    expect(html).not.toMatch(/执行成功|恢复查岗|重试查岗|重复执行|静默时段|<details/);
+    const triggered = renderToStaticMarkup(<TooltipProvider><ScheduleRows items={[row("monitor", "triggered")]} kind="monitor" busy={null} blocked={false} onCancel={vi.fn()} onToggle={vi.fn()} /></TooltipProvider>);
+    expect(triggered).toContain('aria-label="已触发查岗"'); expect(triggered).not.toContain("更多查岗操作");
+    expect(triggered).toContain("grid-cols-subgrid items-start"); expect(triggered).toContain("tabular-nums");
+  });
   it("renders malformed historical time as readable information without crashing", () => {
     expect(page("alarm", [{ ...row("alarm"), triggerAt: "legacy invalid text" }])).toContain("时间格式异常：legacy invalid text");
     expect(page("alarm", [{ ...row("alarm"), triggerAt: "legacy invalid text" }])).toContain("时间待核对");
@@ -62,7 +73,7 @@ describe("time pages use real schedule semantics", () => {
     const html = page("todo", [], { issue: { text: "创建结果未知，不会自动重发" } });
     expect(html).toContain('role="alert"'); expect(html).toContain("创建结果未知"); expect(html).toContain("重新读取核对");
   });
-  it.each(["reminder", "todo", "alarm"] as const)("pins the count at the paper's upper right without a list title bar for %s", (kind) => {
+  it.each(["reminder", "todo", "alarm", "monitor"] as const)("pins the count at the paper's upper right without a list title bar for %s", (kind) => {
     const html = page(kind);
     const paper = html.match(/<section[^>]*data-schedule-reading-panel="true"[^>]*>/)?.[0];
     const scroll = html.match(/<div[^>]*data-schedule-list-scroll="true"[^>]*>/)?.[0];
@@ -83,13 +94,13 @@ describe("time pages use real schedule semantics", () => {
   });
   it("keeps long reminder, TODO and alarm content complete in the same scroll region", () => {
     const content = "较长的正文\n".repeat(20) + "https://example.test/" + "longword".repeat(50);
-    for (const [kind, count] of [["reminder", 60], ["todo", 40], ["alarm", 400]] as const) {
+    for (const [kind, count] of [["reminder", 60], ["todo", 40], ["alarm", 400], ["monitor", 400]] as const) {
       const items = Array.from({ length: count }, (_, index) => ({ ...row(kind, "active", `item_${index}`), content: `${index} ${content}` }));
       const html = page(kind, items);
       expect(html.match(/data-schedule-row=/g)).toHaveLength(count); expect(html.match(/data-schedule-list-scroll=/g)).toHaveLength(1); expect(html.match(/overflow-y-auto/g)).toHaveLength(1);
       expect(html).toContain(`${count - 1} ${content}`); expect(html).not.toMatch(/line-clamp|text-ellipsis/);
       const body = html.match(/<p[^>]*data-schedule-body="true"[^>]*>/)?.[0];
-      expect(body).toContain("text-[13px] font-normal"); expect(body).toContain(kind === "alarm" ? "leading-5" : "leading-7"); expect(html).toContain("[overflow-wrap:anywhere]");
+      expect(body).toContain("text-[13px] font-normal"); expect(body).toContain((kind === "alarm" || kind === "monitor") ? "leading-5" : "leading-7"); expect(html).toContain("[overflow-wrap:anywhere]");
     }
   });
   it("uses Memory's actual body typography, foreground and decorative count rules without copying its clamp", () => {
@@ -151,10 +162,23 @@ describe("real control callbacks without browser automation", () => {
     const cancel = vi.fn(); find(busy, AlertDialog).props.onOpenChange?.(false, { cancel } as never); expect(cancel).toHaveBeenCalled();
   });
   it("exposes an app-wide online alarm notice whose dismissal is local and makes no mutation", () => {
-    const dismiss = vi.fn(), notice = AlarmReminder({ alarm: { type: "schedule-alarm", id: "a", content: "在线提醒", triggerAt: "2001-01-01 09:00" }, count: 2, dismiss });
+    const dismiss = vi.fn(), notice = ScheduleReminder({ notice: { type: "schedule-alarm", id: "a", content: "在线提醒", triggerAt: "2001-01-01 09:00" }, count: 2, dismiss });
     expect(find(notice, Dialog).props.open).toBe(true);
     expect(renderToStaticMarkup(<>{find(notice, DialogDescription).props.children}{find(notice, DialogBody).props.children}</>)).toContain("关闭此提醒仅关闭本地提示");
     find(notice, Button).props.onClick?.({} as never); expect(dismiss).toHaveBeenCalledOnce();
-    expect(find(AlarmReminder({ count: 0, dismiss }), Dialog).props.open).toBe(false);
+    expect(find(ScheduleReminder({ count: 0, dismiss }), Dialog).props.open).toBe(false);
+  });
+  it("uses a neutral camera-start notice for the shared monitor event without implying screenshot or response success", () => {
+    const dismiss = vi.fn(), notice = ScheduleReminder({ notice: { type: "monitor-alert", content: "<img src=private.jpg>查看一下" }, count: 1, dismiss });
+    expect(find(notice, Dialog).props.open).toBe(true);
+    const html = renderToStaticMarkup(<>{find(notice, DialogDescription).props.children}{find(notice, DialogBody).props.children}</>);
+    expect(html).toContain("尚未确认截图或回复结果"); expect(html).toContain("&lt;img"); expect(html).not.toContain("<img");
+    expect(html).not.toMatch(/执行成功|截图成功|定时查岗已完成|服务器本地时间/);
+    find(notice, Button).props.onClick?.({} as never); expect(dismiss).toHaveBeenCalledOnce();
+  });
+  it("describes monitor cancellation as a soft mark and retains the claim boundary", () => {
+    const tree = ScheduleCancelDialog({ item: row("monitor"), state: initialScheduleState, controller: null, onClose: vi.fn() });
+    const description = renderToStaticMarkup(<>{find(tree, AlertDialogDescription).props.children}</>);
+    expect(description).toContain("记录会标记为已取消，保留在后端"); expect(description).toContain("不保证撤回正在进行的截图或回复");
   });
 });

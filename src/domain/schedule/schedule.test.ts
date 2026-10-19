@@ -37,6 +37,17 @@ describe("server-local minute text", () => {
 });
 
 describe("legacy API mapping", () => {
+  it.each([undefined, "", "2026-10-19", "2026-02-30 09:00", "2026-10-19 24:00", "2026-10-19 09:00Z", "2026-10-19 09:00:00"])("rejects invalid monitor minutes before POST: %s", async (triggerAt) => {
+    const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+    await expect(createSchedule({ kind: "monitor", content: "查看一下", triggerAt })).rejects.toThrow("精确到分钟");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("keeps monitor DTO separate from alarms and refuses a mismatched creation response", async () => {
+    const list = parseScheduleList([{ ...row, type: "monitor" }]);
+    expect(list).toMatchObject({ unsupported: 0, items: [{ kind: "monitor", status: "active" }] });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(row)));
+    await expect(createSchedule({ kind: "monitor", content: "提醒", triggerAt: row.trigger_at })).rejects.toThrow("创建响应无法核对");
+  });
   it("reads full and TODO snapshots with the existing API client", async () => {
     const fetch = vi.fn().mockResolvedValue(json([row])); vi.stubGlobal("fetch", fetch);
     await listSchedules(); fetch.mockResolvedValueOnce(json([])); await listTodos();
@@ -44,10 +55,10 @@ describe("legacy API mapping", () => {
     expect(String(fetch.mock.calls[1][0])).toContain("/api/schedules/todo");
     expect(fetch.mock.calls[0][1]).toMatchObject({ credentials: "include", cache: "no-store" });
   });
-  it.each(["reminder", "todo", "alarm"] as const)("creates %s with the real backend names", async (kind) => {
+  it.each(["reminder", "todo", "alarm", "monitor"] as const)("creates %s with the real backend names", async (kind) => {
     const fetch = vi.fn().mockResolvedValue(json({ ...row, type: kind })); vi.stubGlobal("fetch", fetch);
-    await createSchedule({ kind, content: " 提醒 ", ...(kind === "alarm" ? { triggerAt: "2026-10-19T22:00" } : {}) });
-    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ type: kind, content: "提醒", ...(kind === "alarm" ? { trigger_at: "2026-10-19 22:00" } : {}) });
+    await createSchedule({ kind, content: " 提醒 ", ...((kind === "alarm" || kind === "monitor") ? { triggerAt: "2026-10-19T22:00" } : {}) });
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ type: kind, content: "提醒", ...((kind === "alarm" || kind === "monitor") ? { trigger_at: "2026-10-19 22:00" } : {}) });
   });
   it.each([["cancel", "DELETE", "/sch%2F1"], ["done", "PATCH", "/sch%2F1/done"], ["restore", "PATCH", "/sch%2F1/restore"]] as const)("maps %s without any permanent delete or edit API", async (action, method, suffix) => {
     const fetch = vi.fn().mockResolvedValue(json({ ok: true })); vi.stubGlobal("fetch", fetch);

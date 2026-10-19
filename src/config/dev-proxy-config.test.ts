@@ -63,6 +63,16 @@ describe("development proxy target validation", () => {
 });
 
 describe("development proxy routes", () => {
+  it("allows only the confirmed legacy camera settings page and required shared resources", () => {
+    const proxy = createDevProxyConfig("https://backend.example")!;
+    const legacy = Object.keys(proxy).filter((key) => key.startsWith("^"));
+    const matches = (pathname: string) => legacy.some((key) => new RegExp(key).test(pathname));
+    for (const pathname of ["/camera", "/camera?settings=1", "/static/common.css", "/static/common.js?v=1", "/public/AionMonitoralart.mp3", "/public/icon-192.png"]) {
+      expect(matches(pathname)).toBe(true);
+    }
+    for (const pathname of ["/", "/camera-other", "/camera/", "/static/chat.html", "/public/anything.png", "/editorial/app/clock", "/app/clock"]) expect(matches(pathname)).toBe(false);
+    for (const key of legacy) expect(proxy[key]).toEqual(proxy["/api"]);
+  });
   it("proxies API and confirmed upload paths without rewriting responses", () => {
     const proxy = createDevProxyConfig("https://backend.example");
 

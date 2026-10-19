@@ -10,6 +10,7 @@ import { Dialog, DialogBody } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { ScheduleCreateDialog } from "./ScheduleCreateDialog";
 import { ScheduleDateField } from "./ScheduleDateField";
+import { ScheduleCameraStatus } from "./ScheduleCameraStatus";
 
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof React>();
@@ -52,6 +53,34 @@ function setup(kind: ManagedScheduleKind) {
 }
 
 describe("compact schedule create forms", () => {
+  it("creates a monitor with the shared minute inputs and server timezone, regardless of a device status guarantee", async () => {
+    const s = setup("monitor"); s.render(); s.effects[0](); expect(s.loadZone).toHaveBeenCalledOnce();
+    s.fill("看看小猫"); s.time("date", "2026-10-19"); s.time("time", "22:00");
+    expect(find(s.render(), ScheduleCameraStatus).props.open).toBe(true);
+    expect(find(s.render(), ScheduleDateField).props.label).toBe("执行日期");
+    expect(find(s.render(), LocationTimeField).props.label).toBe("执行时间");
+    expect(s.body()).toContain("服务器时间 · America/New_York"); expect(s.body()).not.toMatch(/type="date"|type="time"|自动开启|静默时段/);
+    await s.submit(); expect(s.create).toHaveBeenCalledWith("看看小猫", "2026-10-19 22:00"); expect(s.onClose).toHaveBeenCalledOnce();
+  });
+  it("blocks monitor creation until timezone confirmation, with local recovery", async () => {
+    const s = setup("monitor"); s.fill("看看"); s.time("date", "2026-10-19"); s.time("time", "22:00");
+    s.update({ zone: null, zoneError: "无法确认时区" }); expect(s.createButton().props.disabled).toBe(true);
+    expect(find(s.render(), ScheduleDateField).props.disabled).toBe(true); await s.submit(); expect(s.create).not.toHaveBeenCalled();
+    expect(s.body()).toContain("确认服务器时区后才能创建查岗");
+    find(s.render(), Button, (props) => props.children === "重新确认时区").props.onClick?.({} as never); expect(s.loadZone).toHaveBeenCalledOnce();
+    s.update({ zone: "Europe/Paris", zoneError: null, zoneLoading: true }); expect(s.createButton().props.disabled).toBe(true);
+    s.update({ zoneLoading: false }); await s.submit(); expect(s.create).toHaveBeenCalledOnce();
+  });
+  it.each([["", ""], ["2026-02-30", "22:00"], ["2026-10-19", "24:00"], ["2026-10-19", "22:00:00"]])("rejects invalid monitor date/time %s %s", async (date, time) => {
+    const s = setup("monitor"); s.fill("看看"); s.time("date", date); s.time("time", time); await s.submit();
+    expect(s.create).not.toHaveBeenCalled(); expect(s.onClose).not.toHaveBeenCalled(); expect(s.body()).toContain('role="alert"');
+  });
+  it("retains the monitor draft and does not resubmit an unknown result", async () => {
+    const s = setup("monitor"); s.fill("看看"); s.time("date", "2026-10-19"); s.time("time", "22:00"); s.create.mockResolvedValue(false);
+    await s.submit(); s.update({ issue: { text: "创建结果未知" } }); await s.submit();
+    expect(s.create).toHaveBeenCalledOnce(); expect(s.createButton().props.disabled).toBe(true); expect(find(s.render(), Textarea).props.value).toBe("看看");
+    expect(s.onClose).not.toHaveBeenCalled();
+  });
   it("creates a reminder with optional date-only information and no automatic trigger", async () => {
     const s = setup("reminder"); s.fill("想持续关注"); s.time("date", "2026-10-19"); await s.submit();
     expect(s.create).toHaveBeenCalledWith("想持续关注", "2026-10-19"); expect(s.onClose).toHaveBeenCalledOnce();

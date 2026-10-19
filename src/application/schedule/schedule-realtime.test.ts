@@ -26,7 +26,7 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => { subscriptions.forEach((value) => value.dispose()); subscriptions.length = 0; vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe("schedule realtime contracts", () => {
-  it("maps invalidation, real alarm fields and reserved monitor compatibility without changing chat", () => {
+  it("maps invalidation and the actual alarm/monitor payloads without changing chat", () => {
     const changed = mapRealtimeEvent({ type: "schedule_changed" });
     expect(changed).toEqual({ type: "schedule-changed" });
     const triggered = mapRealtimeEvent({ type: "schedule_alarm", data: { id: alarm.id, content: alarm.content, trigger_at: alarm.triggerAt } });
@@ -60,12 +60,41 @@ describe("root-owned schedule synchronization", () => {
   it("receives alarms without an open page and deduplicates across page changes and reconnects", async () => {
     const first = channel(), second = channel();
     const runtime = createScheduleRealtime(vi.fn().mockResolvedValueOnce(first.connection).mockResolvedValueOnce(second.connection)); subscriptions.push(runtime); await flush();
-    first.push(alarm); first.push(alarm); await flush(); expect(runtime.getState().alarms).toEqual([alarm]);
-    const page = vi.fn(); const unsubscribe = runtime.subscribe(page); unsubscribe(); runtime.dismissAlarm();
+    first.push(alarm); first.push(alarm); await flush(); expect(runtime.getState().notices).toEqual([alarm]);
+    const page = vi.fn(); const unsubscribe = runtime.subscribe(page); unsubscribe(); runtime.dismissNotice();
     first.finish(); await flush(); await vi.advanceTimersByTimeAsync(1000); second.push(alarm); await flush();
-    expect(runtime.getState().alarms).toEqual([]);
-    second.push({ ...alarm, id: "sch_b" }); await flush(); expect(runtime.getState().alarms[0].id).toBe("sch_b");
+    expect(runtime.getState().notices).toEqual([]);
+    second.push({ ...alarm, id: "sch_b" }); await flush(); expect((runtime.getState().notices[0] as typeof alarm).id).toBe("sch_b");
     expect(page).toHaveBeenCalledOnce();
+  });
+  it("queues monitor notices across pages without inventing content-based deduplication, sharing one queue with alarms", async () => {
+    const first = channel(), second = channel();
+    const runtime = createScheduleRealtime(vi.fn().mockResolvedValueOnce(first.connection).mockResolvedValueOnce(second.connection)); subscriptions.push(runtime); await flush();
+    const monitor = mapRealtimeEvent({ type: "monitor_alert", data: { content: "同样的查岗内容", screenshot: "private.jpg" } });
+    first.push(monitor); first.push(alarm); first.push(alarm); first.push(monitor); await flush();
+    expect(runtime.getState().notices).toEqual([monitor, alarm, monitor]);
+    expect(runtime.getState().notices[0]).not.toHaveProperty("screenshot");
+    runtime.dismissNotice(); expect(runtime.getState().notices).toEqual([alarm, monitor]);
+    first.finish(); await flush(); await vi.advanceTimersByTimeAsync(1000);
+    second.push(monitor); second.push(alarm); await flush();
+    expect(runtime.getState().notices).toEqual([alarm, monitor, monitor]);
+  });
+  it.each(["alarm", "monitor"] as const)("rereads the %s snapshot after AI changes and reconnection without relying on schedule IDs in alerts", async (kind) => {
+    const first = channel(), second = channel(); let rows: unknown[] = [];
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(rows), { headers: { "Content-Type": "application/json" } })));
+    const controller = createScheduleController(kind);
+    const runtime = createScheduleRealtime(vi.fn().mockResolvedValueOnce(first.connection).mockResolvedValueOnce(second.connection)); subscriptions.push(runtime);
+    let revision = -1;
+    const unsubscribe = runtime.subscribe((state) => { if (revision !== state.revision) { revision = state.revision; void controller.refresh(); } });
+    await flush();
+    rows = [{ id: "ai-check", type: kind, status: "active", content: "AI 创建", trigger_at: "2026-10-19 22:00", created_at: 1 }];
+    first.push({ type: "schedule-changed" }); await flush(); await vi.advanceTimersByTimeAsync(150); await flush();
+    expect(controller.getState().items[0]).toMatchObject({ kind, status: "active" });
+    rows = [{ ...(rows[0] as object), status: "triggered" }];
+    first.push({ type: "monitor-alert", content: "开始查看" }); await flush(); await vi.advanceTimersByTimeAsync(150); await flush();
+    expect(controller.getState().items[0].status).toBe("triggered");
+    first.finish(); await flush(); rows = []; await vi.advanceTimersByTimeAsync(1000); await flush();
+    expect(controller.getState().items).toEqual([]); unsubscribe(); controller.dispose();
   });
   it("backs off and blocks authentication failures until explicit reconnection", async () => {
     const socket = channel(); const open = vi.fn().mockRejectedValueOnce(new Error("offline"))

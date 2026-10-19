@@ -5,9 +5,9 @@ import { createScheduleController, initialScheduleState, type ScheduleController
 import type { Schedule } from "@/domain/schedule";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger } from "@/components/ui/popover";
-import { SegmentedControlItem } from "@/components/ui/selection-control";
+import { FilterChip, SegmentedControlItem } from "@/components/ui/selection-control";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { SchedulePage } from "./ScheduleView";
+import { ClockScheduleView, SchedulePage } from "./ScheduleView";
 import { ScheduleRows, ScheduleRowActions } from "./ScheduleRows";
 import { ScheduleCancelDialog } from "./ScheduleCancelDialog";
 
@@ -53,6 +53,27 @@ const flush = async () => { for (let i = 0; i < 40; i++) await Promise.resolve()
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
 
 describe("schedule workspace interaction", () => {
+  it("keeps the clock entrance flat and remounts only the selected feature with clean feedback and scroll ownership", () => {
+    const onBack = vi.fn(), render = session(() => ClockScheduleView({ onBack }));
+    const first = render() as React.ReactElement<{ kind: string; onClockKindChange: (kind: "alarm" | "monitor") => void; onBack: () => void; focusClockKind: boolean }>;
+    expect(first.props.kind).toBe("alarm"); expect(first.key).toBe("alarm"); expect(first.props.focusClockKind).toBe(false);
+    first.props.onClockKindChange("monitor"); const changed = render() as typeof first;
+    expect(changed.props.kind).toBe("monitor"); expect(changed.key).toBe("monitor"); expect(changed.props.focusClockKind).toBe(true); expect(changed.props.onBack).toBe(onBack);
+    changed.props.onClockKindChange("alarm"); expect((render() as typeof first).props.kind).toBe("alarm");
+  });
+  it("uses compact function chips outside the reading surface, blocking switches during writes and unknown results", () => {
+    const onClockKindChange = vi.fn(), changeScope = vi.fn();
+    let state = { ...initialScheduleState, loaded: true };
+    const render = session(() => SchedulePage({ kind: "alarm", state, controller: { changeScope } as unknown as ScheduleController, realtime, onClockKindChange }));
+    const tree = render(), html = renderToStaticMarkup(<>{tree}</>);
+    expect(html.match(/data-selection="filter"/g)).toHaveLength(2); expect(html.match(/data-selection="segment"/g)).toHaveLength(2);
+    expect(html.indexOf('data-schedule-kind-filters="true"')).toBeLessThan(html.indexOf('data-schedule-reading-panel="true"'));
+    expect(html.match(/overflow-y-auto/g)).toHaveLength(1);
+    find(tree, FilterChip, (props) => props.selected === false).props.onClick?.({} as never);
+    expect(onClockKindChange).toHaveBeenCalledWith("monitor"); expect(changeScope).toHaveBeenCalledOnce();
+    state = { ...state, pending: "create" }; expect(find(render(), FilterChip).props.disabled).toBe(true);
+    state = { ...state, pending: null, issue: { text: "创建结果未知" } }; expect(find(render(), FilterChip).props.disabled).toBe(true);
+  });
   it("resets only on TODO view changes, preserving scroll on ordinary refresh and feedback updates", () => {
     const state = { ...initialScheduleState, loaded: true, items: [item, { ...item, id: "done", status: "done" as const }] };
     const render = session(() => SchedulePage({ kind: "todo", state, controller: null, realtime }));
@@ -64,15 +85,16 @@ describe("schedule workspace interaction", () => {
     scroll.scrollTop = 300; render(); expect(scroll.scrollTop).toBe(300);
     find(render(), SegmentedControlItem, (props) => props.selected === false).props.onClick?.({} as never); render(); expect(scroll.scrollTop).toBe(0);
   });
-  it("gives alarms the same separate Segmented structure as TODO and switches only the visible newest-first snapshot", () => {
+  it.each(["alarm", "monitor"] as const)("gives %s the same separate Segmented structure as TODO and switches only the visible newest-first snapshot", (kind) => {
     const alarms: Schedule[] = [
-      { ...item, kind: "alarm", id: "active_old", triggerAt: "2026-10-18 22:00", createdAt: 100 },
-      { ...item, kind: "alarm", id: "active_new", triggerAt: "2026-10-20 09:00", createdAt: 1 },
-      ...Array.from({ length: 400 }, (_, index): Schedule => ({ ...item, kind: "alarm", id: `history_${index}`, status: "triggered", triggerAt: `2026-10-19 ${String(Math.floor(index / 60)).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}` })),
+      { ...item, kind, id: "active_old", triggerAt: "2026-10-18 22:00", createdAt: 100 },
+      { ...item, kind, id: "active_new", triggerAt: "2026-10-20 09:00", createdAt: 1 },
+      { ...item, kind: kind === "alarm" ? "monitor" : "alarm", id: "other-feature" },
+      ...Array.from({ length: 400 }, (_, index): Schedule => ({ ...item, kind, id: `history_${index}`, status: "triggered", triggerAt: `2026-10-19 ${String(Math.floor(index / 60)).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}` })),
     ];
     const changeScope = vi.fn(), act = vi.fn(), refresh = vi.fn();
     const controller = { changeScope, act, refresh } as unknown as ScheduleController;
-    const render = session(() => SchedulePage({ kind: "alarm", state: { ...initialScheduleState, loaded: true, items: alarms }, controller, realtime }));
+    const render = session(() => SchedulePage({ kind, state: { ...initialScheduleState, loaded: true, items: alarms }, controller, realtime }));
     const tree = render(), scroll = { scrollTop: 500 } as HTMLDivElement;
     (find(tree, "div", (props) => Boolean(props["data-schedule-list-scroll"])).props.ref as React.RefObject<HTMLDivElement>).current = scroll;
     expect(find(tree, ScheduleRows).props.items.map((row) => row.id)).toEqual(["active_new", "active_old"]);
@@ -88,17 +110,17 @@ describe("schedule workspace interaction", () => {
     expect(find(changed, SegmentedControlItem, (props) => props.selected === true).props.children).toBe("已触发");
     const historyHtml = renderToStaticMarkup(<>{changed}</>);
     expect(historyHtml).toContain('data-schedule-total="true">400</span>'); expect(historyHtml.match(/data-schedule-row=/g)).toHaveLength(400);
-    expect(historyHtml.match(/overflow-y-auto/g)).toHaveLength(1); expect(historyHtml).not.toContain("更多闹钟操作"); expect(historyHtml).not.toContain("<details");
+    expect(historyHtml.match(/overflow-y-auto/g)).toHaveLength(1); expect(historyHtml).not.toMatch(/更多闹钟操作|更多查岗操作|other-feature|执行成功/); expect(historyHtml).not.toContain("<details");
     scroll.scrollTop = 600; render(); expect(scroll.scrollTop).toBe(600);
     find(render(), SegmentedControlItem, (props) => props.selected === false).props.onClick?.({} as never);
     const waiting = render(); expect(find(waiting, SegmentedControlItem, (props) => props.selected === true).props.children).toBe("等待触发"); expect(find(waiting, ScheduleRows).props.items).toHaveLength(2); expect(scroll.scrollTop).toBe(0);
     expect(changeScope).toHaveBeenCalledTimes(2); expect(act).not.toHaveBeenCalled(); expect(refresh).not.toHaveBeenCalled();
   });
-  it("keeps the triggered empty state in its selected view with a fixed zero count", () => {
-    const render = session(() => SchedulePage({ kind: "alarm", state: { ...initialScheduleState, loaded: true }, controller: null, realtime }));
+  it.each(["alarm", "monitor"] as const)("keeps the %s triggered empty state in its selected view with a fixed zero count", (kind) => {
+    const render = session(() => SchedulePage({ kind, state: { ...initialScheduleState, loaded: true }, controller: null, realtime }));
     find(render(), SegmentedControlItem, (props) => props.selected === false).props.onClick?.({} as never);
     const html = renderToStaticMarkup(<>{render()}</>);
-    expect(html).toContain("还没有已触发的闹钟"); expect(html).toContain('data-schedule-total="true">0</span>'); expect(html).not.toContain("没有等待触发的闹钟");
+    expect(html).toContain(kind === "alarm" ? "还没有已触发的闹钟" : "还没有已触发的查岗"); expect(html).toContain('data-schedule-total="true">0</span>'); expect(html).not.toContain(kind === "alarm" ? "没有等待触发的闹钟" : "没有等待触发的查岗");
     expect(html.match(/overflow-y-auto/g)).toHaveLength(1);
   });
   it("opens a low-weight action popover before requesting cancellation, retaining its stable focus target", () => {

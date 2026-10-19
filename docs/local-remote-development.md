@@ -34,6 +34,16 @@ Vite forwards these confirmed paths without rewriting their bodies:
 - `/ws` — the browser session WebSocket endpoint, with Upgrade enabled;
 - `/uploads` — public attachment URLs returned by `POST /api/upload`.
 
+The scheduled-check create dialog also links to the existing AionHome `/camera`
+settings page in a separate tab. Development forwards exactly `/camera`,
+`/static/common.css`, `/static/common.js`, `/public/AionMonitoralart.mp3`, and
+`/public/icon-192.png` to the same target. These are narrowly matched legacy
+paths, not Penumbra routes or a proxy for all static files. This does not expose
+the target in the client bundle, start a camera, or migrate camera settings.
+The legacy page requires an authenticated session; its login and PWA installation
+flows are outside this bridge. Production same-origin gateways must keep the
+legacy `/camera` page and its assets reachable separately from the Penumbra SPA.
+
 `/ws/android-push` is not used by Penumbra and no push token is added. `/files` is not proxied because AionHome exposes file management below `/api/files`; no unverified static path is configured.
 
 ## Session cookie

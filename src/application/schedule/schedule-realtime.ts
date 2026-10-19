@@ -2,12 +2,13 @@ import { openRealtimeEvents, type RealtimeConnection, type RealtimeEvent } from 
 import { WebSocketTransportError } from "@/lib/websocket";
 
 export type AlarmNotice = Extract<RealtimeEvent, { type: "schedule-alarm" }>;
+export type ScheduleNotice = AlarmNotice | Extract<RealtimeEvent, { type: "monitor-alert" }>;
 export interface ScheduleRealtimeState {
   readonly revision: number;
   readonly connection: "connecting" | "connected" | "reconnecting" | "blocked";
-  readonly alarms: readonly AlarmNotice[];
+  readonly notices: readonly ScheduleNotice[];
 }
-export const initialScheduleRealtime: ScheduleRealtimeState = { revision: 0, connection: "connecting", alarms: [] };
+export const initialScheduleRealtime: ScheduleRealtimeState = { revision: 0, connection: "connecting", notices: [] };
 
 /** One feature-owned subscription at the app root, independent of the open page. */
 export function createScheduleRealtime(open = openRealtimeEvents) {
@@ -27,7 +28,7 @@ export function createScheduleRealtime(open = openRealtimeEvents) {
       connection = next; attempt = 0; publish({ connection: "connected" }); invalidate();
       for await (const event of next.events) {
         if (disposed || current !== generation) return;
-        if (event.type === "schedule-changed" || event.type === "schedule-alarm") {
+        if (event.type === "schedule-changed" || event.type === "schedule-alarm" || event.type === "monitor-alert") {
           if (debounce === undefined) debounce = setTimeout(() => { debounce = undefined; invalidate(); }, 150);
         }
         if (event.type === "schedule-alarm") {
@@ -35,9 +36,12 @@ export function createScheduleRealtime(open = openRealtimeEvents) {
           if (!seen.has(key)) {
             seen.add(key);
             if (seen.size > 512) seen.delete(seen.values().next().value!);
-            publish({ alarms: [...snapshot.alarms, event] });
+            publish({ notices: [...snapshot.notices, event] });
           }
         }
+        // Both scheduled checks and Sentinel use {content}, without a stable ID or
+        // timestamp. Equal content can mean different real checks: never collapse it.
+        if (event.type === "monitor-alert") publish({ notices: [...snapshot.notices, event] });
       }
       blocked = (await next.closed).code === 1008;
     } catch (error) { blocked = error instanceof WebSocketTransportError && error.closeCode === 1008; }
@@ -56,7 +60,7 @@ export function createScheduleRealtime(open = openRealtimeEvents) {
   return {
     getState: () => snapshot,
     subscribe(fn: (value: ScheduleRealtimeState) => void) { listeners.add(fn); fn(snapshot); return () => { listeners.delete(fn); }; },
-    dismissAlarm() { publish({ alarms: snapshot.alarms.slice(1) }); },
+    dismissNotice() { publish({ notices: snapshot.notices.slice(1) }); },
     reconnect() { if (!disposed) { stop(); attempt = 0; void connect(); } },
     dispose() { disposed = true; stop(); listeners.clear(); if (typeof document !== "undefined") document.removeEventListener("visibilitychange", visible); },
   };

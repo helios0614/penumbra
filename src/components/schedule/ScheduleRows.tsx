@@ -14,11 +14,12 @@ export function ScheduleRows({ items, kind, busy, blocked, onToggle, onCancel }:
   readonly items: readonly Schedule[]; readonly kind: ManagedScheduleKind; readonly busy: string | null; readonly blocked: boolean;
   readonly onToggle: (item: Schedule) => void; readonly onCancel: CancelAction;
 }) {
-  return <ul className={cn("divide-y divide-primary/10", kind === "alarm" && "grid grid-cols-[auto_minmax(0,1fr)] gap-x-3")}>{items.map((item) => {
+  const timed = kind === "alarm" || kind === "monitor", name = kind === "monitor" ? "查岗" : "闹钟";
+  return <ul className={cn("divide-y divide-primary/10", timed && "grid grid-cols-[auto_minmax(0,1fr)] gap-x-3")}>{items.map((item) => {
     const done = item.status === "done", cancellable = canScheduleAction(item, "cancel");
     const timeValid = validMinute(item.triggerAt);
-    if (kind === "alarm") return <li key={item.id} className="col-span-2 grid min-w-0 grid-cols-subgrid items-start gap-x-3 py-3" data-schedule-row={item.id} aria-label={item.status === "triggered" ? "已触发闹钟" : "等待触发闹钟"}>
-      <p className="whitespace-nowrap text-xl font-medium leading-5 text-foreground tabular-nums" aria-label={timeValid ? "提醒时间" : "时间待核对"} data-schedule-alarm-time="true">{timeValid ? item.triggerAt.slice(11) : "—"}</p>
+    if (timed) return <li key={item.id} className="col-span-2 grid min-w-0 grid-cols-subgrid items-start gap-x-3 py-3" data-schedule-row={item.id} aria-label={`${item.status === "triggered" ? "已触发" : "等待触发"}${name}`}>
+      <p className="whitespace-nowrap text-xl font-medium leading-5 text-foreground tabular-nums" aria-label={timeValid ? kind === "monitor" ? "执行时间" : "提醒时间" : "时间待核对"} data-schedule-alarm-time="true">{timeValid ? item.triggerAt.slice(11) : "—"}</p>
       <div className="min-w-0">
         <p className={cn(bodyClass, "leading-5")} data-schedule-body="true">{item.content || "（内容为空）"}</p>
         <footer className="flex min-w-0 items-center gap-2" data-schedule-row-metadata="true">
@@ -49,7 +50,7 @@ export function ScheduleRowActions({ item, disabled, onCancel }: {
   readonly item: Schedule; readonly disabled: boolean; readonly onCancel: CancelAction;
 }) {
   const [open, setOpen] = useState(false), trigger = useRef<HTMLButtonElement>(null);
-  const name = item.kind === "reminder" ? "记挂" : item.kind === "todo" ? "待办" : "闹钟";
+  const name = item.kind === "reminder" ? "记挂" : item.kind === "todo" ? "待办" : item.kind === "monitor" ? "查岗" : "闹钟";
   return <Popover open={open} onOpenChange={setOpen}>
     <PopoverTrigger render={<Button ref={trigger} type="button" variant="ghost" size="icon" className="-mr-2 size-11 rounded-xl text-muted-foreground" disabled={disabled} aria-label={`更多${name}操作：${item.content}`} title="更多操作" />}>
       <MoreHorizontal className="size-4" strokeWidth={1.6} aria-hidden="true" />

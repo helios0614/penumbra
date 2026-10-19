@@ -1,5 +1,5 @@
 export type ScheduleKind = "reminder" | "todo" | "alarm" | "monitor";
-export type ManagedScheduleKind = Exclude<ScheduleKind, "monitor">;
+export type ManagedScheduleKind = ScheduleKind;
 export type ScheduleStatus = "active" | "done" | "triggered" | "cancelled" | "unknown";
 export interface Schedule {
   readonly id: string;

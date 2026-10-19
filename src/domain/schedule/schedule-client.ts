@@ -12,8 +12,8 @@ export async function listTodos(options?: ApiRequestOptions) {
 }
 export async function createSchedule(input: ScheduleInput, options?: ApiRequestOptions) {
   const content = input.content.trim();
-  if (!content || !["reminder", "todo", "alarm"].includes(input.kind)) throw new ScheduleContractError("请填写内容并选择支持的类型。");
-  if (input.kind === "alarm" && (!input.triggerAt || !validMinute(input.triggerAt))) throw new ScheduleContractError("闹钟需要精确到分钟的日期时间。");
+  if (!content || !["reminder", "todo", "alarm", "monitor"].includes(input.kind)) throw new ScheduleContractError("请填写内容并选择支持的类型。");
+  if ((input.kind === "alarm" || input.kind === "monitor") && (!input.triggerAt || !validMinute(input.triggerAt))) throw new ScheduleContractError("闹钟和查岗需要精确到分钟的日期时间。");
   if (input.triggerAt && input.kind === "reminder" && !validDate(input.triggerAt) && !validMinute(input.triggerAt)) throw new ScheduleContractError("日期时间无效。");
   const raw = await apiPost<unknown>(endpoint, { type: input.kind, content,
     ...(input.triggerAt ? { trigger_at: input.triggerAt.replace("T", " ") } : {}) }, options);

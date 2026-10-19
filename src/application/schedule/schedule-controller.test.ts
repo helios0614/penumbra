@@ -25,15 +25,15 @@ function setup(kind: ManagedScheduleKind = "todo") {
 }
 
 describe("schedule page read and mutation ownership", () => {
-  it.each(["reminder", "todo", "alarm"] as const)("reads, creates and soft-cancels %s with a verified snapshot", async (kind) => {
+  it.each(["reminder", "todo", "alarm", "monitor"] as const)("reads, creates and soft-cancels %s with a verified snapshot", async (kind) => {
     const { controller: c, api } = setup(kind); await c.refresh();
-    if (kind === "alarm") await c.loadZone();
-    expect(await c.create("新内容", kind === "alarm" ? "2026-10-19 22:00" : undefined)).toBe(true);
+    if (kind === "alarm" || kind === "monitor") await c.loadZone();
+    expect(await c.create("新内容", (kind === "alarm" || kind === "monitor") ? "2026-10-19 22:00" : undefined)).toBe(true);
     await flush(); expect(c.getState().feedback?.error).toBe(false);
     expect(await c.act("sch_1", "cancel")).toBe(true);
     expect(c.getState().items.find((item) => item.id === "sch_1")?.status).toBe("cancelled");
     expect(api.mutateSchedule).toHaveBeenCalledWith("sch_1", "cancel", expect.anything());
-    expect(c.getState().feedback?.text).toBe("已取消"); c.dispose();
+    expect(c.getState().feedback?.text).toBe(kind === "monitor" ? "查岗已标记取消" : "已取消"); c.dispose();
   });
   it("completes and restores TODO without turning its time into a deadline", async () => {
     const { controller: c, api } = setup(); await c.refresh();
@@ -107,6 +107,21 @@ describe("schedule page read and mutation ownership", () => {
 });
 
 describe("server timezone gating", () => {
+  it("applies the server minute guard to monitor creation without introducing device preconditions", async () => {
+    const { controller: c, api } = setup("monitor");
+    expect(await c.create("查看一下", "2026-10-19 22:00")).toBe(false); expect(api.createSchedule).not.toHaveBeenCalled();
+    await c.loadZone();
+    for (const time of [undefined, "2026-10-19", "2026-02-30 22:00", "2026-10-19 24:00", "2026-10-19 22:00Z"]) expect(await c.create("查看一下", time)).toBe(false);
+    expect(api.createSchedule).not.toHaveBeenCalled();
+    expect(await c.create("查看一下", "2026-10-19 22:00")).toBe(true);
+    expect(api.createSchedule).toHaveBeenCalledWith({ kind: "monitor", content: "查看一下", triggerAt: "2026-10-19 22:00" }, expect.anything());
+    expect(c.getState().zone).toBe("Europe/Paris"); c.dispose();
+  });
+  it("does not reuse a monitor timezone after a failed recheck", async () => {
+    const { controller: c, api } = setup("monitor"); await c.loadZone(); api.getTriggerConfig.mockRejectedValueOnce(new Error("unavailable"));
+    await c.loadZone(); expect(c.getState().zone).toBeNull(); expect(c.getState().zoneError).toContain("暂不能创建查岗");
+    expect(await c.create("查看一下", "2026-10-19 22:00")).toBe(false); expect(api.createSchedule).not.toHaveBeenCalled(); c.dispose();
+  });
   it("blocks alarm creation until the existing server timezone contract is read", async () => {
     const { controller: c, api } = setup("alarm"); expect(await c.create("wake", "2026-10-19 22:00")).toBe(false);
     expect(api.createSchedule).not.toHaveBeenCalled(); await c.loadZone();
@@ -120,5 +135,35 @@ describe("server timezone gating", () => {
   });
   it.each([401, 503, 422])("formats HTTP %i without leaking raw backend diagnostics", (status) => {
     expect(scheduleFailure(new ApiError("private", status))).not.toContain("private");
+  });
+});
+
+describe("scheduled check boundaries", () => {
+  it.each(["triggered", "cancelled", "done"] as const)("keeps %s monitors read-only", async (status) => {
+    const { controller: c, api, setRows } = setup("monitor"); setRows([row("monitor", status)]); await c.refresh();
+    for (const action of ["done", "restore", "cancel"] as const) expect(await c.act("sch_1", action)).toBe(false);
+    expect(api.mutateSchedule).not.toHaveBeenCalled(); c.dispose();
+  });
+  it("does not announce cancellation when the verification sees a claimed task", async () => {
+    const { controller: c, api, setRows } = setup("monitor"); await c.refresh();
+    api.mutateSchedule.mockImplementationOnce(async () => { setRows([row("monitor", "triggered")]); });
+    expect(await c.act("sch_1", "cancel")).toBe(false);
+    expect(c.getState().feedback).toBeNull(); expect(c.getState().issue?.text).toContain("正在执行的查岗无法撤回");
+    await c.checkIssue(); expect(api.mutateSchedule).toHaveBeenCalledOnce(); c.dispose();
+  });
+  it("does not trust an acknowledgement for a monitor ID that is absent", async () => {
+    const { controller: c, setRows } = setup("monitor"); await c.refresh(); setRows([]);
+    expect(await c.act("sch_1", "cancel")).toBe(false);
+    expect(c.getState().issue?.text).toContain("未找到原记录"); expect(c.getState().feedback).toBeNull(); c.dispose();
+  });
+  it("prevents duplicate creates in flight and does not retry an uncertain monitor POST", async () => {
+    const { controller: c, api } = setup("monitor"); await c.loadZone();
+    const write = deferred<Schedule>(); api.createSchedule.mockReturnValueOnce(write.promise);
+    const first = c.create("看看", "2026-10-19 22:00");
+    expect(await c.create("看看", "2026-10-19 22:00")).toBe(false);
+    write.reject(new ApiError("timeout", 0, undefined, "TIMEOUT")); expect(await first).toBe(false);
+    await c.checkIssue(); expect(c.getState().issue?.text).toContain("创建结果未知");
+    expect(await c.create("看看", "2026-10-19 22:00")).toBe(false);
+    expect(api.createSchedule).toHaveBeenCalledOnce(); expect(c.getState().feedback).toBeNull(); c.dispose();
   });
 });
