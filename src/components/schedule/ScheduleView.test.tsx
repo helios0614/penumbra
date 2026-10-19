@@ -32,7 +32,7 @@ describe("time pages use real schedule semantics", () => {
     const html = page("reminder", items);
     expect(html).toContain("事项 sch_1 [?]"); expect(html).toContain("2001-01-01 09:00"); expect(html).toContain("已取消记挂");
     expect(html).not.toContain("事项 todo"); expect(html).not.toMatch(/已过期|AI 写的|作者|整月|每天重复|启用/);
-    expect(html).toContain('data-page-scroll-area="true"'); expect(html).toContain('aria-label="记挂页面内容"');
+    expect(html).toContain('data-schedule-list-scroll="true"'); expect(html).toContain('aria-label="记挂页面内容"');
   });
   it("shows TODO's raw uncertainty marker and record time without offering deadline or edit semantics", () => {
     const html = page("todo", [row("todo"), row("todo", "done", "done")]);
@@ -41,8 +41,8 @@ describe("time pages use real schedule semantics", () => {
   });
   it("distinguishes waiting from triggered and never promises a successful model or camera execution", () => {
     const html = page("alarm", [row("alarm"), row("alarm", "triggered", "triggered"), row("monitor", "active", "camera")]);
-    expect(html).toContain("等待触发"); expect(html).toContain("已触发"); expect(html).toContain('aria-label="取消闹钟：事项 sch_1 [?]"');
-    expect(html).not.toContain('aria-label="取消闹钟：事项 triggered'); expect(html).not.toContain("事项 camera");
+    expect(html).toContain("等待触发"); expect(html).toContain("已触发"); expect(html).toContain('aria-label="更多闹钟操作：事项 sch_1 [?]"');
+    expect(html).not.toContain('aria-label="更多闹钟操作：事项 triggered'); expect(html).not.toContain("事项 camera");
     expect(html).not.toMatch(/执行成功|恢复闹钟|贪睡|每天重复|启用开关/);
   });
   it("renders malformed historical time as readable information without crashing", () => {
@@ -60,6 +60,31 @@ describe("time pages use real schedule semantics", () => {
   it("keeps an uncertain write visible instead of presenting a transient error toast", () => {
     const html = page("todo", [], { issue: { text: "创建结果未知，不会自动重发" } });
     expect(html).toContain('role="alert"'); expect(html).toContain("创建结果未知"); expect(html).toContain("重新读取核对");
+  });
+  it.each(["reminder", "todo", "alarm"] as const)("uses one bounded scroll owner and Memory's natural-height paper for %s", (kind) => {
+    const html = page(kind);
+    const paper = html.match(/<section[^>]*data-schedule-reading-panel="true"[^>]*>/)?.[0];
+    const scroll = html.match(/<div[^>]*data-schedule-list-scroll="true"[^>]*>/)?.[0];
+    expect(paper).toContain("memory-reading-panel mist-glass-strong"); expect(paper).not.toMatch(/mist-solid|flex-1|h-full|min-h-full|overflow-y/);
+    expect(scroll).toContain("min-h-0 flex-1"); expect(scroll).toContain("scrollbar-none"); expect(scroll).toContain("overscroll-contain"); expect(scroll).toContain("safe-area-inset-bottom");
+    expect(html.match(/overflow-y-auto/g)).toHaveLength(1); expect(html).not.toContain("data-page-scroll-area"); expect(html).not.toContain("回到");
+    expect(html.indexOf('data-slot="page-header"')).toBeLessThan(html.indexOf('data-schedule-list-scroll="true"'));
+    if (kind === "todo") {
+      const filter = html.match(/<div[^>]*data-schedule-filters="true"[^>]*>/)?.[0]; expect(filter).toContain("shrink-0");
+      expect(html.indexOf('data-schedule-filters="true"')).toBeLessThan(html.indexOf('data-schedule-list-scroll="true"'));
+    }
+    if (kind === "alarm") expect(html).not.toContain("创建时会重新确认时区");
+  });
+  it("keeps dozens of complete reminders and hundreds of triggered alarms in the same scroll region", () => {
+    const content = "较长的正文\n".repeat(20) + "https://example.test/" + "longword".repeat(50);
+    for (const [kind, count] of [["reminder", 60], ["todo", 40], ["alarm", 400]] as const) {
+      const items = Array.from({ length: count }, (_, index) => ({ ...row(kind, kind === "alarm" ? "triggered" : "active", `item_${index}`), content: `${index} ${content}` }));
+      const html = page(kind, items);
+      expect(html.match(/data-schedule-row=/g)).toHaveLength(count); expect(html.match(/data-schedule-list-scroll=/g)).toHaveLength(1); expect(html.match(/overflow-y-auto/g)).toHaveLength(1);
+      expect(html).toContain(`${count - 1} ${content}`); expect(html).not.toMatch(/line-clamp|text-ellipsis/);
+      expect(html).toContain("text-sm leading-[1.6] [overflow-wrap:anywhere]");
+      if (kind === "alarm") expect(html).not.toContain("更多闹钟操作");
+    }
   });
 });
 

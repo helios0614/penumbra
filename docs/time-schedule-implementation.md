@@ -30,6 +30,8 @@ PR1 属于前端真实数据接入：只读列表与现有写入口，不复制�
 
 使用现有 PageHeader、Mist Surface、Button、Input、Textarea、SegmentedControl、Dialog、AlertDialog、Toast 与 PageScrollArea / 公共回顶。简单记录用连续分隔列表；创建表单和结果未知反馈为 feature-local 组合，没有新增全局主题或 UI primitives。
 
+以上为初次接入的布局记录；当前三个页面已采用文末「移动端 UI 收口」中的固定工作区，不再使用 PageScrollArea / 普通页面回顶。
+
 ## API 与时间
 
 | 操作 | 请求 | 核对方式 |
@@ -78,3 +80,31 @@ POST 没有幂等键：超时、网络断开、响应不匹配等未知结果不
 3. Classic / Editorial 的打开与返回，创建/取消、TODO 完成恢复、记挂取消后的既有 Prompt 结算行为。
 4. 通过实际 AI 命令创建记录，核对在线刷新；断网重连、跨页收到闹钟通知，以及主模型回复沿原对话链出现。这里只核对链路，不将已触发当作执行成功。
 5. 本轮未迁移 Widget / TodayPanel 的数据；它们仍为已标注的日期展示/示例清单，后续单独接入。monitor 留 PR2。
+
+## 移动端 UI 收口（2026-10-19）
+
+本轮仅修改 Schedule 的呈现组件、对应测试与本说明。Domain / API、控制器、WebSocket、跨页提醒、后端及 UI Foundation 全局规则均未修改。
+
+### 复用的 Memory 方案
+
+直接复用既有 `.memory-reading-panel` + `.mist-glass-strong`：沿用 Memory 已验收的两种玻璃 token 混合、blur、边界与柔和层次，没有复制透明度配方或改动全局 CSS。三页主要列表与历史共用连续纸面，内部使用轻分隔线。
+
+页面 Header 固定；TODO Segmented 单独放在 `shrink-0` 区域。正文视口使用 `flex-1 min-h-0 overflow-y-auto overscroll-contain` 和公共 `.scrollbar-none`，保留 region 名称与键盘焦点。视口填满余高，里面的纸面按内容自然增高，空状态不撑成整屏白卡。列表与历史共用一个纵向滚动节点；底部留出安全区，移除普通页面回顶。切换 TODO 视图在布局提交时回到列表顶部，普通读取、实时刷新和反馈更新不主动重置滚动。
+
+### 条目与表单
+
+- 正文沿用 `text-sm`（默认约 14px），行高 1.6（约 22.4px），保留换行与完整内容，连续英文/URL 可任意断行。元信息为 12px；记挂移除占用正文宽度的装饰图标。
+- 取消入口放在正文下方的元信息区，使用现有 Popover + Button，图标轻量、触摸目标 44px。展开后才能选择「取消记挂 / 待办 / 闹钟」，继续进入原软取消确认。确认框使用既有 `finalFocus` 返回仍存在的入口；入口被移除或禁用时回到列表。
+- 公共组件库没有 Checkbox，TODO 保留成熟 Button 的 `aria-pressed`、disabled、loading 和原业务回调。图标改为 16px 的轻方形 / 主题色方形勾选；完成项使用可读的 muted-strong 正文与删除线。逐条 busy、写后核对和失败反馈保持原机制。
+- 闹钟创建表单移除说明卡。字段附近只保留「服务器时间 · 实际 IANA 时区」；确认失败/未知时才显示必要错误和重新确认操作。每次打开仍读取时区，未知/确认中仍禁止创建，提交分钟文本与校验不变。页面 Header 下方也不再常驻时间解释。
+
+### 改动文件与验证
+
+业务呈现：`ScheduleView.tsx`、`ScheduleRows.tsx`、`ScheduleCreateDialog.tsx`、`ScheduleCancelDialog.tsx`。更新 `ScheduleView.test.tsx`、`ScheduleCreateDialog.test.tsx`，新增 `ScheduleWorkspace.test.tsx`；这些文件均位于 `src/components/schedule/`。另更新本说明。
+
+- Schedule 组件测试：4 个文件 / 41 项通过。
+- 全量：91 个测试文件 / 1320 项通过（包括 Memory、Quick Note、Activity、Location 和双桌面入口回归）。
+- `npx tsc --noEmit`、`npm run build`、`git diff --check` 通过；新文件也单独检查空白错误。构建缓存恢复到本轮构建前内容。
+- 新增覆盖固定筛选/单滚动所有权、自然高度空态、60 条记挂/长 TODO/400 条已触发记录的完整渲染、筛选复位与刷新保位、Popover 到确认框的操作/焦点、TODO 在途及失败状态、简短时区信息与失败恢复后保留草稿。
+
+未使用 Playwright、浏览器自动化或线上接口，未 commit、push、部署。测试只验证结构和交互契约，不能替代实际布局测量。待人工检查：Classic / Editorial 下 320–390px 窄屏与短视口、浅深色/复杂壁纸的可读性、原生日期时间输入和软键盘、触屏/键盘 Popover 与确认框焦点、长列表触摸滚动及最后一项安全区。

@@ -63,7 +63,9 @@ describe("compact schedule create forms", () => {
   it("uses the server timezone label and sends entered minute text without browser/UTC conversion", async () => {
     const s = setup("alarm"); s.render(); s.effects[0](); expect(s.loadZone).toHaveBeenCalledOnce();
     s.fill("休息"); s.time("date", "2026-10-19"); s.time("time", "22:00");
-    expect(s.body()).toContain("按服务器本地时间填写：America/New_York"); await s.submit();
+    const body = s.body(); expect(body).toContain("服务器时间 · America/New_York");
+    expect(body).not.toMatch(/离线|一次性闹钟|重新确认时区|bg-primary\/5/);
+    expect(body).toContain('aria-describedby="alarm-time-zone"'); await s.submit();
     expect(s.create).toHaveBeenCalledWith("休息", "2026-10-19 22:00"); expect(s.onClose).toHaveBeenCalledOnce();
   });
   it("blocks alarm creation when the timezone is missing or being rechecked", async () => {
@@ -71,6 +73,15 @@ describe("compact schedule create forms", () => {
     s.update({ zone: null, zoneError: "无法确认服务器时区" }); expect(s.createButton().props.disabled).toBe(true); await s.submit(); expect(s.create).not.toHaveBeenCalled();
     expect(s.body()).toContain("确认服务器时区后才能创建闹钟");
     s.update({ zone: "Europe/Paris", zoneLoading: true }); await s.submit(); expect(s.create).not.toHaveBeenCalled();
+  });
+  it("offers timezone recovery only beside failed fields and keeps the draft through recovery", async () => {
+    const s = setup("alarm"); s.fill("保留内容"); s.time("date", "2026-10-19"); s.time("time", "22:00");
+    s.update({ zone: null, zoneError: "无法确认服务器时区，暂不能创建闹钟。" });
+    expect(s.body()).toContain("暂不能创建闹钟"); expect(s.createButton().props.disabled).toBe(true);
+    const retry = find(s.render(), Button, (props) => props.children === "重新确认时区"); retry.props.onClick?.({} as never); expect(s.loadZone).toHaveBeenCalledOnce();
+    s.update({ zoneLoading: true, zoneError: null }); expect(s.body()).toContain("正在确认服务器时区…"); expect(s.body()).not.toContain("重新确认时区");
+    s.update({ zoneLoading: false, zone: "Europe/Paris" }); expect(s.body()).not.toContain("重新确认时区"); expect(s.createButton().props.disabled).toBe(false);
+    await s.submit(); expect(s.create).toHaveBeenCalledWith("保留内容", "2026-10-19 22:00");
   });
   it.each([["", ""], ["2026-02-30", "22:00"], ["2026-10-19", "22:00:01"], ["2026-10-19", "24:00"]])("rejects invalid alarm date/time %s %s", async (date, time) => {
     const s = setup("alarm"); s.fill("提醒"); s.time("date", date); s.time("time", time); await s.submit();

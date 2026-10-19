@@ -47,21 +47,22 @@ export function ScheduleCreateDialog({ open, kind, state, controller, onClose }:
             <Textarea id={`${kind}-content`} rows={4} value={content} disabled={busy} placeholder={kind === "todo" ? "需要处理的事情…" : kind === "reminder" ? "想持续放在心上的事情…" : "需要提醒的内容…"}
               aria-invalid={Boolean(error)} aria-describedby={error ? `${kind}-form-error` : undefined} onChange={(event) => { setContent(event.target.value); edit(); }} className="text-sm" />
           </div>
-          {kind !== "todo" && <fieldset disabled={busy}>
+          {kind !== "todo" && <fieldset disabled={busy} aria-describedby={kind === "alarm" ? "alarm-time-zone" : undefined}>
             <legend className="mb-2 text-xs font-medium text-muted-strong">{kind === "alarm" ? "提醒时间" : "日期与时间（可选）"}</legend>
             <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-2">
-              <div className="min-w-0"><label className="sr-only" htmlFor={`${kind}-date`}>日期</label><Input id={`${kind}-date`} type="date" value={date} onChange={(event) => { setDate(event.target.value); edit(); }} className="w-full min-w-0 text-sm" /></div>
-              <div className="min-w-0"><label className="sr-only" htmlFor={`${kind}-time`}>时间</label><Input id={`${kind}-time`} type="time" step={60} value={time} onChange={(event) => { setTime(event.target.value); edit(); }} className="w-full min-w-0 text-sm" /></div>
+              <div className="min-w-0"><label className={kind === "alarm" ? "mb-1 block text-xs text-muted-strong" : "sr-only"} htmlFor={`${kind}-date`}>{kind === "alarm" ? "提醒日期" : "日期"}</label><Input id={`${kind}-date`} type="date" value={date} onChange={(event) => { setDate(event.target.value); edit(); }} className="w-full min-w-0 text-sm" /></div>
+              <div className="min-w-0"><label className={kind === "alarm" ? "mb-1 block text-xs text-muted-strong" : "sr-only"} htmlFor={`${kind}-time`}>{kind === "alarm" ? "提醒时间" : "时间"}</label><Input id={`${kind}-time`} type="time" step={60} value={time} onChange={(event) => { setTime(event.target.value); edit(); }} className="w-full min-w-0 text-sm" /></div>
             </div>
             {kind === "reminder" && <p className="mt-2 text-xs leading-5 text-muted-foreground">可只填日期，也可留空。记挂不会按时间触发或自动完成。</p>}
+            {kind === "alarm" && <div className="mt-2 text-xs leading-5" data-alarm-time-zone="true">
+              <p id="alarm-time-zone" role="status" className="text-muted-foreground [overflow-wrap:anywhere]">{state.zoneLoading ? "正在确认服务器时区…" : state.zone ? `服务器时间 · ${state.zone}` : "服务器时区未确认"}</p>
+              {!state.zoneLoading && (!state.zone || state.zoneError) && <div className="mt-1">
+                <p role="alert" className="text-destructive">{state.zoneError || "确认服务器时区后才能创建闹钟。"}</p>
+                <Button variant="ghost" size="compact" type="button" disabled={busy} onClick={() => void controller?.loadZone()}>重新确认时区</Button>
+              </div>}
+            </div>}
           </fieldset>}
           {kind === "todo" && <p className="text-xs leading-5 text-muted-foreground">不会自动提醒。不确定的事项可在正文保留 [?] 标记。</p>}
-          {kind === "alarm" && <div className="rounded-xl bg-primary/5 px-3 py-2 text-xs leading-5 text-muted-strong">
-            <p>{state.zoneLoading ? "正在确认服务器时区…" : state.zone ? `按服务器本地时间填写：${state.zone}` : "服务器时区尚未确认。"}</p>
-            <p className="mt-1">一次性闹钟，到点后触发提醒并由知远回应。离线时无法保证收到在线通知。</p>
-            {state.zoneError && <p role="alert" className="mt-1 text-destructive">{state.zoneError}</p>}
-            {!state.zoneLoading && <Button variant="ghost" size="compact" type="button" disabled={busy} onClick={() => void controller?.loadZone()}>重新确认时区</Button>}
-          </div>}
           {error && <p role="alert" id={`${kind}-form-error`} className="text-xs leading-5 text-destructive">{error}</p>}
           {state.feedback?.error && state.feedback.source === "create" && <p role="alert" className="text-xs leading-5 text-destructive">{state.feedback.text}</p>}
           <ScheduleIssue state={state} controller={controller} />
