@@ -4,8 +4,10 @@ import { composeScheduleTime, type ManagedScheduleKind } from "@/domain/schedule
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { LocationTimeField } from "@/components/location/LocationTimeField";
+import "@/components/location/location.css";
+import { ScheduleDateField } from "./ScheduleDateField";
 import { ScheduleIssue } from "./ScheduleFeedback";
 import { scheduleMeta } from "./schedule-presentation";
 
@@ -50,9 +52,10 @@ export function ScheduleCreateDialog({ open, kind, state, controller, onClose }:
           {kind !== "todo" && <fieldset disabled={busy} aria-describedby={kind === "alarm" ? "alarm-time-zone" : undefined}>
             <legend className="mb-2 text-xs font-medium text-muted-strong">{kind === "alarm" ? "提醒时间" : "日期与时间（可选）"}</legend>
             <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-2">
-              <div className="min-w-0"><label className={kind === "alarm" ? "mb-1 block text-xs text-muted-strong" : "sr-only"} htmlFor={`${kind}-date`}>{kind === "alarm" ? "提醒日期" : "日期"}</label><Input id={`${kind}-date`} type="date" value={date} onChange={(event) => { setDate(event.target.value); edit(); }} className="w-full min-w-0 text-sm" /></div>
-              <div className="min-w-0"><label className={kind === "alarm" ? "mb-1 block text-xs text-muted-strong" : "sr-only"} htmlFor={`${kind}-time`}>{kind === "alarm" ? "提醒时间" : "时间"}</label><Input id={`${kind}-time`} type="time" step={60} value={time} onChange={(event) => { setTime(event.target.value); edit(); }} className="w-full min-w-0 text-sm" /></div>
+              <div className="min-w-0"><ScheduleDateField id={`${kind}-date`} label={kind === "alarm" ? "提醒日期" : "日期"} value={date} timeZone={state.zone} disabled={busy || kind === "alarm" && (!state.zone || state.zoneLoading)} onChange={(value) => { setDate(value); edit(); }} /></div>
+              <LocationTimeField id={`${kind}-time`} label={kind === "alarm" ? "提醒时间" : "时间"} value={time} disabled={busy} onChange={(value) => { setTime(value); edit(); }} />
             </div>
+            {time && <div className="mt-1 flex justify-end"><Button type="button" variant="ghost" size="compact" disabled={busy} onClick={() => { setTime(""); edit(); }}>清除时间</Button></div>}
             {kind === "reminder" && <p className="mt-2 text-xs leading-5 text-muted-foreground">可只填日期，也可留空。记挂不会按时间触发或自动完成。</p>}
             {kind === "alarm" && <div className="mt-2 text-xs leading-5" data-alarm-time-zone="true">
               <p id="alarm-time-zone" role="status" className="text-muted-foreground [overflow-wrap:anywhere]">{state.zoneLoading ? "正在确认服务器时区…" : state.zone ? `服务器时间 · ${state.zone}` : "服务器时区未确认"}</p>
