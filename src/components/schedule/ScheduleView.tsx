@@ -1,11 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Plus, RefreshCw, X } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { Menu } from "@base-ui/react/menu";
+import { Check, ChevronDown, Plus, RefreshCw, X } from "lucide-react";
 import type { ScheduleController, ScheduleState } from "@/application/schedule/schedule-controller";
 import type { ScheduleRealtimeState } from "@/application/schedule/schedule-realtime";
 import type { ManagedScheduleKind, Schedule } from "@/domain/schedule";
 import { PageHeader, PageHeaderAction } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
-import { FilterChip, SegmentedControlItem } from "@/components/ui/selection-control";
+import { SegmentedControlItem } from "@/components/ui/selection-control";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useFeedbackToast } from "@/components/ui/toast";
 import { ScheduleCreateDialog } from "./ScheduleCreateDialog";
@@ -56,14 +57,13 @@ export function SchedulePage({ kind, state, controller, realtime, onBack, onCloc
   useFeedbackToast(state.feedback, state.feedback && !state.feedback.error ? { type: "success", text: state.feedback.text } : null, `${kind}:${view}`);
   const rows = (items: readonly Schedule[]) => <ScheduleRows items={items} kind={kind} busy={state.pending} blocked={Boolean(state.issue)} onCancel={(item, trigger) => { cancelTrigger.current = trigger; controller?.changeScope(); setCancel(item); }} onToggle={(item) => void controller?.act(item.id, item.status === "done" ? "restore" : "done")} />;
   return <TooltipProvider><main className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col overflow-hidden px-4 pb-4 pt-5 sm:px-0 sm:pb-8 sm:pt-8" aria-labelledby={`${kind}-page-title`}>
-    <PageHeader eyebrow={meta.eyebrow} title={meta.title} titleId={`${kind}-page-title`} description={meta.description} actions={<>
+    <PageHeader eyebrow={meta.eyebrow} title={onClockKindChange && (kind === "alarm" || kind === "monitor")
+      ? <ScheduleKindMenu kind={kind} disabled={busy || Boolean(state.issue)} triggerRef={clockKindRef} onChange={(value) => { controller?.changeScope(); onClockKindChange(value); }} />
+      : meta.title} titleId={`${kind}-page-title`} description={meta.description} actions={<>
       <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label={meta.create} disabled={busy || !controller || Boolean(state.issue)} onClick={() => { controller?.changeScope(); setCreating(true); }} />}><Plus aria-hidden="true" /></TooltipTrigger><TooltipContent>{meta.create}</TooltipContent></Tooltip>
       <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label={`刷新${meta.title}`} disabled={busy || state.loading} onClick={() => void controller?.refresh()} />}><RefreshCw aria-hidden="true" /></TooltipTrigger><TooltipContent>重新读取</TooltipContent></Tooltip>
       {onBack && <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="返回桌面" disabled={busy} onClick={onBack} />}><X aria-hidden="true" /></TooltipTrigger><TooltipContent>返回桌面</TooltipContent></Tooltip>}
     </>} />
-    {onClockKindChange && <div className="mt-1 flex shrink-0 gap-2" role="group" aria-label="定时功能" data-schedule-kind-filters="true">
-      {(["alarm", "monitor"] as const).map((value) => <FilterChip key={value} ref={kind === value ? clockKindRef : undefined} selected={kind === value} disabled={busy || Boolean(state.issue)} onClick={() => { if (kind !== value) { controller?.changeScope(); onClockKindChange(value); } }}>{value === "alarm" ? "闹钟" : "定时查岗"}</FilterChip>)}
-    </div>}
     {kind !== "reminder" && <div className="mist-glass mt-3 grid shrink-0 grid-cols-2 rounded-2xl px-2 sm:mt-4" aria-label={`${meta.title}视图`} data-schedule-filters="true">{(["active", "history"] as const).map((value) => <SegmentedControlItem key={value} selected={view === value} disabled={busy} aria-label={`${value === "active" ? meta.active : secondaryLabel}${state.loaded ? ` ${value === "active" ? active.length : secondary.length} 项` : ""}`} onClick={() => { controller?.changeScope(); setView(value); }}>{value === "active" ? meta.active : secondaryLabel}</SegmentedControlItem>)}</div>}
     <section className="memory-reading-panel mist-glass-strong relative mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[24px] sm:mt-4" aria-label={`${meta.title}列表`} aria-busy={state.loading} data-schedule-reading-panel="true">
       <span className="sr-only" aria-live="polite">{listTitle} {state.loaded ? primary.length : "数量尚未读取"}</span>
@@ -90,4 +90,35 @@ export function SchedulePage({ kind, state, controller, realtime, onBack, onCloc
       return trigger?.isConnected && !trigger.disabled ? trigger : listScrollRef.current;
     }} />
   </main></TooltipProvider>;
+}
+
+export function ScheduleKindMenu({ kind, disabled, triggerRef, onChange }: {
+  readonly kind: "alarm" | "monitor"; readonly disabled: boolean;
+  readonly triggerRef: RefObject<HTMLButtonElement | null>; readonly onChange: (kind: "alarm" | "monitor") => void;
+}) {
+  const [open, setOpen] = useState(false), switching = useRef(false);
+  return <Menu.Root open={open && !disabled} onOpenChange={setOpen} disabled={disabled} modal={false}>
+    <Menu.Trigger render={<Button ref={triggerRef} type="button" variant="ghost" disabled={disabled}
+      aria-label={`${scheduleMeta[kind].title}，切换任务类型`} data-schedule-kind-menu="true"
+      // Keep the h1's 28px line box; extend only the transparent touch target to 44px.
+      className="h-auto min-h-0 max-w-full justify-start gap-1 rounded-sm border-0 p-0 align-top text-xl font-semibold leading-7 shadow-none before:absolute before:inset-x-0 before:-inset-y-2 before:content-[''] hover:bg-transparent active:bg-transparent aria-expanded:bg-transparent dark:hover:bg-transparent" />}>
+      {scheduleMeta[kind].title}<ChevronDown className="size-3.5 text-muted-foreground" aria-hidden="true" />
+    </Menu.Trigger>
+    <Menu.Portal><Menu.Positioner align="start" sideOffset={4} collisionPadding={16} className="isolate z-50">
+      <Menu.Popup aria-label="任务类型" className="mist-glass-strong scrollbar-none max-h-(--available-height) w-40 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg p-1 outline-none"
+        // A type change unmounts this page; its replacement owns the new trigger focus.
+        finalFocus={() => !switching.current}>
+        <Menu.RadioGroup value={kind} onValueChange={(value: unknown) => {
+          if (disabled || value !== "alarm" && value !== "monitor") return;
+          setOpen(false);
+          if (value !== kind) { switching.current = true; onChange(value); }
+        }}>
+          {(["alarm", "monitor"] as const).map((value) => <Menu.RadioItem key={value} value={value} closeOnClick
+            className="flex min-h-9 cursor-default items-center justify-between gap-3 rounded-md px-2.5 py-2 text-xs leading-5 text-muted-strong outline-none data-highlighted:bg-background/45 data-checked:bg-primary/8 data-checked:text-primary-ink">
+            {scheduleMeta[value].title}<Menu.RadioItemIndicator><Check className="size-3.5" aria-hidden="true" /></Menu.RadioItemIndicator>
+          </Menu.RadioItem>)}
+        </Menu.RadioGroup>
+      </Menu.Popup>
+    </Menu.Positioner></Menu.Portal>
+  </Menu.Root>;
 }

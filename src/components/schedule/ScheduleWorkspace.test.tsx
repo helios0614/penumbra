@@ -1,15 +1,19 @@
 import * as React from "react";
+import { Menu } from "@base-ui/react/menu";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createScheduleController, initialScheduleState, type ScheduleController } from "@/application/schedule/schedule-controller";
 import type { Schedule } from "@/domain/schedule";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger } from "@/components/ui/popover";
-import { FilterChip, SegmentedControlItem } from "@/components/ui/selection-control";
+import { SegmentedControlItem } from "@/components/ui/selection-control";
+import { PageHeader, PageHeaderAction } from "@/components/ui/page-header";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { ClockScheduleView, SchedulePage } from "./ScheduleView";
+import { ClockScheduleView, ScheduleKindMenu, SchedulePage } from "./ScheduleView";
 import { ScheduleRows, ScheduleRowActions } from "./ScheduleRows";
 import { ScheduleCancelDialog } from "./ScheduleCancelDialog";
+import { ScheduleCreateDialog } from "./ScheduleCreateDialog";
+import { scheduleMeta } from "./schedule-presentation";
 
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof React>();
@@ -51,6 +55,52 @@ const item: Schedule = { id: "todo_1", kind: "todo", status: "active", content: 
 const realtime = { connection: "connected" as const, reconnect: vi.fn() };
 const flush = async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); };
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
+const titleMenu = (tree: React.ReactNode) => find(tree, PageHeader).props.title as React.ReactElement<React.ComponentProps<typeof ScheduleKindMenu>>;
+
+describe("clock title menu", () => {
+  it.each(["alarm", "monitor"] as const)("opens and dismisses the %s menu while retaining its current selection", (kind) => {
+    const onChange = vi.fn(), triggerRef = React.createRef<HTMLButtonElement>();
+    const render = session(() => ScheduleKindMenu({ kind, disabled: false, triggerRef, onChange }));
+    expect(find(render(), Menu.Root).props.open).toBe(false);
+    find(render(), Menu.Root).props.onOpenChange?.(true, {} as never);
+    const opened = render(); expect(find(opened, Menu.Root).props.open).toBe(true);
+    expect(find(opened, Menu.RadioGroup).props.value).toBe(kind);
+    const options = elements(opened).filter((node) => node.type === Menu.RadioItem);
+    expect(options.map((node) => node.props.value)).toEqual(["alarm", "monitor"]);
+    for (const option of options) {
+      expect(option.props.closeOnClick).toBe(true); expect(option.props.className).toContain("data-checked:text-primary-ink");
+      expect(elements(option).some((node) => node.type === Menu.RadioItemIndicator)).toBe(true);
+    }
+    const trigger = find(opened, Menu.Trigger).props.render as React.ReactElement<React.ComponentProps<typeof Button>>;
+    expect(trigger.props.ref).toBe(triggerRef); expect(trigger.props["aria-label"]).toBe(`${scheduleMeta[kind].title}，切换任务类型`);
+    expect(trigger.props.className).toContain("align-top text-xl font-semibold leading-7");
+    expect(find(opened, Menu.Positioner).props).toMatchObject({ align: "start", collisionPadding: 16 });
+    expect(find(opened, Menu.Popup).props.className).toContain("max-w-[calc(100vw-2rem)]");
+    expect(find(opened, Menu.Popup).props.className).toContain("max-h-(--available-height)");
+    find(opened, Menu.Root).props.onOpenChange?.(false, { reason: "escape-key" } as never);
+    expect(find(render(), Menu.Root).props.open).toBe(false); expect(onChange).not.toHaveBeenCalled();
+    expect((find(render(), Menu.Popup).props.finalFocus as () => boolean)()).toBe(true);
+  });
+  it.each(["alarm", "monitor"] as const)("closes on a %s selection, switching once and leaving focus to the new page", (kind) => {
+    const onChange = vi.fn(), next = kind === "alarm" ? "monitor" : "alarm";
+    const render = session(() => ScheduleKindMenu({ kind, disabled: false, triggerRef: React.createRef<HTMLButtonElement>(), onChange }));
+    find(render(), Menu.Root).props.onOpenChange?.(true, {} as never);
+    find(render(), Menu.RadioGroup).props.onValueChange?.(kind, {} as never);
+    expect(find(render(), Menu.Root).props.open).toBe(false); expect(onChange).not.toHaveBeenCalled();
+    find(render(), Menu.Root).props.onOpenChange?.(true, {} as never);
+    find(render(), Menu.RadioGroup).props.onValueChange?.(next, {} as never);
+    expect(find(render(), Menu.Root).props.open).toBe(false); expect(onChange).toHaveBeenCalledExactlyOnceWith(next);
+    expect((find(render(), Menu.Popup).props.finalFocus as () => boolean)()).toBe(false);
+  });
+  it("rejects unsupported or disabled changes instead of discarding an in-flight or unknown write", () => {
+    const onChange = vi.fn(); let disabled = false;
+    const render = session(() => ScheduleKindMenu({ kind: "alarm", disabled, triggerRef: React.createRef<HTMLButtonElement>(), onChange }));
+    find(render(), Menu.RadioGroup).props.onValueChange?.("todo", {} as never); expect(onChange).not.toHaveBeenCalled();
+    disabled = true; const tree = render(); expect(find(tree, Menu.Root).props).toMatchObject({ disabled: true, open: false });
+    const trigger = find(tree, Menu.Trigger).props.render as React.ReactElement<React.ComponentProps<typeof Button>>; expect(trigger.props.disabled).toBe(true);
+    find(tree, Menu.RadioGroup).props.onValueChange?.("monitor", {} as never); expect(onChange).not.toHaveBeenCalled();
+  });
+});
 
 describe("schedule workspace interaction", () => {
   it("keeps the clock entrance flat and remounts only the selected feature with clean feedback and scroll ownership", () => {
@@ -61,18 +111,61 @@ describe("schedule workspace interaction", () => {
     expect(changed.props.kind).toBe("monitor"); expect(changed.key).toBe("monitor"); expect(changed.props.focusClockKind).toBe(true); expect(changed.props.onBack).toBe(onBack);
     changed.props.onClockKindChange("alarm"); expect((render() as typeof first).props.kind).toBe("alarm");
   });
-  it("uses compact function chips outside the reading surface, blocking switches during writes and unknown results", () => {
+  it("puts the type menu in the existing title and blocks switches during writes and unknown results", () => {
     const onClockKindChange = vi.fn(), changeScope = vi.fn();
     let state = { ...initialScheduleState, loaded: true };
     const render = session(() => SchedulePage({ kind: "alarm", state, controller: { changeScope } as unknown as ScheduleController, realtime, onClockKindChange }));
     const tree = render(), html = renderToStaticMarkup(<>{tree}</>);
-    expect(html.match(/data-selection="filter"/g)).toHaveLength(2); expect(html.match(/data-selection="segment"/g)).toHaveLength(2);
-    expect(html.indexOf('data-schedule-kind-filters="true"')).toBeLessThan(html.indexOf('data-schedule-reading-panel="true"'));
+    expect(html).toContain('data-schedule-kind-menu="true"'); expect(html).not.toContain('data-selection="filter"'); expect(html.match(/data-selection="segment"/g)).toHaveLength(2);
+    expect(html).not.toContain("data-schedule-kind-filters");
     expect(html.match(/overflow-y-auto/g)).toHaveLength(1);
-    find(tree, FilterChip, (props) => props.selected === false).props.onClick?.({} as never);
+    expect(titleMenu(tree).type).toBe(ScheduleKindMenu); titleMenu(tree).props.onChange("monitor");
     expect(onClockKindChange).toHaveBeenCalledWith("monitor"); expect(changeScope).toHaveBeenCalledOnce();
-    state = { ...state, pending: "create" }; expect(find(render(), FilterChip).props.disabled).toBe(true);
-    state = { ...state, pending: null, issue: { text: "创建结果未知" } }; expect(find(render(), FilterChip).props.disabled).toBe(true);
+    state = { ...state, pending: "create" }; expect(titleMenu(render()).props.disabled).toBe(true);
+    state = { ...state, pending: null, issue: { text: "创建结果未知" } }; expect(titleMenu(render()).props.disabled).toBe(true);
+  });
+  it("resets the reading region and focuses the new title trigger after changing type", () => {
+    let kind: "alarm" | "monitor" = "alarm", focusClockKind = false;
+    const render = session(() => SchedulePage({ kind, focusClockKind, state: initialScheduleState, controller: null, realtime, onClockKindChange: vi.fn() }));
+    const tree = render(), scroll = { scrollTop: 700 } as HTMLDivElement, focus = vi.fn();
+    (find(tree, "div", (props) => Boolean(props["data-schedule-list-scroll"])).props.ref as React.RefObject<HTMLDivElement>).current = scroll;
+    titleMenu(tree).props.triggerRef.current = { focus } as unknown as HTMLButtonElement;
+    render(); expect(scroll.scrollTop).toBe(700); expect(focus).not.toHaveBeenCalled();
+    kind = "monitor"; focusClockKind = true; render(); expect(scroll.scrollTop).toBe(0); expect(focus).toHaveBeenCalledOnce();
+    scroll.scrollTop = 100; render(); expect(scroll.scrollTop).toBe(100); expect(focus).toHaveBeenCalledOnce();
+  });
+  it.each(["alarm", "monitor"] as const)("keeps the %s title, create form, status views, count and scroll owner consistent", (kind) => {
+    const items: Schedule[] = [
+      { ...item, id: "alarm-active", kind: "alarm" },
+      { ...item, id: "alarm-history", kind: "alarm", status: "triggered" },
+      { ...item, id: "monitor-active-1", kind: "monitor" },
+      { ...item, id: "monitor-active-2", kind: "monitor" },
+      ...Array.from({ length: 3 }, (_, index): Schedule => ({ ...item, id: `monitor-history-${index}`, kind: "monitor", status: "triggered" })),
+    ];
+    const create = vi.fn(), act = vi.fn(), refresh = vi.fn(), changeScope = vi.fn(), onClockKindChange = vi.fn();
+    const controller = { create, act, refresh, changeScope } as unknown as ScheduleController;
+    const state = { ...initialScheduleState, loaded: true, items };
+    const render = session(() => SchedulePage({ kind, state, controller, realtime, onClockKindChange }));
+    const tree = render(), header = find(tree, PageHeader), meta = scheduleMeta[kind];
+    expect(header.props).toMatchObject({ eyebrow: meta.eyebrow, description: meta.description, titleId: `${kind}-page-title` });
+    expect(titleMenu(tree).props.kind).toBe(kind);
+    expect(find(tree, ScheduleRows).props.items.every((row) => row.kind === kind && row.status === "active")).toBe(true);
+    expect(find(tree, ScheduleCreateDialog).props.kind).toBe(kind);
+    const controls = elements(header.props.actions);
+    const createControl = controls.find((node) => node.props.render && (node.props.render as React.ReactElement<{ "aria-label": string }>).props["aria-label"] === meta.create)?.props.render as React.ReactElement<React.ComponentProps<typeof PageHeaderAction>>;
+    expect(createControl).toBeDefined(); createControl.props.onClick?.({} as never);
+    const createDialog = find(render(), ScheduleCreateDialog); expect(createDialog.props.open).toBe(true); expect(createDialog.props.kind).toBe(kind); createDialog.props.onClose();
+    const scroll = { scrollTop: 450 } as HTMLDivElement;
+    (find(render(), "div", (props) => Boolean(props["data-schedule-list-scroll"])).props.ref as React.RefObject<HTMLDivElement>).current = scroll;
+    const count = (node: React.ReactNode) => find(node, "span", (props) => Boolean(props["data-schedule-total"]));
+    expect(count(render()).props.children).toBe(kind === "alarm" ? 1 : 2);
+    find(render(), SegmentedControlItem, (props) => props.selected === false).props.onClick?.({} as never);
+    const history = render(); expect(scroll.scrollTop).toBe(0);
+    expect(find(history, ScheduleRows).props.items.every((row) => row.kind === kind && row.status === "triggered")).toBe(true);
+    expect(count(history).props.children).toBe(kind === "alarm" ? 1 : 3);
+    expect(count(history).props.className).toContain("absolute right-3 top-2.5 z-10 text-xl sm:right-5");
+    titleMenu(history).props.onChange(kind === "alarm" ? "monitor" : "alarm"); expect(onClockKindChange).toHaveBeenCalledOnce();
+    expect(create).not.toHaveBeenCalled(); expect(act).not.toHaveBeenCalled(); expect(refresh).not.toHaveBeenCalled();
   });
   it("resets only on TODO view changes, preserving scroll on ordinary refresh and feedback updates", () => {
     const state = { ...initialScheduleState, loaded: true, items: [item, { ...item, id: "done", status: "done" as const }] };
