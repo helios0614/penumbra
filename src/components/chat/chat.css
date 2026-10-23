@@ -17,11 +17,15 @@
   min-height: 52px;
   margin-inline: auto;
   max-width: 720px;
-  padding: 14px 52px;
+  /* Center the line box inside the surface's two 1px borders. */
+  padding: 13px 52px;
   border-radius: 26px;
   transition: height 200ms ease, padding 200ms ease, border-radius 200ms ease;
 }
 .chat-composer-input, .chat-composer-measure {
+  font-family: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
   font-size: 16px;
   line-height: 24px;
   white-space: pre-wrap;
@@ -53,7 +57,7 @@
   pointer-events: none;
 }
 .chat-composer-measure[data-measure="compact"] { width: calc(100% - var(--chat-compact-inset)); }
-.chat-composer-tools, .chat-composer-send { position: absolute; bottom: 8px; }
+.chat-composer-tools, .chat-composer-send { position: absolute; bottom: 7px; }
 .chat-composer-tools { left: 8px; }
 .chat-composer-send { right: 8px; }
 .chat-composer-status { max-width: 720px; margin: 6px auto 0; text-align: center; }
@@ -100,7 +104,7 @@
     --chat-compact-inset: 120px;
     --chat-content-inset: 120px;
     height: 60px;
-    padding: 18px 60px;
+    padding: 17px 60px;
   }
   .chat-composer[data-expanded="true"] {
     --chat-content-inset: 32px;
@@ -109,6 +113,8 @@
     border-radius: 24px;
   }
   .chat-composer-tools, .chat-composer-send { min-width: 44px; min-height: 44px; }
+  .chat-composer[data-expanded="true"] .chat-composer-tools,
+  .chat-composer[data-expanded="true"] .chat-composer-send { bottom: 8px; }
   .chat-composer-menu input, .chat-composer-menu select { font-size: 16px; }
 }
 @media (prefers-reduced-motion: reduce) {

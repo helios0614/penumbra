@@ -24,6 +24,7 @@ interface SenderProps {
   className?: string;
   tools?: ReactNode;
   toolsLabel?: string;
+  feedback?: ReactNode;
 }
 
 export function shouldSubmitSenderKey(input: {
@@ -50,6 +51,7 @@ export function Sender({
   className,
   tools,
   toolsLabel = "会话模型",
+  feedback,
 }: SenderProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -167,6 +169,7 @@ export function Sender({
         className,
       )}
     >
+        {feedback}
         <div ref={composerRef} className="chat-composer mist-solid" data-expanded={expanded}
           style={{ "--chat-text-height": `${textHeight}px` } as CSSProperties}
           aria-busy={isSubmitting}
@@ -182,7 +185,7 @@ export function Sender({
               className="chat-composer-tools size-11 rounded-full text-muted-foreground md:size-9" aria-label="会话模型与选项" title={toolsLabel} />}>
               <Plus className="size-5" aria-hidden="true" />
             </PopoverTrigger>
-            <PopoverContent side="top" align="start" sideOffset={12} anchor={composerRef}
+            <PopoverContent keepMounted side="top" align="start" sideOffset={12} anchor={composerRef}
               collisionAvoidance={{ side: "none", align: "shift", fallbackAxisSide: "none" }}
               initialFocus={(type) => type === "keyboard"} finalFocus={(type) => type === "keyboard"}
               className="chat-composer-menu" aria-label="会话模型与选项">

@@ -347,7 +347,10 @@ describe("ChatWorkspaceView ready states", () => {
       sendState,
     });
 
-    expect(html.split(messageText)).toHaveLength(2);
+    expect(html).not.toContain(messageText);
+    expect(html).toContain("回复结果待确认");
+    expect(html).not.toContain("已核对历史，返回编辑");
+    expect(html.indexOf("data-chat-execution-feedback")).toBeGreaterThan(html.indexOf("</header>"));
     expect(html).toContain("临时新回复");
     expect(html).not.toContain("原回复");
   });

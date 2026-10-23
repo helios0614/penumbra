@@ -161,8 +161,19 @@ describe("floating Sender interactions", () => {
     expect(css).toMatch(/prefers-reduced-motion: reduce[\s\S]*\.chat-composer-input[\s\S]*transition: none/);
     expect(s.textarea().className).toContain("scrollbar-none");
     const popup = find(s.render(), PopoverContent).props;
+    expect(popup.keepMounted).toBe(true); // Preserve queued model edits when the tools popup closes.
     expect(popup.anchor).toBe(s.frame().ref); expect(popup.collisionAvoidance).toEqual({ side: "none", align: "shift", fallbackAxisSide: "none" });
     expect(popup.initialFocus instanceof Function && popup.initialFocus("keyboard")).toBe(true);
     expect(popup.finalFocus instanceof Function && popup.finalFocus("touch")).toBe(false);
+  });
+  it("centers the 24px text line and button hit boxes on one axis without a translate offset", () => {
+    const css = readFileSync(new URL("./chat.css", import.meta.url), "utf8");
+    expect(css).toContain("padding: 13px 52px"); expect(css).toContain("padding: 17px 60px");
+    expect(css).toContain("bottom: 7px"); expect(css).not.toContain("translateY");
+    expect(1 + 13 + 24 / 2).toBe(52 / 2);
+    expect(52 - 1 - 7 - 36 / 2).toBe(52 / 2);
+    expect(1 + 17 + 24 / 2).toBe(60 / 2);
+    expect(60 - 1 - 7 - 44 / 2).toBe(60 / 2);
+    expect(css).toContain("padding: 12px 16px 60px"); expect(css).toContain("height 200ms ease");
   });
 });

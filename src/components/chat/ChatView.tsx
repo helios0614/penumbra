@@ -30,6 +30,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { BubbleList } from "./BubbleList";
 import { ChatShell } from "./ChatShell";
+import { ChatExecutionFeedback } from "./ChatExecutionFeedback";
 import {
   ChatWorkspaceEmpty,
   ChatWorkspaceError,
@@ -117,7 +118,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       sendState={send.state}
       onSend={sendMessage}
       onRegenerate={regenerateMessage}
-      onRetryFinalization={() => { void recoverExecution(); }}
+      onRetryFinalization={recoverExecution}
       onReleaseAfterReview={send.releaseAfterReview}
       onSaveMainSelection={workspace.saveMainSelection}
       onRefreshState={refreshState}
@@ -134,7 +135,7 @@ export interface ChatWorkspaceViewProps {
   readonly sendState?: ChatSendState;
   readonly onSend?: (content: string) => Promise<boolean>;
   readonly onRegenerate?: (messageId: string) => Promise<boolean>;
-  readonly onRetryFinalization?: () => void;
+  readonly onRetryFinalization?: () => void | Promise<void>;
   readonly onReleaseAfterReview?: () => void;
   readonly onSaveMainSelection?: (conversationId: string, selection: MainSelection) => Promise<void>;
   readonly onRefreshState?: () => Promise<void>;
@@ -158,6 +159,7 @@ export function ChatWorkspaceView({
   onBack,
 }: ChatWorkspaceViewProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [modelSelectionPending, setModelSelectionPending] = useState(false);
 
   if (state.status === "idle" || state.status === "loading") {
     return (
@@ -284,24 +286,21 @@ export function ChatWorkspaceView({
             </div>
           )}
 
-          <ChatExecutionNotice
-            state={sendState}
-            onRetryFinalization={onRetryFinalization}
-            onReleaseAfterReview={onReleaseAfterReview}
-          />
-
           <ChatRealtimeNotice state={realtimeState} />
         </>}
         composer={<Sender
-          disabled={!sender.enabled || onSend === undefined}
-          placeholder={executionActive || executionNoticeVisible ? "输入消息…" : sender.placeholder}
-          statusMessage={executionActive || executionNoticeVisible ? undefined : sender.statusMessage ?? undefined}
+          disabled={!sender.enabled || modelSelectionPending || onSend === undefined}
+          placeholder="输入消息…"
+          statusMessage={executionActive || executionNoticeVisible ? undefined : modelSelectionPending ? "正在切换模型…" : sender.statusMessage ?? undefined}
+          feedback={<ChatExecutionNotice state={sendState} onRetryFinalization={onRetryFinalization} onReleaseAfterReview={onReleaseAfterReview} />}
           onSend={onSend}
           toolsLabel={`会话模型：${workspace.setup.configuration?.selection?.model ?? "尚未选择"}`}
           tools={<MainModelSelection
-            key={`${workspace.selectedConversationId}:${JSON.stringify(workspace.setup.configuration?.selection)}`}
+            key={workspace.selectedConversationId}
             setup={workspace.setup}
-            disabled={executionActive || pendingConversationId !== null || !!state.configurationPending}
+            disabled={executionActive || pendingConversationId !== null}
+            configurationPending={!!state.configurationPending}
+            onPendingChange={setModelSelectionPending}
             onSave={onSaveMainSelection}
             onRefresh={onRefreshState}
           />}
@@ -319,7 +318,7 @@ export function ChatWorkspaceView({
               messages={messages}
               forceFollowKey={forceFollowKey}
               regenerateTargetId={regenerate.target?.id ?? null}
-              regenerateEnabled={regenerate.enabled && onRegenerate !== undefined}
+              regenerateEnabled={regenerate.enabled && !modelSelectionPending && onRegenerate !== undefined}
               onRegenerate={onRegenerate === undefined
                 ? undefined
                 : (messageId) => {
@@ -354,46 +353,23 @@ function ChatRealtimeNotice({
   );
 }
 
-function ChatExecutionNotice({
-  state,
-  onRetryFinalization,
-  onReleaseAfterReview,
-}: {
+function ChatExecutionNotice({ state, onRetryFinalization, onReleaseAfterReview }: {
   readonly state: ChatSendState;
-  readonly onRetryFinalization?: () => void;
+  readonly onRetryFinalization?: () => void | Promise<void>;
   readonly onReleaseAfterReview?: () => void;
 }) {
   const error = executionNoticeError(state);
   if (error === null) return null;
-
-  return (
-    <div
-      className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-destructive/5 px-4 py-2 text-xs text-muted-strong"
-      role="alert"
-    >
-      <span className="min-w-0 flex-1">{error.message}</span>
-      {(state.kind === "error" || state.kind === "finalization-uncertain" ||
-        state.kind === "regenerate-finalization-uncertain") &&
-        onRetryFinalization && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={onRetryFinalization}
-        >
-          <RefreshCw className="size-3.5" aria-hidden="true" />
-          重新读取状态
-        </Button>
-      )}
-      {(state.kind === "finalization-uncertain" || state.kind === "regenerate-finalization-uncertain") &&
-        state.recoveryReadSucceeded && onReleaseAfterReview && <div className="basis-full space-y-2">
-          <p>历史已重读，后台是否结束仍未确认。返回编辑不会停止生成；请核对历史，避免重复提交。</p>
-          <Button type="button" variant="outline" size="sm" onClick={onReleaseAfterReview}>已核对历史，返回编辑</Button>
-        </div>}
-    </div>
-  );
+  const uncertain = state.kind === "finalization-uncertain" || state.kind === "regenerate-finalization-uncertain";
+  return <ChatExecutionFeedback
+    summary={uncertain ? "回复结果待确认" : "回复状态需要处理"}
+    detail={error.message}
+    uncertain={uncertain}
+    reviewReady={uncertain && !!state.recoveryReadSucceeded}
+    onRefresh={state.kind === "error" || uncertain ? onRetryFinalization : undefined}
+    onReturnToEdit={onReleaseAfterReview}
+  />;
 }
-
 function executionNoticeError(state: ChatSendState) {
   switch (state.kind) {
     case "error":

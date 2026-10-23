@@ -1,5 +1,7 @@
 # Chat PR2 — 共享布局、Composer 与生成状态
 
+后续日常交互修正（居中、轻量恢复、模型自动保存）的最新规则与验收见 [chat-daily-ui-followup.md](./chat-daily-ui-followup.md)。本文保留 PR2 / PR2 Follow-up 基线记录。
+
 日期：2026-10-23（Asia/Shanghai）。本轮只修改 Penumbra UI 和 Main 展示适配，未 commit、push 或部署，等待人工验收。未读取生产聊天、个人数据或凭据；测试全部使用合成数据。
 
 ## 组件与依赖边界
