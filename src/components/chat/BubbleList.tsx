@@ -2,11 +2,12 @@ import { format, isToday, isYesterday } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { memo, useEffect, useMemo, useRef } from "react";
 
-import type { ChatMessageViewModel } from "@/components/chat-workspace/presentation";
+import type { ChatMessageViewModel } from "./chat-ui-types";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 import { Bubble } from "./Bubble";
+import { trackChatScroll } from "./chat-scroll";
 
 function DateSeparator({ timestamp }: { readonly timestamp: number }) {
   const date = new Date(timestamp * 1000);
@@ -59,7 +60,7 @@ function groupByDate(messages: readonly ChatMessageViewModel[]): DateGroup[] {
 }
 
 interface BubbleListProps {
-  readonly conversationId: string;
+  readonly timelineKey: string;
   readonly messages: readonly ChatMessageViewModel[];
   readonly forceFollowKey?: string | null;
   readonly regenerateTargetId?: string | null;
@@ -68,7 +69,7 @@ interface BubbleListProps {
 }
 
 function BubbleListInner({
-  conversationId,
+  timelineKey,
   messages,
   forceFollowKey = null,
   regenerateTargetId = null,
@@ -76,9 +77,8 @@ function BubbleListInner({
   onRegenerate,
 }: BubbleListProps) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const shouldFollowRef = useRef(true);
-  const previousConversationRef = useRef<string | null>(null);
+  const previousTimelineRef = useRef<string | null>(null);
   const previousForceKeyRef = useRef<string | null>(null);
   const lastMessageId = messages[messages.length - 1]?.id ?? null;
   const lastMessage = messages[messages.length - 1];
@@ -92,35 +92,30 @@ function BubbleListInner({
     const viewport = rootRef.current?.querySelector<HTMLElement>(
       '[data-slot="scroll-area-viewport"]',
     );
-    if (!viewport) return;
-
-    const updateFollow = () => {
-      const distance = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-      shouldFollowRef.current = distance <= 96;
-    };
-    viewport.addEventListener("scroll", updateFollow, { passive: true });
-    updateFollow();
-    return () => viewport.removeEventListener("scroll", updateFollow);
-  }, [conversationId]);
+    const content = rootRef.current?.querySelector<HTMLElement>("[data-chat-message-content]");
+    if (!viewport || !content) return;
+    return trackChatScroll(viewport, content, shouldFollowRef);
+  }, [timelineKey]);
 
   useEffect(() => {
-    const conversationChanged = previousConversationRef.current !== conversationId;
+    const conversationChanged = previousTimelineRef.current !== timelineKey;
     const forced = forceFollowKey !== null &&
       previousForceKeyRef.current !== forceFollowKey;
     if (conversationChanged || forced || shouldFollowRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+      const viewport = rootRef.current?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
+      if (viewport) viewport.scrollTop = viewport.scrollHeight;
       shouldFollowRef.current = true;
     }
-    previousConversationRef.current = conversationId;
+    previousTimelineRef.current = timelineKey;
     previousForceKeyRef.current = forceFollowKey;
-  }, [conversationId, forceFollowKey, lastMessageId, messages.length, tailRevision]);
+  }, [timelineKey, forceFollowKey, lastMessageId, messages.length, tailRevision]);
 
   const dateGroups = useMemo(() => groupByDate(messages), [messages]);
 
   return (
-    <div ref={rootRef} className="min-h-0 w-full flex-1 overflow-hidden">
+    <div ref={rootRef} className="chat-message-scroll min-h-0 w-full flex-1 overflow-hidden">
       <ScrollArea className="h-full w-full overflow-hidden">
-        <div className="mx-auto flex max-w-[720px] flex-col gap-2 px-4 py-3">
+        <div data-chat-message-content className="mx-auto flex max-w-[720px] flex-col gap-2 px-4 py-3">
         {dateGroups.map((group) => (
           <div key={group.dateKey}>
             <DateSeparator timestamp={group.timestamp} />
@@ -149,7 +144,6 @@ function BubbleListInner({
             </div>
           </div>
         ))}
-          <div ref={bottomRef} />
         </div>
       </ScrollArea>
     </div>

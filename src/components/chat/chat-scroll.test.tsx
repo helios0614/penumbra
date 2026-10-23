@@ -12,13 +12,15 @@ afterEach(() => vi.restoreAllMocks());
 // Run the existing follow effects against an isolated message viewport.
 function session() {
   const viewport = Object.assign(new EventTarget(), { scrollTop: 0, scrollHeight: 2000, clientHeight: 480 });
-  const bottom = { scrollIntoView: vi.fn() }, root = { querySelector: vi.fn(() => viewport) };
+  const scroll = vi.fn(), root = { querySelector: vi.fn(() => viewport) };
+  let position = 0;
+  Object.defineProperty(viewport, "scrollTop", { get: () => position, set: (value: number) => { position = value; scroll(); } });
   const refs: { current: unknown }[] = [], deps: (readonly unknown[])[] = [], cleanups: (() => void)[] = [];
   let refIndex = 0, effectIndex = 0;
   const effects: (() => void)[] = [];
   vi.spyOn(React, "useRef").mockImplementation(((initial: unknown) => {
     const index = refIndex++;
-    return refs[index] ??= { current: index === 0 ? root : index === 1 ? bottom : initial };
+    return refs[index] ??= { current: index === 0 ? root : initial };
   }) as typeof React.useRef);
   vi.spyOn(React, "useMemo").mockImplementation(((compute: () => unknown) => compute()) as typeof React.useMemo);
   vi.spyOn(React, "useEffect").mockImplementation(((effect: () => void | (() => void), next: readonly unknown[]) => {
@@ -31,11 +33,11 @@ function session() {
   const render = (content: string, conversationId = "a", forceFollowKey: string | null = null) => {
     refIndex = 0; effectIndex = 0;
     const component = BubbleList as unknown as { type: (props: React.ComponentProps<typeof BubbleList>) => React.ReactElement<{ children: React.ReactElement }> };
-    const tree = component.type({ conversationId, forceFollowKey, messages: [{ id: "reply", kind: "assistant", content, createdAt: 1, thinking: null, simpleThink: null, attachments: [] }] });
+    const tree = component.type({ timelineKey: conversationId, forceFollowKey, messages: [{ id: "reply", kind: "assistant", content, createdAt: 1, thinking: null, simpleThink: null, attachments: [] }] });
     effects.splice(0).forEach((effect) => effect());
     return tree;
   };
-  return { viewport, bottom, root, render, dispose: () => cleanups.forEach((cleanup) => cleanup()) };
+  return { viewport, scroll, root, render, dispose: () => cleanups.forEach((cleanup) => cleanup()) };
 }
 
 describe("Chat message scroll regression", () => {
@@ -43,19 +45,19 @@ describe("Chat message scroll regression", () => {
     const s = session(), tree = s.render("hello");
     expect(tree.props.children.type).toBe(ScrollArea);
     expect(s.root.querySelector).toHaveBeenCalledWith('[data-slot="scroll-area-viewport"]');
-    expect(s.bottom.scrollIntoView).toHaveBeenCalledOnce(); s.bottom.scrollIntoView.mockClear();
-    s.viewport.scrollTop = 1000; s.viewport.dispatchEvent(new Event("scroll"));
-    s.render("hello, streaming"); expect(s.bottom.scrollIntoView).not.toHaveBeenCalled();
-    s.viewport.scrollTop = 1424; s.viewport.dispatchEvent(new Event("scroll")); // 96px boundary
+    expect(s.scroll).toHaveBeenCalledOnce(); s.scroll.mockClear();
+    s.viewport.scrollTop = 1000; s.scroll.mockClear(); s.viewport.dispatchEvent(new Event("scroll"));
+    s.render("hello, streaming"); expect(s.scroll).not.toHaveBeenCalled();
+    s.viewport.scrollTop = 1424; s.scroll.mockClear(); s.viewport.dispatchEvent(new Event("scroll")); // 96px boundary
     s.render("hello, streaming more");
-    expect(s.bottom.scrollIntoView).toHaveBeenCalledWith({ behavior: "auto", block: "end" }); s.dispose();
+    expect(s.scroll).toHaveBeenCalled(); s.dispose();
   });
   it("preserves explicit follow/conversation changes and releases the viewport listener", () => {
     const s = session(), remove = vi.spyOn(s.viewport, "removeEventListener"); s.render("one");
-    s.viewport.scrollTop = 500; s.viewport.dispatchEvent(new Event("scroll")); s.bottom.scrollIntoView.mockClear();
-    s.render("two", "a", "sent-message"); expect(s.bottom.scrollIntoView).toHaveBeenCalledOnce();
-    s.viewport.dispatchEvent(new Event("scroll")); s.bottom.scrollIntoView.mockClear();
-    s.render("three", "b"); expect(s.bottom.scrollIntoView).toHaveBeenCalledOnce();
+    s.viewport.scrollTop = 500; s.viewport.dispatchEvent(new Event("scroll")); s.scroll.mockClear();
+    s.render("two", "a", "sent-message"); expect(s.scroll).toHaveBeenCalledOnce();
+    s.viewport.dispatchEvent(new Event("scroll")); s.scroll.mockClear();
+    s.render("three", "b"); expect(s.scroll).toHaveBeenCalledOnce();
     expect(remove).toHaveBeenCalledOnce(); s.dispose(); expect(remove).toHaveBeenCalledTimes(2);
   });
 });

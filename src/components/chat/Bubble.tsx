@@ -4,12 +4,14 @@ import { memo } from "react";
 
 import aiAvatarPlaceholder from "@/assets/chat/avatar-ai-placeholder.png";
 import userAvatarPlaceholder from "@/assets/chat/avatar-user-placeholder.png";
-import type { ChatMessageViewModel } from "@/components/chat-workspace/presentation";
+import type { ChatMessageViewModel } from "./chat-ui-types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { MessageActions } from "./MessageActions";
+import { GenerationIndicator } from "./GenerationIndicator";
+import "./chat.css";
 import { SimpleThink, ThinkingBlock } from "./system-command/InlineIndicator";
 
 // Temporary visual-only sources. Replace these imports when avatar settings land.
@@ -173,7 +175,7 @@ function BubbleInner({
   const isUser = message.kind === "user";
   const chunks = splitIntoChunks(message.content);
   const time = format(new Date(message.createdAt * 1000), "HH:mm");
-  const executionLabel = message.executionStatus === undefined
+  const executionLabel = message.executionStatus === undefined || !isUser
     ? null
     : {
         optimistic: "正在发送",
@@ -181,9 +183,15 @@ function BubbleInner({
         finalizing: "正在确认",
         unconfirmed: "未确认保存",
       }[message.executionStatus];
+  const generationLabel = isUser || message.executionStatus === undefined ? null
+    : message.executionStatus === "streaming"
+      ? (message.content.trim() ? "正在输入" : "正在生成")
+      : message.executionStatus === "finalizing" ? "正在确认保存"
+      : message.executionStatus === "unconfirmed" ? "结果待确认" : "正在发送";
 
   return (
     <div
+      data-message-id={message.id}
       tabIndex={-1}
       className={cn(
         "group flex w-full max-w-full flex-col outline-none",
@@ -234,13 +242,15 @@ function BubbleInner({
             isUser ? "items-end" : "items-start gap-0.5",
           )}
         >
-          {chunks.map((chunk, index) => (
+          {(generationLabel && !message.content.trim() ? [] : chunks).map((chunk, index) => (
             <BubbleSegment
               key={`${message.id}:${index}`}
               kind={message.kind}
               content={chunk}
             />
           ))}
+          {generationLabel && <GenerationIndicator label={generationLabel}
+            active={message.executionStatus === "streaming" || message.executionStatus === "finalizing"} />}
         </div>
 
         {message.attachments.length > 0 && (

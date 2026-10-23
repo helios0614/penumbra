@@ -28,16 +28,23 @@ export function MainModelSelection({ setup, disabled, onSave, onRefresh }: Props
     (setup.readiness.kind === "available" && !setup.readiness.value.ready ? setup.readiness.value.reason : null);
   const locked = disabled || pending;
   const canSave = !!onSave && !!setup.conversationId && !!connection && protocols.includes(protocol) && !!model.trim();
+  const savedConnection = connections.find(({ id }) => id === saved?.connectionId);
 
-  return <details className="shrink-0 border-b border-border px-4 py-2 text-xs">
-    <summary className="cursor-pointer text-muted-strong">
-      {setup.conversationId ? "会话模型" : "新会话默认（只读）"}：{saved?.model ?? "尚未选择"}
-      {saved && ` · ${saved.connectionId ?? saved.profileId} · ${saved.protocol ?? "兼容协议"}`}
-    </summary>
-    <div className="mt-3 max-h-[45vh] space-y-3 overflow-y-auto pb-2">
+  return <section className="min-w-0 text-xs" aria-label="模型选择">
+    <h2 className="text-sm font-medium">{setup.conversationId ? "会话模型" : "新会话默认（只读）"}</h2>
+    <p className="mt-1 truncate text-muted-strong" title={saved?.model ?? undefined}>{saved?.model ?? "尚未选择"}</p>
+    <p className="mt-1 truncate text-muted-foreground">{savedConnection?.name ?? "当前连接不可用"} · {saved?.protocol ?? "兼容协议"}</p>
+    {saved && <details className="mt-2 text-muted-foreground"><summary className="cursor-pointer">完整选择身份</summary>
+      <dl className="mt-2 grid gap-1 break-all"><dt>Connection / Profile</dt><dd>{saved.connectionId ?? saved.profileId}</dd>
+        <dt>Protocol</dt><dd>{saved.protocol ?? "兼容协议"}</dd><dt>Literal model</dt><dd>{saved.model}</dd></dl>
+    </details>}
+    <div className="mt-3 space-y-3 pb-2">
+      <p role="status">Readiness：{setup.readiness.kind === "available"
+        ? setup.readiness.value.ready ? "本地配置已就绪" : `未就绪（${setup.readiness.value.reason}）`
+        : "暂时无法确认"}</p>
       {diagnostic && <p role="status">{mainDiagnosticMessage(diagnostic)}（{diagnostic}）</p>}
       {!configuration && <p role="status">暂时无法读取模型配置，请重新读取状态。</p>}
-      {setup.conversationId && <form className="flex flex-wrap items-end gap-2" onSubmit={async (event) => {
+      {setup.conversationId && <form className="grid min-w-0 gap-3" onSubmit={async (event) => {
         event.preventDefault();
         if (locked || submitting.current || !canSave || !onSave || !setup.conversationId) return;
         submitting.current = true;
@@ -50,7 +57,7 @@ export function MainModelSelection({ setup, disabled, onSave, onRefresh }: Props
         } finally { submitting.current = false; setPending(false); }
       }}>
         <label className="grid gap-1">Connection
-          <select className="max-w-64 rounded border bg-background p-2" value={connectionId} disabled={locked || !configuration} onChange={(event) => {
+          <select className="w-full min-w-0 rounded-lg border border-border bg-background p-2 text-base sm:text-xs" value={connectionId} disabled={locked || !configuration} onChange={(event) => {
             const id = event.target.value;
             setConnectionId(id);
             // Connection default is only a draft prefill; never save or choose a protocol implicitly.
@@ -59,19 +66,19 @@ export function MainModelSelection({ setup, disabled, onSave, onRefresh }: Props
             <option value="">请选择连接</option>
             {connectionId && !connection && <option value={connectionId}>{connectionId}（已保存，当前不可用）</option>}
             {connections.map((item) => <option key={item.id} value={item.id}>
-              {item.name}（{item.id}）{!item.enabled ? " · 已禁用" : !item.credentialConfigured ? " · 缺少凭据" : ""}
+              {item.name}{!item.enabled ? " · 已禁用" : !item.credentialConfigured ? " · 缺少凭据" : ""}
             </option>)}
           </select>
         </label>
-        <label className="grid gap-1">协议
-          <select className="rounded border bg-background p-2" value={protocol} disabled={locked || !connection} onChange={(event) => setProtocol(event.target.value)}>
+        <label className="grid min-w-0 gap-1">Protocol · 协议
+          <select className="w-full min-w-0 rounded-lg border border-border bg-background p-2 text-base sm:text-xs" value={protocol} disabled={locked || !connection} onChange={(event) => setProtocol(event.target.value)}>
             <option value="">请选择协议</option>
             {protocol && !protocols.includes(protocol) && <option value={protocol}>{protocol}（已保存，当前不可用）</option>}
             {protocols.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </label>
         <label className="grid gap-1">Literal model
-          <input className="rounded border bg-background p-2" value={model} disabled={locked || !configuration} onChange={(event) => setModel(event.target.value)} placeholder="具体模型名称" />
+          <input className="w-full min-w-0 rounded-lg border border-border bg-background p-2 text-base sm:text-xs" value={model} disabled={locked || !configuration} onChange={(event) => setModel(event.target.value)} placeholder="具体模型名称" />
         </label>
         <Button type="submit" variant="outline" size="sm" disabled={locked || !canSave}>{pending ? "正在确认…" : "保存当前会话"}</Button>
       </form>}
@@ -86,5 +93,5 @@ export function MainModelSelection({ setup, disabled, onSave, onRefresh }: Props
       <p className="leading-relaxed text-muted-foreground">当前会话与全局新会话默认分别保存；Connection 默认模型仅用于预填。Readiness 只确认本地配置，不保证远端调用成功。修改不会热切换已启动的 Runtime。</p>
       {setup.conversationId && <p className="leading-relaxed text-muted-foreground">保存会更新会话时间，可能使本会话成为最近 Main 会话。Camera、Location、闹钟、查岗、Activity greeting 和速记 Step2 仍可能跟随最近 Main 会话的模型或目标。</p>}
     </div>
-  </details>;
+  </section>;
 }

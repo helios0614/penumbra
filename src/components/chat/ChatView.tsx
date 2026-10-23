@@ -29,6 +29,7 @@ import {
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { BubbleList } from "./BubbleList";
+import { ChatShell } from "./ChatShell";
 import {
   ChatWorkspaceEmpty,
   ChatWorkspaceError,
@@ -203,16 +204,13 @@ export function ChatWorkspaceView({
 
   return (
     <TooltipProvider delay={300}>
-      <div className="flex min-h-0 w-full flex-1 overflow-hidden">
-        <ConversationsList
+      <ChatShell sidebar={<ConversationsList
           conversations={conversations}
           onSelect={selectConversation}
           disabled={executionActive}
           className="hidden w-[280px] shrink-0 md:flex"
-        />
-
-        <div className="relative flex w-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/10 px-3 text-foreground backdrop-blur-xl sm:px-4">
+        />}
+        header={<header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/10 px-3 text-foreground backdrop-blur-xl sm:px-4">
             {onBack && (
               <Button
                 type="button"
@@ -266,16 +264,8 @@ export function ChatWorkspaceView({
                 <span className="hidden sm:inline">正在切换会话</span>
               </span>
             )}
-          </header>
-
-          <MainModelSelection
-            key={`${workspace.selectedConversationId}:${JSON.stringify(workspace.setup.configuration?.selection)}`}
-            setup={workspace.setup}
-            disabled={executionActive || pendingConversationId !== null || !!state.configurationPending}
-            onSave={onSaveMainSelection}
-            onRefresh={onRefreshState}
-          />
-
+          </header>}
+        notices={<>
           {switchError && (
             <div
               className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-destructive/5 px-4 py-2 text-xs text-muted-strong"
@@ -301,7 +291,22 @@ export function ChatWorkspaceView({
           />
 
           <ChatRealtimeNotice state={realtimeState} />
-
+        </>}
+        composer={<Sender
+          disabled={!sender.enabled || onSend === undefined}
+          placeholder={executionActive || executionNoticeVisible ? "输入消息…" : sender.placeholder}
+          statusMessage={executionActive || executionNoticeVisible ? undefined : sender.statusMessage ?? undefined}
+          onSend={onSend}
+          toolsLabel={`会话模型：${workspace.setup.configuration?.selection?.model ?? "尚未选择"}`}
+          tools={<MainModelSelection
+            key={`${workspace.selectedConversationId}:${JSON.stringify(workspace.setup.configuration?.selection)}`}
+            setup={workspace.setup}
+            disabled={executionActive || pendingConversationId !== null || !!state.configurationPending}
+            onSave={onSaveMainSelection}
+            onRefresh={onRefreshState}
+          />}
+        />}
+      >
           {workspace.conversations.length === 0 ? (
             <ChatWorkspaceEmpty kind="conversations" />
           ) : workspace.selectedConversation === null || workspace.history === null ? (
@@ -310,7 +315,7 @@ export function ChatWorkspaceView({
             <ChatWorkspaceEmpty kind="history" />
           ) : (
             <BubbleList
-              conversationId={workspace.selectedConversation.id}
+              timelineKey={workspace.selectedConversation.id}
               messages={messages}
               forceFollowKey={forceFollowKey}
               regenerateTargetId={regenerate.target?.id ?? null}
@@ -323,18 +328,7 @@ export function ChatWorkspaceView({
             />
           )}
 
-          <Sender
-            disabled={!sender.enabled || onSend === undefined}
-            placeholder={executionNoticeVisible
-              ? "输入消息…"
-              : sender.placeholder}
-            statusMessage={executionNoticeVisible
-              ? undefined
-              : sender.statusMessage ?? undefined}
-            onSend={onSend}
-          />
-        </div>
-      </div>
+      </ChatShell>
     </TooltipProvider>
   );
 }

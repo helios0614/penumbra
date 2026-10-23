@@ -46,7 +46,7 @@ export function composeVisibleChatMessages(
       : "optimistic",
   });
 
-  if (overlay.assistant !== null && hasAssistantPresentation(overlay.assistant)) {
+  if (overlay.assistant !== null && (overlay.status !== "unconfirmed" || hasAssistantPresentation(overlay.assistant))) {
     visible.push({
       kind: "assistant",
       id: overlay.assistant.overlayId,
