@@ -3,9 +3,21 @@
   background: color-mix(in srgb, var(--glass-surface-strong) 69%, var(--glass-surface) 31%);
 }
 
-.diary-calendar-table { border-spacing: 0 2px; }
-.diary-day { min-height: 52px; }
-.diary-day-number { border: 1px solid transparent; }
+/* Content-sized table: viewport height never distributes space between weeks. */
+.diary-calendar-table { height: auto; border-spacing: 0; }
+.diary-day { height: 48px; min-height: 48px; }
+.diary-day-number { border: 1px solid transparent; transform: translateY(-5px); }
+.diary-day-marker {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  transform: translateX(-50%);
+}
 .diary-day[data-today="true"] .diary-day-number {
   border-color: var(--color-primary-ink);
   font-weight: 600;
@@ -31,4 +43,103 @@
 /* Today, selection and persistence marks have independent shapes and contrast. */
 .diary-day[data-selected="true"] .diary-marker { color: var(--color-primary-foreground); border-color: var(--color-primary-foreground); }
 .diary-day[data-selected="true"] .diary-marker-dot[data-diary-marker="archived"] { background: var(--color-primary-foreground); }
-@media (min-width: 640px) { .diary-day { min-height: 56px; } }
+
+/* One bounded paper, with only the middle region scrolling. Queries use the
+   Reader's remaining height, so the shared PageHeader and browser chrome count. */
+.diary-reader { container: diary-reader / size; min-inline-size: 0; max-block-size: var(--diary-reader-available-height, none); }
+.diary-reader-header, .diary-reader-keywords { flex-shrink: 0; }
+.diary-reader-header, .diary-reader-body-content, .diary-reader-keywords {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+.diary-reader-header { padding-top: .25rem; padding-bottom: .625rem; }
+.diary-reader-date { margin-block: .125rem; }
+.diary-reader-heading { position: relative; margin-top: .375rem; min-inline-size: 0; }
+.diary-reader-heading[data-importance-level] { padding-inline-start: .875rem; }
+.diary-reader-heading[data-importance-level]::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  top: .125rem;
+  inline-size: 2px;
+  block-size: 3rem;
+  max-block-size: calc(100% - .25rem);
+  border-radius: 999px;
+  background: var(--color-border-strong);
+}
+/* Match the old Diary reader: neutral below .6, 45% accent from .6,
+   full accent from .8. Only a small title-side line carries this mapping. */
+.diary-reader-heading[data-importance-level="mid"]::before {
+  background: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+}
+.diary-reader-heading[data-importance-level="high"]::before { background: var(--color-primary); }
+.diary-reader-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+}
+.diary-reader-tags, .diary-reader-keyword-window, .diary-reader-chips-full {
+  display: flex;
+  min-inline-size: 0;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: .375rem;
+}
+.diary-reader-tags { margin-top: .375rem; max-block-size: calc(1.5rem + 2px); overflow: hidden; }
+.diary-reader-tag, .diary-reader-keyword {
+  flex: 0 1 auto;
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--color-border-strong) 30%, transparent);
+  border-radius: 999px;
+  padding: .125rem .5rem;
+  font-size: .75rem;
+  line-height: 1.25rem;
+  color: var(--color-muted-strong);
+}
+.diary-reader-tag {
+  border-color: color-mix(in srgb, var(--color-primary) 15%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 7%, transparent);
+  color: var(--color-primary-ink);
+}
+.diary-reader-chip-full { white-space: normal; overflow-wrap: anywhere; overflow: visible; }
+.diary-reader-body { flex: 1 1 0; min-block-size: 0; overflow: hidden; }
+.diary-reader-body-content { padding-top: .75rem; padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+.diary-reader-keywords { padding-top: .5rem; padding-bottom: max(.5rem, env(safe-area-inset-bottom)); }
+.diary-reader-keywords-preview { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .5rem; }
+.diary-reader-keyword-window { max-block-size: calc(3rem + 10px); overflow: hidden; }
+/* Reserve the trigger's width even when everything fits, avoiding resize loops. */
+.diary-reader-keywords-preview[data-overflow="false"] .diary-reader-keywords-more { visibility: hidden; }
+.diary-reader-keywords-compact { display: none; }
+
+@media (min-width: 640px) {
+  .diary-reader-header, .diary-reader-body-content, .diary-reader-keywords {
+    padding-left: max(1.75rem, env(safe-area-inset-left));
+    padding-right: max(1.75rem, env(safe-area-inset-right));
+  }
+  .diary-reader-title { font-size: 1.25rem; }
+}
+
+/* Root-relative lengths also react to enlarged text. Full information remains
+   available from the named Dialog trigger beside Back in every compact mode. */
+@container diary-reader (max-height: 24rem) {
+  .diary-reader-header { padding-top: 0; padding-bottom: .375rem; }
+  .diary-reader-heading { margin-top: .125rem; }
+  .diary-reader-title { -webkit-line-clamp: 1; font-size: 1rem; }
+  .diary-reader-date { max-block-size: 1.5rem; overflow: hidden; }
+  .diary-reader-tags, .diary-reader-keywords-preview { display: none; }
+  .diary-reader-keywords-compact { display: inline-flex; }
+  .diary-reader-keywords { padding-top: .125rem; padding-bottom: max(.125rem, env(safe-area-inset-bottom)); }
+  .diary-reader-body-content { padding-top: .5rem; }
+}
+@container diary-reader (max-height: 14rem) {
+  .diary-reader-heading, .diary-reader-date { display: none; }
+}
+@container diary-reader (max-height: 9rem) {
+  .diary-reader-keywords { display: none; }
+}

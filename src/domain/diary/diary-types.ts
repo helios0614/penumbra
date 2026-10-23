@@ -22,6 +22,9 @@ export interface ArchivedDiary {
   readonly date: string;
   readonly title: string | null;
   readonly content: string;
+  readonly importance: number | null;
+  readonly tags: readonly string[];
+  readonly keywords: readonly string[];
 }
 
 export class DiaryContractError extends Error {

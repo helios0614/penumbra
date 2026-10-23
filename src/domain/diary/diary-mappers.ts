@@ -52,5 +52,18 @@ export function parseArchivedDiary(value: unknown, entryId: string, expectedDate
   if (row.ok === false) throw new DiaryUnavailableError();
   if (row.id !== entryId || row.date !== expectedDate || !isDiaryDate(expectedDate)) throw new DiaryContractError();
   if (row.status !== "done" || !hasDiaryText(row.content)) throw new DiaryUnavailableError();
-  return { id: entryId, date: expectedDate, title: nullableText(row.title), content: row.content };
+  return {
+    id: entryId, date: expectedDate, title: nullableText(row.title), content: row.content,
+    importance: typeof row.importance === "number" && Number.isFinite(row.importance) && row.importance >= 0 && row.importance <= 1 ? row.importance : null,
+    tags: savedTextList(row.tags), keywords: savedTextList(row.keywords),
+  };
+}
+
+/** Optional legacy metadata must never make otherwise valid saved prose unreadable. */
+function savedTextList(value: unknown): readonly string[] {
+  if (typeof value === "string") {
+    try { value = JSON.parse(value); } catch { return []; }
+  }
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((item): item is string => typeof item === "string" && hasDiaryText(item)).map((item) => item.trim()).filter(Boolean))];
 }

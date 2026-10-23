@@ -81,7 +81,21 @@ describe("Archived Diary detail", () => {
   it("projects only saved reading fields and preserves complete plain text", () => {
     const content = "第一段\n\n**不是 Markdown**\r\n<script>不会执行</script>" + "longword".repeat(500);
     expect(parseArchivedDiary(detail({ title: null, content, auto_feed_status: "feeding", model: "private", auto_feed_config: "large" }), "entry", "2026-10-09"))
-      .toEqual({ id: "entry", date: "2026-10-09", title: null, content });
+      .toEqual({ id: "entry", date: "2026-10-09", title: null, content, importance: null, tags: [], keywords: [] });
+  });
+  it("keeps saved tags and keywords separate, accepting arrays and legacy JSON arrays", () => {
+    expect(parseArchivedDiary(detail({ importance: 0.83, tags: '["shared_moment"," emotion ","",null,4,"shared_moment"]', keywords: ["猫", " 亲近 ", "", false, {}, "猫"] }), "entry", "2026-10-09"))
+      .toMatchObject({ importance: 0.83, tags: ["shared_moment", "emotion"], keywords: ["猫", "亲近"] });
+  });
+  it.each([undefined, null, "", "null", "not JSON", '{"tag":"x"}', '"nested string"', 3, {}, [null, 4, false, {}, [], " \n "]])("omits empty or malformed optional lists without blocking prose: %j", (value) => {
+    const entry = parseArchivedDiary(detail({ tags: value, keywords: value }), "entry", "2026-10-09");
+    expect(entry).toMatchObject({ tags: [], keywords: [], content: "保存的正文\n\n第二段" });
+  });
+  it.each([undefined, null, "0.8", "", false, {}, -0.1, 1.1, NaN, Infinity])("omits invalid importance without inventing a default: %j", (importance) => {
+    expect(parseArchivedDiary(detail({ importance }), "entry", "2026-10-09").importance).toBeNull();
+  });
+  it.each([0, 0.59, 0.6, 0.79, 0.8, 1])("preserves valid importance including zero: %s", (importance) => {
+    expect(parseArchivedDiary(detail({ importance }), "entry", "2026-10-09").importance).toBe(importance);
   });
   it.each([{ ok: false, message: "private" }, detail({ status: "writing" }), detail({ content: "" }), detail({ content: " \n\t\u0085\u001c\u3000" }), detail({ content: null })])("rejects missing/unarchived/empty detail", (value) => {
     expect(() => parseArchivedDiary(value, "entry", "2026-10-09")).toThrow(DiaryUnavailableError);

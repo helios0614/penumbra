@@ -5,9 +5,11 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { initialDiaryState, type DiaryState } from "@/application/diary-reader/diary-reader-state";
 import type { DiaryCalendarItem } from "@/domain/diary";
+import { parseArchivedDiary } from "@/domain/diary/diary-mappers";
 import { createDiaryReaderController } from "@/application/diary-reader/diary-reader-controller";
 import { DiaryCalendar, DiarySelection } from "./DiaryCalendar";
-import { DiaryReader } from "./DiaryReader";
+import { DiaryReader, diaryReaderImportance } from "./DiaryReader";
+import { DiaryReaderInfo, DiaryReaderTags } from "./DiaryReaderDetails";
 import { DiaryView } from "./DiaryView";
 import { useDiary } from "./useDiary";
 import { useDiaryNavigation } from "./useDiaryNavigation";
@@ -63,12 +65,21 @@ describe("Diary calendar UI", () => {
   });
   it("keeps selected-background marker contrast and click areas in bounded rows", () => {
     const css = readFileSync(new URL("./diary.css", import.meta.url), "utf8");
-    expect(css).toContain("min-height: 52px"); expect(css).not.toMatch(/height:\s*(?:[0-9]+vh|100%)/);
+    expect(css).toContain("min-height: 48px"); expect(css).not.toMatch(/height:\s*(?:[0-9]+vh|100%)/);
+    expect(css).toContain(".diary-calendar-table { height: auto;");
+    expect(css).toMatch(/\.diary-day-marker\s*\{\s*position: absolute;/);
+    expect(css).toContain("top: calc(100% + 3px)");
     expect(css).toContain('.diary-day[data-selected="true"] .diary-marker');
     expect(css).toContain('border-color: var(--color-primary-foreground)');
     expect(css).toContain('.diary-marker-dot[data-diary-marker="archived"]');
     expect(css).toContain("var(--glass-surface-strong) 69%, var(--glass-surface) 31%");
     expect(css).not.toMatch(/#[0-9a-f]{3,8}/i);
+  });
+  it.each([["2026-10", 5, 31], ["2026-11", 6, 30]] as const)("renders the natural %s month without padding to six weeks", (month, weeks, days) => {
+    const html = renderCalendar({ ...loaded, month, selectedDate: `${month}-23`, calendar: { month, items: [] } });
+    expect(html.match(/<tbody>([\s\S]*?)<\/tbody>/)?.[1].match(/<tr>/g)).toHaveLength(weeks);
+    expect(html.match(/data-diary-date=/g)).toHaveLength(days);
+    expect(html).not.toContain("diary-day-marker");
   });
   it("clicking a date selects it, while only the archived preview opens detail", () => {
     const active = controller(), select = vi.spyOn(active, "selectDate"), open = vi.fn();
@@ -107,6 +118,26 @@ describe("Diary calendar UI", () => {
     expect(html).toContain('aria-label="日期异常记录"'); expect(html).toContain("2026-10-02junk");
     expect(html).toContain("无法对应到日历"); expect(html).not.toContain("invalid_business_date");
   });
+  it("uses one accessible archived card button with a saved excerpt and no nested controls", () => {
+    const content = "真实正文开头 <script>纯文本</script>\n第二行\n" + "猫🐈".repeat(150);
+    const preview = { entryId: archived.entryId, date: archived.date, entry: { id: archived.entryId, date: archived.date, title: "详情中的标题", content, importance: null, tags: [], keywords: [] }, loading: false, error: null };
+    const html = renderToStaticMarkup(<DiarySelection date={archived.date} item={archived} known preview={preview} onOpen={vi.fn()} />);
+    expect(html.match(/<button/g)).toHaveLength(1);
+    expect(html).toContain('aria-label="阅读全文：详情中的标题，2026年10月9日"');
+    expect(html).toContain('type="button"'); expect(html).toContain("lucide-chevron-right");
+    expect(html).toContain("真实正文开头 &lt;script&gt;纯文本&lt;/script&gt;");
+    expect(html).toContain('data-diary-excerpt="true"'); expect(html).toContain("line-clamp-2");
+    expect(html).not.toContain(content); expect(html).not.toMatch(/<a\b|<h3|<p\b|soft-primary|>阅读全文</);
+    const wrong = renderToStaticMarkup(<DiarySelection date={archived.date} item={archived} known preview={{ ...preview, date: "2026-10-12" }} onOpen={vi.fn()} />);
+    expect(wrong).not.toContain("真实正文开头"); expect(wrong).toContain("当天的真实标题");
+  });
+  it("keeps the archived card usable when its preview fails, and empty days compact", () => {
+    const html = renderToStaticMarkup(<DiarySelection date={archived.date} item={archived} known preview={{ entryId: archived.entryId, date: archived.date, entry: null, loading: false, error: "private failure" }} onOpen={vi.fn()} />);
+    expect(html).toContain("正文预览暂不可用，可进入阅读重试。"); expect(html).not.toContain("private failure");
+    expect(html).toContain("阅读全文：当天的真实标题"); expect(html).not.toMatch(/<button[^>]*\sdisabled(?:=|\s|>)/);
+    const empty = renderToStaticMarkup(<DiarySelection date="2026-10-12" item={null} known onOpen={vi.fn()} />);
+    expect(empty).toContain("这一天还没有日记。"); expect(empty).not.toMatch(/<button|min-h-|diary-entry-link|data-diary-marker/);
+  });
   it("shows loading/read errors and explicitly identifies failed refresh with retained data", () => {
     const loading = renderCalendar({ ...loaded, calendar: null, calendarLoading: true });
     expect(loading).toContain("正在读取日历"); expect(loading).not.toContain("这一天还没有日记");
@@ -118,12 +149,13 @@ describe("Diary calendar UI", () => {
 });
 
 describe("Diary full-text reader and page", () => {
-  const reader = { entryId: "archive", date: "2026-10-09", entry: { id: "archive", date: "2026-10-09", title: "真实标题", content: "第一段\n\n第二段" }, loading: false, error: null };
+  const reader = { entryId: "archive", date: "2026-10-09", entry: { id: "archive", date: "2026-10-09", title: "真实标题", content: "第一段\n\n第二段", importance: null, tags: [] as readonly string[], keywords: [] as readonly string[] }, loading: false, error: null };
   it("uses one independent scroll owner, fixed return/date and complete escaped plain text", () => {
     const content = "**原样保留**\n\n<script>example</script>\n" + "长正文\n".repeat(350) + "english".repeat(600) + "末尾";
     const html = renderToStaticMarkup(<DiaryReader reader={{ ...reader, entry: { ...reader.entry, content } }} onBack={vi.fn()} onRetry={vi.fn()} />);
     expect(html.indexOf("返回日历")).toBeLessThan(html.indexOf('data-page-scroll-region="true"'));
     expect(html.indexOf('datetime="2026-10-09"')).toBeLessThan(html.indexOf('data-page-scroll-region="true"'));
+    expect(html.indexOf('id="diary-entry-title"')).toBeLessThan(html.indexOf('data-page-scroll-area="true"'));
     expect(html.match(/overflow-y-auto/g)).toHaveLength(1);
     expect(html).toContain("**原样保留**\n\n&lt;script&gt;example&lt;/script&gt;");
     expect(html).toContain("末尾"); expect(html).toContain("[overflow-wrap:anywhere]"); expect(html).toContain("whitespace-pre-wrap");
@@ -131,6 +163,67 @@ describe("Diary full-text reader and page", () => {
   });
   it.each([null, "", " \n "])("uses a display-only untitled fallback: %s", (title) => {
     expect(renderToStaticMarkup(<DiaryReader reader={{ ...reader, entry: { ...reader.entry, title } }} onBack={vi.fn()} onRetry={vi.fn()} />)).toContain("无标题");
+  });
+  it.each([[0, "low", "较低"], [0.59, "low", "较低"], [0.6, "mid", "中等"], [0.79, "mid", "中等"], [0.8, "high", "较高"], [1, "high", "较高"]] as const)("uses the legacy importance %s mapping only as a line and accessible description", (importance, level, label) => {
+    const html = renderToStaticMarkup(<DiaryReader reader={{ ...reader, entry: { ...reader.entry, importance } }} onBack={vi.fn()} onRetry={vi.fn()} />);
+    expect(html).toContain(`data-importance-level="${level}"`);
+    expect(html).toContain(`<span class="sr-only">日记重要度${label}。</span>`);
+    expect(html).not.toMatch(/重要度\s*[0-9]|lucide-star|diary-importance/);
+  });
+  it.each([null, -1, 2, NaN, Infinity, "0.8" as unknown as number])("omits the importance line for missing or out-of-contract values: %s", (value) => {
+    expect(diaryReaderImportance(value)).toBeNull();
+    const html = renderToStaticMarkup(<DiaryReader reader={{ ...reader, entry: { ...reader.entry, importance: value } }} onBack={vi.fn()} onRetry={vi.fn()} />);
+    expect(html).not.toContain("data-importance-level"); expect(html).not.toContain("日记重要度");
+  });
+  it("keeps tags above the body and keywords below the body scroller on one paper", () => {
+    const keywords = ["shared_moment", "亲近", "https://example.com/" + "longword".repeat(60)];
+    const html = renderToStaticMarkup(<DiaryReader reader={{ ...reader, entry: { ...reader.entry, tags: ["shared_moment", "emotion", "自定义分类", "__proto__"], keywords } }} onBack={vi.fn()} onRetry={vi.fn()} />);
+    expect(html).toContain('aria-label="日记标签"'); expect(html).toContain('aria-label="日记关键词"');
+    expect(html).toContain("共同经历"); expect(html).toContain("情感时刻"); expect(html).toContain("自定义分类"); expect(html).toContain("__proto__");
+    expect(html).toContain("shared_moment"); expect(html).toContain(keywords[2]);
+    expect(html.indexOf('aria-label="日记标签"')).toBeLessThan(html.indexOf('data-page-scroll-area="true"'));
+    const scrollerEnd = html.indexOf('</article></div></div>');
+    expect(scrollerEnd).toBeGreaterThan(html.indexOf("第二段"));
+    expect(html.indexOf('<footer')).toBeGreaterThan(scrollerEnd);
+    expect(html.match(/diary-paper/g)).toHaveLength(1); expect(html.match(/overflow-y-auto/g)).toHaveLength(1);
+    expect(html).not.toMatch(/>标签<|>日记正文<|<dt/);
+  });
+  it("does not reserve empty tag or keyword areas", () => {
+    const html = renderToStaticMarkup(<DiaryReader reader={reader} onBack={vi.fn()} onRetry={vi.fn()} />);
+    expect(html).not.toMatch(/aria-label="日记标签"|aria-label="日记关键词区"|<footer/);
+    expect(DiaryReaderTags({ tags: [] })).toBeNull();
+  });
+  it("keeps the full extreme title and all tag identities available in the information dialog", () => {
+    const title = "超长标题🦉https://example.com/".repeat(100), tags = Array.from({ length: 80 }, (_, index) => `分类${index}`);
+    const entry = { ...reader.entry, title, tags };
+    const html = renderToStaticMarkup(<DiaryReader reader={{ ...reader, entry }} onBack={vi.fn()} onRetry={vi.fn()} />);
+    expect(html).toContain(title); expect(html).toContain('aria-label="查看完整阅读信息"'); expect(html).toContain("分类79");
+    const tree = DiaryReaderInfo({ entry }), dialogBody = find(tree, (el) => el.props["closeButtonProps"] !== undefined);
+    expect(dialogBody).toBeDefined();
+    expect(renderToStaticMarkup((find(tree, (el) => el.type === "h3"))!)).toContain(title);
+    const fullTags = find(tree, (el) => el.type === DiaryReaderTags);
+    expect(fullTags?.props).toMatchObject({ tags, full: true });
+  });
+  it("caps only metadata and uses actual Reader height for short-screen fallbacks", () => {
+    const css = readFileSync(new URL("./diary.css", import.meta.url), "utf8");
+    expect(css).toContain("container: diary-reader / size");
+    expect(css).toContain(".diary-reader-header, .diary-reader-keywords { flex-shrink: 0; }");
+    expect(css).toContain(".diary-reader-body { flex: 1 1 0; min-block-size: 0; overflow: hidden; }");
+    expect(css).toContain("-webkit-line-clamp: 2");
+    expect(css).toContain(".diary-reader-keyword-window { max-block-size: calc(3rem + 10px); overflow: hidden; }");
+    expect(css).toContain(".diary-reader-chip-full { white-space: normal; overflow-wrap: anywhere; overflow: visible; }");
+    expect(css).toContain("padding-bottom: max(1rem, env(safe-area-inset-bottom))");
+    expect(css).toContain("@container diary-reader (max-height: 24rem)");
+    expect(css).toContain(".diary-reader-heading, .diary-reader-date { display: none; }");
+    expect(css).toContain("@container diary-reader (max-height: 9rem)");
+    expect(css).toContain("var(--color-primary) 45%, var(--color-border)");
+    expect(css).toContain('.diary-reader-heading[data-importance-level="high"]::before { background: var(--color-primary); }');
+    expect(css).not.toMatch(/position:\s*fixed|overflow-y:\s*(auto|scroll)/);
+  });
+  it("does not render missing or malformed metadata as content or default importance", () => {
+    const entry = parseArchivedDiary({ id: reader.entryId, date: reader.date, title: null, status: "done", content: "正文末尾", importance: "0.8", tags: '{"bad":null}', keywords: [null, false, {}, " "] }, reader.entryId, reader.date);
+    const html = renderToStaticMarkup(<DiaryReader reader={{ ...reader, entry }} onBack={vi.fn()} onRetry={vi.fn()} />);
+    expect(html).toContain("正文末尾"); expect(html).not.toMatch(/重要度|日记标签|日记关键词|<footer|\[object Object\]|>null</);
   });
   it("does not label failed or unverified detail as archived and keeps retry/back working", () => {
     const back = vi.fn(), retry = vi.fn();

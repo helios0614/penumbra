@@ -15,12 +15,13 @@ export interface DiaryState {
   readonly calendar: DiaryCalendar | null;
   readonly calendarLoading: boolean;
   readonly calendarError: string | null;
+  readonly preview: DiaryReader | null;
   readonly reader: DiaryReader | null;
   readonly notice: { readonly text: string } | null;
 }
 
 export function initialDiaryState(date = localDiaryDate()): DiaryState {
-  return { month: date.slice(0, 7), selectedDate: date, calendar: null, calendarLoading: false, calendarError: null, reader: null, notice: null };
+  return { month: date.slice(0, 7), selectedDate: date, calendar: null, calendarLoading: false, calendarError: null, preview: null, reader: null, notice: null };
 }
 
 export function diaryReadFailure(error: unknown): string {
