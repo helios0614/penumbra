@@ -33,7 +33,11 @@ export type SafeUsageSummary = {
 
 export type ChatProviderFailureCode =
   | "provider_request_failed"
-  | "provider_execution_failed";
+  | "provider_execution_failed"
+  | "regenerate_conflict"
+  | "regenerate_target_not_found"
+  | "regenerate_target_not_latest"
+  | "regenerate_target_invalid";
 
 export type RegeneratePersistenceReceipt = {
   readonly id: string;
@@ -47,6 +51,7 @@ export type RegeneratePersistenceReceipt = {
  * They are temporary protocol facts, never persistent Message objects.
  */
 export type ChatExecutionEvent =
+  | { readonly type: "failure"; readonly messageId: string; readonly code: ChatProviderFailureCode | null }
   | {
       readonly type: "start";
       readonly assistantMessageId: string;

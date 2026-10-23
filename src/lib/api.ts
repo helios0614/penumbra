@@ -33,6 +33,8 @@ export interface ApiRequestOptions
   query?: ApiQuery;
   signal?: AbortSignal;
   timeoutMs?: number;
+  /** When supplied to openApiStream, timeoutMs bounds headers only; this bounds idle body reads. */
+  streamIdleTimeoutMs?: number;
 }
 
 export interface ApiStreamResponse {
@@ -132,7 +134,7 @@ export async function openApiStream(
 
     return Object.freeze({
       contentType: request.response.headers.get("content-type") ?? "",
-      body: createManagedApiBody(request.response.body, request),
+      body: createManagedApiBody(request.response.body, request, options.streamIdleTimeoutMs),
     });
   } catch (error) {
     request.cleanup();
@@ -150,6 +152,7 @@ interface ApiResponseRequest {
   readonly signal: AbortSignal;
   toApiError(error: unknown): ApiError;
   cleanup(): void;
+  resetTimeout(timeoutMs: number): void;
 }
 
 async function requestApiResponse(
@@ -163,10 +166,12 @@ async function requestApiResponse(
     query,
     signal: callerSignal,
     timeoutMs = runtimeConfig.requestTimeoutMs,
+    streamIdleTimeoutMs: _streamIdleTimeoutMs,
     ...init
   } = options;
   const headers = new Headers(optionHeaders);
   const abortContext = createAbortContext(callerSignal, timeoutMs);
+  let activeTimeoutMs = timeoutMs;
 
   if (!headers.has("Accept")) {
     headers.set("Accept", defaultAccept);
@@ -193,7 +198,7 @@ async function requestApiResponse(
           error,
           abortContext,
           callerSignal,
-          timeoutMs,
+          activeTimeoutMs,
         );
       },
       cleanup() {
@@ -204,6 +209,7 @@ async function requestApiResponse(
         cleanedUp = true;
         abortContext.cleanup();
       },
+      resetTimeout(value) { activeTimeoutMs = value; abortContext.resetTimeout(value); },
     };
   } catch (error) {
     abortContext.cleanup();
@@ -284,6 +290,7 @@ function normalizeApiError(
 function createManagedApiBody(
   source: ReadableStream<Uint8Array>,
   request: ApiResponseRequest,
+  idleTimeoutMs?: number,
 ): ReadableStream<Uint8Array> {
   const reader = source.getReader();
   let streamController: ReadableStreamDefaultController<Uint8Array> | null =
@@ -311,6 +318,7 @@ function createManagedApiBody(
 
   return new ReadableStream<Uint8Array>({
     start(controller) {
+      if (idleTimeoutMs !== undefined) request.resetTimeout(idleTimeoutMs);
       streamController = controller;
       request.signal.addEventListener("abort", abortReading, { once: true });
       if (request.signal.aborted) {
@@ -336,6 +344,7 @@ function createManagedApiBody(
         }
 
         controller.enqueue(result.value);
+        if (idleTimeoutMs !== undefined) request.resetTimeout(idleTimeoutMs);
       } catch (error) {
         if (settled) {
           return;
@@ -449,6 +458,7 @@ interface AbortContext {
   readonly signal: AbortSignal;
   readonly abortKind: "caller" | "timeout" | null;
   cleanup(): void;
+  resetTimeout(timeoutMs: number): void;
 }
 
 function createAbortContext(
@@ -473,8 +483,10 @@ function createAbortContext(
     callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
   }
 
-  const timeoutId =
-    Number.isFinite(timeoutMs) && timeoutMs > 0
+  let timeoutId: ReturnType<typeof globalThis.setTimeout> | undefined;
+  const resetTimeout = (durationMs: number) => {
+    if (timeoutId !== undefined) globalThis.clearTimeout(timeoutId);
+    timeoutId = Number.isFinite(durationMs) && durationMs > 0
       ? globalThis.setTimeout(() => {
           if (controller.signal.aborted) {
             return;
@@ -482,14 +494,17 @@ function createAbortContext(
 
           abortKind = "timeout";
           controller.abort();
-        }, timeoutMs)
+        }, durationMs)
       : undefined;
+  };
+  resetTimeout(timeoutMs);
 
   return {
     signal: controller.signal,
     get abortKind() {
       return abortKind;
     },
+    resetTimeout,
     cleanup() {
       if (timeoutId !== undefined) {
         globalThis.clearTimeout(timeoutId);

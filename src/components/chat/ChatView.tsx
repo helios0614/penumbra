@@ -36,6 +36,8 @@ import {
 } from "./ChatWorkspaceStates";
 import { ConversationsList } from "./ConversationsList";
 import { Sender } from "./Sender";
+import { MainModelSelection } from "./MainModelSelection";
+import type { MainSelection } from "@/domain/runtime";
 
 const CHAT_HEADER_ACTION_CLASS =
   "rounded-xl border border-border-strong/50 bg-background/25 text-foreground shadow-sm hover:border-primary/30 hover:bg-primary/10 active:bg-primary/15";
@@ -59,7 +61,8 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
   const sendMessage = (content: string): Promise<boolean> => {
     if (
       workspace.state.status !== "ready" ||
-      workspace.state.workspace.selectedConversation === null
+      workspace.state.workspace.selectedConversation === null ||
+      !getChatSenderAvailability(workspace.state, send.state).enabled
     ) {
       return Promise.resolve(false);
     }
@@ -91,6 +94,18 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
     });
   };
 
+  const refreshState = async () => {
+    if (workspace.state.status !== "ready") return;
+    const conversationId = workspace.state.workspace.selectedConversationId;
+    await workspace.refreshConversationList();
+    if (conversationId !== null) await workspace.reloadSelectedConversationHistory(conversationId);
+  };
+
+  const recoverExecution = async () => {
+    await send.retryFinalization();
+    try { await workspace.refreshConversationList(); } catch { /* Retain current safe setup state. */ }
+  };
+
   return (
     <ChatWorkspaceView
       state={workspace.state}
@@ -101,7 +116,10 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       sendState={send.state}
       onSend={sendMessage}
       onRegenerate={regenerateMessage}
-      onRetryFinalization={send.retryFinalization}
+      onRetryFinalization={() => { void recoverExecution(); }}
+      onReleaseAfterReview={send.releaseAfterReview}
+      onSaveMainSelection={workspace.saveMainSelection}
+      onRefreshState={refreshState}
       realtimeState={realtime}
     />
   );
@@ -116,6 +134,9 @@ export interface ChatWorkspaceViewProps {
   readonly onSend?: (content: string) => Promise<boolean>;
   readonly onRegenerate?: (messageId: string) => Promise<boolean>;
   readonly onRetryFinalization?: () => void;
+  readonly onReleaseAfterReview?: () => void;
+  readonly onSaveMainSelection?: (conversationId: string, selection: MainSelection) => Promise<void>;
+  readonly onRefreshState?: () => Promise<void>;
   readonly realtimeState?: ChatRealtimeState;
   readonly onBack?: () => void;
 }
@@ -129,6 +150,9 @@ export function ChatWorkspaceView({
   onSend,
   onRegenerate,
   onRetryFinalization,
+  onReleaseAfterReview,
+  onSaveMainSelection,
+  onRefreshState,
   realtimeState = { kind: "idle" },
   onBack,
 }: ChatWorkspaceViewProps) {
@@ -244,6 +268,14 @@ export function ChatWorkspaceView({
             )}
           </header>
 
+          <MainModelSelection
+            key={`${workspace.selectedConversationId}:${JSON.stringify(workspace.setup.configuration?.selection)}`}
+            setup={workspace.setup}
+            disabled={executionActive || pendingConversationId !== null || !!state.configurationPending}
+            onSave={onSaveMainSelection}
+            onRefresh={onRefreshState}
+          />
+
           {switchError && (
             <div
               className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-destructive/5 px-4 py-2 text-xs text-muted-strong"
@@ -265,6 +297,7 @@ export function ChatWorkspaceView({
           <ChatExecutionNotice
             state={sendState}
             onRetryFinalization={onRetryFinalization}
+            onReleaseAfterReview={onReleaseAfterReview}
           />
 
           <ChatRealtimeNotice state={realtimeState} />
@@ -330,9 +363,11 @@ function ChatRealtimeNotice({
 function ChatExecutionNotice({
   state,
   onRetryFinalization,
+  onReleaseAfterReview,
 }: {
   readonly state: ChatSendState;
   readonly onRetryFinalization?: () => void;
+  readonly onReleaseAfterReview?: () => void;
 }) {
   const error = executionNoticeError(state);
   if (error === null) return null;
@@ -343,7 +378,7 @@ function ChatExecutionNotice({
       role="alert"
     >
       <span className="min-w-0 flex-1">{error.message}</span>
-      {(state.kind === "finalization-uncertain" ||
+      {(state.kind === "error" || state.kind === "finalization-uncertain" ||
         state.kind === "regenerate-finalization-uncertain") &&
         onRetryFinalization && (
         <Button
@@ -353,9 +388,14 @@ function ChatExecutionNotice({
           onClick={onRetryFinalization}
         >
           <RefreshCw className="size-3.5" aria-hidden="true" />
-          重新加载历史
+          重新读取状态
         </Button>
       )}
+      {(state.kind === "finalization-uncertain" || state.kind === "regenerate-finalization-uncertain") &&
+        state.recoveryReadSucceeded && onReleaseAfterReview && <div className="basis-full space-y-2">
+          <p>历史已重读，后台是否结束仍未确认。返回编辑不会停止生成；请核对历史，避免重复提交。</p>
+          <Button type="button" variant="outline" size="sm" onClick={onReleaseAfterReview}>已核对历史，返回编辑</Button>
+        </div>}
     </div>
   );
 }

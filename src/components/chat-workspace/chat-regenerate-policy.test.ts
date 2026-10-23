@@ -37,10 +37,10 @@ describe("chat regenerate eligibility", () => {
     ["user", message("tail-user", "user")],
     ["system", message("tail-system", "system")],
     ["unknown", message("tail-unknown", "unknown")],
-  ] as const)("rejects a %s tail instead of falling back to an old assistant", (_label, tail) => {
+  ] as const)("matches canonical latest user/assistant semantics with a %s tail", (label, tail) => {
     const state = readyState([message("assistant-old", "assistant"), tail]);
     expect(getChatRegenerateAvailability(state, { kind: "idle" }).enabled)
-      .toBe(false);
+      .toBe(label !== "user");
   });
 
   it("rejects wrong-conversation and nullable carryover messages", () => {

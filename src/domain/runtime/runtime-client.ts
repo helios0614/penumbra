@@ -30,12 +30,12 @@ export async function getAvailableModels(options?: ApiRequestOptions): Promise<A
 }
 
 export async function getChatReadiness(
-  modelKey?: string,
+  conversationId?: string,
   options?: ApiRequestOptions,
 ): Promise<ChatReadiness> {
   let path = CHAT_READINESS_ENDPOINT;
-  if (modelKey !== undefined) {
-    path = `${path}?${new URLSearchParams({ model: modelKey }).toString()}`;
+  if (conversationId !== undefined) {
+    path = `${path}?${new URLSearchParams({ conv_id: conversationId }).toString()}`;
   }
-  return mapChatReadiness(await apiGet<unknown>(path, options));
+  return mapChatReadiness(await apiGet<unknown>(path, { ...options, cache: "no-store" }));
 }

@@ -8,40 +8,28 @@ import {
   type CreateUnavailableChatSetupViewModelInput,
 } from "@/application/chat-setup/chat-setup-types";
 
-const chatSetupStatuses: ReadonlySet<ChatSetupStatus> = new Set([
-  "ready",
-  "unknown-model",
-  "provider-not-configured",
-  "generation-not-supported",
-  "configuration-invalid",
-]);
-
 export function createChatSetupViewModel(
   input: CreateChatSetupViewModelInput,
 ): ChatSetupViewModel {
   assertChatSetupInput(input);
 
   const { conversation, availableModels, readiness } = input;
-  const modelKey = conversation?.modelKey ?? readiness.modelKey;
+  const modelKey = input.configuration?.selection?.model ?? readiness.modelKey;
   const readinessReason = readiness.generationUnsupported === true
     ? "generation-not-supported"
     : readiness.reason;
 
-  if (conversation !== null && readiness.modelKey !== modelKey) {
+  if (input.configuration !== undefined && readiness.ready &&
+      (!input.configuration.selection || input.configuration.diagnostic || readiness.modelKey !== modelKey)) {
     throw new ChatSetupContractError(
       "Conversation model and readiness model do not match",
-    );
-  }
-
-  if (conversation === null && !isNonEmptyString(modelKey)) {
-    throw new ChatSetupContractError(
-      "Bootstrap readiness does not provide a usable model key",
     );
   }
 
   const selectedModel = availableModels.find((model) => model.key === modelKey);
 
   return {
+    ...(input.configuration !== undefined ? { configuration: input.configuration } : {}),
     conversationId: conversation?.id ?? null,
     conversationTitle: conversation?.title ?? null,
     modelKey,
@@ -73,12 +61,13 @@ export function createUnavailableChatSetupViewModel(
   assertUnavailableChatSetupInput(input);
 
   const { conversation, availableModels, reason } = input;
-  const modelKey = conversation?.modelKey ?? null;
+  const modelKey = input.configuration?.selection?.model ?? conversation?.mainSelection?.model ?? null;
   const selectedModel = modelKey === null
     ? undefined
     : availableModels.find((model) => model.key === modelKey);
 
   return {
+    ...(input.configuration !== undefined ? { configuration: input.configuration } : {}),
     conversationId: conversation?.id ?? null,
     conversationTitle: conversation?.title ?? null,
     modelKey,
@@ -173,7 +162,7 @@ function isAvailableModel(
 function isChatSetupStatus(value: unknown): value is ChatSetupStatus {
   return (
     typeof value === "string" &&
-    chatSetupStatuses.has(value as ChatSetupStatus)
+    /^[a-z][a-z0-9_-]{0,95}$/.test(value)
   );
 }
 
@@ -198,8 +187,4 @@ function incompleteInputError(): ChatSetupContractError {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
 }

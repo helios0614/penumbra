@@ -10,6 +10,7 @@ export function composeVisibleChatMessages(
   conversationId: string,
 ): readonly ChatMessageViewModel[] {
   const visible = [...presentChatMessages(persistentMessages)];
+  if ((execution.kind === "finalization-uncertain" || execution.kind === "regenerate-finalization-uncertain") && execution.recoveryReadSucceeded) return visible;
   const regenerate = regenerateOverlay(execution, conversationId);
   if (regenerate !== null) {
     const targetIndex = visible.findIndex(({ id }) =>

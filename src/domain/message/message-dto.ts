@@ -18,7 +18,7 @@ export type MessageDto = {
   role: string;
   content: string;
   created_at: number;
-  simple_think: string | null;
+  drift: string | null;
   is_carryover: 0 | 1 | null;
   attachments: JsonValue[];
   thinking: string | null;

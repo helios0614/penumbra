@@ -3,6 +3,7 @@ import type {
   AvailableModel,
   ChatReadiness,
   ChatReadinessReason,
+  MainConfiguration,
 } from "@/domain/runtime";
 
 export type ChatSetupModelOption = {
@@ -49,18 +50,21 @@ export type ChatSetupViewModel = {
   status: ChatSetupStatus | "readiness-unavailable";
   setupActionRequired: boolean;
   readiness: ChatReadinessState;
+  readonly configuration?: MainConfiguration | null;
 };
 
 export type CreateChatSetupViewModelInput = {
   conversation: Conversation | null;
   availableModels: readonly AvailableModel[];
   readiness: ChatReadiness;
+  configuration?: MainConfiguration;
 };
 
 export type CreateUnavailableChatSetupViewModelInput = {
   conversation: Conversation | null;
   availableModels: readonly AvailableModel[];
   reason: SafeReadinessReason;
+  configuration?: MainConfiguration | null;
 };
 
 export class ChatSetupContractError extends Error {

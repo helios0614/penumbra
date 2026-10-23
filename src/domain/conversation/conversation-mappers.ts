@@ -4,6 +4,7 @@ import type {
   DeleteConversationResponseDto,
   UpdateConversationResponseDto,
 } from "@/domain/conversation/conversation-dto";
+import { mapMainSelection, safeDiagnostic } from "@/domain/runtime/main-configuration";
 import {
   ConversationContractError,
   type Conversation,
@@ -65,6 +66,8 @@ function parseConversation(payload: unknown, contract: string): ConversationDto 
     model: payload.model,
     created_at: payload.created_at,
     updated_at: payload.updated_at,
+    main_selection: payload.main_selection,
+    main_selection_diagnostic: payload.main_selection_diagnostic,
   };
 }
 
@@ -88,6 +91,8 @@ function toConversation(dto: ConversationDto): Conversation {
     modelKey: dto.model,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
+    ...(dto.main_selection !== undefined ? { mainSelection: mapMainSelection(dto.main_selection) } : {}),
+    ...(dto.main_selection_diagnostic !== undefined ? { mainSelectionDiagnostic: safeDiagnostic(dto.main_selection_diagnostic) } : {}),
   };
 }
 

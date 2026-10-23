@@ -3,6 +3,7 @@ import type {
   MessageHistoryDto,
   MessageVoiceDto,
 } from "@/domain/message/message-dto";
+import { readDriftWire } from "@/domain/message/drift-wire";
 import {
   MessageContractError,
   type JsonValue,
@@ -34,7 +35,6 @@ function parseMessage(payload: unknown, contract: string): MessageDto {
     typeof payload.role !== "string" ||
     typeof payload.content !== "string" ||
     !isFiniteNumber(payload.created_at) ||
-    !isNullableString(payload.simple_think) ||
     !isCarryoverValue(payload.is_carryover) ||
     !isNullableString(payload.thinking) ||
     !isNullableString(payload.cache_region)
@@ -48,7 +48,7 @@ function parseMessage(payload: unknown, contract: string): MessageDto {
     role: payload.role,
     content: payload.content,
     created_at: payload.created_at,
-    simple_think: payload.simple_think,
+    drift: parseDrift(payload, contract),
     is_carryover: payload.is_carryover,
     attachments: cloneJsonArray(payload.attachments, contract),
     thinking: payload.thinking,
@@ -100,7 +100,8 @@ function toMessage(dto: MessageDto): Message {
     roleKind: toRoleKind(dto.role),
     content: dto.content,
     createdAt: dto.created_at,
-    simpleThink: dto.simple_think,
+    // Keep the existing auxiliary UI property; wire authority is only drift.
+    simpleThink: dto.drift,
     thinking: dto.thinking,
     isCarryover:
       dto.is_carryover === null ? null : dto.is_carryover === 1,
@@ -109,6 +110,10 @@ function toMessage(dto: MessageDto): Message {
     cacheRegion: dto.cache_region,
     voice: dto.voice === undefined ? null : toMessageVoice(dto.voice),
   };
+}
+
+function parseDrift(payload: Record<string, unknown>, contract: string): string | null {
+  try { return readDriftWire(payload, { allowMissing: true }); } catch { throw contractError(contract); }
 }
 
 function toMessageVoice(dto: MessageVoiceDto): MessageVoice {

@@ -68,9 +68,11 @@ export function mapChatReadiness(payload: unknown): ChatReadiness {
     setup_action_required: payload.setup_action_required,
   };
   return {
-    ready: dto.ready,
+    ready: dto.ready && dto.reason_code === "ready",
     modelKey: dto.model_key,
-    reason: readinessReasons[dto.reason_code],
+    reason: Object.prototype.hasOwnProperty.call(readinessReasons, dto.reason_code)
+      ? readinessReasons[dto.reason_code]
+      : dto.reason_code,
     setupActionRequired: dto.setup_action_required,
     ...(dto.reason_code === "generation_not_supported"
       ? { generationUnsupported: true as const }
@@ -91,5 +93,5 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function isReadinessReason(value: unknown): value is ChatReadinessReasonCodeDto {
-  return typeof value === "string" && Object.prototype.hasOwnProperty.call(readinessReasons, value);
+  return typeof value === "string" && /^[a-z][a-z0-9_]{0,95}$/.test(value);
 }

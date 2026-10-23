@@ -465,7 +465,7 @@ describe("Chat execution media type and duplicate response", () => {
     const pending = openSendExecution(
       "conv_1",
       { content: "hello" },
-      { timeoutMs: 25 },
+      { timeoutMs: 25, streamIdleTimeoutMs: 25 },
     );
     const assertion = expect(pending).rejects.toMatchObject({
       name: "ApiError",
@@ -1073,7 +1073,7 @@ describe("Chat execution stream lifecycle and error propagation", () => {
       openSendExecution(
         "conv_1",
         { content: "hello" },
-        { timeoutMs: 25 },
+        { timeoutMs: 25, streamIdleTimeoutMs: 25 },
       ),
     );
 

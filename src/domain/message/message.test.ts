@@ -178,7 +178,6 @@ describe("message mappers", () => {
     const { role: _role, ...withoutRole } = valid;
     const { content: _content, ...withoutContent } = valid;
     const { created_at: _createdAt, ...withoutCreatedAt } = valid;
-    const { simple_think: _simpleThink, ...withoutSimpleThink } = valid;
     const { thinking: _thinking, ...withoutThinking } = valid;
     const { is_carryover: _carryover, ...withoutCarryover } = valid;
     const { cache_region: _cacheRegion, ...withoutCacheRegion } = valid;
@@ -189,7 +188,6 @@ describe("message mappers", () => {
       withoutRole,
       withoutContent,
       withoutCreatedAt,
-      withoutSimpleThink,
       withoutThinking,
       withoutCarryover,
       withoutCacheRegion,

@@ -12,7 +12,8 @@ export type ChatReadinessReasonCodeDto =
   | "unknown_model"
   | "provider_not_configured"
   | "generation_not_supported"
-  | "configuration_invalid";
+  | "configuration_invalid"
+  | (string & {});
 
 export type ChatReadinessDto = {
   ready: boolean;

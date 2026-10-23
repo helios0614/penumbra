@@ -1,4 +1,5 @@
 import type { Message } from "@/domain/message";
+import { appendAssistantChunk, createStreamingAssistantAccumulator, flushAssistantAccumulator } from "@/application/chat-send/chat-send-accumulator";
 
 import type {
   ChatAttachmentViewModel,
@@ -68,7 +69,7 @@ export function presentChatMessage(
 function presentSafeAssistantContent(content: string): string {
   return PROVIDER_FAILURE_MARKERS.some((marker) => content.includes(marker))
     ? "当前回复生成失败。"
-    : content;
+    : flushAssistantAccumulator(appendAssistantChunk(createStreamingAssistantAccumulator("display", 0), content)).message.content;
 }
 
 export function presentSafeUnknownRole(rawRole: string): string {

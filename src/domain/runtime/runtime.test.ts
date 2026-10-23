@@ -82,7 +82,7 @@ describe("runtime read client", () => {
     await getChatReadiness(undefined, { timeoutMs: 0 });
     await getChatReadiness("", { timeoutMs: 0 });
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/chat/readiness");
-    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/chat/readiness?model=");
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/chat/readiness?conv_id=");
   });
 
   it("URL-encodes model keys and maps every readiness reason", async () => {
@@ -103,7 +103,7 @@ describe("runtime read client", () => {
         ...(generationUnsupported ? { generationUnsupported: true } : {}),
       });
     }
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/chat/readiness?model=model%2Fkey+%2B+one");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/chat/readiness?conv_id=model%2Fkey+%2B+one");
   });
 
   it("returns ready=false as business state and rejects malformed readiness safely", async () => {
@@ -112,7 +112,7 @@ describe("runtime read client", () => {
 
     const secret = "fake-readiness-secret";
     for (const payload of [
-      { ...readiness("ready"), reason_code: "new_reason", secret },
+      { ...readiness("ready"), reason_code: "not a safe code!", secret },
       { ready: true, model_key: "m", reason_code: "ready" },
       { ...readiness("ready"), ready: "yes" },
       { ...readiness("ready"), model_key: 1 },

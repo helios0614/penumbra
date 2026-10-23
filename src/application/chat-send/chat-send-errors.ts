@@ -106,16 +106,16 @@ export function toSafeChatExecutionError(
       return safeError(
         "timeout",
         regenerate
-          ? "重新生成请求超时，请稍后重试。"
-          : "发送请求超时，请稍后重试。",
+          ? "重新生成的响应等待超时，请重新读取状态确认结果。"
+          : "发送的响应等待超时，请重新读取状态确认结果。",
       );
     }
     if (error.code === "NETWORK_ERROR") {
       return safeError(
         "network",
         regenerate
-          ? "暂时无法连接重新生成服务，请重试。"
-          : "暂时无法连接发送服务，请重试。",
+          ? "重新生成的连接中断，后台可能仍在执行，请重新读取状态。"
+          : "发送的连接中断，后台可能仍在执行，请重新读取状态。",
       );
     }
     return safeError(
@@ -154,9 +154,18 @@ export function toSafeChatExecutionError(
 export function providerFailureError(
   failure: ChatProviderFailureCode | null,
 ): SafeChatExecutionError {
+  if (failure?.startsWith("regenerate_")) {
+    const failures: Record<string, { code: SafeChatExecutionError["code"]; message: string }> = {
+      regenerate_conflict: { code: "regenerate-conflict", message: "会话已发生变化，重新生成未提交。请重新读取状态。" },
+      regenerate_target_not_found: { code: "regenerate-target-not-found", message: "目标回复已不存在，请重新读取状态。" },
+      regenerate_target_not_latest: { code: "regenerate-target-not-latest", message: "该回复已不是最新回复，请重新读取状态。" },
+      regenerate_target_invalid: { code: "regenerate-target-invalid", message: "该回复不能重新生成，请重新读取状态。" },
+    };
+    return { ...failures[failure], field: null, providerFailure: failure };
+  }
   return {
     code: "provider-failure",
-    message: "当前回复生成失败，保存状态正在确认。",
+    message: failure === null ? "当前回复生成失败，请重新读取状态确认已保存的历史。" : "模型服务生成失败，请重新读取状态确认已保存的历史。",
     field: null,
     providerFailure: failure,
   };
@@ -165,7 +174,7 @@ export function providerFailureError(
 export function finalizationUncertainError(): SafeChatExecutionError {
   return safeError(
     "service",
-    "回复已结束，但暂时无法确认保存状态。",
+    "暂时无法确认请求结果，后台可能仍在执行。请只重新读取状态，勿重复发送或重新生成。",
   );
 }
 

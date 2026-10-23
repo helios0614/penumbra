@@ -47,6 +47,7 @@ export function getChatSenderAvailability(
   if (workspaceState.pendingConversationId !== null) {
     return unavailable("正在切换会话。");
   }
+  if (workspaceState.configurationPending) return unavailable("正在保存并确认模型选择。");
 
   const { workspace } = workspaceState;
   const selected = workspace.selectedConversation;
@@ -60,13 +61,9 @@ export function getChatSenderAvailability(
   }
   if (
     workspace.setup.conversationId !== selected.id ||
-    workspace.setup.modelKey !== selected.modelKey ||
-    readiness.value.modelKey !== selected.modelKey
+    readiness.value.modelKey !== workspace.setup.modelKey
   ) {
     return unavailable("当前会话的发送状态尚未就绪。");
-  }
-  if (!workspace.setup.modelKnown) {
-    return unavailable("当前会话使用的模型已不可用。");
   }
   if (
     !readiness.value.ready ||
@@ -86,7 +83,7 @@ function unavailable(message: string): ChatSenderAvailability {
   return { enabled: false, placeholder: message, statusMessage: message };
 }
 
-function readinessReasonMessage(reason: ChatSetupStatus): string {
+export function readinessReasonMessage(reason: ChatSetupStatus): string {
   switch (reason) {
     case "unknown-model":
       return "当前会话使用的模型已不可用。";
@@ -98,7 +95,20 @@ function readinessReasonMessage(reason: ChatSetupStatus): string {
       return "当前模型服务配置不可用。";
     case "ready":
       return "当前发送服务尚未就绪。";
+    default:
+      return `${mainDiagnosticMessage(reason)}（${reason}）`;
   }
+}
+
+export function mainDiagnosticMessage(code: string): string {
+  if (["main_default_not_selected", "main_selection_required", "literal_model_required", "invalid_main_selection", "duplicate_main_selection", "conflicting_main_selection"].includes(code)) return "请选择有效的连接、协议和模型。";
+  if (code === "missing_credential") return "当前连接缺少凭据，请在设置中配置。";
+  if (code === "disabled_profile") return "当前连接已禁用，请更正选择或在设置中启用。";
+  if (["missing_profile", "invalid_connection", "invalid_profile", "incompatible_protocol"].includes(code)) return "当前连接或协议不可用，请更正选择。";
+  if (code === "conversation_not_found") return "当前会话已不存在，请重新读取会话列表。";
+  if (["missing_base_url", "invalid_base_url", "invalid_registry_configuration"].includes(code)) return "连接配置不完整或无效，请检查设置。";
+  if (code.includes("legacy") || code === "malformed_api_configs") return "历史模型选择需要确认，请明确选择连接、协议和模型。";
+  return "当前无法确认模型可执行，请检查选择并重新读取状态。";
 }
 
 function readinessUnavailableMessage(reason: string): string {

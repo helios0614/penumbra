@@ -24,8 +24,11 @@ import {
 } from "@/application/realtime-reconciliation";
 import {
   listConversations,
+  updateConversation,
   type ConversationSummary,
 } from "@/domain/conversation";
+import { loadChatSetupForConversation } from "@/application/chat-setup";
+import type { MainSelection } from "@/domain/runtime";
 import { ApiError, type ApiRequestOptions } from "@/lib/api";
 
 export type ChatWorkspaceSafeUiErrorCode =
@@ -49,6 +52,7 @@ export type ChatWorkspaceControllerState =
       readonly workspace: ChatWorkspaceSnapshot;
       readonly pendingConversationId: string | null;
       readonly switchError: ChatWorkspaceSafeUiError | null;
+      readonly configurationPending?: boolean;
     }
   | {
       readonly status: "error";
@@ -97,6 +101,8 @@ export type ChatWorkspaceControllerDependencies = {
   readonly loadConversationList?: ChatWorkspaceConversationListLoader;
   readonly reconcileRealtimeEvent?: ChatWorkspaceRealtimeEventReconciler;
   readonly reconcileAfterReconnect?: ChatWorkspaceReconnectReconciler;
+  readonly loadSetup?: typeof loadChatSetupForConversation;
+  readonly updateConversation?: typeof updateConversation;
 };
 
 export interface ChatWorkspaceController {
@@ -116,6 +122,7 @@ export interface ChatWorkspaceController {
     conversationId: string,
   ): Promise<void>;
   refreshConversationList(): Promise<void>;
+  saveMainSelection(conversationId: string, selection: MainSelection): Promise<void>;
   subscribe(listener: (state: ChatWorkspaceControllerState) => void): () => void;
   dispose(): void;
 }
@@ -131,6 +138,10 @@ export function createChatWorkspaceController(
     dependencies.reloadHistory ?? reloadMessageHistoryFromScratch;
   const conversationListLoader =
     dependencies.loadConversationList ?? listConversations;
+  const setupLoader = dependencies.loadSetup ?? loadChatSetupForConversation;
+  const conversationUpdater = dependencies.updateConversation ?? updateConversation;
+  let configurationController: AbortController | null = null;
+  let configurationSequence = 0;
   const realtimeEventReconciler =
     dependencies.reconcileRealtimeEvent ?? reconcileRealtimeEvent;
   const reconnectReconciler =
@@ -156,6 +167,8 @@ export function createChatWorkspaceController(
 
   const load = async () => {
     if (disposed) return;
+    configurationSequence += 1;
+    configurationController?.abort();
 
     const currentConversationId =
       state.status === "ready"
@@ -214,8 +227,13 @@ export function createChatWorkspaceController(
 
   const selectConversation = async (conversationId: string) => {
     if (disposed || state.status !== "ready") return;
+    configurationSequence += 1;
+    configurationController?.abort();
 
-    const workspace = state.workspace;
+    // Aborting an in-flight PUT cannot undo it. If a switch fails, keep its old owner blocked until reread.
+    const workspace: ChatWorkspaceSnapshot = state.configurationPending
+      ? { ...state.workspace, setup: { ...state.workspace.setup, readiness: { kind: "unavailable", reason: "unknown" } } }
+      : state.workspace;
     const sequence = ++switchSequence;
     switchController?.abort();
     switchController = null;
@@ -338,6 +356,7 @@ export function createChatWorkspaceController(
         workspace: nextWorkspace,
         pendingConversationId: state.pendingConversationId,
         switchError: state.switchError,
+        configurationPending: state.configurationPending,
       });
       return history;
     } finally {
@@ -404,7 +423,7 @@ export function createChatWorkspaceController(
     if (
       disposed ||
       state.status !== "ready" ||
-      state.pendingConversationId !== null
+      state.pendingConversationId !== null || state.configurationPending
     ) {
       throw new ChatWorkspaceContractError(
         "Conversation refresh requires a stable workspace",
@@ -441,8 +460,7 @@ export function createChatWorkspaceController(
       if (
         selectedConversationId !== null &&
         (
-          selectedConversation === null ||
-          selectedConversation.modelKey !== workspace.selectedConversation?.modelKey
+          selectedConversation === null
         )
       ) {
         historySequence += 1;
@@ -451,7 +469,7 @@ export function createChatWorkspaceController(
         const nextWorkspace = await bootstrapLoader(
           {
             ...input,
-            currentConversationId: selectedConversation?.id ?? null,
+            currentConversationId: null,
           },
           { signal: controller.signal },
         );
@@ -468,11 +486,16 @@ export function createChatWorkspaceController(
         return;
       }
 
+      // conv_updated deliberately retains the legacy model; always invalidate effective selection.
+      const setup = selectedConversation === null ? workspace.setup : await setupLoader(selectedConversation, { signal: controller.signal });
+      if (disposed || controller.signal.aborted || sequence !== conversationListSequence ||
+          state.status !== "ready" || state.pendingConversationId !== null || state.configurationPending ||
+          state.workspace.selectedConversationId !== selectedConversationId) throw new ChatWorkspaceContractError("Configuration refresh became stale");
       const nextWorkspace = createChatWorkspaceSnapshot({
-        setup: workspace.setup,
+        setup,
         conversations,
         selectedConversation,
-        history: workspace.history,
+        history: state.workspace.history,
       });
       publish({
         status: "ready",
@@ -487,6 +510,47 @@ export function createChatWorkspaceController(
       ) {
         conversationListController = null;
       }
+    }
+  };
+
+  const saveMainSelection = async (conversationId: string, selection: MainSelection) => {
+    if (disposed || state.status !== "ready" || state.pendingConversationId !== null ||
+        state.configurationPending || state.workspace.selectedConversationId !== conversationId) {
+      throw new ChatWorkspaceContractError("Model selection owner is no longer current");
+    }
+    const sequence = ++configurationSequence;
+    conversationListSequence += 1;
+    conversationListController?.abort();
+    configurationController?.abort();
+    const controller = new AbortController();
+    configurationController = controller;
+    publish({ ...state, configurationPending: true });
+    const current = () => !disposed && !controller.signal.aborted && sequence === configurationSequence &&
+      state.status === "ready" && state.pendingConversationId === null && state.workspace.selectedConversationId === conversationId;
+    try {
+      await conversationUpdater(conversationId, { mainSelection: selection }, { signal: controller.signal });
+      if (!current()) return;
+      const conversations = await conversationListLoader({ signal: controller.signal });
+      const selected = conversations.find(({ id }) => id === conversationId);
+      if (!selected) throw new ChatWorkspaceContractError("Updated conversation is missing");
+      const setup = await setupLoader(selected, { signal: controller.signal });
+      if (!current() || state.status !== "ready") return;
+      if (!setup.configuration ||
+          JSON.stringify(setup.configuration.selection) !== JSON.stringify(selection)) {
+        throw new ChatWorkspaceContractError("Model selection readback is not confirmed");
+      }
+      publish(readyState(createChatWorkspaceSnapshot({ setup, conversations, selectedConversation: selected, history: state.workspace.history })));
+      if (setup.readiness.kind === "unavailable") throw new ChatWorkspaceContractError("Selection saved but readiness is unconfirmed");
+    } catch (error) {
+      if (current() && state.status === "ready") {
+        // A failed PUT/readback may already have saved. Block sending until an explicit reread.
+        publish({ ...state, configurationPending: false, workspace: { ...state.workspace, setup: {
+          ...state.workspace.setup, readiness: { kind: "unavailable", reason: "unknown" },
+        } } });
+        throw error;
+      }
+    } finally {
+      if (configurationController === controller) configurationController = null;
     }
   };
 
@@ -508,6 +572,7 @@ export function createChatWorkspaceController(
     reconcileSelectedConversationAfterReconnect,
 
     refreshConversationList,
+    saveMainSelection,
 
     async retryConversationSwitch() {
       if (
@@ -533,6 +598,8 @@ export function createChatWorkspaceController(
     dispose() {
       if (disposed) return;
       disposed = true;
+      configurationSequence += 1;
+      configurationController?.abort();
       bootstrapSequence += 1;
       switchSequence += 1;
       historySequence += 1;

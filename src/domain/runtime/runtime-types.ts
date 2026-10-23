@@ -12,7 +12,8 @@ export type ChatReadinessReason =
   | "ready"
   | "unknown-model"
   | "provider-not-configured"
-  | "configuration-invalid";
+  | "configuration-invalid"
+  | (string & {});
 
 export type ChatReadiness = {
   ready: boolean;

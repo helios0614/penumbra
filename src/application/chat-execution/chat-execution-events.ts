@@ -1,4 +1,5 @@
 import type { JsonValue } from "@/domain/message";
+import { readDriftWire } from "@/domain/message/drift-wire";
 
 import {
   cloneJsonArray,
@@ -29,7 +30,7 @@ export function mapChatExecutionEvent(
           id: nonEmptyString(input, "id", sseEvent),
           content: stringValue(input, "content", sseEvent),
           thinking: nullableString(input, "thinking", sseEvent),
-          simpleThink: nullableString(input, "simple_think", sseEvent),
+          simpleThink: readDriftWire(input),
         },
       };
     }
@@ -40,6 +41,8 @@ export function mapChatExecutionEvent(
     }
 
     switch (rawType) {
+      case "error":
+        return { type: "failure", messageId: nonEmptyString(input, "id", rawType), code: safeFailureCode(input.code) };
       case "start":
         return {
           type: "start",
@@ -103,10 +106,10 @@ export function mapChatExecutionEvent(
         return {
           type: "debug-summary",
           messageId: nonEmptyString(input, "msg_id", rawType),
-          modelKey: stringValue(input, "model", rawType),
+          modelKey: input.model === undefined ? "" : stringValue(input, "model", rawType),
           hasError: booleanValue(input, "has_error", rawType),
-          failureCode: safeProviderFailure(input),
-          usage: safeUsage(requiredField(input, "usage"), rawType),
+          failureCode: safeFailureCode(input.error_code) ?? safeProviderFailure(input),
+          usage: input.usage === undefined ? null : safeUsage(requiredField(input, "usage"), rawType),
         };
       default:
         return { type: "unknown", rawType };
@@ -117,6 +120,13 @@ export function mapChatExecutionEvent(
     }
     throw eventContractError();
   }
+}
+
+function safeFailureCode(value: unknown): ChatProviderFailureCode | null {
+  return typeof value === "string" && [
+    "provider_request_failed", "provider_execution_failed", "regenerate_conflict",
+    "regenerate_target_not_found", "regenerate_target_not_latest", "regenerate_target_invalid",
+  ].includes(value) ? value as ChatProviderFailureCode : null;
 }
 
 function safeProviderFailure(

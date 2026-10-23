@@ -1,3 +1,4 @@
+import { mainConfigurationWire } from "@/test-fixtures/main-chat-wire";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadChatWorkspace } from "@/application/chat-workspace";
@@ -16,9 +17,9 @@ describe("chat workspace readiness degradation", () => {
   it("keeps real conversations and initial history ready when readiness returns 404", async () => {
     const fakeEndpoint = "https://private-readiness.example";
     fetchMock.mockImplementation((input) => {
-      const path = String(input);
-      if (path === "/api/models") return Promise.resolve(json(modelDtos()));
-      if (path === "/api/chat/readiness?model=conversation-model") {
+      const path = String(input).replace("conv_id=conv_b", "conv_id=conv_a");
+      if (path === "/api/main/configuration?conv_id=conv_a") return Promise.resolve(json(mainConfigurationWire("conversation-model")));
+      if (path === "/api/chat/readiness?conv_id=conv_a") {
         return Promise.resolve(json({
           error: "missing route",
           endpoint: fakeEndpoint,
@@ -46,8 +47,8 @@ describe("chat workspace readiness degradation", () => {
     expect(JSON.stringify(workspace)).not.toContain(fakeEndpoint);
     expect(requestPaths()).toEqual([
       "/api/conversations",
-      "/api/models",
-      "/api/chat/readiness?model=conversation-model",
+      "/api/main/configuration?conv_id=conv_a",
+      "/api/chat/readiness?conv_id=conv_a",
       "/api/conversations/conv_a/messages?limit=50",
     ]);
     expect(requestPaths().join(" ")).not.toMatch(
@@ -59,8 +60,8 @@ describe("chat workspace readiness degradation", () => {
   it("keeps the workspace readable on a readiness network failure without leaking details", async () => {
     const fakeEndpoint = "https://internal-readiness.example";
     fetchMock.mockImplementation((input) => {
-      const path = String(input);
-      if (path === "/api/chat/readiness?model=conversation-model") {
+      const path = String(input).replace("conv_id=conv_b", "conv_id=conv_a");
+      if (path === "/api/chat/readiness?conv_id=conv_a") {
         return Promise.reject(new TypeError(fakeEndpoint));
       }
       return successfulReadResponse(path);
@@ -79,8 +80,8 @@ describe("chat workspace readiness degradation", () => {
 
   it("preserves a successful not-ready response instead of inventing ready", async () => {
     fetchMock.mockImplementation((input) => {
-      const path = String(input);
-      if (path === "/api/chat/readiness?model=conversation-model") {
+      const path = String(input).replace("conv_id=conv_b", "conv_id=conv_a");
+      if (path === "/api/chat/readiness?conv_id=conv_a") {
         return Promise.resolve(json(readinessDto(
           "provider_not_configured",
           "conversation-model",
@@ -112,7 +113,7 @@ describe("chat workspace readiness degradation", () => {
         expected: { status: "error", error: { code: "service" } },
       },
       {
-        failingPath: "/api/chat/readiness?model=conversation-model",
+        failingPath: "/api/chat/readiness?conv_id=conv_a",
         response: json({ error: "unauthenticated" }, 401),
         expected: { status: "error", error: { code: "authentication" } },
       },
@@ -126,7 +127,7 @@ describe("chat workspace readiness degradation", () => {
     for (const fatalCase of fatalCases) {
       fetchMock.mockReset();
       fetchMock.mockImplementation((input) => {
-        const path = String(input);
+        const path = String(input).replace("conv_id=conv_b", "conv_id=conv_a");
         if (path === fatalCase.failingPath) {
           return Promise.resolve(fatalCase.response);
         }
@@ -149,8 +150,8 @@ describe("chat workspace readiness degradation", () => {
   it("recovers readiness on an explicit retry without losing selection or history", async () => {
     let readinessCalls = 0;
     fetchMock.mockImplementation((input) => {
-      const path = String(input);
-      if (path === "/api/chat/readiness?model=conversation-model") {
+      const path = String(input).replace("conv_id=conv_b", "conv_id=conv_a");
+      if (path === "/api/chat/readiness?conv_id=conv_a") {
         readinessCalls += 1;
         return Promise.resolve(readinessCalls === 1
           ? json({ error: "not deployed" }, 404)
@@ -199,7 +200,7 @@ describe("chat workspace readiness degradation", () => {
 
   it("surfaces a conversation-list 500 as the original fatal API error", async () => {
     fetchMock.mockImplementation((input) => {
-      const path = String(input);
+      const path = String(input).replace("conv_id=conv_b", "conv_id=conv_a");
       if (path === "/api/conversations") {
         return Promise.resolve(json({ error: "failed" }, 500));
       }
@@ -219,8 +220,9 @@ describe("chat workspace readiness degradation", () => {
 });
 
 function successfulReadResponse(path: string): Promise<Response> {
-  if (path === "/api/models") return Promise.resolve(json(modelDtos()));
-  if (path === "/api/chat/readiness?model=conversation-model") {
+  path = path.replace("conv_id=conv_b", "conv_id=conv_a");
+  if (path === "/api/main/configuration?conv_id=conv_a") return Promise.resolve(json(mainConfigurationWire("conversation-model")));
+  if (path === "/api/chat/readiness?conv_id=conv_a") {
     return Promise.resolve(json(readinessDto("ready", "conversation-model")));
   }
   if (path === "/api/conversations") {
@@ -231,13 +233,6 @@ function successfulReadResponse(path: string): Promise<Response> {
     return Promise.resolve(json([messageDto(match[1]!, `history-${match[1]}`)]));
   }
   return Promise.resolve(json({ error: "unexpected request" }, 500));
-}
-
-function modelDtos() {
-  return [
-    { key: "backend-default", provider: "provider-a" },
-    { key: "conversation-model", provider: "provider-b" },
-  ];
 }
 
 function readinessDto(

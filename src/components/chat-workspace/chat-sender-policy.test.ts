@@ -70,13 +70,13 @@ describe("chat sender readiness policy", () => {
     });
   });
 
-  it("does not enable an unknown model or inconsistent ready reason", () => {
+  it("allows non-catalog literals but rejects an inconsistent ready reason", () => {
     const unknown = setup();
     unknown.modelKnown = false;
     expect(getChatSenderAvailability(
       readyState({ setup: unknown }),
       { kind: "idle" },
-    ).enabled).toBe(false);
+    ).enabled).toBe(true);
 
     const inconsistent = setup({
       ready: true,

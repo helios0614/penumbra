@@ -89,6 +89,7 @@ export type ChatSendState =
   | (AssistantChatSendState & { readonly kind: "finalizing" })
   | (AssistantChatSendState & {
       readonly kind: "finalization-uncertain";
+      readonly recoveryReadSucceeded?: boolean;
       readonly error: SafeChatExecutionError;
     })
   | {
@@ -106,6 +107,7 @@ export type ChatSendState =
     })
   | (ActiveChatRegenerateState & {
       readonly kind: "regenerate-finalization-uncertain";
+      readonly recoveryReadSucceeded?: boolean;
       readonly error: SafeChatExecutionError;
     });
 

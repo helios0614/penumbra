@@ -1,7 +1,11 @@
+import type { MainSelection } from "@/domain/runtime/main-configuration";
+
 export type Conversation = {
   id: string;
   title: string;
   modelKey: string;
+  readonly mainSelection?: MainSelection | null;
+  readonly mainSelectionDiagnostic?: string | null;
   createdAt: number;
   updatedAt: number;
 };
@@ -18,6 +22,7 @@ export type CreateConversationInput = {
 export type UpdateConversationInput = {
   title?: string | null;
   modelKey?: string | null;
+  mainSelection?: MainSelection;
 };
 
 export type ConversationMutationResult = {

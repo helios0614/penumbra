@@ -1,10 +1,11 @@
 import type { Conversation } from "@/domain/conversation";
 import {
-  getAvailableModels,
+  getMainConfiguration,
   getChatReadiness,
   RuntimeContractError,
   type AvailableModel,
   type ChatReadiness,
+  type MainConfiguration,
 } from "@/domain/runtime";
 import { ApiError, type ApiRequestOptions } from "@/lib/api";
 
@@ -28,45 +29,58 @@ export async function loadChatSetupForConversation(
 ): Promise<ChatSetupViewModel> {
   assertChatSetupConversation(conversation);
 
-  const [availableModels, readiness] = await Promise.all([
-    getAvailableModels(options),
-    loadReadinessState(conversation.modelKey, options),
-  ]);
-
-  return createSetupViewModel(conversation, availableModels, readiness);
+  return loadSetup(conversation, options);
 }
 
+// Retain this Application entry point for workspace callers; catalog is only a suggestion.
 export async function loadChatSetupForConversationWithModels(
   conversation: Conversation,
-  availableModels: readonly AvailableModel[],
+  _availableModels: readonly AvailableModel[],
   options?: ApiRequestOptions,
 ): Promise<ChatSetupViewModel> {
   assertChatSetupConversation(conversation);
-  const readiness = await loadReadinessState(conversation.modelKey, options);
-  return createSetupViewModel(
-    conversation,
-    [...availableModels],
-    readiness,
-  );
+  return loadSetup(conversation, options);
 }
 
-export async function loadBootstrapChatSetup(
-  options?: ApiRequestOptions,
-): Promise<ChatSetupViewModel> {
-  const [availableModels, readiness] = await Promise.all([
-    getAvailableModels(options),
-    loadReadinessState(undefined, options),
-  ]);
+export async function loadBootstrapChatSetup(options?: ApiRequestOptions): Promise<ChatSetupViewModel> {
+  return loadSetup(null, options);
+}
 
-  return createSetupViewModel(null, availableModels, readiness);
+async function loadSetup(conversation: Conversation | null, options?: ApiRequestOptions): Promise<ChatSetupViewModel> {
+  const [configuration, readiness] = await Promise.all([
+    loadConfiguration(conversation?.id, options),
+    loadReadinessState(conversation?.id, options),
+  ]);
+  if (configuration.kind === "unavailable") {
+    return createUnavailableChatSetupViewModel({ conversation, availableModels: [], configuration: null, reason: configuration.reason });
+  }
+  if (readiness.kind === "unavailable") {
+    return createUnavailableChatSetupViewModel({ conversation, availableModels: [], configuration: configuration.value, reason: readiness.reason });
+  }
+  try {
+    return createChatSetupViewModel({ conversation, availableModels: [], configuration: configuration.value, readiness: readiness.value });
+  } catch (error) {
+    // Concurrent configuration changes must block execution without hiding readable history.
+    return createUnavailableChatSetupViewModel({ conversation, availableModels: [], configuration: configuration.value, reason: toSafeReadinessReason(error) });
+  }
+}
+
+async function loadConfiguration(conversationId: string | undefined, options?: ApiRequestOptions): Promise<
+  { kind: "available"; value: MainConfiguration } | { kind: "unavailable"; reason: SafeReadinessReason }
+> {
+  try { return { kind: "available", value: await getMainConfiguration(conversationId, options) }; }
+  catch (error) {
+    if (isAuthenticationError(error) || isAbortError(error)) throw error;
+    return { kind: "unavailable", reason: toSafeReadinessReason(error) };
+  }
 }
 
 async function loadReadinessState(
-  modelKey: string | undefined,
+  conversationId: string | undefined,
   options?: ApiRequestOptions,
 ): Promise<LoadedReadinessState> {
   try {
-    const readiness = await getChatReadiness(modelKey, options);
+    const readiness = await getChatReadiness(conversationId, options);
     return { kind: "available", value: readiness };
   } catch (error) {
     if (isAuthenticationError(error) || isAbortError(error)) {
@@ -78,26 +92,6 @@ async function loadReadinessState(
       reason: toSafeReadinessReason(error),
     };
   }
-}
-
-function createSetupViewModel(
-  conversation: Conversation | null,
-  availableModels: Awaited<ReturnType<typeof getAvailableModels>>,
-  readiness: LoadedReadinessState,
-): ChatSetupViewModel {
-  if (readiness.kind === "available") {
-    return createChatSetupViewModel({
-      conversation,
-      availableModels,
-      readiness: readiness.value,
-    });
-  }
-
-  return createUnavailableChatSetupViewModel({
-    conversation,
-    availableModels,
-    reason: readiness.reason,
-  });
 }
 
 function toSafeReadinessReason(error: unknown): SafeReadinessReason {

@@ -4,6 +4,8 @@ export type ConversationDto = {
   model: string;
   created_at: number;
   updated_at: number;
+  main_selection?: unknown;
+  main_selection_diagnostic?: unknown;
 };
 
 export type ConversationListItemDto = ConversationDto & {
@@ -21,6 +23,7 @@ export type CreateConversationRequestDto = {
 export type UpdateConversationRequestDto = {
   title?: string | null;
   model?: string | null;
+  main_selection?: Record<string, string>;
 };
 
 export type UpdateConversationResponseDto = {

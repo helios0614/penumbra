@@ -14,8 +14,9 @@ export type UseChatSendResult = {
   readonly state: ChatSendState;
   readonly send: (input: ChatSendInput) => Promise<boolean>;
   readonly regenerate: (input: ChatRegenerateInput) => Promise<boolean>;
-  readonly retryFinalization: () => void;
+  readonly retryFinalization: () => Promise<void>;
   readonly resetError: () => void;
+  readonly releaseAfterReview: () => void;
 };
 
 export function useChatSend(
@@ -44,13 +45,14 @@ export function useChatSend(
   const regenerate = useCallback(async (input: ChatRegenerateInput) =>
     controllerRef.current?.regenerate(input) ?? false, []);
 
-  const retryFinalization = useCallback(() => {
-    void controllerRef.current?.retryFinalization();
+  const retryFinalization = useCallback(async () => {
+    await controllerRef.current?.retryFinalization();
   }, []);
 
   const resetError = useCallback(() => {
     controllerRef.current?.resetError();
   }, []);
 
-  return { state, send, regenerate, retryFinalization, resetError };
+  const releaseAfterReview = useCallback(() => { controllerRef.current?.releaseAfterReview(); }, []);
+  return { state, send, regenerate, retryFinalization, resetError, releaseAfterReview };
 }

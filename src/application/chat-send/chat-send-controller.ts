@@ -39,6 +39,7 @@ import {
   type OptimisticUserMessage,
   type SafeChatExecutionError,
 } from "@/application/chat-send/chat-send-types";
+import { ApiError } from "@/lib/api";
 
 export type ChatSendExecutionOpener = (
   conversationId: string,
@@ -72,6 +73,7 @@ export interface ChatSendController {
   regenerate(input: ChatRegenerateInput): Promise<boolean>;
   retryFinalization(): Promise<void>;
   resetError(): void;
+  releaseAfterReview(): void;
   subscribe(listener: (state: ChatSendState) => void): () => void;
   dispose(): void;
 }
@@ -81,6 +83,8 @@ type ActiveExecutionBase = {
   readonly conversationId: string;
   accumulator: StreamingAssistantAccumulator;
   executionError: SafeChatExecutionError | null;
+  terminalFailure: boolean;
+  recoveryReadSucceeded: boolean;
   abortController: AbortController;
 };
 
@@ -154,15 +158,16 @@ export function createChatSendController(
           )
         : await dependencies.reconcileHistory(execution.conversationId);
       if (!isCurrent(execution)) return;
+      execution.recoveryReadSucceeded = true;
       if (
         execution.kind === "regenerate" &&
         execution.persistenceReceiptContractFailure
       ) {
         throw new Error("Regenerate persistence receipt contract failed");
       }
-      if (execution.executionError === null) {
+      if (!execution.terminalFailure) {
         if (execution.kind === "regenerate") {
-          if (!isRegeneratePersistenceConfirmed(execution, reconciliation)) {
+          if (!execution.sawTargetStart || !isRegeneratePersistenceConfirmed(execution, reconciliation)) {
             throw new Error(
               "Expected regenerate state is not yet present in HTTP history",
             );
@@ -186,12 +191,13 @@ export function createChatSendController(
       active = null;
       publish(execution.executionError === null
         ? INITIAL_CHAT_SEND_STATE
-        : { kind: "error", error: execution.executionError });
+        : { kind: "error", conversationId: execution.conversationId, error: execution.executionError });
     } catch {
       if (!isCurrent(execution)) return;
       publish(execution.kind === "send"
         ? {
             kind: "finalization-uncertain",
+            recoveryReadSucceeded: execution.recoveryReadSucceeded,
             executionId: execution.executionId,
             conversationId: execution.conversationId,
             optimisticUser: execution.optimisticUser,
@@ -201,6 +207,7 @@ export function createChatSendController(
           }
         : {
             kind: "regenerate-finalization-uncertain",
+            recoveryReadSucceeded: execution.recoveryReadSucceeded,
             executionId: execution.executionId,
             conversationId: execution.conversationId,
             targetMessageId: execution.targetMessageId,
@@ -218,6 +225,11 @@ export function createChatSendController(
     try {
       for await (const event of events) {
         if (!isCurrent(execution)) return;
+        if (execution.kind === "regenerate" &&
+            (event.type === "failure" || (event.type === "debug-summary" && event.hasError)) &&
+            event.messageId !== execution.targetMessageId) {
+          throw new ChatExecutionContractError("Regenerate failure ID does not match the target message ID");
+        }
         if (execution.kind === "regenerate" && event.type === "start") {
           if (event.assistantMessageId !== execution.targetMessageId) {
             throw new ChatExecutionContractError(
@@ -246,6 +258,7 @@ export function createChatSendController(
         );
         execution.accumulator = reduction.accumulator;
         if (reduction.failure !== null && execution.executionError === null) {
+          execution.terminalFailure = true;
           execution.executionError = providerFailureError(
             reduction.failure === "provider-failure"
               ? null
@@ -256,7 +269,7 @@ export function createChatSendController(
       }
     } catch (error) {
       if (!isCurrent(execution)) return;
-      execution.executionError = toSafeChatExecutionError(
+      execution.executionError ??= toSafeChatExecutionError(
         error,
         execution.kind,
       );
@@ -326,6 +339,8 @@ export function createChatSendController(
           createdAt,
         ),
         executionError: null,
+        terminalFailure: false,
+        recoveryReadSucceeded: false,
         duplicateUserMessageId: null,
         abortController: new AbortController(),
       };
@@ -350,8 +365,9 @@ export function createChatSendController(
         );
       } catch (error) {
         if (!isCurrent(execution)) return false;
-        active = null;
-        publish({ kind: "error", error: toSafeChatExecutionError(error) });
+        execution.executionError = toSafeChatExecutionError(error);
+        execution.terminalFailure = isDefiniteRejection(error);
+        void finalize(execution);
         return false;
       }
 
@@ -405,6 +421,8 @@ export function createChatSendController(
           input.targetCreatedAt,
         ),
         executionError: null,
+        terminalFailure: false,
+        recoveryReadSucceeded: false,
         sawTargetStart: false,
         abortController: new AbortController(),
       };
@@ -421,11 +439,9 @@ export function createChatSendController(
         );
       } catch (error) {
         if (!isCurrent(execution)) return false;
-        active = null;
-        publish({
-          kind: "error",
-          error: toSafeChatExecutionError(error, "regenerate"),
-        });
+        execution.executionError = toSafeChatExecutionError(error, "regenerate");
+        execution.terminalFailure = isDefiniteRejection(error);
+        void finalize(execution);
         return false;
       }
 
@@ -435,6 +451,18 @@ export function createChatSendController(
     },
 
     async retryFinalization() {
+      if (!disposed && active === null && state.kind === "error" && !state.conversationId) {
+        publish(INITIAL_CHAT_SEND_STATE);
+        return;
+      }
+      if (!disposed && active === null && state.kind === "error" && state.conversationId) {
+        const failedState = state;
+        try {
+          await dependencies.reconcileHistory(state.conversationId);
+          if (state === failedState) publish(INITIAL_CHAT_SEND_STATE);
+        } catch { /* Retain the safe error and the read-only recovery action. */ }
+        return;
+      }
       if (
         disposed ||
         active === null ||
@@ -450,6 +478,15 @@ export function createChatSendController(
 
     resetError() {
       if (!disposed && active === null && state.kind === "error") {
+        publish(INITIAL_CHAT_SEND_STATE);
+      }
+    },
+
+    releaseAfterReview() {
+      if (!disposed && active?.recoveryReadSucceeded &&
+          (state.kind === "finalization-uncertain" || state.kind === "regenerate-finalization-uncertain")) {
+        // Explicit human review is not a completion/stop acknowledgement from the backend.
+        active = null;
         publish(INITIAL_CHAT_SEND_STATE);
       }
     },
@@ -508,6 +545,10 @@ function defaultUuid(): string {
     throw new Error("Secure UUID generation is unavailable");
   }
   return globalThis.crypto.randomUUID();
+}
+
+function isDefiniteRejection(error: unknown): boolean {
+  return error instanceof ApiError && error.status >= 400 && error.status < 500;
 }
 
 function isRegeneratePersistenceConfirmed(

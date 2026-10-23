@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatWorkspaceLoadInput } from "@/application/chat-workspace";
 import type { ChatHistoryReconciliationResult } from "@/application/chat-send";
 import type { RealtimeEvent } from "@/application/realtime";
+import type { MainSelection } from "@/domain/runtime";
 import {
   createChatWorkspaceController,
   INITIAL_CHAT_WORKSPACE_CONTROLLER_STATE,
@@ -26,6 +27,7 @@ export type UseChatWorkspaceResult = {
     conversationId: string,
   ) => Promise<void>;
   readonly refreshConversationList: () => Promise<void>;
+  readonly saveMainSelection: (conversationId: string, selection: MainSelection) => Promise<void>;
 };
 
 export function useChatWorkspace(
@@ -120,6 +122,11 @@ export function useChatWorkspace(
     }
     await controller.refreshConversationList();
   }, []);
+  const saveMainSelection = useCallback(async (conversationId: string, selection: MainSelection) => {
+    const controller = controllerRef.current;
+    if (!controller) throw new Error("Workspace unavailable");
+    await controller.saveMainSelection(conversationId, selection);
+  }, []);
 
   return {
     state,
@@ -130,5 +137,6 @@ export function useChatWorkspace(
     reconcileSelectedConversationRealtimeEvent,
     reconcileSelectedConversationAfterReconnect,
     refreshConversationList,
+    saveMainSelection,
   };
 }

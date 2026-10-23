@@ -9,10 +9,11 @@ import {
 } from "@/application/chat-setup";
 import type { Conversation } from "@/domain/conversation";
 import {
-  RuntimeContractError,
   type AvailableModel,
   type ChatReadiness,
 } from "@/domain/runtime";
+import { mainConfigurationWire, readinessWire } from "@/test-fixtures/main-chat-wire";
+import { mapMainConfiguration } from "@/domain/runtime";
 import { ApiError } from "@/lib/api";
 
 describe("chat setup view model", () => {
@@ -225,6 +226,7 @@ describe("chat setup view model", () => {
       conversation: { ...conversation(), secret: fakeSecret } as Conversation,
       availableModels: models(),
       readiness: unsafeReadiness,
+      configuration: mapMainConfiguration(mainConfigurationWire("model-b")),
     }));
 
     expect(error).toBeInstanceOf(ChatSetupContractError);
@@ -244,11 +246,12 @@ describe("chat setup view model", () => {
       }),
       secret: fakeSecret,
     };
-    const bootstrapError = captureError(() => createChatSetupViewModel({
+    const bootstrap = createChatSetupViewModel({
       conversation: null,
       availableModels: models(),
       readiness: incompleteBootstrapReadiness,
-    }));
+    });
+    expect(bootstrap.modelKey).toBe("");
     const conversationError = captureError(() => createChatSetupViewModel({
       conversation: { ...conversation(), modelKey: undefined, secret: fakeSecret } as unknown as Conversation,
       availableModels: models(),
@@ -258,7 +261,7 @@ describe("chat setup view model", () => {
       undefined as unknown as Parameters<typeof createChatSetupViewModel>[0],
     ));
 
-    for (const error of [bootstrapError, conversationError, inputError]) {
+    for (const error of [conversationError, inputError]) {
       expect(error).toBeInstanceOf(ChatSetupContractError);
       expect(String(error)).not.toContain(fakeSecret);
     }
@@ -342,234 +345,85 @@ describe("chat setup view model", () => {
 
 describe("chat setup load service", () => {
   const fetchMock = vi.fn<typeof fetch>();
-
   beforeEach(() => vi.stubGlobal("fetch", fetchMock));
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    fetchMock.mockReset();
+  afterEach(() => { vi.unstubAllGlobals(); fetchMock.mockReset(); });
+
+  it("reads conversation-scoped configuration/readiness and ignores legacy model/catalog membership", async () => {
+    fetchMock.mockImplementation((input) => Promise.resolve(json(String(input).includes("configuration")
+      ? mainConfigurationWire() : readinessWire())));
+    const result = await loadChatSetupForConversation(conversation(), { timeoutMs: 0 });
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      "/api/main/configuration?conv_id=conv_1", "/api/chat/readiness?conv_id=conv_1",
+    ]);
+    expect(result).toMatchObject({ modelKey: "literal-not-in-catalog", modelKnown: false, readiness: { kind: "available", value: { ready: true } } });
   });
 
-  it("passes the conversation model to readiness and only calls Runtime Domain endpoints", async () => {
-    fetchMock.mockImplementation((input) => {
+  it("reads the new conversation default without passing a conversation or model query", async () => {
+    fetchMock.mockImplementation((input) => Promise.resolve(json(String(input).includes("configuration")
+      ? mainConfigurationWire("global-default") : readinessWire("global-default"))));
+    const result = await loadBootstrapChatSetup({ timeoutMs: 0 });
+    expect(result.modelKey).toBe("global-default");
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(["/api/main/configuration", "/api/chat/readiness"]);
+  });
+
+  it.each(["missing_credential", "disabled_profile", "invalid_main_selection", "ambiguous_legacy_selection", "conversation_not_found", "future_valid_reason"])("preserves %s without losing readable setup", async (code) => {
+    fetchMock.mockImplementation((input) => Promise.resolve(json(String(input).includes("configuration")
+      ? { ...mainConfigurationWire(), diagnostic: code } : readinessWire("literal-not-in-catalog", code))));
+    expect(await loadChatSetupForConversation(conversation(), { timeoutMs: 0 })).toMatchObject({
+      configuration: { selection: { connectionId: "connection-a", model: "literal-not-in-catalog" }, diagnostic: code },
+      status: code, readiness: { kind: "available", value: { ready: false, reason: code } },
+    });
+  });
+
+  it.each([404, 503])("keeps setup readable on configuration/readiness HTTP %s", async (status) => {
+    fetchMock.mockResolvedValue(json({ detail: "private endpoint/secret" }, status));
+    const result = await loadChatSetupForConversation(conversation(), { timeoutMs: 0 });
+    expect(result.readiness.kind).toBe("unavailable");
+    expect(JSON.stringify(result)).not.toContain("private endpoint");
+  });
+
+  it("blocks a concurrent configuration/readiness mismatch without throwing away history", async () => {
+    fetchMock.mockImplementation((input) => Promise.resolve(json(String(input).includes("configuration")
+      ? mainConfigurationWire("new") : readinessWire("old"))));
+    const result = await loadChatSetupForConversation(conversation(), { timeoutMs: 0 });
+    expect(result.readiness.kind).toBe("unavailable");
+    expect(result.configuration?.selection?.model).toBe("new");
+  });
+
+  it.each([401, 403])("keeps authentication HTTP %s fatal", async (status) => {
+    fetchMock.mockResolvedValue(json({}, status));
+    await expect(loadBootstrapChatSetup({ timeoutMs: 0 })).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it.each([
+    ["configuration", "network"], ["readiness", "network"],
+    ["configuration", "timeout"], ["readiness", "timeout"],
+    ["configuration", "contract"], ["readiness", "contract"],
+  ] as const)("degrades %s %s failures without leaking transport or raw DTO details", async (endpoint, failure) => {
+    fetchMock.mockImplementation((input, init) => {
       const path = String(input);
-      return Promise.resolve(path === "/api/models"
-        ? json(modelDtos())
-        : json(readinessDto("ready", "model/key + one")));
-    });
-    const caller = new AbortController();
-
-    const result = await loadChatSetupForConversation(
-      conversation({ modelKey: "model/key + one" }),
-      { signal: caller.signal, timeoutMs: 0, headers: { "x-chat-setup": "test" } },
-    );
-
-    expect(result.modelKey).toBe("model/key + one");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls.map(([path]) => String(path))).toEqual([
-      "/api/models",
-      "/api/chat/readiness?model=model%2Fkey+%2B+one",
-    ]);
-    for (const [, init] of fetchMock.mock.calls) {
-      expect(init?.method).toBe("GET");
-      expect(init?.signal).toBeInstanceOf(AbortSignal);
-      expect(new Headers(init?.headers).get("x-chat-setup")).toBe("test");
-    }
-
-    const paths = fetchMock.mock.calls.map(([path]) => String(path)).join(" ");
-    expect(paths).not.toMatch(/conversations|messages|settings|provider/);
-  });
-
-  it("omits the bootstrap readiness model query and trusts its response model", async () => {
-    fetchMock.mockImplementation((input) => Promise.resolve(
-      String(input) === "/api/models"
-        ? json(modelDtos())
-        : json(readinessDto("ready", "model-c")),
-    ));
-
-    const result = await loadBootstrapChatSetup({ timeoutMs: 0 });
-
-    expect(fetchMock.mock.calls.map(([path]) => String(path))).toEqual([
-      "/api/models",
-      "/api/chat/readiness",
-    ]);
-    expect(result.modelKey).toBe("model-c");
-    expect(result.models.map((model) => model.selected)).toEqual([false, false, true]);
-  });
-
-  it("degrades a missing bootstrap readiness route without inventing a model or ready state", async () => {
-    const fakeEndpoint = "https://private-readiness.example";
-    fetchMock.mockImplementation((input) => Promise.resolve(
-      String(input) === "/api/models"
-        ? json(modelDtos())
-        : json({ error: "missing", endpoint: fakeEndpoint }, 404),
-    ));
-
-    const result = await loadBootstrapChatSetup({ timeoutMs: 0 });
-
-    expect(result).toMatchObject({
-      modelKey: null,
-      modelLabel: null,
-      modelKnown: false,
-      status: "readiness-unavailable",
-      setupActionRequired: true,
-      readiness: { kind: "unavailable", reason: "not-found" },
-    });
-    expect(result.models.every((model) => model.selected === false)).toBe(true);
-    expect(JSON.stringify(result)).not.toContain(fakeEndpoint);
-  });
-
-  it("safely degrades readiness network, timeout, and DTO contract failures", async () => {
-    const fakeEndpoint = "https://internal-provider.example";
-    const readinessFailures: ReadonlyArray<{
-      readonly expectedReason: "network" | "timeout" | "contract";
-      readonly timeoutMs: number;
-      readonly readinessResponse: (signal?: AbortSignal | null) => Promise<Response>;
-    }> = [
-      {
-        expectedReason: "network",
-        timeoutMs: 0,
-        readinessResponse: () => Promise.reject(new TypeError(fakeEndpoint)),
-      },
-      {
-        expectedReason: "timeout",
-        timeoutMs: 1,
-        readinessResponse: (signal) => new Promise<Response>((_resolve, reject) => {
-          signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
-        }),
-      },
-      {
-        expectedReason: "contract",
-        timeoutMs: 0,
-        readinessResponse: () => Promise.resolve(json({
-          ...readinessDto("ready", "model-b"),
-          ready: "yes",
-          endpoint: fakeEndpoint,
-        })),
-      },
-    ];
-
-    for (const failure of readinessFailures) {
-      fetchMock.mockReset();
-      fetchMock.mockImplementation((input, init) =>
-        String(input) === "/api/models"
-          ? Promise.resolve(json(modelDtos()))
-          : failure.readinessResponse(init?.signal),
-      );
-
-      const result = await loadBootstrapChatSetup({
-        timeoutMs: failure.timeoutMs,
-      });
-
-      expect(result.readiness).toEqual({
-        kind: "unavailable",
-        reason: failure.expectedReason,
-      });
-      expect(result.status).toBe("readiness-unavailable");
-      expect(JSON.stringify(result)).not.toContain(fakeEndpoint);
-    }
-  });
-
-  it("keeps readiness authentication failures fatal", async () => {
-    fetchMock.mockImplementation((input) => Promise.resolve(
-      String(input) === "/api/models"
-        ? json(modelDtos())
-        : json({ error: "unauthenticated" }, 401),
-    ));
-
-    const error = await loadBootstrapChatSetup({ timeoutMs: 0 })
-      .catch((reason: unknown) => reason);
-
-    expect(error).toBeInstanceOf(ApiError);
-    expect(error).toMatchObject({ status: 401 });
-  });
-
-  it("starts models and readiness concurrently", async () => {
-    const modelsResponse = deferred<Response>();
-    const readinessResponse = deferred<Response>();
-    fetchMock.mockImplementation((input) =>
-      String(input) === "/api/models"
-        ? modelsResponse.promise
-        : readinessResponse.promise,
-    );
-
-    const pending = loadChatSetupForConversation(conversation(), { timeoutMs: 0 });
-
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    modelsResponse.resolve(json(modelDtos()));
-    readinessResponse.resolve(json(readinessDto("ready", "model-b")));
-    await expect(pending).resolves.toMatchObject({ modelKey: "model-b" });
-  });
-
-  it("supports caller AbortSignal through both Runtime Domain requests", async () => {
-    fetchMock.mockImplementation((_input, init) => new Promise<Response>((_resolve, reject) => {
-      const signal = init?.signal;
-      if (signal?.aborted) {
-        reject(signal.reason);
-        return;
+      if (path.includes(endpoint)) {
+        if (failure === "network") return Promise.reject(new TypeError("private endpoint/secret"));
+        if (failure === "contract") return Promise.resolve(json({ raw: "private endpoint/secret" }));
+        return new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true }));
       }
-      signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+      return Promise.resolve(json(path.includes("configuration") ? mainConfigurationWire() : readinessWire()));
+    });
+    const result = await loadChatSetupForConversation(conversation(), { timeoutMs: failure === "timeout" ? 1 : 0 });
+    expect(result.readiness).toEqual({ kind: "unavailable", reason: failure });
+    expect(JSON.stringify(result)).not.toContain("private endpoint/secret");
+    if (endpoint === "readiness") expect(result.configuration?.selection?.model).toBe("literal-not-in-catalog");
+  });
+
+  it("passes caller aborts through both reads", async () => {
+    fetchMock.mockImplementation((_input, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
     }));
     const caller = new AbortController();
-
-    const pending = loadBootstrapChatSetup({ signal: caller.signal, timeoutMs: 0 });
+    const pending = loadBootstrapChatSetup({ timeoutMs: 0, signal: caller.signal });
+    caller.abort();
+    await expect(pending).rejects.toMatchObject({ code: "ABORTED" });
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    caller.abort("stop setup");
-
-    const error = await pending.catch((reason: unknown) => reason);
-    expect(error).toBeInstanceOf(ApiError);
-    expect(error).toMatchObject({ code: "ABORTED" });
-    expect(fetchMock.mock.calls.every(([, init]) => init?.signal?.aborted)).toBe(true);
-  });
-
-  it("preserves ApiError without wrapping it as an application error", async () => {
-    fetchMock.mockImplementation((input) => Promise.resolve(
-      String(input) === "/api/models"
-        ? json({ error: "service unavailable" }, 503)
-        : json(readinessDto("ready", "model-b")),
-    ));
-
-    const error = await loadChatSetupForConversation(
-      conversation(),
-      { timeoutMs: 0 },
-    ).catch((reason: unknown) => reason);
-
-    expect(error).toBeInstanceOf(ApiError);
-    expect(error).not.toBeInstanceOf(ChatSetupContractError);
-    expect(error).toMatchObject({ status: 503, code: "HTTP_ERROR" });
-  });
-
-  it("preserves RuntimeContractError without generating a fake setup state", async () => {
-    const fakeSecret = "fake-runtime-contract-secret";
-    fetchMock.mockImplementation((input) => Promise.resolve(
-      String(input) === "/api/models"
-        ? json({ invalid: true, secret: fakeSecret })
-        : json(readinessDto("ready", "model-b")),
-    ));
-
-    const error = await loadChatSetupForConversation(
-      conversation(),
-      { timeoutMs: 0 },
-    ).catch((reason: unknown) => reason);
-
-    expect(error).toBeInstanceOf(RuntimeContractError);
-    expect(error).not.toBeInstanceOf(ChatSetupContractError);
-    expect(String(error)).not.toContain(fakeSecret);
-  });
-
-  it("rejects missing conversation data before making any domain calls", async () => {
-    const fakeSecret = "fake-service-input-secret";
-    const error = await loadChatSetupForConversation(
-      {
-        ...conversation(),
-        modelKey: undefined,
-        secret: fakeSecret,
-      } as unknown as Conversation,
-      { timeoutMs: 0 },
-    ).catch((reason: unknown) => reason);
-
-    expect(error).toBeInstanceOf(ChatSetupContractError);
-    expect(String(error)).not.toContain(fakeSecret);
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
@@ -602,26 +456,6 @@ function readiness(overrides: Partial<ChatReadiness> = {}): ChatReadiness {
   };
 }
 
-function modelDtos() {
-  return [
-    { key: "model-a", provider: "provider-a" },
-    { key: "model-b", provider: "provider-b" },
-    { key: "model-c", provider: "provider-c" },
-  ];
-}
-
-function readinessDto(
-  reason: "ready" | "unknown_model" | "provider_not_configured" | "configuration_invalid",
-  modelKey: string,
-) {
-  return {
-    ready: reason === "ready",
-    model_key: modelKey,
-    reason_code: reason,
-    setup_action_required: reason !== "ready",
-  };
-}
-
 function captureError(run: () => unknown): unknown {
   try {
     run();
@@ -629,16 +463,6 @@ function captureError(run: () => unknown): unknown {
     return error;
   }
   throw new Error("Expected function to throw");
-}
-
-function deferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((promiseResolve, promiseReject) => {
-    resolve = promiseResolve;
-    reject = promiseReject;
-  });
-  return { promise, resolve, reject };
 }
 
 function json(payload: unknown, status = 200): Response {

@@ -2,6 +2,8 @@ import type {
   CreateConversationRequestDto,
   UpdateConversationRequestDto,
 } from "@/domain/conversation/conversation-dto";
+import { mainSelectionWire } from "@/domain/runtime/main-configuration";
+import { ConversationContractError } from "@/domain/conversation/conversation-types";
 import {
   mapConversation,
   mapDeleteConversationResponse,
@@ -51,6 +53,10 @@ export async function updateConversation(
   options?: ApiRequestOptions,
 ): Promise<ConversationMutationResult> {
   const body: UpdateConversationRequestDto = {};
+  if (input.mainSelection !== undefined && input.modelKey != null) {
+    throw new ConversationContractError("Cannot combine legacy model and Main selection");
+  }
+  if (input.mainSelection !== undefined) body.main_selection = mainSelectionWire(input.mainSelection);
   if (input.title !== undefined) body.title = input.title;
   if (input.modelKey !== undefined) body.model = input.modelKey;
 

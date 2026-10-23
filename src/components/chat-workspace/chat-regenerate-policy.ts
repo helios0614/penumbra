@@ -26,6 +26,7 @@ export function getChatRegenerateAvailability(
   if (workspaceState.pendingConversationId !== null) {
     return unavailable(target, "正在切换会话。");
   }
+  if (workspaceState.configurationPending || executionState.kind === "error") return unavailable(target, "请先重新读取当前状态。");
 
   const selected = workspaceState.workspace.selectedConversation;
   const readiness = workspaceState.workspace.setup.readiness;
@@ -34,9 +35,7 @@ export function getChatRegenerateAvailability(
   }
   if (
     workspaceState.workspace.setup.conversationId !== selected.id ||
-    workspaceState.workspace.setup.modelKey !== selected.modelKey ||
-    readiness.value.modelKey !== selected.modelKey ||
-    !workspaceState.workspace.setup.modelKnown ||
+    readiness.value.modelKey !== workspaceState.workspace.setup.modelKey ||
     !readiness.value.ready ||
     readiness.value.reason !== "ready"
   ) {
@@ -74,7 +73,7 @@ function latestTailAssistant(
     if (message.conversationId !== selectedId) return null;
     if (
       message.isCarryover === true ||
-      message.roleKind === "hidden-runtime"
+      (message.roleKind !== "assistant" && message.roleKind !== "user")
     ) {
       continue;
     }

@@ -86,8 +86,8 @@ describe("safe regenerate errors", () => {
     [httpError(422, "invalid_generation_options", "temperature"), "invalid-generation-options", "当前生成参数无效。"],
     [httpError(422, "unsupported_generation_option", "fast_mode"), "unsupported-generation-option", "当前模型不支持所选生成参数。"],
     [httpError(503, "provider_not_configured"), "provider-not-configured", "当前模型服务尚未配置完成。"],
-    [new ApiError("private", 0, {}, "NETWORK_ERROR"), "network", "暂时无法连接重新生成服务，请重试。"],
-    [new ApiError("private", 0, {}, "TIMEOUT"), "timeout", "重新生成请求超时，请稍后重试。"],
+    [new ApiError("private", 0, {}, "NETWORK_ERROR"), "network", "重新生成的连接中断，后台可能仍在执行，请重新读取状态。"],
+    [new ApiError("private", 0, {}, "TIMEOUT"), "timeout", "重新生成的响应等待超时，请重新读取状态确认结果。"],
     [new ChatExecutionContractError("private"), "contract", "重新生成响应暂时无法安全处理。"],
   ])("maps regenerate failure safely", (error, code, message) => {
     const safe = toSafeChatExecutionError(error, "regenerate");
@@ -221,7 +221,7 @@ describe("unified regenerate execution controller", () => {
     await waitFor(() => receiptYielded);
     expect(controller.getState()).toMatchObject({
       kind: "regenerate-streaming",
-      assistant: { content: "raw answer<meta>private metadata</meta>" },
+      assistant: { content: "raw answer" },
     });
     expect(reconcileHistory).not.toHaveBeenCalled();
 
@@ -438,9 +438,9 @@ describe("unified regenerate execution controller", () => {
     });
 
     await controller.regenerate(regenerateInput());
-    await waitFor(() => controller.getState().kind === "error");
+    await waitFor(() => controller.getState().kind === "regenerate-finalization-uncertain");
     expect(controller.getState()).toMatchObject({
-      error: { code: "contract" },
+      executionError: { code: "contract" },
     });
   });
 
@@ -552,7 +552,7 @@ describe("unified regenerate execution controller", () => {
       kind: "regenerate-finalization-uncertain",
       targetMessageId: "assistant-a",
       assistant: { content: "temporary replacement" },
-      error: { message: "回复已结束，但暂时无法确认保存状态。" },
+      error: { message: "暂时无法确认请求结果，后台可能仍在执行。请只重新读取状态，勿重复发送或重新生成。" },
     });
 
     await controller.retryFinalization();
@@ -658,7 +658,7 @@ describe("unified regenerate execution controller", () => {
       error: { code: safeCode },
     });
     expect(controller.getState()).not.toHaveProperty("assistant");
-    expect(reconcileHistory).not.toHaveBeenCalled();
+    expect(reconcileHistory).toHaveBeenCalledOnce();
   });
 });
 

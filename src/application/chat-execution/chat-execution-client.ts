@@ -28,6 +28,7 @@ export async function openSendExecution(
   const path = chatExecutionPath(conversationId, "send");
   const body = mapSendMessageRequest(input);
   const response = await openApiStream(path, {
+    streamIdleTimeoutMs: 120_000,
     ...options,
     method: "POST",
     body,
@@ -57,6 +58,7 @@ export async function openRegenerateExecution(
   const path = regenerateExecutionPath(conversationId, messageId);
   const query = mapRegenerateQuery(input);
   const response = await openApiStream(path, {
+    streamIdleTimeoutMs: 120_000,
     ...options,
     method: "POST",
     query,

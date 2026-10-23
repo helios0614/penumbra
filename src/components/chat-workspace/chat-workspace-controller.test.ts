@@ -643,34 +643,19 @@ describe("chat workspace realtime update ports", () => {
     });
   });
 
-  it("reloads setup and history if current conversation model metadata changed", async () => {
+  it("reloads effective setup on any conversation update without replacing current history", async () => {
     const original = workspace("conv_a");
-    const changed = conversations().map((conversation) =>
-      conversation.id === "conv_a"
-        ? { ...conversation, modelKey: "model-external" }
-        : conversation);
-    const reloaded = workspace("conv_a", changed, "model reload history");
-    const loadWorkspace = vi.fn()
-      .mockResolvedValueOnce(original)
-      .mockResolvedValueOnce(reloaded);
+    const loadSetup = vi.fn(async () => ({ ...original.setup, modelKey: "new-literal" }));
     const controller = createChatWorkspaceController({}, {
-      loadWorkspace,
-      loadConversationList: async () => changed,
+      loadWorkspace: async () => original,
+      loadConversationList: async () => conversations(),
+      loadSetup,
     });
     await controller.load();
-
     await controller.refreshConversationList();
-
-    expect(loadWorkspace).toHaveBeenLastCalledWith(
-      { currentConversationId: "conv_a" },
-      { signal: expect.any(AbortSignal) },
-    );
-    expect(controller.getState()).toMatchObject({
-      workspace: {
-        selectedConversation: { modelKey: "model-external" },
-        history: { messages: [{ content: "model reload history" }] },
-      },
-    });
+    expect(loadSetup).toHaveBeenCalledWith(expect.objectContaining({ id: "conv_a" }), { signal: expect.any(AbortSignal) });
+    expect(controller.getState()).toMatchObject({ workspace: { setup: { modelKey: "new-literal" }, history: original.history } });
+    controller.dispose();
   });
 
   it("keeps the last workspace intact when a sidebar refresh fails", async () => {
