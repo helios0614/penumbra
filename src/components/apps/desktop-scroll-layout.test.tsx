@@ -12,7 +12,7 @@ function render(Page: typeof Desktop, pathname: string) {
 
 describe("desktop scroll ownership", () => {
   it("bounds app viewports in both shells instead of adding an outer scroll owner", () => {
-    for (const [Page, route] of [[Desktop, "/app/memory"], [EditorialDesktop, "/editorial/app/memory"]] as const) {
+    for (const [Page, route] of [[Desktop, "/app/memory"], [EditorialDesktop, "/editorial/app/memory"], [Desktop, "/app/diary"], [EditorialDesktop, "/editorial/app/diary"]] as const) {
       const html = render(Page, route);
       expect(html).toContain('data-testid="desktop-app-view"');
       expect(html).toContain("h-dvh");

@@ -12,6 +12,7 @@ import {
   LibraryBig,
   StickyNote,
   NotebookPen,
+  BookOpen,
   History,
   MapPin,
 } from "lucide-react";
@@ -27,6 +28,9 @@ const MemoryView = lazy(() =>
 const QuickNoteView = lazy(() =>
   import("@/components/quick-note/QuickNoteView").then((module) => ({ default: module.QuickNoteView })),
 );
+const DiaryView = lazy(() =>
+  import("@/components/diary/DiaryView").then((module) => ({ default: module.DiaryView })),
+);
 const ActivityView = lazy(() =>
   import("@/components/activity/ActivityView").then((module) => ({ default: module.ActivityView })),
 );
@@ -39,6 +43,7 @@ export type DesktopAppId =
   | "calendar"
   | "todo"
   | "notes"
+  | "diary"
   | "clock"
   | "weather"
   | "music"
@@ -58,6 +63,7 @@ export const DESKTOP_APP_META: Record<DesktopAppId, DesktopAppMeta> = {
   calendar: { name: "记挂", description: "持续放在心上的事情", icon: CalendarDays },
   todo: { name: "待办", description: "整理接下来要完成的事情", icon: CheckCircle2 },
   notes: { name: "笔记", description: "记录临时想法和重要内容", icon: StickyNote },
+  diary: { name: "日记", description: "按日期翻阅留下来的日记", icon: BookOpen },
   clock: { name: "闹钟", description: "一次性提醒与定时唤醒", icon: Clock3 },
   weather: { name: "天气", description: "查看天气和未来预报", icon: CloudSun },
   music: { name: "音乐", description: "播放和管理音乐", icon: Music2 },
@@ -82,7 +88,7 @@ export function DesktopAppView({
   const Icon = app.icon;
   const viewportRef = useRef<HTMLElement>(null);
   const scheduleApp = appId === "calendar" || appId === "todo" || appId === "clock";
-  const ownHeader = scheduleApp || appId === "chat" || appId === "memory" || appId === "quick-notes" || appId === "activity" || appId === "location";
+  const ownHeader = scheduleApp || appId === "chat" || appId === "memory" || appId === "quick-notes" || appId === "activity" || appId === "location" || appId === "diary";
 
   return (
     <ToastProvider key={appId} viewportRef={viewportRef} mobileClearance={16}>
@@ -120,6 +126,7 @@ export function DesktopAppView({
           {appId === "chat" && <ChatView onBack={onBack} />}
           {appId === "memory" && <MemoryView onBack={onBack} />}
           {appId === "quick-notes" && <QuickNoteView onBack={onBack} />}
+          {appId === "diary" && <DiaryView onBack={onBack} />}
           {appId === "activity" && <ActivityView onBack={onBack} />}
           {appId === "location" && <LocationView onBack={onBack} />}
           {scheduleApp && <ScheduleView key={appId} kind={appId === "calendar" ? "reminder" : appId === "todo" ? "todo" : "alarm"} onBack={onBack} />}

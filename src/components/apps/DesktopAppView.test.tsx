@@ -8,6 +8,7 @@ import {
   isDesktopAppId,
 } from "@/components/apps/DesktopAppView";
 import { DesktopApps } from "@/components/desktop/DesktopApps";
+import { EditorialQuickApps } from "@/components/desktop-v2/EditorialQuickApps";
 
 const desktopStyles = readFileSync(
   new URL("../../index.css", import.meta.url),
@@ -15,6 +16,19 @@ const desktopStyles = readFileSync(
 );
 
 describe("desktop memory route and navigation", () => {
+  it("registers a real shared Diary app while preserving the notes identity", () => {
+    expect(isDesktopAppId("diary")).toBe(true);
+    expect(DESKTOP_APP_META.diary.name).toBe("日记");
+    expect(DESKTOP_APP_META.notes.name).toBe("笔记");
+    const classic = renderToStaticMarkup(<DesktopApps onLaunch={vi.fn()} onSettings={vi.fn()} />);
+    const editorial = renderToStaticMarkup(<EditorialQuickApps onLaunch={vi.fn()} onSettings={vi.fn()} />);
+    expect(classic).toContain('aria-label="打开日记"'); expect(classic).toContain('aria-label="打开笔记"');
+    expect(editorial).toContain('aria-label="打开日记"');
+    const source = readFileSync(new URL("../desktop-v2/EditorialQuickApps.tsx", import.meta.url), "utf8");
+    expect(source).toContain('id: "diary", label: "日记"'); expect(source).not.toContain('id: "notes", label: "日记"');
+    const html = renderToStaticMarkup(<DesktopAppView appId="diary" onBack={vi.fn()} />);
+    expect(html).not.toContain("页面还在搭建中"); expect(html).not.toContain("desktop-app-mini-icon");
+  });
   it("registers Activity as its own lazy app with a desktop shortcut and shared close behavior", () => {
     expect(isDesktopAppId("activity")).toBe(true);
     expect(DESKTOP_APP_META.activity.name).toBe("活动日志");

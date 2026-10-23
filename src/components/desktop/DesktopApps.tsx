@@ -9,6 +9,7 @@ const SHORTCUTS: DesktopAppId[] = [
   "calendar",
   "todo",
   "notes",
+  "diary",
   "music",
   "weather",
   "clock",

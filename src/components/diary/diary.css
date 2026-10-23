@@ -1,0 +1,34 @@
+/* The accepted Memory/Quick Note reading material, local to Diary. */
+.diary-paper {
+  background: color-mix(in srgb, var(--glass-surface-strong) 69%, var(--glass-surface) 31%);
+}
+
+.diary-calendar-table { border-spacing: 0 2px; }
+.diary-day { min-height: 52px; }
+.diary-day-number { border: 1px solid transparent; }
+.diary-day[data-today="true"] .diary-day-number {
+  border-color: var(--color-primary-ink);
+  font-weight: 600;
+}
+.diary-day[data-selected="true"] {
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+}
+.diary-day[data-selected="true"]:hover { background: var(--color-primary-hover); }
+.diary-day[data-selected="true"][data-today="true"] .diary-day-number {
+  border-color: var(--color-primary-foreground);
+}
+.diary-marker { flex-shrink: 0; color: var(--color-primary-ink); }
+.diary-marker-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--color-primary);
+  border-radius: 50%;
+}
+.diary-marker-dot[data-diary-marker="archived"] { background: var(--color-primary); }
+.diary-marker-invalid { color: var(--color-warning-foreground); }
+/* Today, selection and persistence marks have independent shapes and contrast. */
+.diary-day[data-selected="true"] .diary-marker { color: var(--color-primary-foreground); border-color: var(--color-primary-foreground); }
+.diary-day[data-selected="true"] .diary-marker-dot[data-diary-marker="archived"] { background: var(--color-primary-foreground); }
+@media (min-width: 640px) { .diary-day { min-height: 56px; } }
