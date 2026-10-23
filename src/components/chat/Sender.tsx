@@ -10,10 +10,10 @@ import {
   type KeyboardEvent,
   type ChangeEvent,
 } from "react";
-import { Send, Plus } from "lucide-react";
+import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
+import { ComposerToolsMenu } from "./ComposerToolsMenu";
 import "./chat.css";
 
 interface SenderProps {
@@ -69,7 +69,7 @@ export function Sender({
   const [pendingDraft, setPendingDraft] = useState<string | null>(null);
   const [recoveryDrafts, setRecoveryDrafts] = useState<readonly string[]>([]);
   const draftRevisionRef = useRef(0);
-  const expanded = focused || menuOpen || multiline;
+  const expanded = focused || multiline;
   const displayedValue = pendingDraft === null ? value : "";
 
   // Measure inert text mirrors, never resize/reset the focused textarea to measure it.
@@ -173,32 +173,22 @@ export function Sender({
         <div ref={composerRef} className="chat-composer mist-solid" data-expanded={expanded}
           style={{ "--chat-text-height": `${textHeight}px` } as CSSProperties}
           aria-busy={isSubmitting}
-          onFocusCapture={() => setFocused(true)}
           onBlurCapture={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
+            if (!menuOpen && !event.currentTarget.contains(event.relatedTarget)) setFocused(false);
           }}>
-          {tools && <Popover open={menuOpen} onOpenChange={(open) => {
+          {tools && <ComposerToolsMenu open={menuOpen} anchor={composerRef} inputRef={textareaRef} label={toolsLabel} onOpenChange={(open) => {
             setMenuOpen(open);
             if (!open) setFocused(typeof document !== "undefined" && document.activeElement === textareaRef.current);
           }}>
-            <PopoverTrigger render={<Button type="button" variant="ghost" size="icon-lg"
-              className="chat-composer-tools size-11 rounded-full text-muted-foreground md:size-9" aria-label="会话模型与选项" title={toolsLabel} />}>
-              <Plus className="size-5" aria-hidden="true" />
-            </PopoverTrigger>
-            <PopoverContent keepMounted side="top" align="start" sideOffset={12} anchor={composerRef}
-              collisionAvoidance={{ side: "none", align: "shift", fallbackAxisSide: "none" }}
-              initialFocus={(type) => type === "keyboard"} finalFocus={(type) => type === "keyboard"}
-              className="chat-composer-menu" aria-label="会话模型与选项">
-              <PopoverTitle className="sr-only">会话模型与选项</PopoverTitle>
               {tools}
-            </PopoverContent>
-          </Popover>}
+          </ComposerToolsMenu>}
 
           {/* 输入框 */}
           <textarea
             ref={textareaRef}
             value={displayedValue}
             onChange={handleChange}
+            onFocus={() => setFocused(true)}
             onKeyDown={handleKeyDown}
             onCompositionStart={() => { composingRef.current = true; }}
             onCompositionEnd={() => { composingRef.current = false; }}

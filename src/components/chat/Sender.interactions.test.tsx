@@ -2,7 +2,7 @@ import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Sender } from "./Sender";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent } from "@/components/ui/popover";
+import { ComposerToolsMenu } from "./ComposerToolsMenu";
 import { elements, find, hookSession } from "./test-utils/hook-session";
 import { createChatSendController } from "@/application/chat-send";
 import { readFileSync } from "node:fs";
@@ -21,8 +21,8 @@ function session(onSend: React.ComponentProps<typeof Sender>["onSend"] = vi.fn((
   const expanded = () => elements(hooks.render()).find((el) => el.props["data-expanded"] !== undefined)?.props["data-expanded"];
   const change = (value: string) => textarea().onChange?.({ target: { value } } as never);
   const blur = (inside = false) => frame().onBlurCapture?.({ currentTarget: { contains: () => inside }, relatedTarget: {} } as never);
-  const focus = () => frame().onFocusCapture?.({} as never);
-  const menu = (open: boolean) => find(hooks.render(), Popover).props.onOpenChange?.(open, {} as never);
+  const focus = () => textarea().onFocus?.({} as never);
+  const menu = (open: boolean) => find(hooks.render(), ComposerToolsMenu).props.onOpenChange(open);
   const submit = () => find(hooks.render(), Button, (p) => p["aria-label"] === "发送消息").props.onClick?.({} as never);
   return { ...hooks, textarea, frame, expanded, change, blur, focus, menu, submit, setDisabled: (value: boolean) => { disabled = value; } };
 }
@@ -43,10 +43,16 @@ describe("floating Sender interactions", () => {
     const s = session();
     expect(s.expanded()).toBe(false); s.focus(); expect(s.expanded()).toBe(true);
     s.change("保留草稿"); s.menu(true); s.blur(); expect(s.expanded()).toBe(true);
-    expect(find(s.render(), PopoverContent).props.side).toBe("top");
     s.menu(false); expect(s.expanded()).toBe(false); expect(s.textarea().value).toBe("保留草稿");
     s.focus(); s.blur(true); expect(s.expanded()).toBe(true);
     s.blur(); expect(s.expanded()).toBe(false); expect(s.textarea().value).toBe("保留草稿");
+  });
+  it("keeps an unfocused single row compact through trigger and portalled menu focus", () => {
+    const s = session(); s.change("短草稿");
+    s.frame().onFocusCapture?.({ target: {} } as never); // Trigger/Portal focus is not textarea focus.
+    s.menu(true); s.blur(); expect(s.expanded()).toBe(false);
+    s.menu(false); expect(s.expanded()).toBe(false); expect(s.textarea().value).toBe("短草稿");
+    s.focus(); s.menu(true); s.blur(); expect(s.expanded()).toBe(true);
   });
   it("blocks duplicate submission before rerender and only clears the accepted draft snapshot", async () => {
     let accept!: (accepted: boolean) => void;
@@ -155,16 +161,12 @@ describe("floating Sender interactions", () => {
     expect(fetch).toHaveBeenCalledOnce(); controller.dispose();
   });
 
-  it("uses a 200ms geometry transition, reduced motion override, hidden scrollbars and a whole-Composer popup anchor", () => {
+  it("uses a 200ms geometry transition, reduced motion override, hidden scrollbars and a whole-Composer tools anchor", () => {
     const css = readFileSync(new URL("./chat.css", import.meta.url), "utf8"), s = session();
     expect(css).toContain("height 200ms ease, padding 200ms ease");
     expect(css).toMatch(/prefers-reduced-motion: reduce[\s\S]*\.chat-composer-input[\s\S]*transition: none/);
     expect(s.textarea().className).toContain("scrollbar-none");
-    const popup = find(s.render(), PopoverContent).props;
-    expect(popup.keepMounted).toBe(true); // Preserve queued model edits when the tools popup closes.
-    expect(popup.anchor).toBe(s.frame().ref); expect(popup.collisionAvoidance).toEqual({ side: "none", align: "shift", fallbackAxisSide: "none" });
-    expect(popup.initialFocus instanceof Function && popup.initialFocus("keyboard")).toBe(true);
-    expect(popup.finalFocus instanceof Function && popup.finalFocus("touch")).toBe(false);
+    expect(find(s.render(), ComposerToolsMenu).props.anchor).toBe(s.frame().ref);
   });
   it("centers the 24px text line and button hit boxes on one axis without a translate offset", () => {
     const css = readFileSync(new URL("./chat.css", import.meta.url), "utf8");

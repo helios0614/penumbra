@@ -27,10 +27,11 @@ function setup(selected = true) {
   return createChatSetupViewModel({ conversation: selected ? { id: "conv_a", title: "Synthetic", modelKey: "old", createdAt: 1, updatedAt: 2 } : null,
     availableModels: [], configuration: mapMainConfiguration(wire), readiness: mapChatReadiness(readinessWire()) });
 }
-function session(onSave: React.ComponentProps<typeof MainModelSelection>["onSave"] = vi.fn(async () => {})) {
+function session(onSave: React.ComponentProps<typeof MainModelSelection>["onSave"] = vi.fn(async () => {}), advanced = true) {
   let props: React.ComponentProps<typeof MainModelSelection> = { setup: setup(), disabled: false, onSave, onRefresh: vi.fn(async () => {}) };
   const s = hookSession(() => MainModelSelection(props));
   s.render(); s.commit();
+  find(s.render(), "details").props.onToggle?.({ currentTarget: { open: advanced } } as never);
   return { ...s,
     update: (patch: Partial<typeof props>) => { props = { ...props, ...patch }; s.render(); s.commit(); },
     select: (value: string, label = "连接") => find(s.render(), AppSelect, (p) => p.ariaLabel === label).props.onValueChange(value),
@@ -38,28 +39,69 @@ function session(onSave: React.ComponentProps<typeof MainModelSelection>["onSave
     advanced: () => find(s.render(), "details").props.onToggle?.({ currentTarget: { open: true } } as never),
     change: (value: string) => find(s.render(), Input).props.onChange?.({ target: { value } } as never),
     finish: () => find(s.render(), Input).props.onBlur?.({} as never),
+    current: () => {
+      find(s.render(), "details").props.onToggle?.({ currentTarget: { open: false } } as never);
+      const picker = find(s.render(), AppSelect, (p) => p.ariaLabel === "切换模型").props;
+      const confirmed = elements(s.render()).find((node) => node.props["data-confirmed-model"] !== undefined);
+      const html = renderToStaticMarkup(confirmed ?? <>{picker.options.find(({ value }) => value === picker.value)?.label}</>);
+      find(s.render(), "details").props.onToggle?.({ currentTarget: { open: true } } as never);
+      return html;
+    },
   };
 }
 function deferred() { let resolve!: () => void; const promise = new Promise<void>((done) => { resolve = done; }); return { promise, resolve }; }
 const flush = () => Promise.resolve();
 
 describe("daily Main model selection", () => {
+  it("switches complete presets directly, and can queue a return to the confirmed custom model", async () => {
+    const first = deferred(), save = vi.fn().mockImplementationOnce(() => first.promise).mockResolvedValue(undefined);
+    const s = session(save, false);
+    const picker = () => find(s.render(), AppSelect, (p) => p.ariaLabel === "切换模型").props;
+    expect(elements(s.render()).some((node) => node.type === Input)).toBe(false);
+    picker().onValueChange(JSON.stringify(["connection-b", "preset-b"]));
+    expect(picker().value).toBe(JSON.stringify(["connection-b", "preset-b"])); // Selecting the old value can emit a new intent.
+    expect(s.current()).toContain("literal-not-in-catalog");
+    find(s.render(), "details").props.onToggle?.({ currentTarget: { open: false } } as never);
+    picker().onValueChange(JSON.stringify(["connection-a", "literal-not-in-catalog"]));
+    first.resolve(); await flush();
+    expect(save.mock.calls.map(([, selection]) => selection)).toEqual([
+      { connectionId: "connection-b", protocol: OPENAI, model: "preset-b" },
+      { connectionId: "connection-a", protocol: OPENAI, model: "literal-not-in-catalog" },
+    ]);
+  });
+  it("opens manual adjustment for a preset without a model or an interface format, without submitting", () => {
+    const save = vi.fn(), s = session(save, false);
+    find(s.render(), AppSelect, (p) => p.ariaLabel === "切换模型").props.onValueChange(JSON.stringify(["no-default", ""]));
+    expect(s.input().value).toBe(""); expect(save).not.toHaveBeenCalled();
+    expect(find(s.render(), AppSelect, (p) => p.ariaLabel === "接口格式").props.value).toBe(OPENAI);
+    const html = renderToStaticMarkup(s.render()); expect(html).toContain("此连接没有默认模型");
+    find(s.render(), AppSelect, (p) => p.ariaLabel === "接口格式").props.onValueChange("");
+    s.select("connection-b"); expect(s.input().value).toBe("preset-b"); expect(save).not.toHaveBeenCalled();
+  });
+  it("keeps long literals editable in the shared control size and never commits an IME Enter", () => {
+    const save = vi.fn(), s = session(save), literal = "very-long-literal/".repeat(20);
+    s.change(literal); s.input().onCompositionStart?.({} as never);
+    s.input().onKeyDown?.({ key: "Enter", nativeEvent: { isComposing: true }, preventDefault: vi.fn() } as never); s.finish();
+    expect(save).not.toHaveBeenCalled(); expect(s.input().value).toBe(literal);
+    expect(s.input().controlSize).toBe("comfortable"); expect(s.input().className).toBe("text-sm");
+    s.input().onCompositionEnd?.({} as never); s.finish(); expect(save).toHaveBeenCalledOnce();
+  });
   it("shows Chinese daily controls, friendly effective identity, hidden advanced details and shared scroll surface", () => {
     const html = renderToStaticMarkup(<MainModelSelection setup={setup()} disabled={false} />);
-    for (const text of ["当前生效模型", "Synthetic connection", "literal-not-in-catalog", "模型名称", "模型状态", "刷新状态", "详细信息", "主动消息与提醒", "scrollbar-none"]) expect(html).toContain(text);
+    for (const text of ["当前模型", "Synthetic connection", "literal-not-in-catalog", "切换模型", "手动调整", "主动消息与提醒", "scrollbar-none"]) expect(html).toContain(text);
     for (const text of ["Literal model", "Readiness", "Connection", "Protocol", "Runtime", "Camera", "保存当前会话", "synthetic.invalid"]) expect(html).not.toContain(text);
     expect(html.replace(/<[^>]*>/g, "")).not.toContain("connection-a");
+    for (const text of ["模型状态", "刷新状态", "接口标识", "当前生效模型", "border-t"]) expect(html).not.toContain(text);
     const s = session(); s.advanced(); expect(find(s.render(), AppSelect, (p) => p.ariaLabel === "接口格式").props.value).toBe(OPENAI);
   });
   it("prefills default_model and preserves Protocol even when the connection has no inferred protocol support", async () => {
     const done = deferred(), save = vi.fn(() => done.promise), s = session(save);
     s.select("connection-b"); expect(s.input().value).toBe("preset-b");
     expect(save).toHaveBeenCalledWith("conv_a", { connectionId: "connection-b", protocol: OPENAI, model: "preset-b" });
-    const header = find(s.render(), "header"); expect(renderToStaticMarkup(header)).toContain("literal-not-in-catalog");
-    expect(renderToStaticMarkup(header)).not.toContain("preset-b");
+    expect(s.current()).toContain("literal-not-in-catalog"); expect(s.current()).not.toContain("preset-b");
     expect(find(s.render(), AppSelect, (p) => p.ariaLabel === "连接").props.disabled).toBe(false);
     done.resolve(); await flush(); s.update({ setup: { ...setup(), configuration: { ...setup().configuration!, selection: { connectionId: "connection-b", protocol: OPENAI, model: "preset-b" } } } });
-    expect(renderToStaticMarkup(find(s.render(), "header"))).toContain("preset-b");
+    expect(s.current()).toContain("preset-b");
   });
   it("does not submit missing defaults and commits a manually edited literal only on completion", async () => {
     const save = vi.fn(async () => {}), s = session(save);
@@ -119,7 +161,7 @@ describe("daily Main model selection", () => {
     expect(refresh).toHaveBeenCalledOnce(); expect(save).toHaveBeenCalledOnce();
     s.update({ setup: { ...setup(), configuration: { ...setup().configuration!, selection: { connectionId: "connection-a", protocol: OPENAI, model: "HTTP-readback" } } } });
     expect(s.input().value).toBe("preset-b");
-    expect(renderToStaticMarkup(find(s.render(), "header"))).toContain("HTTP-readback");
+    expect(s.current()).toContain("HTTP-readback");
   });
   it("keeps the real PR1 PUT/readback owner sequence for queued daily switches", async () => {
     let saved = { connection_id: "connection-a", protocol: OPENAI, model: "literal-not-in-catalog" };

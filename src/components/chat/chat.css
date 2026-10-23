@@ -62,19 +62,26 @@
 .chat-composer-send { right: 8px; }
 .chat-composer-status { max-width: 720px; margin: 6px auto 0; text-align: center; }
 .chat-composer-menu {
-  width: min(340px, calc(100vw - 24px));
-  max-height: min(480px, var(--available-height, 60dvh));
-  overflow: hidden;
+  width: min(340px, var(--available-width, calc(100vw - 24px)));
+  max-height: max(0px, min(480px, var(--available-height, 60dvh)));
   overscroll-behavior: contain;
   padding: 0;
   gap: 0;
   border-radius: 20px;
 }
-.chat-model-scroll { min-height: 0; }
+.chat-model-scroll { min-height: 0; border-radius: inherit; }
 .chat-model-scroll [data-slot="scroll-area-viewport"] {
-  max-height: min(480px, var(--available-height, 60dvh));
+  max-height: max(0px, min(480px, var(--available-height, 60dvh)));
   overscroll-behavior: contain;
 }
+.chat-model-scroll [data-slot="scroll-area-scrollbar"],
+.chat-message-scroll [data-slot="scroll-area-scrollbar"] { display: none; }
+.chat-model-picker [data-model-name], .chat-model-picker [data-connection-name] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-model-options { overscroll-behavior: contain; }
 .chat-message-scroll [data-slot="scroll-area-viewport"] {
   overscroll-behavior-y: contain;
   overflow-anchor: none;
@@ -115,7 +122,6 @@
   .chat-composer-tools, .chat-composer-send { min-width: 44px; min-height: 44px; }
   .chat-composer[data-expanded="true"] .chat-composer-tools,
   .chat-composer[data-expanded="true"] .chat-composer-send { bottom: 8px; }
-  .chat-composer-menu input, .chat-composer-menu select { font-size: 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .chat-generation-dots i { animation: none; opacity: .6; }
