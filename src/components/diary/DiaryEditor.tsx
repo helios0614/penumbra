@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { PageScrollArea } from "@/components/ui/page-scroll-area";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { diaryDialogViewportRef, DiaryReaderPaper, diaryTagLabels } from "./DiaryReaderDetails";
+import { DiaryKeywordEditor } from "./DiaryKeywordEditor";
 import "./diary-editor.css";
 
 export function DiaryEditor({ editor, controller, editorRef, onCancel }: {
@@ -28,10 +29,10 @@ export function DiaryEditor({ editor, controller, editorRef, onCancel }: {
       {editor.error && <p className="mx-auto mt-1 max-w-[42rem] text-xs leading-5 text-destructive-foreground" role="alert">{editor.error}</p>}
     </header>
     <PageScrollArea label="日记编辑字段" topLabel="回到编辑顶部" contentClassName="diary-editor-fields px-4 py-4 sm:px-7">
-      <form className="mx-auto w-full max-w-[42rem] space-y-5" onSubmit={(event) => { event.preventDefault(); void controller?.saveEdit(); }}>
-        <p className="text-xs leading-5 text-muted-foreground">编辑日记 · {editor.baseline.date}。保存会保留归档状态；当前接口无法确认向量处理结果。</p>
+      <form className="mx-auto w-full max-w-[42rem] space-y-4" onSubmit={(event) => { event.preventDefault(); void controller?.saveEdit(); }}>
+        <p className="text-xs leading-5 text-muted-foreground">编辑日记 · <time dateTime={editor.baseline.date}>{editor.baseline.date}</time></p>
         <div><label htmlFor="diary-edit-title" className="mb-2 block text-sm font-medium">标题</label>
-          <Textarea id="diary-edit-title" surface="translucent" value={editor.draft.title} rows={2} disabled={busy} onChange={(event) => change({ title: event.target.value })} />
+          <DiaryEditorTitle value={editor.draft.title} disabled={busy} onChange={(title) => change({ title })} />
         </div>
         <div><label htmlFor="diary-edit-content" className="mb-2 block text-sm font-medium">正文</label>
           <Textarea id="diary-edit-content" surface="translucent" value={editor.draft.content} rows={18} className="diary-editor-prose text-[15px] leading-8" disabled={busy} onChange={(event) => change({ content: event.target.value })} />
@@ -43,17 +44,24 @@ export function DiaryEditor({ editor, controller, editorRef, onCancel }: {
           </div>
           <DiaryEditList label="自定义分类" values={editor.draft.tags.filter((tag) => !diaryTagLabels.has(tag))} disabled={busy} onChange={(values) => change({ tags: [...editor.draft.tags.filter((tag) => diaryTagLabels.has(tag)), ...values] })} />
         </fieldset>
-        <fieldset disabled={busy}><legend className="mb-2 text-sm font-medium">关键词</legend>
-          <DiaryEditList label="关键词" values={editor.draft.keywords} disabled={busy} onChange={(keywords) => change({ keywords })} />
+        <fieldset disabled={busy} className="min-w-0"><legend className="mb-2 text-sm font-medium">关键词</legend>
+          <DiaryKeywordEditor values={editor.draft.keywords} disabled={busy} onChange={(keywords) => change({ keywords })} />
         </fieldset>
         <div><label htmlFor="diary-edit-importance" className="mb-2 block text-sm font-medium">重要度（0–1）</label>
           <Input id="diary-edit-importance" surface="translucent" type="number" min={0} max={1} step="any" value={editor.draft.importance ?? ""} disabled={busy} onChange={(event) => change({ importance: event.target.value === "" ? null : Number(event.target.value) })} />
           {editor.baseline.importance === null && <p className="mt-1 text-xs leading-5 text-muted-foreground">原重要度不可用，留空将保留服务端原值。</p>}
         </div>
-        <p className="text-xs leading-5 text-muted-foreground">保存前会重新核对日记，但后端没有版本锁；核对后到写入之间仍可能被其他客户端覆盖。</p>
       </form>
     </PageScrollArea>
   </DiaryReaderPaper>;
+}
+
+function DiaryEditorTitle({ value, disabled, onChange }: { readonly value: string; readonly disabled: boolean; readonly onChange: (value: string) => void }) {
+  return <div className="diary-editor-title-wrap text-base leading-6 md:text-sm">
+    {/* The inert mirror also grows with wrapping and text zoom without field-sizing support. */}
+    <span className="diary-editor-title-measure" aria-hidden="true">{`${value} `}</span>
+    <Textarea id="diary-edit-title" surface="translucent" className="diary-editor-title" value={value} rows={1} disabled={disabled} onChange={(event) => onChange(event.target.value)} />
+  </div>;
 }
 
 export function DiaryEditList({ label, values, disabled, onChange }: { readonly label: string; readonly values: readonly string[]; readonly disabled: boolean; readonly onChange: (values: readonly string[]) => void }) {

@@ -44,6 +44,9 @@ describe("Diary direct editing UI", () => {
     expect(html.indexOf(">保存</button>")).toBeLessThan(html.indexOf('data-page-scroll-region="true"'));
     expect(html).toContain(entry.content); expect(html).toContain("未知分类"); expect(html).toContain("重要度（0–1）");
     expect(html).not.toMatch(/line-clamp|模型选择|自动投喂状态|Entry ID/);
+    expect(html).toContain('<time dateTime="2026-10-09">2026-10-09</time>');
+    expect(html).not.toMatch(/当前接口无法确认向量处理结果|后端没有版本锁|核对后到写入之间/);
+    expect(html).toContain('aria-label="关键词草稿"');
     callback(tree, (node) => node.props["aria-label"] === "取消编辑并返回阅读"); expect(cancel).toHaveBeenCalledOnce();
     callback(tree, (node) => node.type === Button && node.props["aria-busy"] === false); expect(save).toHaveBeenCalledOnce();
     callback(tree, (node) => node.type === Textarea && node.props.id === "diary-edit-content", "onChange", { target: { value: "新的\n正文" } });
@@ -62,13 +65,13 @@ describe("Diary direct editing UI", () => {
     expect(find(busy, (node) => node.props["aria-label"] === "取消编辑并返回阅读")?.props.disabled).toBe(true);
     expect(find(busy, (node) => node.type === Textarea && node.props.id === "diary-edit-content")?.props.disabled).toBe(true); active.dispose();
   });
-  it("edits keywords as distinct values without splitting newline-containing text", () => {
-    const change = vi.fn(), values = ["关键词\n内部换行", "第二项"];
-    const tree = DiaryEditList({ label: "关键词", values, disabled: false, onChange: change });
-    expect(find(tree, (node) => node.props["aria-label"] === "关键词 1")?.props.value).toBe(values[0]);
-    callback(tree, (node) => node.props["aria-label"] === "关键词 2", "onChange", { target: { value: "修改\n第二项" } });
+  it("keeps custom category editing unchanged", () => {
+    const change = vi.fn(), values = ["分类\n内部换行", "第二项"];
+    const tree = DiaryEditList({ label: "自定义分类", values, disabled: false, onChange: change });
+    expect(find(tree, (node) => node.props["aria-label"] === "自定义分类 1")?.props.value).toBe(values[0]);
+    callback(tree, (node) => node.props["aria-label"] === "自定义分类 2", "onChange", { target: { value: "修改\n第二项" } });
     expect(change).toHaveBeenCalledWith([values[0], "修改\n第二项"]);
-    callback(tree, (node) => node.props["aria-label"] === "移除关键词 1"); expect(change).toHaveBeenCalledWith(["第二项"]);
+    callback(tree, (node) => node.props["aria-label"] === "移除自定义分类 1"); expect(change).toHaveBeenCalledWith(["第二项"]);
   });
   it("uses shared AlertDialog keep/discard actions, with no discard during saving", () => {
     const keep = vi.fn(), discard = vi.fn(), tree = DiaryDiscardDialog({ open: true, busy: false, onKeep: keep, onDiscard: discard });
