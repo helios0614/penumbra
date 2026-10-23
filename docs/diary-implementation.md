@@ -1,13 +1,13 @@
-# Diary PR1 / PR1.1：月历主页与独立正文阅读
+# Diary PR1 / PR1.1 / PR1.2：月历、正文阅读与归档日记编辑
 
-当前范围为 Penumbra 的只读 Diary 应用。设计参考日记双页面草图和 AionHome
+当前范围为 Penumbra Diary 的月历、阅读、已归档日记编辑与全局投喂开关。设计参考日记双页面草图和 AionHome
 日历操作方式，材质、控件、反馈和滚动沿用 Penumbra UI Foundation。
 
 ## 应用与分层
 
 - 独立 `diary` App ID，Classic `/app/diary` 与 Editorial `/editorial/app/diary`
   共用 `DiaryView`。普通 `notes` 仍是笔记；没有改变应用壳或新增嵌套路由。
-- `domain/diary`：业务日期校验、只读 HTTP client、PR0 索引及旧详情的投影与校验。
+- `domain/diary`：业务日期校验、HTTP adapter、PR0 索引及旧详情的投影与校验；写入仅限 Entry 编辑与全局开关。
 - `application/diary-reader`：月历选择、读取/刷新、请求合并、取消、乱序隔离、详情失效。
 - `components/diary`：月历、预览、正文、状态反馈与应用内位置恢复。
 - 不读取 Main Chat 或 Diary 消息，不订阅生成事件，不复用 Chat 消息控制器。
@@ -22,9 +22,12 @@
 | 点击已归档预览、刷新正文 | 同一 Entry GET | 进入阅读复用在途或已读取详情；显式刷新重新 GET。检查 `ok:false`、ID、业务日期、`status=done` 和有效正文 |
 | 普通返回月历 | 已读详情无额外 HTTP 请求 | 保留原月份、日期、索引及滚动位置；中途取消的详情可按需重新读取预览 |
 | 正文失效后返回 | 重读当前月历 | 旧索引已失效，不能继续显示已归档旧事实 |
+| 编辑已归档日记 | Entry GET → PUT → GET | 写前核对，写后回读全部阅读字段；只有一致才更新阅读数据与月历标题 |
+| 初次进入或刷新月历、重新核对设置 | `GET /api/diary/auto-feed-status` | 全局状态，未读取时为 unknown，不展示假的关闭 Switch |
+| 切换全局投喂 | `POST /api/diary/auto-feed-toggle` → 状态 GET | `{enabled:boolean}`；写入回执和回读均确认才提示成功 |
 
-所有请求使用公共 HTTP 客户端的会话凭据、超时及 AbortSignal，显式 GET 与
-`cache: no-store`。不调用全量 `/entries`、旧 `/calendar` 或任何写入接口。
+所有请求使用公共 HTTP 客户端的会话凭据、超时及 AbortSignal。读取显式 GET 与
+`cache: no-store`；编辑 PUT 和开关 POST 也复用同一客户端。不调用全量 `/entries`、旧 `/calendar`、生成或消息接口。
 
 PR0 来源：AionHome 当前 `docs/diary-reader-calendar-contract.md`、
 `aion-chat/diary_reader.py`、`routes/diary.py`。
@@ -44,13 +47,13 @@ PR0 来源：AionHome 当前 `docs/diary-reader-calendar-contract.md`、
 - 标题允许 null/空白；仅展示时用“无标题”，不写回。正文保留原始文本与换行，
   不解释 Markdown、不拆成段落卡片、不生成摘要/图片/归档时间。
 - 详情 `importance` 仅接受有限的 `0..1` 数字（包括 0），其他值不显示、不默认成
-  0.5；标题旁保留原始数值。沿用旧日记阈值：`<0.6` 用 muted-strong，
-  `0.6..<0.8` 用 primary-ink，`>=0.8` 以同一主题 token 的轻底和描边强调。
+  0.5；阅读页只在标题侧用细线表达，不显示数字，并保留无障碍描述。旧日记阈值：
+  `<0.6` 为中性线、`0.6..<0.8` 为 45% 主题色混合、`>=0.8` 为主题色。
 - 详情 `tags` 与 `keywords` 独立处理：接受数组和旧 JSON 数组字符串，只保留
   非空字符串并去重；非法 JSON、对象、null、非字符串元素不渲染，也不阻断正文。
   标签使用 AionHome 旧日记 `TAG_OPTIONS` 的已有中文名称，未知标签保留原文；
-  关键词始终显示原文，不作标签代码翻译。两组均在正文末尾以可换行的轻量 Chip
-  展示，不生成新标签。现有 Entry 表和详情没有独立 category/type 字段，不补造。
+  关键词始终显示原文，不作标签代码翻译。分类固定在标题附近，关键词固定在底部，
+  不生成新标签。现有 Entry 表和详情没有独立 category/type 字段，不补造。
 - 有效正文判空匹配 PR0 的 Python `str.strip()` Unicode 规则，保留正文原文。
 
 ## 请求生命周期与反馈
@@ -83,7 +86,10 @@ Reader 确认详情不存在、不再归档、无有效正文或身份/数据契
   图例和预览间距收紧，空日只有日期与一句提示，不设置卡片最小高度。
 - 阅读态保持月历挂载但隐藏，固定返回/日期区域，全文在自己的 `PageScrollArea`
   中独立滚动。标题可换行，正文 `white-space: pre-wrap`、`overflow-wrap: anywhere`。
-  重要度与末尾标签/关键词都在同一个正文滚动区域，使用既有轻暖纸面，不固定底栏。
+  顶部标题/分类固定、正文独立滚动、底部关键词固定；同一轻暖纸面。PR1.2 移除重复的
+  “阅读信息” Dialog，顶部直接显示铅笔与“编辑”。完整标题/分类在原标题位置用轻量
+  Popover 查看；关键词继续使用原有“全部” Dialog。最短视口将标题查看入口收为小按钮，
+  关键词保留底部紧凑入口，避免因移除旧 Dialog 丢失完整查看路径。
 - 返回恢复原月历容器的位置（内容变短时限于可滚动范围），并恢复阅读全文或日期
   目标的焦点；原触发器消失时聚焦具名滚动区。切月才主动重置月历位置。
 - 今日的日期环、选中背景、空心/实心/异常标记独立；选中背景上的标记使用
@@ -127,5 +133,67 @@ PR1.1 在 2026-10-23 验证：相关 Diary、入口与位置恢复测试均通�
 8. PR1.1：核对真实重要度（含 0）及标签/关键词的语义，长词自然换行；完整正文
    与末尾附属信息可滚到底，返回月份、日期、合理滚动位置与焦点恢复。
 
-不包含写作 Chat、生成、材料/消息读取、编辑、归档提交、补写、模型设置、
-自动投喂管理、摘要和封面。未改 AionHome，不处理其已知的投喂替换风险。
+## PR1.2 编辑与全局开关
+
+2026-10-23 审计基线：Penumbra `1f9cf7b`、AionHome `fc9c4f3`，两边开始时均干净。
+后端依据 `aion-chat/routes/diary.py` 的 Entry GET/PUT、`AutoFeedToggle`、
+`get_auto_feed_status` / `toggle_auto_feed`，以及 `memory.py:get_embedding` 与旧 `static/diary.html`。
+
+- 编辑字段：标题、完整正文、分类 `tags`、关键词 `keywords`、重要度。正文必须满足已归档
+  条目的有效正文规则；标题允许空字符串。重要度参考旧版滑块 `/100` 的 `0..1` 数值，
+  不增加业务分级。原重要度不可用时不补默认值，用户不填就不发送该字段。
+- 独立编辑工作区共用受限纸面与 visualViewport 适配，取消/保存固定在上方，字段区滚动。
+  草稿独立于 Reader；关键词逐项编辑，保留其顺序及值内部的换行，不按分隔符猜测拆分。
+  列表外侧空白在提交时按既有详情投影去除，空项和重复项明确报错；正文和标题不 trim。
+- PUT 白名单仅含用户修改的字段及 `status:"done"`。标题或正文变化时同时发送完整
+  `title`、`content`、`status:"done"`，满足原 embedding 触发条件。仅修改分类/关键词/
+  重要度时不重写未修改的正文。日期、ID、模型、自动投喂内部配置均不发送。
+- 写前回读阅读字段与编辑基线对照；已变化则保留草稿、不写入。这个检查不能消除随后
+  GET→PUT 的竞争窗口，后端没有 CAS / 版本锁，不声称具备完整并发保护。
+- `{ok:true}` 不足以确认保存：原 PUT 不检查受影响记录数，因此写后 GET 校验 ID、业务日期、
+  done、有效正文及所有编辑字段。吻合后更新 Reader/详情缓存和当前索引标题，取消旧索引
+  请求，公共 Toast 提示“日记已保存”。回读失败或不一致保留草稿、不报成功。
+- 网络/超时/5xx/异常回执属于结果未知，阻止再次 PUT，只提供 GET“核对结果”；保存失败
+  仍可编辑。核对旧提交成功但已有新草稿修改时，更新保存基线并保留新增修改。
+  明确拒绝（如 401/403/422）允许用户修改后手动重试，不自动重发任何写入。
+- 取消、应用关闭和浏览器 Back 经 feature-local 编辑历史层及公共 AlertDialog 保护；
+  保存中阻止离开，刷新/关闭窗口使用浏览器标准 beforeunload 提醒。普通月份/阅读导航不改。
+- 全局投喂状态与月份、日期分离。开关只使用公共 Switch；未知状态不渲染 off，busy 保留
+  已确认状态。POST 后再 GET 核对；失败保留已确认状态，未知结果锁定切换，仅允许 GET
+  核对。重新进入 Diary 或刷新月历都会重新读取设置。
+
+尚未修复的后端限制：
+
+1. embedding 失败返回 None 时正文仍可保存，旧 embedding 可能保留；PUT/GET 不返回向量处理
+   结果，所以前端只能确认日记内容，不能判断实际向量成败。保存 Toast 附带说明，不声称
+   索引更新成功。最小后端改进应是返回目标更新事实及独立向量处理结果。
+2. PUT 缺少版本校验；最小并发保护应由后端提供版本字段与条件更新，本轮不自行改造。
+3. `schedule.py` 内部调用 `start_auto_feed(target_date)`，默认 `Query(False)` 对象在 Python
+   调用中可被当作真值，仍可能进入替换未完成条目的分支。帮助 Popover 提示风险，本轮只
+   写全局开关，不调用执行接口、不修改替换/续写/调度策略。
+
+本轮实现文件：
+
+- `src/domain/diary/diary-write-client.ts`
+- `src/application/diary-reader/diary-actions-state.ts`、`diary-actions-controller.ts`、
+  `diary-reader-controller.ts`、`diary-reader-state.ts`
+- `src/components/diary/DiaryAutoFeed.tsx`、`DiaryEditor.tsx`、`DiaryCalendar.tsx`、`DiaryReader.tsx`、
+  `DiaryReaderDetails.tsx`、`DiaryView.tsx`、`useDiary.ts`、`useDiaryEditorNavigation.ts`、
+  `diary-edit-navigation.ts`、`diary-editor.css`、`diary.css`
+- 测试：`src/domain/diary/diary-write.test.ts`、
+  `src/application/diary-reader/diary-actions-controller.test.ts`、
+  `src/components/diary/DiaryEditing.test.tsx`、`DiaryPresentation.test.tsx`、`DiaryReaderDetails.test.tsx`、`diary-edit-navigation.test.ts`
+- 本文 `docs/diary-implementation.md`
+
+PR1.2 验证（2026-10-23）：相关测试通过；全量 `npm test` 104 个文件、1613 项通过，
+`npx tsc --noEmit`、`npm run build`、`git diff --check` 均通过。测试使用 mock fetch、
+真实控制器回调、静态渲染和模拟 History/viewport，不使用浏览器自动化或真实业务写入。
+范围核对确认月历只新增设置行，日期网格/状态点、纸面配方、正文滚动区、关键词高度、
+重要度颜色和原有返回恢复未改动。AionHome 工作区保持干净。
+
+待人工验收：Classic / Editorial 的 320px、390px、短屏与软键盘；标题/分类完整查看与
+固定关键词；长正文编辑的输入、取消/保存可达性；放弃后焦点；真实 GET/PUT/GET 回读及
+设置开关失败/未知结果的恢复。测试不能证明实际 embedding 成功或消除后端并发窗口。
+
+不包含写作 Chat、生成、材料/消息读取、提取归档、新建、补写、模型设置、自动投喂执行链路、
+摘要和封面。未改 AionHome；未 commit、push、部署或使用浏览器自动化。

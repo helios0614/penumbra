@@ -13,6 +13,7 @@ export function useDiary() {
     setState(active.getState());
     const unsubscribe = active.subscribe(setState);
     void active.load();
+    void active.loadAutoFeed();
     const timer = window.setInterval(() => setToday(localDiaryDate()), 60_000);
     return () => { window.clearInterval(timer); unsubscribe(); active.dispose(); };
   }, []);

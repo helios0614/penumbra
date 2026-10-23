@@ -9,7 +9,7 @@ import { parseArchivedDiary } from "@/domain/diary/diary-mappers";
 import { createDiaryReaderController } from "@/application/diary-reader/diary-reader-controller";
 import { DiaryCalendar, DiarySelection } from "./DiaryCalendar";
 import { DiaryReader, diaryReaderImportance } from "./DiaryReader";
-import { DiaryReaderInfo, DiaryReaderTags } from "./DiaryReaderDetails";
+import { DiaryReaderHeading, DiaryReaderTags } from "./DiaryReaderDetails";
 import { DiaryView } from "./DiaryView";
 import { useDiary } from "./useDiary";
 import { useDiaryNavigation } from "./useDiaryNavigation";
@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 
 vi.mock("./useDiary", () => ({ useDiary: vi.fn() }));
 vi.mock("./useDiaryNavigation", () => ({ useDiaryNavigation: vi.fn() }));
+vi.mock("./useDiaryEditorNavigation", () => ({ useDiaryEditorNavigation: () => ({ editorRef: { current: null }, editButtonRef: { current: null }, discard: null, cancel: vi.fn(), exit: vi.fn(), keep: vi.fn(), confirm: vi.fn() }) }));
 vi.mock("@/components/ui/toast", async (importOriginal) => ({ ...await importOriginal<typeof import("@/components/ui/toast")>(), useFeedbackToast: vi.fn() }));
 afterEach(() => vi.resetAllMocks());
 
@@ -159,7 +160,7 @@ describe("Diary full-text reader and page", () => {
     expect(html.match(/overflow-y-auto/g)).toHaveLength(1);
     expect(html).toContain("**原样保留**\n\n&lt;script&gt;example&lt;/script&gt;");
     expect(html).toContain("末尾"); expect(html).toContain("[overflow-wrap:anywhere]"); expect(html).toContain("whitespace-pre-wrap");
-    expect(html).not.toMatch(/<script|<strong|<img|line-clamp|truncate|<textarea|编辑|下一篇/);
+    expect(html).not.toMatch(/<script|<strong|<img|line-clamp|truncate|<textarea|下一篇/);
   });
   it.each([null, "", " \n "])("uses a display-only untitled fallback: %s", (title) => {
     expect(renderToStaticMarkup(<DiaryReader reader={{ ...reader, entry: { ...reader.entry, title } }} onBack={vi.fn()} onRetry={vi.fn()} />)).toContain("无标题");
@@ -193,16 +194,16 @@ describe("Diary full-text reader and page", () => {
     expect(html).not.toMatch(/aria-label="日记标签"|aria-label="日记关键词区"|<footer/);
     expect(DiaryReaderTags({ tags: [] })).toBeNull();
   });
-  it("keeps the full extreme title and all tag identities available in the information dialog", () => {
+  it("keeps the full extreme title and all tag identities available beside the original heading", () => {
     const title = "超长标题🦉https://example.com/".repeat(100), tags = Array.from({ length: 80 }, (_, index) => `分类${index}`);
     const entry = { ...reader.entry, title, tags };
     const html = renderToStaticMarkup(<DiaryReader reader={{ ...reader, entry }} onBack={vi.fn()} onRetry={vi.fn()} />);
-    expect(html).toContain(title); expect(html).toContain('aria-label="查看完整阅读信息"'); expect(html).toContain("分类79");
-    const tree = DiaryReaderInfo({ entry }), dialogBody = find(tree, (el) => el.props["closeButtonProps"] !== undefined);
-    expect(dialogBody).toBeDefined();
-    expect(renderToStaticMarkup((find(tree, (el) => el.type === "h3"))!)).toContain(title);
+    expect(html).toContain(title); expect(html).toContain('aria-label="查看完整标题与分类"'); expect(html).toContain("分类79");
+    const tree = DiaryReaderHeading({ entry });
+    expect(renderToStaticMarkup((find(tree, (el) => el.type === "p"))!)).toContain(title);
     const fullTags = find(tree, (el) => el.type === DiaryReaderTags);
-    expect(fullTags?.props).toMatchObject({ tags, full: true });
+    expect(fullTags?.props).toMatchObject({ tags });
+    expect(html).not.toMatch(/查看完整阅读信息|阅读信息|lucide-ellipsis/);
   });
   it("caps only metadata and uses actual Reader height for short-screen fallbacks", () => {
     const css = readFileSync(new URL("./diary.css", import.meta.url), "utf8");
@@ -214,7 +215,7 @@ describe("Diary full-text reader and page", () => {
     expect(css).toContain(".diary-reader-chip-full { white-space: normal; overflow-wrap: anywhere; overflow: visible; }");
     expect(css).toContain("padding-bottom: max(1rem, env(safe-area-inset-bottom))");
     expect(css).toContain("@container diary-reader (max-height: 24rem)");
-    expect(css).toContain(".diary-reader-heading, .diary-reader-date { display: none; }");
+    expect(css).toContain(".diary-reader-date { display: none; }");
     expect(css).toContain("@container diary-reader (max-height: 9rem)");
     expect(css).toContain("var(--color-primary) 45%, var(--color-border)");
     expect(css).toContain('.diary-reader-heading[data-importance-level="high"]::before { background: var(--color-primary); }');
@@ -245,10 +246,12 @@ describe("Diary full-text reader and page", () => {
   });
   it("keeps retry and refresh controls tied to read operations", () => {
     const active = controller(), refresh = vi.spyOn(active, "refresh").mockResolvedValue(true);
+    const setting = vi.spyOn(active, "loadAutoFeed").mockResolvedValue(true);
     vi.mocked(useDiary).mockReturnValue({ state: loaded, controller: active, today: "2026-10-23" });
     vi.mocked(useDiaryNavigation).mockReturnValue({ calendarRef: createRef(), readerRef: createRef(), openButtonRef: createRef(), dateButtonRef: createRef(), open: vi.fn(), back: vi.fn() });
     const tree = DiaryView({});
     click(find(tree, (el) => el.props["aria-label"] === "刷新日历")); expect(refresh).toHaveBeenCalledOnce();
-    expect(renderPage(loaded)).not.toMatch(/自动投喂|保存日记|继续写|封面|摘要|Chat/);
+    expect(setting).toHaveBeenCalledOnce();
+    expect(renderPage(loaded)).not.toMatch(/开始投喂|继续写|封面|摘要|Chat/);
   });
 });

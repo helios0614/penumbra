@@ -109,11 +109,11 @@ describe("Diary bounded keyword viewing", () => {
     }
   });
 
-  it("returns focus to the visible keyword trigger after a resize, or reading information if the footer collapsed", () => {
+  it("returns focus to the visible keyword trigger after a resize, with Edit as the fallback", () => {
     const regular = { visible: true, visibility: "visible", getClientRects() { return this.visible ? [{}] : []; } };
     const compact = { ...regular, visible: false }, info = { focus: vi.fn() };
     vi.stubGlobal("window", { getComputedStyle: (node: typeof regular) => ({ visibility: node.visibility }) });
-    const footer = { querySelectorAll: () => [regular, compact], closest: () => ({ querySelector: () => info }) };
+    const footer = { querySelectorAll: () => [regular, compact], closest: () => ({ querySelector: (selector: string) => { expect(selector).toBe("[data-diary-edit-trigger]"); return info; } }) };
     const strip = { closest: () => footer } as unknown as HTMLElement;
     expect(diaryKeywordReturnFocus(strip)).toBe(regular);
     regular.visible = false; compact.visible = true; expect(diaryKeywordReturnFocus(strip)).toBe(compact);

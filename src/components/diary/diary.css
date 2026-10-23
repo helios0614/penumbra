@@ -46,7 +46,7 @@
 
 /* One bounded paper, with only the middle region scrolling. Queries use the
    Reader's remaining height, so the shared PageHeader and browser chrome count. */
-.diary-reader { container: diary-reader / size; min-inline-size: 0; max-block-size: var(--diary-reader-available-height, none); }
+.diary-reader { position: relative; container: diary-reader / size; min-inline-size: 0; max-block-size: var(--diary-reader-available-height, none); }
 .diary-reader-header, .diary-reader-keywords { flex-shrink: 0; }
 .diary-reader-header, .diary-reader-body-content, .diary-reader-keywords {
   padding-left: max(1rem, env(safe-area-inset-left));
@@ -81,6 +81,7 @@
   font-size: 1.125rem;
   line-height: 1.75rem;
 }
+.diary-reader-title-compact { display: none; }
 .diary-reader-tags, .diary-reader-keyword-window, .diary-reader-chips-full {
   display: flex;
   min-inline-size: 0;
@@ -125,8 +126,8 @@
   .diary-reader-title { font-size: 1.25rem; }
 }
 
-/* Root-relative lengths also react to enlarged text. Full information remains
-   available from the named Dialog trigger beside Back in every compact mode. */
+/* Root-relative lengths also react to enlarged text. Title/classification use
+   their own compact trigger; keywords keep the existing bottom full-view action. */
 @container diary-reader (max-height: 24rem) {
   .diary-reader-header { padding-top: 0; padding-bottom: .375rem; }
   .diary-reader-heading { margin-top: .125rem; }
@@ -138,8 +139,12 @@
   .diary-reader-body-content { padding-top: .5rem; }
 }
 @container diary-reader (max-height: 14rem) {
-  .diary-reader-heading, .diary-reader-date { display: none; }
+  .diary-reader-date { display: none; }
+  .diary-reader-heading { position: absolute; top: .25rem; right: 5.75rem; margin: 0; padding: 0; }
+  .diary-reader-heading::before, .diary-reader-heading .diary-reader-title, .diary-reader-title-chevron { display: none; }
+  .diary-reader-title-trigger { width: 2.75rem; min-height: 2.75rem; justify-content: center; }
+  .diary-reader-title-compact { display: block; }
 }
 @container diary-reader (max-height: 9rem) {
-  .diary-reader-keywords { display: none; }
+  .diary-reader-keywords-compact { min-height: 2rem; }
 }

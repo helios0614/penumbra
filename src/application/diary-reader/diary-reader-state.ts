@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/api";
 import { DiaryContractError, DiaryUnavailableError, localDiaryDate, type ArchivedDiary, type DiaryCalendar } from "@/domain/diary";
+import { initialDiaryAutoFeed, type DiaryAutoFeed, type DiaryEditor } from "./diary-actions-state";
 
 export interface DiaryReader {
   readonly entryId: string;
@@ -17,11 +18,13 @@ export interface DiaryState {
   readonly calendarError: string | null;
   readonly preview: DiaryReader | null;
   readonly reader: DiaryReader | null;
-  readonly notice: { readonly text: string } | null;
+  readonly editor: DiaryEditor | null;
+  readonly autoFeed: DiaryAutoFeed;
+  readonly notice: { readonly text: string; readonly description?: string } | null;
 }
 
 export function initialDiaryState(date = localDiaryDate()): DiaryState {
-  return { month: date.slice(0, 7), selectedDate: date, calendar: null, calendarLoading: false, calendarError: null, preview: null, reader: null, notice: null };
+  return { month: date.slice(0, 7), selectedDate: date, calendar: null, calendarLoading: false, calendarError: null, preview: null, reader: null, editor: null, autoFeed: initialDiaryAutoFeed, notice: null };
 }
 
 export function diaryReadFailure(error: unknown): string {

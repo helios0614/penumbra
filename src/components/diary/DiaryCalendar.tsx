@@ -7,6 +7,7 @@ import { shiftDiaryMonth, type DiaryCalendarItem, type DiaryCalendarState } from
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DiaryFeedback } from "./DiaryFeedback";
+import { DiaryAutoFeed } from "./DiaryAutoFeed";
 
 export function DiaryMarker({ state }: { readonly state: DiaryCalendarState }) {
   return state === "invalid"
@@ -33,6 +34,7 @@ export function DiaryCalendar({ state, controller, today, onOpen, openButtonRef,
       <Button variant="ghost" className="min-h-11 px-3 text-xs text-muted-strong" onClick={() => void controller?.goToday()} disabled={!controller} aria-label="回到今天">今天</Button>
       <Tooltip><TooltipTrigger render={<Button variant="ghost" className="size-11 text-muted-strong" aria-label="下个月" disabled={!next || !controller} onClick={() => next && void controller?.selectMonth(next)} />}><ChevronRight aria-hidden="true" /></TooltipTrigger><TooltipContent>下个月</TooltipContent></Tooltip>
     </div>
+    <DiaryAutoFeed state={state.autoFeed} controller={controller} />
     <DiaryFeedback loading={state.calendarLoading || (!state.calendar && !state.calendarError)} error={state.calendarError} retained={Boolean(state.calendar)} target="日历" onRetry={() => void controller?.load()} />
     <table className="diary-calendar-table mt-2 w-full table-fixed border-separate" aria-labelledby="diary-month-title">
       <thead><tr>{DIARY_WEEKDAYS.map((day) => <th key={day} scope="col" className="h-8 text-xs font-normal text-muted-foreground">{day}</th>)}</tr></thead>

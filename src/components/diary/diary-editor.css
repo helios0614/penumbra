@@ -1,0 +1,5 @@
+.diary-editor-prose { min-height: 24rem; resize: vertical; }
+.diary-editor-fields { padding-bottom: max(1.5rem, env(safe-area-inset-bottom)); }
+@container diary-reader (max-height: 18rem) {
+  .diary-editor-header { padding-top: 0; padding-bottom: .25rem; }
+}

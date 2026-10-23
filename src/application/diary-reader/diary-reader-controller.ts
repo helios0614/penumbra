@@ -1,13 +1,15 @@
 import { ApiError } from "@/lib/api";
 import { getArchivedDiary, getDiaryCalendar, diaryDate, diaryMonthDays, isDiaryDate, isDiaryMonth, localDiaryDate, DiaryContractError, DiaryUnavailableError, type ArchivedDiary } from "@/domain/diary";
 import { diaryReadFailure, initialDiaryState, type DiaryReader, type DiaryState } from "./diary-reader-state";
+import { createDiaryActions, type DiaryActionDependencies } from "./diary-actions-controller";
+import { getDiaryAutoFeed, setDiaryAutoFeed, updateArchivedDiary } from "@/domain/diary/diary-write-client";
 
-export interface DiaryReaderDependencies {
+export interface DiaryReaderDependencies extends Partial<Omit<DiaryActionDependencies, "getArchivedDiary">> {
   readonly getDiaryCalendar: typeof getDiaryCalendar;
   readonly getArchivedDiary: typeof getArchivedDiary;
 }
 
-/** Read lifecycles only. Generation, message state and archive transitions remain on the backend. */
+/** Read/edit lifecycles only. Generation and message state remain on the backend. */
 export function createDiaryReaderController(
   deps: DiaryReaderDependencies = { getDiaryCalendar, getArchivedDiary },
   today: () => string = localDiaryDate,
@@ -129,7 +131,7 @@ export function createDiaryReaderController(
   }
 
   function selectMonth(month: string, selectedDate?: string): Promise<boolean> {
-    if (disposed || state.reader || !isDiaryMonth(month)) return Promise.resolve(false);
+    if (disposed || state.reader || state.editor || !isDiaryMonth(month)) return Promise.resolve(false);
     const changed = month !== state.month;
     const date = selectedDate ?? diaryDate(month, Math.min(Number(state.selectedDate.slice(8)), diaryMonthDays(month)));
     const selectionChanged = changed || date !== state.selectedDate;
@@ -140,12 +142,28 @@ export function createDiaryReaderController(
     return loadCalendar();
   }
 
+  const actions = createDiaryActions({
+    deps: { updateArchivedDiary, getDiaryAutoFeed, setDiaryAutoFeed, ...deps }, getState: () => state, publish,
+    onSaved(entry) {
+      cancelEntry(); ++calendarSeq; calendarRead?.abort.abort(); calendarRead = null;
+      entries.set(entry.id, entry);
+      if (!state.calendar) reloadOnReturn = true;
+      publish({
+        reader: { entryId: entry.id, date: entry.date, entry, loading: false, error: null },
+        ...(sameEntry(state.preview, entry.id, entry.date) ? { preview: { entryId: entry.id, date: entry.date, entry, loading: false, error: null } } : {}),
+        calendarLoading: false,
+        calendar: state.calendar ? { ...state.calendar, items: state.calendar.items.map((item) => item.entryId === entry.id && item.date === entry.date ? { ...item, title: entry.title } : item) } : null,
+      });
+    },
+  });
   return {
+    beginEdit: actions.beginEdit, changeDraft: actions.changeDraft, cancelEdit: actions.cancelEdit,
+    saveEdit: actions.saveEdit, verifyEdit: actions.verifyEdit, loadAutoFeed: actions.loadAutoFeed, toggleAutoFeed: actions.toggleAutoFeed,
     getState: () => state,
     load: () => loadCalendar(),
     selectMonth: (month: string) => selectMonth(month),
     selectDate(date: string) {
-      if (disposed || state.reader || !isDiaryDate(date) || date.slice(0, 7) !== state.month) return Promise.resolve(false);
+      if (disposed || state.reader || state.editor || !isDiaryDate(date) || date.slice(0, 7) !== state.month) return Promise.resolve(false);
       if (date !== state.selectedDate) cancelEntry();
       publish({ selectedDate: date, notice: null, ...(date !== state.selectedDate ? { preview: null } : {}) });
       return loadPreview();
@@ -155,15 +173,17 @@ export function createDiaryReaderController(
       return selectMonth(date.slice(0, 7), date);
     },
     openEntry(id: string): Promise<boolean> {
+      if (state.editor) return Promise.resolve(false);
       const item = state.calendar?.items.find((row) => row.entryId === id);
       if (!item || item.calendarState !== "archived") return Promise.resolve(false);
       return readEntry(item.entryId, item.date);
     },
     refresh() {
+      if (state.editor) return Promise.resolve(false);
       return state.reader ? readEntry(state.reader.entryId, state.reader.date, true) : loadCalendar(true);
     },
     back() {
-      if (disposed) return;
+      if (disposed || state.editor) return;
       cancelEntry();
       publish({ reader: null, notice: null });
       if (reloadOnReturn) { reloadOnReturn = false; void loadCalendar(); }
@@ -175,6 +195,7 @@ export function createDiaryReaderController(
     },
     dispose() {
       disposed = true;
+      actions.dispose();
       ++calendarSeq;
       calendarRead?.abort.abort();
       cancelEntry();
