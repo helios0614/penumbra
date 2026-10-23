@@ -51,8 +51,11 @@ describe("Chat geometry and reading intent", () => {
     viewport.clientHeight = 280; resize();
     expect(viewport.scrollTop).toBe(2000);
     viewport.scrollTop = 600; viewport.dispatchEvent(new Event("scroll"));
-    viewport.clientHeight = 220; viewport.scrollHeight = 2400; resize();
-    expect(viewport.scrollTop).toBe(600);
+    viewport.scrollHeight = 2400;
+    // The 200ms Composer transition generates multiple ResizeObserver frames.
+    for (const height of [270, 260, 250, 240, 230, 220]) {
+      viewport.clientHeight = height; resize(); expect(viewport.scrollTop).toBe(600);
+    }
     viewport.clientHeight = 480; resize(); expect(viewport.scrollTop).toBe(600);
     stop(); expect(disconnect).toHaveBeenCalledOnce(); expect(remove).toHaveBeenCalledOnce();
   });

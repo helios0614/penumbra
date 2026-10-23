@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { MessageActions } from "./MessageActions";
 import { GenerationIndicator } from "./GenerationIndicator";
+import { AI_BUBBLE_SURFACE, BUBBLE_SURFACE } from "./bubble-surface";
 import "./chat.css";
 import { SimpleThink, ThinkingBlock } from "./system-command/InlineIndicator";
 
@@ -97,11 +98,10 @@ function BubbleSegment({
   return (
     <div
       className={cn(
-        "relative min-h-9 min-w-0 max-w-full overflow-hidden rounded-md border px-4 py-2",
-        "overflow-wrap-anywhere break-words text-[14px] leading-[1.6]",
+        BUBBLE_SURFACE,
         isUser
           ? "border-primary/20 bg-primary/10 text-primary shadow-sm backdrop-blur-md"
-          : "border-ai/10 bg-ai/[0.06] text-ai shadow-none backdrop-blur-[2px]",
+          : AI_BUBBLE_SURFACE,
       )}
     >
       {isUser ? (
@@ -173,11 +173,13 @@ function BubbleInner({
   }
 
   const isUser = message.kind === "user";
+  const hasBody = message.content.trim().length > 0;
   const chunks = splitIntoChunks(message.content);
   const time = format(new Date(message.createdAt * 1000), "HH:mm");
-  const executionLabel = message.executionStatus === undefined || !isUser
+  const executionLabel = message.executionStatus === undefined
     ? null
-    : {
+    : !isUser ? (hasBody && message.executionStatus === "finalizing" ? "正在确认保存"
+      : hasBody && message.executionStatus === "unconfirmed" ? "结果待确认" : null) : {
         optimistic: "正在发送",
         streaming: "正在生成",
         finalizing: "正在确认",
@@ -185,7 +187,7 @@ function BubbleInner({
       }[message.executionStatus];
   const generationLabel = isUser || message.executionStatus === undefined ? null
     : message.executionStatus === "streaming"
-      ? (message.content.trim() ? "正在输入" : "正在生成")
+      ? (hasBody ? null : "正在生成")
       : message.executionStatus === "finalizing" ? "正在确认保存"
       : message.executionStatus === "unconfirmed" ? "结果待确认" : "正在发送";
 
@@ -249,7 +251,7 @@ function BubbleInner({
               content={chunk}
             />
           ))}
-          {generationLabel && <GenerationIndicator label={generationLabel}
+          {generationLabel && !hasBody && <GenerationIndicator label={generationLabel}
             active={message.executionStatus === "streaming" || message.executionStatus === "finalizing"} />}
         </div>
 

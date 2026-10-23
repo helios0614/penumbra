@@ -303,8 +303,8 @@ describe("ChatWorkspaceView ready states", () => {
 
     expect(html).toContain("临时新回复");
     expect(html).not.toContain("原回复");
-    expect(html).toContain("正在输入");
-    expect(html.split("正在输入")).toHaveLength(2);
+    expect(html).not.toContain("正在输入");
+    expect(html).not.toContain("chat-generation");
     expect(html).toMatch(/<textarea[^>]*disabled/);
     expect(html).toMatch(
       /<button[^>]*disabled[^>]*aria-label="当前无法切换到会话 A"|<button[^>]*aria-label="当前无法切换到会话 A"[^>]*disabled/,

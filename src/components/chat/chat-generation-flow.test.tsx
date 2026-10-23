@@ -55,7 +55,7 @@ describe("Main wire → controller → UI generation states", () => {
     expect(html()).toContain("正在生成"); expect(JSON.stringify(messages())).not.toMatch(/private|THINKING_START|HEART|TODO:/);
     wire.emit({ type: "chunk", content: "visible body" });
     await waitFor(() => html().includes("visible body"));
-    expect(messages().slice(-1)[0]?.id).toBe(overlayId); expect(html()).toContain("正在输入");
+    expect(messages().slice(-1)[0]?.id).toBe(overlayId); expect(html()).not.toContain("chat-generation");
     wire.close(); await waitFor(() => controller.getState().kind === "idle");
     expect(messages().map(({ id }) => id)).toEqual(["prior", "saved-user", "new-reply"]);
     expect(html()).not.toContain("chat-generation"); expect(html()).toContain("复制");
@@ -84,7 +84,7 @@ describe("Main wire → controller → UI generation states", () => {
     expect(html()).toContain("正在生成"); expect(html()).not.toContain("original persisted body");
     wire.emit({ type: "start", id: original.id });
     wire.emit({ type: "chunk", content: "replacement body" });
-    await waitFor(() => html().includes("replacement body")); expect(html()).toContain("正在输入");
+    await waitFor(() => html().includes("replacement body")); expect(html()).not.toContain("chat-generation");
     if (outcome === "success") wire.emit({ id: original.id, content: committed.content, thinking: null, drift: null }, "persisted");
     if (outcome === "failure") wire.emit({ type: "error", id: original.id, code: "provider_execution_failed" });
     wire.close();

@@ -5,6 +5,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  type CSSProperties,
   type ReactNode,
   type KeyboardEvent,
   type ChangeEvent,
@@ -58,52 +59,71 @@ export function Sender({
   const [focused, setFocused] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const composingRef = useRef(false);
+  const composerRef = useRef<HTMLDivElement>(null);
+  const compactMeasureRef = useRef<HTMLDivElement>(null);
+  const contentMeasureRef = useRef<HTMLDivElement>(null);
+  const [multiline, setMultiline] = useState(false);
+  const [textHeight, setTextHeight] = useState(24);
+  const [pendingDraft, setPendingDraft] = useState<string | null>(null);
+  const [recoveryDrafts, setRecoveryDrafts] = useState<readonly string[]>([]);
+  const draftRevisionRef = useRef(0);
+  const expanded = focused || menuOpen || multiline;
+  const displayedValue = pendingDraft === null ? value : "";
 
-  // 自动增高
+  // Measure inert text mirrors, never resize/reset the focused textarea to measure it.
+  // Compact width is stable across expansion, so soft wrapping cannot toggle the layout back and forth.
   const autoResize = useCallback(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    const maxHeight = 6 * 24; // 约 6 行（line-height 24px）
-    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+    const compact = compactMeasureRef.current, content = contentMeasureRef.current;
+    if (!compact || !content) return;
+    setMultiline(compact.scrollHeight > 25);
+    setTextHeight(Math.max(24, Math.min(content.scrollHeight, 144)));
   }, []);
 
   useLayoutEffect(() => {
     autoResize();
-  }, [value, autoResize]);
+  }, [displayedValue, expanded, autoResize]);
 
   useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea || typeof ResizeObserver === "undefined") return;
-    // Wrapping changes on rotation and when the mobile toolbar expands.
-    let width = textarea.clientWidth;
+    const compact = compactMeasureRef.current, content = contentMeasureRef.current;
+    if (!compact || !content || typeof ResizeObserver === "undefined") return;
+    let widths = `${compact.clientWidth}:${content.clientWidth}`;
     const observer = new ResizeObserver(() => {
-      if (textarea.clientWidth === width) return;
-      width = textarea.clientWidth;
+      const next = `${compact.clientWidth}:${content.clientWidth}`;
+      if (next === widths) return;
+      widths = next;
       autoResize();
     });
-    observer.observe(textarea);
+    observer.observe(compact);
+    observer.observe(content);
     return () => observer.disconnect();
   }, [autoResize]);
 
   const handleSubmit = useCallback(async () => {
     const submittedDraft = value;
+    const submittedRevision = draftRevisionRef.current;
     const trimmed = submittedDraft.trim();
     if (!trimmed || disabled || !onSend || submittingRef.current) return;
 
     submittingRef.current = true;
     setIsSubmitting(true);
+    setPendingDraft(submittedDraft);
+    const retainUnacceptedDraft = () => {
+      if (draftRevisionRef.current !== submittedRevision) {
+        setRecoveryDrafts((drafts) => [...drafts, submittedDraft]);
+      }
+    };
     try {
       const accepted = await onSend(trimmed);
       if (accepted !== false) {
-        setValue((current) => clearAcceptedSenderDraft(
-          current,
-          submittedDraft,
-        ));
-      }
+        if (draftRevisionRef.current === submittedRevision) {
+          setValue((current) => clearAcceptedSenderDraft(current, submittedDraft));
+        }
+      } else retainUnacceptedDraft();
     } catch {
       // The parent owns safe error presentation; retain the current draft.
+      retainUnacceptedDraft();
     } finally {
+      setPendingDraft(null);
       submittingRef.current = false;
       setIsSubmitting(false);
     }
@@ -126,6 +146,8 @@ export function Sender({
 
   const handleChange = useCallback(
     (e: ChangeEvent<HTMLTextAreaElement>) => {
+      draftRevisionRef.current += 1;
+      setPendingDraft(null);
       setValue(e.target.value);
     },
     [],
@@ -145,7 +167,9 @@ export function Sender({
         className,
       )}
     >
-        <div className="chat-composer mist-solid" data-expanded={focused || menuOpen}
+        <div ref={composerRef} className="chat-composer mist-solid" data-expanded={expanded}
+          style={{ "--chat-text-height": `${textHeight}px` } as CSSProperties}
+          aria-busy={isSubmitting}
           onFocusCapture={() => setFocused(true)}
           onBlurCapture={(event) => {
             if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
@@ -158,7 +182,8 @@ export function Sender({
               className="chat-composer-tools size-11 rounded-full text-muted-foreground md:size-9" aria-label="会话模型与选项" title={toolsLabel} />}>
               <Plus className="size-5" aria-hidden="true" />
             </PopoverTrigger>
-            <PopoverContent side="top" align="start" sideOffset={12}
+            <PopoverContent side="top" align="start" sideOffset={12} anchor={composerRef}
+              collisionAvoidance={{ side: "none", align: "shift", fallbackAxisSide: "none" }}
               initialFocus={(type) => type === "keyboard"} finalFocus={(type) => type === "keyboard"}
               className="chat-composer-menu" aria-label="会话模型与选项">
               <PopoverTitle className="sr-only">会话模型与选项</PopoverTitle>
@@ -169,18 +194,18 @@ export function Sender({
           {/* 输入框 */}
           <textarea
             ref={textareaRef}
-            value={value}
+            value={displayedValue}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             onCompositionStart={() => { composingRef.current = true; }}
             onCompositionEnd={() => { composingRef.current = false; }}
-            placeholder={placeholder}
+            placeholder={pendingDraft === null ? placeholder : "正在提交，原文已暂存…"}
             aria-label="消息正文"
             disabled={disabled}
             aria-describedby={statusMessage ? statusId : undefined}
             rows={1}
             className={cn(
-              "chat-composer-input",
+              "chat-composer-input scrollbar-none",
               "placeholder:text-muted-foreground",
               "resize-none outline-none focus:outline-none focus:ring-0",
               "caret-primary",
@@ -201,7 +226,24 @@ export function Sender({
           >
             <Send className="size-4" />
           </Button>
+          <div ref={compactMeasureRef} data-measure="compact" aria-hidden="true" className="chat-composer-measure">{displayedValue + "\u200b"}</div>
+          <div ref={contentMeasureRef} data-measure="content" aria-hidden="true" className="chat-composer-measure">{displayedValue + "\u200b"}</div>
         </div>
+
+        {recoveryDrafts.length > 0 && <details className="chat-composer-recovery mx-auto mt-2 max-w-[720px] text-xs text-muted-strong">
+          <summary className="cursor-pointer">未确认的提交原文已保留（{recoveryDrafts.length}）</summary>
+          <p className="mt-2">请先核对历史。恢复会追加到当前草稿，不会发送。</p>
+          {recoveryDrafts.map((draft, index) => <div key={index} className="mt-2 space-y-2">
+            <p className="scrollbar-none max-h-24 overflow-y-auto whitespace-pre-wrap break-words" tabIndex={0}>{draft}</p>
+            <Button type="button" variant="outline" size="compact" disabled={disabled || isSubmitting} onClick={() => {
+              if (disabled || submittingRef.current) return;
+              draftRevisionRef.current += 1;
+              setValue((current) => current ? `${current}\n\n${draft}` : draft);
+              setRecoveryDrafts((drafts) => drafts.filter((_, i) => i !== index));
+              textareaRef.current?.focus({ preventScroll: true });
+            }}>恢复到草稿</Button>
+          </div>)}
+        </details>}
 
         {statusMessage && (
           <p
