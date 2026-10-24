@@ -161,7 +161,8 @@ describe("chat message presentation", () => {
 
     expect(output).toMatchObject({
       kind: "assistant",
-      content: "当前回复生成失败。",
+      content: "",
+      error: "当前回复生成失败。",
     });
     expect(JSON.stringify(output)).not.toMatch(/private|429|provider_/);
     expect(input.content).toBe(rawContent);

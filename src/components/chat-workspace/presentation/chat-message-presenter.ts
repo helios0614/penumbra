@@ -1,4 +1,5 @@
 import type { Message } from "@/domain/message";
+import { assistantFailureIndex, formatAssistantFailure } from "@/domain/message/assistant-failure";
 import { appendAssistantChunk, createStreamingAssistantAccumulator, flushAssistantAccumulator } from "@/application/chat-send/chat-send-accumulator";
 
 import type {
@@ -8,10 +9,6 @@ import type {
 
 const SAFE_UNKNOWN_ROLE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,47}$/;
 const SENSITIVE_UNKNOWN_ROLE = /(?:api[-_]?key|authorization|bearer|cookie|secret|token|https?[:/])/i;
-const PROVIDER_FAILURE_MARKERS = [
-  "provider_request_failed",
-  "provider_execution_failed",
-] as const;
 
 export function presentChatMessages(
   messages: readonly Message[],
@@ -47,8 +44,7 @@ export function presentChatMessage(
     case "assistant":
       return Object.freeze({
         ...base,
-        content: presentSafeAssistantContent(message.content),
-        ...(PROVIDER_FAILURE_MARKERS.some((marker) => message.content.includes(marker)) ? { insertable: false } : {}),
+        ...presentAssistantContent(message.content),
         kind: "assistant",
         thinking: message.thinking,
         simpleThink: message.simpleThink,
@@ -67,10 +63,13 @@ export function presentChatMessage(
   }
 }
 
-function presentSafeAssistantContent(content: string): string {
-  return PROVIDER_FAILURE_MARKERS.some((marker) => content.includes(marker))
-    ? "当前回复生成失败。"
-    : flushAssistantAccumulator(appendAssistantChunk(createStreamingAssistantAccumulator("display", 0), content)).message.content;
+function presentAssistantContent(content: string) {
+  const index = assistantFailureIndex(content);
+  const body = index < 0 ? content : content.slice(0, index);
+  return {
+    content: flushAssistantAccumulator(appendAssistantChunk(createStreamingAssistantAccumulator("display", 0), body)).message.content,
+    ...(index < 0 ? {} : { error: formatAssistantFailure(content.slice(index)), insertable: false }),
+  };
 }
 
 export function presentSafeUnknownRole(rawRole: string): string {

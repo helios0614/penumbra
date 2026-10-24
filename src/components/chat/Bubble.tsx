@@ -259,14 +259,15 @@ function BubbleInner({
             isUser ? "items-end" : "items-start gap-0.5",
           )}
         >
-          {(generationLabel && !message.content.trim() ? [] : chunks).map((chunk, index) => (
+          {((generationLabel || (message.kind === "assistant" && message.error)) && !hasBody ? [] : chunks).map((chunk, index) => (
             <BubbleSegment
               key={`${message.id}:${index}`}
               kind={message.kind}
               content={chunk}
             />
           ))}
-          {generationLabel && !hasBody && <GenerationIndicator label={generationLabel}
+          {message.kind === "assistant" && message.error && <div className={cn(BUBBLE_SURFACE, AI_BUBBLE_SURFACE, "whitespace-pre-wrap text-sm break-words")} role="alert">{message.error}</div>}
+          {generationLabel && !hasBody && !(message.kind === "assistant" && message.error) && <GenerationIndicator label={generationLabel}
             active={message.executionStatus === "streaming" || message.executionStatus === "finalizing"} />}
         </div>
 

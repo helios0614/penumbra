@@ -61,7 +61,7 @@ export function createChatRealtimeCoordinator(
       !dirty.conversationList ||
       conversationListInFlight !== null ||
       (
-        context.execution.kind === "active" &&
+        context.execution.kind === "active" && !context.execution.recovering &&
         dirty.currentConversationHistory
       ) ||
       !canConnect()
@@ -93,7 +93,7 @@ export function createChatRealtimeCoordinator(
     if (
       !dirty.currentConversationHistory ||
       historyInFlight !== null ||
-      context.execution.kind === "active" ||
+      (context.execution.kind === "active" && !context.execution.recovering) ||
       !context.workspaceAvailable ||
       !context.authenticated ||
       context.selectedConversationId === null
@@ -272,7 +272,7 @@ export function createChatRealtimeCoordinator(
       case "conversation-deleted":
         markDirty({ conversationList: true });
         if (
-          context.execution.kind === "active" &&
+          context.execution.kind === "active" && !context.execution.recovering &&
           event.conversationId === context.selectedConversationId
         ) {
           return;
@@ -300,7 +300,7 @@ export function createChatRealtimeCoordinator(
         ) {
           return;
         }
-        if (context.execution.kind === "active") {
+        if (context.execution.kind === "active" && !context.execution.recovering) {
           markDirty({ currentConversationHistory: true });
           return;
         }
@@ -387,6 +387,7 @@ export function isCurrentExecutionPersistenceNotification(
   const execution = context.execution;
   if (
     execution.kind !== "active" ||
+    execution.recovering ||
     execution.executionKind !== "send" ||
     execution.conversationId !== event.conversationId
   ) {

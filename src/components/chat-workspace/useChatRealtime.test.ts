@@ -84,6 +84,7 @@ describe("chat realtime React context projection", () => {
         userMessageId: null,
         assistantMessageId: "assistant-a",
         targetMessageId: "assistant-a",
+        ...(kind === "regenerate-finalization-uncertain" ? { recovering: true } : {}),
       });
   });
 });

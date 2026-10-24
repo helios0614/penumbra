@@ -459,6 +459,17 @@ describe("chat realtime dirty and HTTP request merging", () => {
     expect(harness.refreshConversationList).toHaveBeenCalledOnce();
   });
 
+  it("allows read-only WS recovery while an unknown execution still owns the send lock", async () => {
+    const context = activeContext();
+    if (context.execution.kind !== "active") throw new Error("fixture");
+    const harness = createHarness({ context: { ...context, execution: { ...context.execution, recovering: true } } });
+    await harness.coordinator.handleEvent({ type: "message-created", conversationId: "conv-a", messageId: context.execution.assistantMessageId! });
+    expect(harness.reconcileEvent).toHaveBeenCalledOnce();
+    expect(harness.context.execution.kind).toBe("active");
+    await harness.coordinator.handleEvent({ type: "message-created", conversationId: "conv-b", messageId: "other" });
+    expect(harness.reconcileEvent).toHaveBeenCalledOnce();
+  });
+
   it("reconciles the current selection when conversation switches across reconnect", async () => {
     const scheduled: Array<() => void> = [];
     const first = controlledConnection();

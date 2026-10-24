@@ -3,6 +3,7 @@ import type {
   ChatProviderFailureCode,
 } from "@/application/chat-execution";
 import type { StreamingAssistantMessage } from "@/application/chat-send/chat-send-types";
+import { ASSISTANT_FAILURE_PREFIXES, assistantFailureIndex, assistantFailureCode, formatAssistantFailure } from "@/domain/message/assistant-failure";
 
 const THINKING_START = "[THINKING_START]";
 const THINKING_END = "[THINKING_END]";
@@ -15,8 +16,8 @@ const HIDDEN_MARKERS = [THINKING_END, "[HEART:", "[MCP:", "[MUSIC:", "[TOY:", "[
   "[MEMORY_WRITE:", "[请求出错:", "<meta>"];
 const CONTENT_MARKERS = [THINKING_START, SIMPLE_THINK_START, DRIFT_START, ...HIDDEN_MARKERS];
 const PROVIDER_FAILURE_MARKERS = [
-  "provider_request_failed",
-  "provider_execution_failed",
+  ...ASSISTANT_FAILURE_PREFIXES,
+  "provider_request_failed", "provider_execution_failed",
 ] as const;
 
 type AccumulatorMode = "content" | "thinking" | "simple-think" | "hidden" | "meta";
@@ -26,6 +27,7 @@ export type StreamingAssistantAccumulator = {
   readonly mode: AccumulatorMode;
   readonly pending: string;
   readonly providerPending: string;
+  readonly failureText: string | null;
   readonly hiddenDepth: number;
   readonly hiddenQuote: boolean;
   readonly hiddenEscape: boolean;
@@ -53,6 +55,7 @@ export function createStreamingAssistantAccumulator(
     mode: "content",
     pending: "",
     providerPending: "",
+    failureText: null,
     hiddenDepth: 0,
     hiddenQuote: false,
     hiddenEscape: false,
@@ -65,7 +68,10 @@ export function reduceChatExecutionEvent(
 ): ChatExecutionReduction {
   switch (event.type) {
     case "failure":
-      return { accumulator: { ...accumulator, providerPending: "" }, failure: event.code ?? "provider-failure" };
+      return { accumulator: { ...accumulator, providerPending: "", message: {
+        ...accumulator.message, assistantMessageId: accumulator.message.assistantMessageId ?? event.messageId,
+        error: detailedError(accumulator.message.error, event.error),
+      } }, failure: event.code ?? "provider-failure" };
     case "start":
       return unchanged({
         ...accumulator,
@@ -76,11 +82,17 @@ export function reduceChatExecutionEvent(
       });
     case "chunk": {
       const input = accumulator.providerPending + event.content;
-      const failure = providerFailureFromText(input);
-      if (failure !== null) {
+      const index = assistantFailureIndex(input);
+      if (accumulator.failureText !== null || index >= 0) {
+        const rawFailure = (accumulator.failureText ?? "") + (index >= 0 && accumulator.failureText === null ? input.slice(index) : input);
+        const failureText = ASSISTANT_FAILURE_PREFIXES.some(prefix => rawFailure.startsWith(prefix))
+          ? rawFailure : assistantFailureCode(rawFailure) ?? "";
+        const next = accumulator.failureText === null && index > 0
+          ? appendAssistantChunk(accumulator, input.slice(0, index)) : accumulator;
         return {
-          accumulator: { ...accumulator, providerPending: "" },
-          failure,
+          accumulator: { ...next, providerPending: "", failureText,
+            message: { ...next.message, error: formatAssistantFailure(failureText) } },
+          failure: assistantFailureCode(failureText),
         };
       }
       const providerPending = retainedMarkerPrefix(
@@ -101,7 +113,7 @@ export function reduceChatExecutionEvent(
         accumulator: {
           ...accumulator,
           providerPending: event.hasError ? "" : accumulator.providerPending,
-          message: { ...accumulator.message, usage: event.usage },
+          message: { ...accumulator.message, usage: event.usage, error: detailedError(accumulator.message.error, event.error) },
         },
         failure: event.hasError
           ? event.failureCode ?? "provider-failure"
@@ -194,6 +206,7 @@ export function appendAssistantChunk(
     mode,
     pending: input,
     providerPending: accumulator.providerPending,
+    failureText: accumulator.failureText,
     hiddenDepth,
     hiddenQuote,
     hiddenEscape,
@@ -226,19 +239,8 @@ export function flushAssistantAccumulator(
     hiddenDepth: accumulator.hiddenDepth,
     hiddenQuote: accumulator.hiddenQuote,
     hiddenEscape: accumulator.hiddenEscape,
+    failureText: accumulator.failureText,
   };
-}
-
-function providerFailureFromText(
-  value: string,
-): ChatProviderFailureCode | null {
-  if (value.includes("provider_request_failed")) {
-    return "provider_request_failed";
-  }
-  if (value.includes("provider_execution_failed")) {
-    return "provider_execution_failed";
-  }
-  return null;
 }
 
 function firstMarker(
@@ -276,4 +278,8 @@ function unchanged(
   accumulator: StreamingAssistantAccumulator,
 ): ChatExecutionReduction {
   return { accumulator, failure: null };
+}
+
+function detailedError(previous: string | undefined, next: string | undefined): string | undefined {
+  return next && (!previous || next.includes("\n")) ? next : previous;
 }

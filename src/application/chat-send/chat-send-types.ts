@@ -28,6 +28,7 @@ export type StreamingAssistantMessage = {
   readonly simpleThink: string | null;
   readonly usage: SafeUsageSummary | null;
   readonly createdAt: number;
+  readonly error?: string;
 };
 
 export type SafeChatExecutionErrorCode =
@@ -98,6 +99,9 @@ export type ChatSendState =
       readonly conversationId?: string;
       readonly optimisticUser?: OptimisticUserMessage;
       readonly assistant?: StreamingAssistantMessage;
+      readonly confirmedFailure?: boolean;
+      readonly failedMessageId?: string;
+      readonly failedTargetContent?: string;
     }
   | (ActiveChatRegenerateState & {
       readonly kind: "regenerate-streaming";

@@ -51,7 +51,7 @@ export type RegeneratePersistenceReceipt = {
  * They are temporary protocol facts, never persistent Message objects.
  */
 export type ChatExecutionEvent =
-  | { readonly type: "failure"; readonly messageId: string; readonly code: ChatProviderFailureCode | null }
+  | { readonly type: "failure"; readonly messageId: string; readonly code: ChatProviderFailureCode | null; readonly error?: string }
   | {
       readonly type: "start";
       readonly assistantMessageId: string;
@@ -109,6 +109,7 @@ export type ChatExecutionEvent =
       readonly modelKey: string;
       readonly hasError: boolean;
       readonly failureCode: ChatProviderFailureCode | null;
+      readonly error?: string;
       readonly usage: SafeUsageSummary | null;
     }
   | {

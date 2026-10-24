@@ -19,6 +19,7 @@ export type ChatMessageViewModel =
   | (ChatVisibleMessageBase & {
       readonly kind: "assistant";
       readonly insertable?: boolean;
+      readonly error?: string;
       readonly thinking: string | null;
       readonly simpleThink: string | null;
       readonly attachments: readonly ChatAttachmentViewModel[];

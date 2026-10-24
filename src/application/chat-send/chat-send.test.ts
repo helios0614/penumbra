@@ -148,8 +148,8 @@ describe("streaming assistant accumulator", () => {
 
 describe("safe chat execution errors", () => {
   it.each([
-    [new ApiError("private", 401), "authentication", "发送需要重新登录或授权。"],
-    [new ApiError("private", 403), "authentication", "发送需要重新登录或授权。"],
+    [new ApiError("private", 401), "authentication", "请求失败（HTTP 401）。"],
+    [new ApiError("private", 403), "authentication", "请求失败（HTTP 403）。"],
     [httpError(409, "unknown_model"), "unknown-model", "当前会话使用的模型已不可用。"],
     [httpError(422, "invalid_generation_options", "temperature"), "invalid-generation-options", "当前生成参数无效。"],
     [httpError(422, "unsupported_generation_option", "fast_mode"), "unsupported-generation-option", "当前模型不支持所选生成参数。"],
@@ -323,7 +323,7 @@ describe("chat send controller", () => {
       "private provider body",
     );
 
-    reload.resolve(reconciliation());
+    reload.resolve(reconciliation(["server-assistant"]));
     await waitFor(() => controller.getState().kind === "error");
     expect(controller.getState()).toMatchObject({
       kind: "error",

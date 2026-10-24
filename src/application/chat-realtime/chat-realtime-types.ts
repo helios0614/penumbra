@@ -21,6 +21,7 @@ export type ChatRealtimeExecutionContext =
   | { readonly kind: "idle" }
   | {
       readonly kind: "active";
+      readonly recovering?: boolean;
       readonly executionKind: "send" | "regenerate";
       readonly conversationId: string;
       readonly userMessageId: string | null;

@@ -54,9 +54,17 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
   const send = useChatSend(workspace.reloadSelectedConversationHistory);
   executionGuard.current = () => !send.isExecutionActive();
   const realtime = useChatRealtime(workspace.state, send.state, {
-    reconcileEvent: workspace.reconcileSelectedConversationRealtimeEvent,
-    reconcileAfterReconnect:
-      workspace.reconcileSelectedConversationAfterReconnect,
+    reconcileEvent: async event => {
+      const current = send.getState();
+      if ((current.kind === "finalization-uncertain" || current.kind === "regenerate-finalization-uncertain") && event.type !== "message-deleted") {
+        await send.retryFinalization();
+      } else await workspace.reconcileSelectedConversationRealtimeEvent(event);
+    },
+    reconcileAfterReconnect: async conversationId => {
+      const current = send.getState();
+      if (current.kind === "finalization-uncertain" || current.kind === "regenerate-finalization-uncertain") await send.retryFinalization();
+      else await workspace.reconcileSelectedConversationAfterReconnect(conversationId);
+    },
     refreshConversationList: workspace.refreshConversationList,
   });
 
@@ -463,7 +471,8 @@ function ChatExecutionNotice({ state, onRetryFinalization, onReleaseAfterReview 
   const uncertain = state.kind === "finalization-uncertain" || state.kind === "regenerate-finalization-uncertain";
   return <ChatExecutionFeedback
     summary={uncertain ? "回复结果待确认" : "回复状态需要处理"}
-    detail={error.message}
+    detail={state.kind === "error" && state.confirmedFailure && state.failedMessageId
+      ? "错误已显示在回复中，可使用该消息的重新生成按钮。" : error.message}
     uncertain={uncertain}
     reviewReady={uncertain && !!state.recoveryReadSucceeded}
     onRefresh={state.kind === "error" || uncertain ? onRetryFinalization : undefined}

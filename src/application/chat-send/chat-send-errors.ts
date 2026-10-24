@@ -5,6 +5,7 @@ import type {
   SafeChatExecutionError,
 } from "@/application/chat-send/chat-send-types";
 import { ApiError } from "@/lib/api";
+import { safeHttpErrorContent } from "@/domain/message/assistant-failure";
 
 const GENERATION_FIELDS = new Set<ChatGenerationOptionField>([
   "attachments",
@@ -20,6 +21,16 @@ export function toSafeChatExecutionError(
   error: unknown,
   executionKind: ChatExecutionKind = "send",
 ): SafeChatExecutionError {
+  const mapped = mapChatExecutionError(error, executionKind);
+  const upstream = error instanceof ApiError && error.status > 0 ? safeHttpErrorContent(error.data) : null;
+  return upstream && error instanceof ApiError
+    ? { ...mapped, message: `请求失败（HTTP ${error.status}）\n${upstream}` } : mapped;
+}
+
+function mapChatExecutionError(
+  error: unknown,
+  executionKind: ChatExecutionKind,
+): SafeChatExecutionError {
   const regenerate = executionKind === "regenerate";
   if (error instanceof ApiError) {
     const detail = safeErrorDetail(error.data);
@@ -27,7 +38,7 @@ export function toSafeChatExecutionError(
     if (error.status === 401 || error.status === 403) {
       return safeError(
         "authentication",
-        regenerate ? "重新生成需要重新登录或授权。" : "发送需要重新登录或授权。",
+        `请求失败（HTTP ${error.status}）。`,
       );
     }
     if (
@@ -117,6 +128,12 @@ export function toSafeChatExecutionError(
           ? "重新生成的连接中断，后台可能仍在执行，请重新读取状态。"
           : "发送的连接中断，后台可能仍在执行，请重新读取状态。",
       );
+    }
+    if (error.code === "ABORTED") {
+      return safeError("network", "连接读取已取消，后台可能仍在执行，请重新读取状态。");
+    }
+    if (error.status >= 400 && error.status <= 599) {
+      return safeError("service", `请求失败（HTTP ${error.status}）。`);
     }
     return safeError(
       "service",

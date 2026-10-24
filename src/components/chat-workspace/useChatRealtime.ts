@@ -111,6 +111,7 @@ function toExecutionContext(
         userMessageId: state.optimisticUser.clientMessageId,
         assistantMessageId: state.assistant.assistantMessageId,
         targetMessageId: null,
+        ...(state.kind === "finalization-uncertain" ? { recovering: true } : {}),
       };
     case "regenerate-streaming":
     case "regenerate-finalizing":
@@ -122,6 +123,7 @@ function toExecutionContext(
         userMessageId: null,
         assistantMessageId: state.assistant.assistantMessageId,
         targetMessageId: state.targetMessageId,
+        ...(state.kind === "regenerate-finalization-uncertain" ? { recovering: true } : {}),
       };
     case "idle":
     case "error":

@@ -27,7 +27,7 @@ export function getChatRegenerateAvailability(
     return unavailable(target, "正在切换会话。");
   }
   if (workspaceState.conversationMutation) return unavailable(target, "正在更新会话。");
-  if (workspaceState.configurationPending || executionState.kind === "error") return unavailable(target, "请先重新读取当前状态。");
+  if (workspaceState.configurationPending || (executionState.kind === "error" && (!executionState.confirmedFailure || executionState.failedMessageId !== target.id))) return unavailable(target, "请先重新读取当前状态。");
 
   const selected = workspaceState.workspace.selectedConversation;
   const readiness = workspaceState.workspace.setup.readiness;

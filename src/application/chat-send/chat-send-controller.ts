@@ -165,7 +165,7 @@ export function createChatSendController(
       ) {
         throw new Error("Regenerate persistence receipt contract failed");
       }
-      if (!execution.terminalFailure) {
+      if (!execution.terminalFailure || (execution.kind === "send" && execution.accumulator.message.assistantMessageId !== null)) {
         if (execution.kind === "regenerate") {
           if (!execution.sawTargetStart || !isRegeneratePersistenceConfirmed(execution, reconciliation)) {
             throw new Error(
@@ -191,7 +191,13 @@ export function createChatSendController(
       active = null;
       publish(execution.executionError === null
         ? INITIAL_CHAT_SEND_STATE
-        : { kind: "error", conversationId: execution.conversationId, error: execution.executionError });
+        : { kind: "error", conversationId: execution.conversationId,
+          confirmedFailure: execution.terminalFailure,
+          failedMessageId: !execution.terminalFailure ? undefined : execution.kind === "regenerate" ? execution.targetMessageId : execution.accumulator.message.assistantMessageId ?? undefined,
+          failedTargetContent: execution.kind === "regenerate" ? reconciliation.regenerateTarget?.content : undefined,
+          ...(execution.kind === "send" && execution.accumulator.message.assistantMessageId === null
+            ? { assistant: { ...execution.accumulator.message, error: execution.executionError.message } } : {}),
+          error: execution.executionError });
     } catch {
       if (!isCurrent(execution)) return;
       publish(execution.kind === "send"
@@ -225,6 +231,12 @@ export function createChatSendController(
     try {
       for await (const event of events) {
         if (!isCurrent(execution)) return;
+        if (execution.kind === "send" &&
+            (event.type === "failure" || (event.type === "debug-summary" && event.hasError)) &&
+            execution.accumulator.message.assistantMessageId !== null &&
+            event.messageId !== execution.accumulator.message.assistantMessageId) {
+          throw new ChatExecutionContractError("Send failure ID does not match its assistant message ID");
+        }
         if (execution.kind === "regenerate" &&
             (event.type === "failure" || (event.type === "debug-summary" && event.hasError)) &&
             event.messageId !== execution.targetMessageId) {
@@ -264,6 +276,9 @@ export function createChatSendController(
               ? null
               : reduction.failure as ChatProviderFailureCode,
           );
+        }
+        if (execution.accumulator.message.error && execution.executionError?.code === "provider-failure") {
+          execution.executionError = { ...execution.executionError, message: execution.accumulator.message.error };
         }
         publish(activeAssistantState("streaming", execution));
       }

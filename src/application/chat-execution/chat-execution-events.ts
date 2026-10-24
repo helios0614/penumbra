@@ -1,5 +1,6 @@
 import type { JsonValue } from "@/domain/message";
 import { readDriftWire } from "@/domain/message/drift-wire";
+import { ASSISTANT_FAILURE_PREFIXES, assistantFailureIndex, formatAssistantFailure } from "@/domain/message/assistant-failure";
 
 import {
   cloneJsonArray,
@@ -42,7 +43,7 @@ export function mapChatExecutionEvent(
 
     switch (rawType) {
       case "error":
-        return { type: "failure", messageId: nonEmptyString(input, "id", rawType), code: safeFailureCode(input.code) };
+        return { type: "failure", messageId: nonEmptyString(input, "id", rawType), code: safeFailureCode(input.code), ...safeFailureText(input) };
       case "start":
         return {
           type: "start",
@@ -109,6 +110,7 @@ export function mapChatExecutionEvent(
           modelKey: input.model === undefined ? "" : stringValue(input, "model", rawType),
           hasError: booleanValue(input, "has_error", rawType),
           failureCode: safeFailureCode(input.error_code) ?? safeProviderFailure(input),
+          ...(input.has_error === true ? safeFailureText(input) : {}),
           usage: input.usage === undefined ? null : safeUsage(requiredField(input, "usage"), rawType),
         };
       default:
@@ -120,6 +122,14 @@ export function mapChatExecutionEvent(
     }
     throw eventContractError();
   }
+}
+
+function safeFailureText(record: Record<string, unknown>): { error?: string } {
+  const property = readOwnData(record, "error_text");
+  if (!property.present || typeof property.value !== "string") return {};
+  const index = assistantFailureIndex(property.value);
+  const candidate = index < 0 ? "" : property.value.slice(index);
+  return ASSISTANT_FAILURE_PREFIXES.some(prefix => candidate.startsWith(prefix)) ? { error: formatAssistantFailure(candidate) } : {};
 }
 
 function safeFailureCode(value: unknown): ChatProviderFailureCode | null {
