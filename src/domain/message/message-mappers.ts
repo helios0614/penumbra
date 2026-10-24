@@ -4,6 +4,7 @@ import type {
   MessageVoiceDto,
 } from "@/domain/message/message-dto";
 import { readDriftWire } from "@/domain/message/drift-wire";
+import { mapMessageCapabilities } from "./capability-mappers";
 import {
   MessageContractError,
   type JsonValue,
@@ -54,6 +55,8 @@ function parseMessage(payload: unknown, contract: string): MessageDto {
     thinking: payload.thinking,
     mcp_tool_calls: cloneJsonArray(payload.mcp_tool_calls, contract),
     cache_region: payload.cache_region,
+    ...(payload.role === "system" || (Array.isArray(payload.mcp_tool_calls) && payload.mcp_tool_calls.length > 0) || ["public_display", "public_tool_result", "reaction", "has_heart", "web_search_results", "url_read_results"].some(key => payload[key] !== undefined)
+      ? { capabilities: mapMessageCapabilities(payload) } : {}),
   };
 
   if (payload.voice !== undefined) {
@@ -109,6 +112,7 @@ function toMessage(dto: MessageDto): Message {
     mcpToolCalls: dto.mcp_tool_calls,
     cacheRegion: dto.cache_region,
     voice: dto.voice === undefined ? null : toMessageVoice(dto.voice),
+    ...(dto.capabilities ? { capabilities: dto.capabilities } : {}),
   };
 }
 

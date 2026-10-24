@@ -93,6 +93,22 @@
   width: fit-content;
 }
 .chat-generation-dots { display: inline-flex; gap: 3px; }
+.chat-reaction-sticker {
+  position: absolute;
+  right: 12px;
+  bottom: -10px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  padding: 2px 6px;
+  border-radius: 9999px;
+  font-size: 16px;
+  line-height: 20px;
+  white-space: nowrap;
+  pointer-events: none;
+}
 .chat-generation-dots i {
   width: 3px;
   height: 3px;

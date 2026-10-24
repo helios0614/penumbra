@@ -310,7 +310,7 @@ describe("message history client", () => {
     fetchMock.mockReset();
   });
 
-  it("uses the shared GET cookie transport with no default query string", async () => {
+  it("requests the safe public view through the shared GET cookie transport", async () => {
     fetchMock.mockResolvedValue(json([]));
     const caller = new AbortController();
 
@@ -323,7 +323,7 @@ describe("message history client", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/conversations/conv_1/messages",
+      "/api/conversations/conv_1/messages?public_view=true",
       expect.objectContaining({
         credentials: "include",
         method: "GET",
@@ -346,11 +346,11 @@ describe("message history client", () => {
     await listConversationMessages("id", { before: 0 }, { timeoutMs: 0 });
 
     expect(requestPaths()).toEqual([
-      "/api/conversations/id/messages?limit=1",
-      "/api/conversations/id/messages?limit=500",
-      "/api/conversations/id/messages?before=1710000000.25",
-      "/api/conversations/id/messages?limit=50&before=1710000000.25",
-      "/api/conversations/id/messages?before=0",
+      "/api/conversations/id/messages?limit=1&public_view=true",
+      "/api/conversations/id/messages?limit=500&public_view=true",
+      "/api/conversations/id/messages?before=1710000000.25&public_view=true",
+      "/api/conversations/id/messages?limit=50&before=1710000000.25&public_view=true",
+      "/api/conversations/id/messages?before=0&public_view=true",
     ]);
   });
 
@@ -358,7 +358,7 @@ describe("message history client", () => {
     fetchMock.mockResolvedValue(json([]));
     await listConversationMessages("conv/a + 中文?", {}, { timeoutMs: 0 });
     expect(requestPaths()).toEqual([
-      "/api/conversations/conv%2Fa%20%2B%20%E4%B8%AD%E6%96%87%3F/messages",
+      "/api/conversations/conv%2Fa%20%2B%20%E4%B8%AD%E6%96%87%3F/messages?public_view=true",
     ]);
   });
 
@@ -465,7 +465,7 @@ describe("message history client", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const paths = requestPaths().join(" ");
-    expect(paths).toContain("/api/conversations/id/messages?limit=50");
+    expect(paths).toContain("/api/conversations/id/messages?limit=50&public_view=true");
     expect(paths).not.toMatch(
       /settings|readiness|send|regenerate|websocket|message_count/,
     );

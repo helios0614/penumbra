@@ -67,7 +67,10 @@ async function run(browser, mobile) {
   for (let index = 0; index < reasons.length; index++) assert((await bubble(`cause-${index}`).textContent()).includes(reasons[index]));
 
   // A completed tool result and a no-body follow-up failure arrive over WS/HTTP.
-  state.a.push({ ...msg('tool-result', 'system', '工具执行 · POI_SEARCH', 5), mcp_tool_calls: [{ command_type: 'POI_SEARCH', success: true, result: '合成地点结果' }] }, msg('tool-failed', 'assistant', failure, 6));
+  state.a.push({ ...msg('tool-result', 'system', 'PRIVATE_TOOL_WRAPPER', 5), public_display: {
+    version: 1, kind: 'result', capability: 'tools', title: '工具执行', status: 'success', fields: [], notices: [],
+    calls: [{ server: 'location', tool: 'POI_SEARCH', command_type: 'POI_SEARCH', status: 'success', result: '合成地点结果', ai_delivery: 'response_received' }],
+  } }, msg('tool-failed', 'assistant', failure, 6));
   ws('tool-failed'); await bubble('tool-failed').waitFor();
   assert((await bubble('tool-failed').textContent()).includes('HTTP 524'));
   await regen('tool-failed').click(); await page.waitForFunction(() => window.__posts.length === 1);
@@ -77,7 +80,11 @@ async function run(browser, mobile) {
   await emit({ id: 'tool-failed', content: state.a.at(-1).content, thinking: null, drift: null }, 'persisted'); await close();
   await page.waitForFunction(() => document.querySelector('[data-message-id="tool-failed"]')?.textContent.includes('恢复成功') && !document.querySelector('[data-message-id="tool-failed"] [role="alert"]'));
   assert((await bubble('failed').textContent()).includes('HTTP 524')); // Other assistant unchanged.
-  assert.equal(await bubble('tool-result').count(), 0); // System Bubble uses its existing neutral projection.
+  assert.equal(await bubble('tool-result').count(), 1);
+  await bubble('tool-result').getByRole('button', { name: /工具执行/ }).click();
+  await bubble('tool-result').getByRole('button', { name: /查找地点/ }).click();
+  assert((await bubble('tool-result').textContent()).includes('合成地点结果'));
+  assert(!(await bubble('tool-result').textContent()).includes('PRIVATE_TOOL_WRAPPER'));
 
   // A canceled stream retains a temporary body until a late WS invalidation
   // causes an authoritative HTTP reread. No automatic mutation is issued.
@@ -99,7 +106,7 @@ async function run(browser, mobile) {
   assert(!(await page.locator('.chat-message-scroll').textContent()).includes('synthetic-secret'));
   assert.equal(await regen('late').isDisabled(), true);
   assert.equal((await page.evaluate(() => window.__posts)).length, 3);
-  await page.screenshot({ path: `/private/tmp/chat-stability-${mobile ? 'mobile' : 'desktop'}.png` });
+  await page.screenshot({ path: `${process.env.CHAT_STABILITY_OUTPUT || '.tmp'}/chat-stability-${mobile ? 'mobile' : 'desktop'}.png` });
   assert.deepEqual(errors, []); await context.close(); console.log(`${mobile ? 'mobile' : 'desktop'} stability E2E passed`);
 }
 (async () => { const browser = await chromium.launch({ headless: true, executablePath: process.argv[3] }); try { await run(browser, false); await run(browser, true); } finally { await browser.close(); } })().catch(error => { console.error(error); process.exitCode = 1; });

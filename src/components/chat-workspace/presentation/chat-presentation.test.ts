@@ -134,7 +134,7 @@ describe("chat message presentation", () => {
     expect(system).toEqual({
       kind: "system",
       id: "msg_1",
-      content: "系统事件",
+      content: "",
       createdAt: 10,
     });
 

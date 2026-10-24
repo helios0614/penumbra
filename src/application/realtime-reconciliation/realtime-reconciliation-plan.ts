@@ -11,6 +11,10 @@ export function planRealtimeReconciliation(
   assertEventInput(event);
 
   switch (event.type) {
+    case "capability-invalidated":
+      assertId(event.messageId);
+      if (event.conversationId !== null) assertId(event.conversationId);
+      return { kind: "refresh-capability-anchor", messageId: event.messageId, conversationId: event.conversationId };
     case "schedule-changed":
       return { kind: "ignore", rawType: "schedule_changed" };
     case "schedule-alarm":

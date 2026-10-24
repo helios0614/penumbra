@@ -8,7 +8,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("Main selection mutation and request ownership", () => {
   it("opens the workspace when all reads return 200 and empty HTTP drift is omitted", async () => {
-    syntheticServer((path) => path === "/api/conversations/conv_a/messages?limit=50"
+    syntheticServer((path) => path === "/api/conversations/conv_a/messages?limit=50&public_view=true"
       ? Promise.resolve(json([messageWithoutDriftWire({ content: "visible synthetic history" })])) : null);
     const controller = createChatWorkspaceController();
     await controller.load();

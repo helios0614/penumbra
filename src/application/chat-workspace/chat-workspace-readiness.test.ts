@@ -29,7 +29,7 @@ describe("chat workspace readiness degradation", () => {
       if (path === "/api/conversations") {
         return Promise.resolve(json(conversationDtos()));
       }
-      if (path === "/api/conversations/conv_a/messages?limit=50") {
+      if (path === "/api/conversations/conv_a/messages?limit=50&public_view=true") {
         return Promise.resolve(json([messageDto("conv_a", "真实持久化历史")]));
       }
       return Promise.resolve(json({ error: "unexpected request" }, 500));
@@ -49,7 +49,7 @@ describe("chat workspace readiness degradation", () => {
       "/api/conversations",
       "/api/main/configuration?conv_id=conv_a",
       "/api/chat/readiness?conv_id=conv_a",
-      "/api/conversations/conv_a/messages?limit=50",
+      "/api/conversations/conv_a/messages?limit=50&public_view=true",
     ]);
     expect(requestPaths().join(" ")).not.toMatch(
       /send|regenerate|reconciliation|event-stream|\/ws|websocket|provider/,
@@ -118,7 +118,7 @@ describe("chat workspace readiness degradation", () => {
         expected: { status: "error", error: { code: "authentication" } },
       },
       {
-        failingPath: "/api/conversations/conv_a/messages?limit=50",
+        failingPath: "/api/conversations/conv_a/messages?limit=50&public_view=true",
         response: json({ error: "history failure" }, 500),
         expected: { status: "error", error: { code: "service" } },
       },
@@ -228,7 +228,7 @@ function successfulReadResponse(path: string): Promise<Response> {
   if (path === "/api/conversations") {
     return Promise.resolve(json(conversationDtos()));
   }
-  const match = path.match(/^\/api\/conversations\/(conv_[ab])\/messages\?limit=50$/);
+  const match = path.match(/^\/api\/conversations\/(conv_[ab])\/messages\?limit=50&public_view=true$/);
   if (match) {
     return Promise.resolve(json([messageDto(match[1]!, `history-${match[1]}`)]));
   }

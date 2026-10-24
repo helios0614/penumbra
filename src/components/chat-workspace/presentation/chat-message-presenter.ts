@@ -32,6 +32,7 @@ export function presentChatMessage(
     id: message.id,
     content: message.content,
     createdAt: message.createdAt,
+    ...(message.capabilities ? { capabilities: message.capabilities } : {}),
   };
 
   switch (message.roleKind) {
@@ -51,7 +52,7 @@ export function presentChatMessage(
         attachments: presentUnsupportedAttachments(message),
       });
     case "system":
-      return Object.freeze({ ...base, kind: "system" });
+      return Object.freeze({ ...base, content: "", kind: "system" });
     case "hidden-runtime":
       return null;
     case "unknown":

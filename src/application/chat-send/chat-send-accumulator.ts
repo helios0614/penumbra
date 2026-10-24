@@ -119,6 +119,9 @@ export function reduceChatExecutionEvent(
           ? event.failureCode ?? "provider-failure"
           : null,
       };
+    case "mcp-loading":
+      return unchanged(event.messageId === accumulator.message.assistantMessageId
+        ? { ...accumulator, message: { ...accumulator.message, toolPending: true } } : accumulator);
     default:
       return unchanged(accumulator);
   }

@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 import { Bubble } from "./Bubble";
+import { CapabilityExpansionProvider } from "./capabilities/CapabilityDisclosure";
 import { captureChatScrollAnchor, restoreChatScrollAnchor, trackChatScroll, type ChatScrollAnchor } from "./chat-scroll";
 import { Button } from "@/components/ui/button";
 import type { OlderPageStatus } from "@/application/message-history";
@@ -155,7 +156,7 @@ function BubbleListInner({
           {olderStatus === "stalled" && <p>历史游标无法继续，请稍后重读。</p>}
           {olderStatus === "exhausted" && <p>已加载接口可返回的历史</p>}
         </div>}
-        {dateGroups.map((group) => (
+        <CapabilityExpansionProvider>{dateGroups.map((group) => (
           <div key={group.dateKey}>
             <DateSeparator timestamp={group.timestamp} />
             <div className="flex w-full flex-col items-stretch overflow-hidden">
@@ -183,7 +184,7 @@ function BubbleListInner({
               })}
             </div>
           </div>
-        ))}
+        ))}</CapabilityExpansionProvider>
         </div>
       </ScrollArea>
     </div>

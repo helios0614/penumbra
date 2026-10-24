@@ -16,6 +16,14 @@ export function mapRealtimeEvent(input: unknown): RealtimeEvent {
     }
 
     switch (rawType) {
+      case "reaction":
+      case "heart_whisper":
+      case "web_search_result": {
+        const data = eventData(input);
+        const messageId = data[rawType === "reaction" ? "target_message_id" : rawType === "heart_whisper" ? "msg_id" : "source_message_id"];
+        if (typeof messageId !== "string" || !messageId.trim()) return { type: "unknown", rawType };
+        return { type: "capability-invalidated", messageId, conversationId: typeof data.conv_id === "string" && data.conv_id ? data.conv_id : null };
+      }
       case "schedule_changed":
         return { type: "schedule-changed" };
       case "schedule_alarm": {

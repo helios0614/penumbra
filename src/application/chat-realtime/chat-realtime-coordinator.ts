@@ -37,6 +37,7 @@ export function createChatRealtimeCoordinator(
   let historyInFlight: Promise<void> | null = null;
   let conversationListInFlight: Promise<void> | null = null;
   const listeners = new Set<(state: ChatRealtimeState) => void>();
+  const capabilityAnchors = new Map<string, Extract<RealtimeEvent, { type: "capability-invalidated" }>>();
 
   const publish = (nextState: ChatRealtimeState) => {
     state = nextState;
@@ -115,16 +116,18 @@ export function createChatRealtimeCoordinator(
         if (succeeded && dirty.currentConversationHistory) {
           void flushDeferredHistory();
         }
+        if (succeeded) void flushCapabilityAnchors();
       }
     })();
     historyInFlight = request;
     return request;
   };
 
-  const reconcileEventNow = async (event: RealtimeEvent): Promise<void> => {
+  const reconcileEventNow = async (event: RealtimeEvent): Promise<boolean> => {
     if (historyInFlight !== null) {
       markDirty({ currentConversationHistory: true });
-      return historyInFlight;
+      await historyInFlight;
+      return false;
     }
 
     let succeeded = false;
@@ -139,15 +142,36 @@ export function createChatRealtimeCoordinator(
         if (succeeded && dirty.currentConversationHistory) {
           void flushDeferredHistory();
         }
+        if (succeeded) void flushCapabilityAnchors();
       }
     })();
     historyInFlight = request;
-    return request;
+    await request;
+    return succeeded;
+  };
+
+  const flushCapabilityAnchors = async (): Promise<void> => {
+    const context = dependencies.getContext();
+    if (historyInFlight !== null || !canConnect() || context.selectedConversationId === null ||
+        (context.execution.kind === "active" && !context.execution.recovering)) return;
+    const next = capabilityAnchors.entries().next().value;
+    if (!next) return;
+    const [key, event] = next;
+    const generation = lifecycleGeneration;
+    capabilityAnchors.delete(key);
+    if (event.conversationId !== null && event.conversationId !== context.selectedConversationId) {
+      await flushCapabilityAnchors();
+      return;
+    }
+    // Keep older loaded anchors when a capability event arrives during SSE or
+    // another HTTP read. A latest-window reread alone cannot refresh them.
+    if (!await reconcileEventNow(event) && generation === lifecycleGeneration) capabilityAnchors.set(key, event);
   };
 
   const flushDirty = () => {
     void flushConversationList();
     void flushDeferredHistory();
+    void flushCapabilityAnchors();
   };
 
   const scheduleOpen = (reconnecting: boolean) => {
@@ -262,6 +286,11 @@ export function createChatRealtimeCoordinator(
     const context = dependencies.getContext();
 
     switch (event.type) {
+      case "capability-invalidated":
+        if (event.conversationId !== null && event.conversationId !== context.selectedConversationId) return;
+        capabilityAnchors.set(`${event.conversationId ?? ""}:${event.messageId}`, event);
+        await flushCapabilityAnchors();
+        return;
       case "location-updated":
       case "activity-log":
       case "activity-config-changed":
@@ -343,6 +372,7 @@ export function createChatRealtimeCoordinator(
       if (!started && state.kind === "idle") return;
       started = false;
       stopConnection();
+      capabilityAnchors.clear();
       dirty = INITIAL_REALTIME_DIRTY_STATE;
       publish(INITIAL_CHAT_REALTIME_STATE);
     },
@@ -352,6 +382,7 @@ export function createChatRealtimeCoordinator(
       if (!canConnect()) {
         authenticationBlocked = false;
         stopConnection();
+        capabilityAnchors.clear();
         dirty = INITIAL_REALTIME_DIRTY_STATE;
         publish(INITIAL_CHAT_REALTIME_STATE);
         return;

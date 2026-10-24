@@ -1,6 +1,7 @@
 import type { WebSocketConnection } from "@/lib/websocket";
 
 export type RealtimeEvent =
+  | { readonly type: "capability-invalidated"; readonly messageId: string; readonly conversationId: string | null }
   | { readonly type: "schedule-changed" }
   | { readonly type: "schedule-alarm"; readonly id: string; readonly content: string; readonly triggerAt: string }
   | { readonly type: "monitor-alert"; readonly content: string }

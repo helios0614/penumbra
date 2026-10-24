@@ -39,6 +39,7 @@ export type Message = {
   readonly mcpToolCalls: readonly JsonValue[];
   readonly cacheRegion: string | null;
   readonly voice: MessageVoice | null;
+  readonly capabilities?: import("./capability-types").MessageCapabilities;
 };
 
 export type MessageHistoryQuery = {

@@ -4,6 +4,7 @@ import {
   type MessageHistoryState,
 } from "@/application/message-history";
 import type { RealtimeEvent } from "@/application/realtime";
+import { readPublicMessage } from "@/domain/message";
 
 import {
   assertReconciliationId,
@@ -76,6 +77,19 @@ async function executePlan(
   options: RealtimeReconciliationOptions,
 ): Promise<RealtimeReconciliationResult> {
   switch (plan.kind) {
+    case "refresh-capability-anchor": {
+      if ((plan.conversationId !== null && plan.conversationId !== state.conversationId) || !state.messages.some(m => m.id === plan.messageId)) {
+        return unchangedResult(state, plan, "other-conversation");
+      }
+      const canonical = await readPublicMessage(plan.messageId, options.history?.request);
+      if (canonical.id !== plan.messageId || canonical.conversationId !== state.conversationId) {
+        throw new Error("Capability anchor response violates its identity");
+      }
+      // Replace only this message's decorations. Preserve order, paging cursors,
+      // body and regenerate authority; WS carries no business result itself.
+      const next = { ...state, messages: state.messages.map(m => m.id === canonical.id ? { ...m, capabilities: canonical.capabilities } : m) };
+      return changedResult(state, next, plan, "refreshed-latest", "latest-window-only");
+    }
     case "refresh-latest-history": {
       if (plan.conversationId !== state.conversationId) {
         return unchangedResult(state, plan, "other-conversation");

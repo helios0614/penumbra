@@ -1,4 +1,4 @@
-import { mapMessageHistory } from "@/domain/message/message-mappers";
+import { mapMessage, mapMessageHistory } from "@/domain/message/message-mappers";
 import {
   MessageContractError,
   type Message,
@@ -8,6 +8,10 @@ import { apiGet, type ApiRequestOptions } from "@/lib/api";
 
 export const MESSAGE_HISTORY_LIMIT_MIN = 1;
 export const MESSAGE_HISTORY_LIMIT_MAX = 500;
+
+export async function readPublicMessage(messageId: string, options?: ApiRequestOptions): Promise<Message> {
+  return mapMessage(await apiGet<unknown>(`/api/messages/${encodeURIComponent(messageId)}/public`, options));
+}
 
 export async function listConversationMessages(
   conversationId: string,
@@ -52,6 +56,7 @@ function messageHistoryPath(
   }
 
   const path = `/api/conversations/${encodeURIComponent(conversationId)}/messages`;
+  params.set("public_view", "true");
   const queryString = params.toString();
   return queryString ? `${path}?${queryString}` : path;
 }

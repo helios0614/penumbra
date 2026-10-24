@@ -1,0 +1,1489 @@
+{
+  "legacyRendererSha256": "29f29374675fa50b356b0d30a1368540a1859d9989378b8a3607146e5de6423e",
+  "report": {
+    "legacyReadable": 23,
+    "penumbraReadable": 23,
+    "remainingPlaceholders": [],
+    "excluded": [
+      {
+        "id": "empty",
+        "reason": "没有可读内容，保留占位"
+      },
+      {
+        "id": "hidden-camera",
+        "reason": "旧前端和新前端均隐藏此角色"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "new-display",
+      "content": "新版公开操作的旧通知正文",
+      "public_display": {
+        "version": 1,
+        "kind": "operation",
+        "capability": "TODO",
+        "title": "添加待办",
+        "status": "success",
+        "fields": [
+          {
+            "label": "内容",
+            "text": "新版待办正文"
+          }
+        ]
+      },
+      "expected": [
+        "新版待办正文"
+      ],
+      "raw": {
+        "id": "new-display",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "新版公开操作的旧通知正文",
+        "created_at": 1792800000,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null,
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "TODO",
+          "title": "添加待办",
+          "status": "success",
+          "fields": [
+            {
+              "label": "内容",
+              "text": "新版待办正文"
+            }
+          ]
+        }
+      },
+      "paired": {
+        "id": "new-display",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800000,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "TODO",
+          "title": "添加待办",
+          "status": "success",
+          "fields": [
+            {
+              "label": "内容",
+              "text": "新版待办正文"
+            }
+          ]
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_new-display\"><div class=\"system-notice\">新版公开操作的旧通知正文</div><button class=\"msg-del-btn\" onclick=\"delMsg('new-display')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "memory",
+      "content": "[记忆写入] 已将「旧记忆正文，保留必要细节」写入记忆库（重要度 0.8）",
+      "expected": [
+        "旧记忆正文，保留必要细节",
+        "0.8"
+      ],
+      "raw": {
+        "id": "memory",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "[记忆写入] 已将「旧记忆正文，保留必要细节」写入记忆库（重要度 0.8）",
+        "created_at": 1792800001,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "memory",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800001,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "MEMORY_WRITE",
+          "title": "已写入记忆",
+          "status": "success",
+          "fields": [
+            {
+              "label": "记忆正文（旧通知）",
+              "text": "旧记忆正文，保留必要细节"
+            },
+            {
+              "label": "重要度",
+              "text": "0.8"
+            }
+          ],
+          "notices": [
+            "从已保存的旧通知恢复；没有可靠记忆 ID，不提供跳转。"
+          ],
+          "summary": "重要度 0.8",
+          "preview": "旧记忆正文，保留必要细节",
+          "preview_lines": 2
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_memory\"><div class=\"system-notice\">[记忆写入] 已将「旧记忆正文，保留必要细节」写入记忆库（重要度 0.8）</div><button class=\"msg-del-btn\" onclick=\"delMsg('memory')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "memory-error",
+      "content": "[记忆写入失败] 向量库连接超时，稍后重试 token=MATRIX_SECRET",
+      "expected": [
+        "向量库连接超时，稍后重试"
+      ],
+      "forbidden": [
+        "MATRIX_SECRET"
+      ],
+      "raw": {
+        "id": "memory-error",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "[记忆写入失败] 向量库连接超时，稍后重试 token=MATRIX_SECRET",
+        "created_at": 1792800002,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "memory-error",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800002,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "MEMORY_WRITE",
+          "title": "写入记忆",
+          "status": "failed",
+          "fields": [
+            {
+              "label": "失败详情（旧通知）",
+              "text": "向量库连接超时，稍后重试 token=<redacted>"
+            }
+          ],
+          "notices": [],
+          "preview": "向量库连接超时，稍后重试 token=<redacted>",
+          "preview_lines": 2
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_memory-error\"><div class=\"system-notice\">[记忆写入失败] 向量库连接超时，稍后重试 token=MATRIX_SECRET</div><button class=\"msg-del-btn\" onclick=\"delMsg('memory-error')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "alarm",
+      "content": "知远 设置了 2026-10-24 18:15 的闹铃：下班",
+      "expected": [
+        "2026-10-24 18:15",
+        "下班"
+      ],
+      "raw": {
+        "id": "alarm",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "知远 设置了 2026-10-24 18:15 的闹铃：下班",
+        "created_at": 1792800003,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "alarm",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800003,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "ALARM",
+          "title": "设置闹铃",
+          "status": "success",
+          "fields": [
+            {
+              "label": "内容",
+              "text": "下班"
+            },
+            {
+              "label": "时间",
+              "text": "2026-10-24 18:15"
+            }
+          ],
+          "notices": [],
+          "summary": "2026-10-24 18:15",
+          "preview": "下班",
+          "preview_lines": 2
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_alarm\"><div class=\"system-notice\">知远 设置了 2026-10-24 18:15 的闹铃：下班</div><button class=\"msg-del-btn\" onclick=\"delMsg('alarm')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "reminder",
+      "content": "知远 设置了 2026-10-25 09:00 的日程：讨论计划",
+      "expected": [
+        "2026-10-25 09:00",
+        "讨论计划"
+      ],
+      "raw": {
+        "id": "reminder",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "知远 设置了 2026-10-25 09:00 的日程：讨论计划",
+        "created_at": 1792800004,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "reminder",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800004,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "REMINDER",
+          "title": "设置日程",
+          "status": "success",
+          "fields": [
+            {
+              "label": "内容",
+              "text": "讨论计划"
+            },
+            {
+              "label": "时间",
+              "text": "2026-10-25 09:00"
+            }
+          ],
+          "notices": [],
+          "summary": "2026-10-25 09:00",
+          "preview": "讨论计划",
+          "preview_lines": 2
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_reminder\"><div class=\"system-notice\">知远 设置了 2026-10-25 09:00 的日程：讨论计划</div><button class=\"msg-del-btn\" onclick=\"delMsg('reminder')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "monitor",
+      "content": "知远 设置了 2026-10-24 11:00 的查岗：查看状态",
+      "expected": [
+        "查看状态"
+      ],
+      "raw": {
+        "id": "monitor",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "知远 设置了 2026-10-24 11:00 的查岗：查看状态",
+        "created_at": 1792800005,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "monitor",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800005,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "Monitor",
+          "title": "设置查岗",
+          "status": "success",
+          "fields": [
+            {
+              "label": "内容",
+              "text": "查看状态"
+            },
+            {
+              "label": "时间",
+              "text": "2026-10-24 11:00"
+            }
+          ],
+          "notices": [],
+          "summary": "2026-10-24 11:00",
+          "preview": "查看状态",
+          "preview_lines": 2
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_monitor\"><div class=\"system-notice\">知远 设置了 2026-10-24 11:00 的查岗：查看状态</div><button class=\"msg-del-btn\" onclick=\"delMsg('monitor')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "todo",
+      "content": "知远 添加了待办：准备材料",
+      "expected": [
+        "准备材料"
+      ],
+      "raw": {
+        "id": "todo",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "知远 添加了待办：准备材料",
+        "created_at": 1792800006,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "todo",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800006,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "TODO",
+          "title": "添加待办",
+          "status": "success",
+          "fields": [
+            {
+              "label": "内容",
+              "text": "准备材料"
+            }
+          ],
+          "notices": [],
+          "preview": "准备材料",
+          "preview_lines": 2
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_todo\"><div class=\"system-notice\">知远 添加了待办：准备材料</div><button class=\"msg-del-btn\" onclick=\"delMsg('todo')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "todo-done",
+      "content": "知远 完成了待办：准备材料",
+      "expected": [
+        "准备材料"
+      ],
+      "raw": {
+        "id": "todo-done",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "知远 完成了待办：准备材料",
+        "created_at": 1792800007,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "todo-done",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800007,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "TODO_DONE",
+          "title": "完成待办",
+          "status": "success",
+          "fields": [
+            {
+              "label": "内容",
+              "text": "准备材料"
+            }
+          ],
+          "notices": [],
+          "preview": "准备材料",
+          "preview_lines": 2
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_todo-done\"><div class=\"system-notice\">知远 完成了待办：准备材料</div><button class=\"msg-del-btn\" onclick=\"delMsg('todo-done')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "schedule-delete",
+      "content": "知远 取消了 2026-10-24 18:15 的闹铃：下班",
+      "expected": [
+        "2026-10-24 18:15",
+        "下班"
+      ],
+      "raw": {
+        "id": "schedule-delete",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "知远 取消了 2026-10-24 18:15 的闹铃：下班",
+        "created_at": 1792800008,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "schedule-delete",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800008,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "SCHEDULE_DEL",
+          "title": "取消闹铃",
+          "status": "success",
+          "fields": [
+            {
+              "label": "内容",
+              "text": "下班"
+            },
+            {
+              "label": "时间",
+              "text": "2026-10-24 18:15"
+            }
+          ],
+          "notices": [],
+          "summary": "2026-10-24 18:15",
+          "preview": "下班",
+          "preview_lines": 2
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_schedule-delete\"><div class=\"system-notice\">知远 取消了 2026-10-24 18:15 的闹铃：下班</div><button class=\"msg-del-btn\" onclick=\"delMsg('schedule-delete')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "monitor-delete",
+      "content": "知远 取消了 2026-10-24 11:00 的定时监控：查看状态",
+      "expected": [
+        "查看状态"
+      ],
+      "raw": {
+        "id": "monitor-delete",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "知远 取消了 2026-10-24 11:00 的定时监控：查看状态",
+        "created_at": 1792800009,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "monitor-delete",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800009,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "SCHEDULE_DEL",
+          "title": "取消定时监控",
+          "status": "success",
+          "fields": [
+            {
+              "label": "内容",
+              "text": "查看状态"
+            },
+            {
+              "label": "时间",
+              "text": "2026-10-24 11:00"
+            }
+          ],
+          "notices": [],
+          "summary": "2026-10-24 11:00",
+          "preview": "查看状态",
+          "preview_lines": 2
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_monitor-delete\"><div class=\"system-notice\">知远 取消了 2026-10-24 11:00 的定时监控：查看状态</div><button class=\"msg-del-btn\" onclick=\"delMsg('monitor-delete')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "mcp",
+      "content": "远程工具 · forum:submit",
+      "mcp_tool_calls": [
+        {
+          "server": "forum",
+          "tool": "submit",
+          "success": true,
+          "args": {
+            "content": "实际提交的完整正文",
+            "api_key": "MATRIX_SECRET"
+          },
+          "result": "实际业务回执：已接收正文",
+          "ai_result": "实际业务回执：已接收正文",
+          "result_version": 1
+        }
+      ],
+      "expected": [
+        "实际提交的完整正文",
+        "实际业务回执：已接收正文"
+      ],
+      "forbidden": [
+        "MATRIX_SECRET"
+      ],
+      "raw": {
+        "id": "mcp",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "远程工具 · forum:submit",
+        "created_at": 1792800010,
+        "attachments": [],
+        "mcp_tool_calls": [
+          {
+            "server": "forum",
+            "tool": "submit",
+            "success": true,
+            "args": {
+              "content": "实际提交的完整正文",
+              "api_key": "MATRIX_SECRET"
+            },
+            "result": "实际业务回执：已接收正文",
+            "ai_result": "实际业务回执：已接收正文",
+            "result_version": 1
+          }
+        ],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "mcp",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800010,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "result",
+          "capability": "tools",
+          "title": "工具执行",
+          "status": "unknown",
+          "fields": [],
+          "notices": [],
+          "calls": [
+            {
+              "server": "forum",
+              "tool": "submit",
+              "args": {
+                "content": "实际提交的完整正文",
+                "api_key": "[已隐藏]"
+              },
+              "result": "实际业务回执：已接收正文",
+              "ai_result": "实际业务回执：已接收正文",
+              "result_version": 1,
+              "status": "success",
+              "ai_delivery": "unknown"
+            }
+          ]
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_mcp\"><div class=\"mcp-system-card\"><div class=\"mcp-system-header\">远程工具<span class=\"mcp-batch-status\">成功</span></div><div class=\"mcp-system-item success\"><div class=\"mcp-system-tool-name\">forum:submit<span class=\"mcp-batch-status\">成功</span></div>\n        <div class=\"mcp-field-label\">调用命令</div><pre class=\"mcp-system-cmd\">[MCP:forum:submit|{&quot;content&quot;:&quot;实际提交的完整正文&quot;,&quot;api_key&quot;:&quot;MATRIX_SECRET&quot;}]</pre>\n        \n        <div class=\"mcp-field-label\">执行参数</div><pre class=\"mcp-system-cmd\">{\n  &quot;content&quot;: &quot;实际提交的完整正文&quot;,\n  &quot;api_key&quot;: &quot;MATRIX_SECRET&quot;\n}</pre>\n        \n        <details class=\"mcp-result-details\" data-mcp-result-key=\"[&quot;mcp&quot;,0,&quot;result&quot;]\" ><summary onclick=\"McpResultUI.toggle(event, this)\">执行结果<span class=\"mcp-collapse-label\">展开 / 收起</span></summary><pre class=\"mcp-result-text\">实际业务回执：已接收正文</pre><button type=\"button\" class=\"mcp-copy\" onclick=\"McpResultUI.copy(this)\">复制</button></details>\n        <div class=\"mcp-result-notice\">本次续写上下文 · 完整有效结果</div>\n        \n      </div></div><button class=\"msg-del-btn\" onclick=\"delMsg('mcp')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "poi",
+      "content": "工具执行 · POI_SEARCH",
+      "mcp_tool_calls": [
+        {
+          "server": "maps",
+          "tool": "search",
+          "command_type": "POI_SEARCH",
+          "success": true,
+          "args": {
+            "query": "咖啡"
+          },
+          "result": "候选：纸间咖啡；地址：示例路 10 号；距离：300 米"
+        }
+      ],
+      "expected": [
+        "纸间咖啡",
+        "示例路 10 号",
+        "300 米"
+      ],
+      "raw": {
+        "id": "poi",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "工具执行 · POI_SEARCH",
+        "created_at": 1792800011,
+        "attachments": [],
+        "mcp_tool_calls": [
+          {
+            "server": "maps",
+            "tool": "search",
+            "command_type": "POI_SEARCH",
+            "success": true,
+            "args": {
+              "query": "咖啡"
+            },
+            "result": "候选：纸间咖啡；地址：示例路 10 号；距离：300 米"
+          }
+        ],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "poi",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800011,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "result",
+          "capability": "tools",
+          "title": "工具执行",
+          "status": "unknown",
+          "fields": [],
+          "notices": [],
+          "calls": [
+            {
+              "server": "maps",
+              "tool": "search",
+              "command_type": "POI_SEARCH",
+              "args": {
+                "query": "咖啡"
+              },
+              "result": "候选：纸间咖啡；地址：示例路 10 号；距离：300 米",
+              "status": "success",
+              "ai_delivery": "unknown"
+            }
+          ]
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_poi\"><div class=\"mcp-system-card\"><div class=\"mcp-system-header\">工具执行<span class=\"mcp-batch-status\">成功</span></div><div class=\"mcp-system-item success\"><div class=\"mcp-system-tool-name\">POI_SEARCH<span class=\"mcp-batch-status\">成功</span></div>\n        <div class=\"mcp-field-label\">调用命令</div><pre class=\"mcp-system-cmd\">[MCP:maps:search|{&quot;query&quot;:&quot;咖啡&quot;}]</pre>\n        \n        <div class=\"mcp-field-label\">执行参数</div><pre class=\"mcp-system-cmd\">{\n  &quot;query&quot;: &quot;咖啡&quot;\n}</pre>\n        \n        <details class=\"mcp-result-details\" data-mcp-result-key=\"[&quot;poi&quot;,0,&quot;result&quot;]\" ><summary onclick=\"McpResultUI.toggle(event, this)\">执行结果<span class=\"mcp-collapse-label\">展开 / 收起</span></summary><pre class=\"mcp-result-text\">候选：纸间咖啡；地址：示例路 10 号；距离：300 米</pre><button type=\"button\" class=\"mcp-copy\" onclick=\"McpResultUI.copy(this)\">复制</button></details>\n        \n        \n      </div></div><button class=\"msg-del-btn\" onclick=\"delMsg('poi')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "route",
+      "content": "工具执行 · ROUTE_PLAN",
+      "mcp_tool_calls": [
+        {
+          "server": "maps",
+          "tool": "route",
+          "command_type": "ROUTE_PLAN",
+          "success": false,
+          "args": {
+            "destination": "图书馆"
+          },
+          "error": "未找到可用路线",
+          "result": "未找到可用路线"
+        }
+      ],
+      "expected": [
+        "图书馆",
+        "未找到可用路线"
+      ],
+      "raw": {
+        "id": "route",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "工具执行 · ROUTE_PLAN",
+        "created_at": 1792800012,
+        "attachments": [],
+        "mcp_tool_calls": [
+          {
+            "server": "maps",
+            "tool": "route",
+            "command_type": "ROUTE_PLAN",
+            "success": false,
+            "args": {
+              "destination": "图书馆"
+            },
+            "error": "未找到可用路线",
+            "result": "未找到可用路线"
+          }
+        ],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "route",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800012,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "result",
+          "capability": "tools",
+          "title": "工具执行",
+          "status": "unknown",
+          "fields": [],
+          "notices": [],
+          "calls": [
+            {
+              "server": "maps",
+              "tool": "route",
+              "command_type": "ROUTE_PLAN",
+              "args": {
+                "destination": "图书馆"
+              },
+              "result": "未找到可用路线",
+              "error": "未找到可用路线",
+              "status": "failed",
+              "ai_delivery": "unknown"
+            }
+          ]
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_route\"><div class=\"mcp-system-card\"><div class=\"mcp-system-header\">工具执行<span class=\"mcp-batch-status\">失败</span></div><div class=\"mcp-system-item error\"><div class=\"mcp-system-tool-name\">ROUTE_PLAN<span class=\"mcp-batch-status\">失败</span></div>\n        <div class=\"mcp-field-label\">调用命令</div><pre class=\"mcp-system-cmd\">[MCP:maps:route|{&quot;destination&quot;:&quot;图书馆&quot;}]</pre>\n        \n        <div class=\"mcp-field-label\">执行参数</div><pre class=\"mcp-system-cmd\">{\n  &quot;destination&quot;: &quot;图书馆&quot;\n}</pre>\n        \n        <details class=\"mcp-result-details\" data-mcp-result-key=\"[&quot;route&quot;,0,&quot;result&quot;]\" ><summary onclick=\"McpResultUI.toggle(event, this)\">失败原因<span class=\"mcp-collapse-label\">展开 / 收起</span></summary><pre class=\"mcp-result-text\">未找到可用路线</pre><button type=\"button\" class=\"mcp-copy\" onclick=\"McpResultUI.copy(this)\">复制</button></details>\n        \n        \n      </div></div><button class=\"msg-del-btn\" onclick=\"delMsg('route')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "activity",
+      "content": "[ACTIVITY_CHECK 成功]\n过去 30 分钟：阅读 20 分钟，步行 10 分钟。\n请结合这些记录继续回复。",
+      "expected": [
+        "阅读 20 分钟",
+        "请结合这些记录继续回复。"
+      ],
+      "unknown": true,
+      "raw": {
+        "id": "activity",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "[ACTIVITY_CHECK 成功]\n过去 30 分钟：阅读 20 分钟，步行 10 分钟。\n请结合这些记录继续回复。",
+        "created_at": 1792800013,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "activity",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800013,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "legacy-text",
+          "title": "旧版系统内容",
+          "status": "unknown",
+          "fields": [
+            {
+              "label": "旧版系统原文",
+              "text": "[ACTIVITY_CHECK 成功]\n过去 30 分钟：阅读 20 分钟，步行 10 分钟。\n请结合这些记录继续回复。"
+            }
+          ],
+          "notices": [
+            "保留旧版系统文本；不据此推断执行状态或调用身份。"
+          ],
+          "preview": "[ACTIVITY_CHECK 成功]\n过去 30 分钟：阅读 20 分钟，步行 10 分钟。\n请结合这些记录继续回复。",
+          "preview_lines": 2
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_activity\"><div class=\"system-notice\">[ACTIVITY_CHECK 成功]\n过去 30 分钟：阅读 20 分钟，步行 10 分钟。\n请结合这些记录继续回复。</div><button class=\"msg-del-btn\" onclick=\"delMsg('activity')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "location",
+      "content": "[Location 成功]\n位置状态：在外面；地址：示例街道；距家 800 米。\n请根据位置结果自然回复。",
+      "expected": [
+        "示例街道",
+        "距家 800 米",
+        "自然回复"
+      ],
+      "unknown": true,
+      "raw": {
+        "id": "location",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "[Location 成功]\n位置状态：在外面；地址：示例街道；距家 800 米。\n请根据位置结果自然回复。",
+        "created_at": 1792800014,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "location",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800014,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "legacy-text",
+          "title": "旧版系统内容",
+          "status": "unknown",
+          "fields": [
+            {
+              "label": "旧版系统原文",
+              "text": "[Location 成功]\n位置状态：在外面；地址：示例街道；距家 800 米。\n请根据位置结果自然回复。"
+            }
+          ],
+          "notices": [
+            "保留旧版系统文本；不据此推断执行状态或调用身份。"
+          ],
+          "preview": "[Location 成功]\n位置状态：在外面；地址：示例街道；距家 800 米。\n请根据位置结果自然回复。",
+          "preview_lines": 2
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_location\"><div class=\"system-notice\">[Location 成功]\n位置状态：在外面；地址：示例街道；距家 800 米。\n请根据位置结果自然回复。</div><button class=\"msg-del-btn\" onclick=\"delMsg('location')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "camera",
+      "content": "[delayed]知远查看了监控画面",
+      "expected": [
+        "知远查看了监控画面"
+      ],
+      "unknown": true,
+      "parsed_capability": "camera_legacy",
+      "raw": {
+        "id": "camera",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "[delayed]知远查看了监控画面",
+        "created_at": 1792800015,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "camera",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800015,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "camera_legacy",
+          "title": "查看监控记录",
+          "status": "unknown",
+          "fields": [
+            {
+              "label": "旧查看记录",
+              "text": "知远查看了监控画面"
+            }
+          ],
+          "notices": [
+            "旧短句只记载查看行为，未保留画面、计划身份或设备回执。"
+          ],
+          "preview": "知远查看了监控画面",
+          "preview_lines": 2
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_camera\"><div class=\"system-notice\">知远查看了监控画面</div><button class=\"msg-del-btn\" onclick=\"delMsg('camera')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "keepalive",
+      "content": "[delayed]现在是自由活动时间，上一次 AI 回复已超过配置阈值。可以自然地发起对话。",
+      "expected": [
+        "上一次 AI 回复已超过配置阈值",
+        "自然地发起对话"
+      ],
+      "unknown": true,
+      "raw": {
+        "id": "keepalive",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "[delayed]现在是自由活动时间，上一次 AI 回复已超过配置阈值。可以自然地发起对话。",
+        "created_at": 1792800016,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "keepalive",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800016,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "legacy-text",
+          "title": "旧版系统内容",
+          "status": "unknown",
+          "fields": [
+            {
+              "label": "旧版系统原文",
+              "text": "现在是自由活动时间，上一次 AI 回复已超过配置阈值。可以自然地发起对话。"
+            }
+          ],
+          "notices": [
+            "保留旧版系统文本；不据此推断执行状态或调用身份。"
+          ],
+          "preview": "现在是自由活动时间，上一次 AI 回复已超过配置阈值。可以自然地发起对话。",
+          "preview_lines": 2
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_keepalive\"><div class=\"system-notice\">现在是自由活动时间，上一次 AI 回复已超过配置阈值。可以自然地发起对话。</div><button class=\"msg-del-btn\" onclick=\"delMsg('keepalive')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "location-sentinel",
+      "content": "[delayed]位置状态从在家变为外出。这是旧后台主动问候记录。",
+      "expected": [
+        "从在家变为外出",
+        "旧后台主动问候记录"
+      ],
+      "unknown": true,
+      "raw": {
+        "id": "location-sentinel",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "[delayed]位置状态从在家变为外出。这是旧后台主动问候记录。",
+        "created_at": 1792800017,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "location-sentinel",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800017,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "legacy-text",
+          "title": "旧版系统内容",
+          "status": "unknown",
+          "fields": [
+            {
+              "label": "旧版系统原文",
+              "text": "位置状态从在家变为外出。这是旧后台主动问候记录。"
+            }
+          ],
+          "notices": [
+            "保留旧版系统文本；不据此推断执行状态或调用身份。"
+          ],
+          "preview": "位置状态从在家变为外出。这是旧后台主动问候记录。",
+          "preview_lines": 2
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_location-sentinel\"><div class=\"system-notice\">位置状态从在家变为外出。这是旧后台主动问候记录。</div><button class=\"msg-del-btn\" onclick=\"delMsg('location-sentinel')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "music",
+      "content": "[MUSIC 成功]\n关键词：轻音乐\n歌曲：纸间\n歌手：示例歌手\n状态：已选曲并取得播放地址",
+      "expected": [
+        "轻音乐",
+        "纸间",
+        "示例歌手"
+      ],
+      "raw": {
+        "id": "music",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "[MUSIC 成功]\n关键词：轻音乐\n歌曲：纸间\n歌手：示例歌手\n状态：已选曲并取得播放地址",
+        "created_at": 1792800018,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "music",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800018,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "result",
+          "capability": "MUSIC",
+          "title": "选曲结果",
+          "status": "success",
+          "fields": [
+            {
+              "label": "选曲",
+              "text": "[MUSIC 成功]\n关键词：轻音乐\n歌曲：纸间\n歌手：示例歌手\n状态：已选曲并取得播放地址"
+            }
+          ],
+          "notices": [
+            "旧选曲通知不代表已开始播放。"
+          ],
+          "preview": "纸间 · 示例歌手",
+          "preview_lines": 2
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_music\"><div class=\"system-notice\">[MUSIC 成功]\n关键词：轻音乐\n歌曲：纸间\n歌手：示例歌手\n状态：已选曲并取得播放地址</div><button class=\"msg-del-btn\" onclick=\"delMsg('music')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "unknown",
+      "content": "旧服务返回的自定义通知：保留全部这一段说明，memory_id=仅为文本。",
+      "expected": [
+        "保留全部这一段说明",
+        "memory_id=仅为文本"
+      ],
+      "unknown": true,
+      "raw": {
+        "id": "unknown",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "旧服务返回的自定义通知：保留全部这一段说明，memory_id=仅为文本。",
+        "created_at": 1792800019,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "unknown",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800019,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "legacy-text",
+          "title": "旧版系统内容",
+          "status": "unknown",
+          "fields": [
+            {
+              "label": "旧版系统原文",
+              "text": "旧服务返回的自定义通知：保留全部这一段说明，memory_id=仅为文本。"
+            }
+          ],
+          "notices": [
+            "保留旧版系统文本；不据此推断执行状态或调用身份。"
+          ],
+          "preview": "旧服务返回的自定义通知：保留全部这一段说明，memory_id=仅为文本。",
+          "preview_lines": 2
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_unknown\"><div class=\"system-notice\">旧服务返回的自定义通知：保留全部这一段说明，memory_id=仅为文本。</div><button class=\"msg-del-btn\" onclick=\"delMsg('unknown')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "html",
+      "content": "旧系统文字 <script>window.LEGACY_SCRIPT_EXECUTED=true</script> <img src=x onerror=alert(1)> [链接](javascript:alert(1))",
+      "expected": [
+        "<script>",
+        "onerror=alert(1)",
+        "javascript:alert(1)"
+      ],
+      "unknown": true,
+      "raw": {
+        "id": "html",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "旧系统文字 <script>window.LEGACY_SCRIPT_EXECUTED=true</script> <img src=x onerror=alert(1)> [链接](javascript:alert(1))",
+        "created_at": 1792800020,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "html",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800020,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "legacy-text",
+          "title": "旧版系统内容",
+          "status": "unknown",
+          "fields": [
+            {
+              "label": "旧版系统原文",
+              "text": "旧系统文字 <script>window.LEGACY_SCRIPT_EXECUTED=true</script> <img src=x onerror=alert(1)> [链接](javascript:alert(1))"
+            }
+          ],
+          "notices": [
+            "保留旧版系统文本；不据此推断执行状态或调用身份。"
+          ],
+          "preview": "旧系统文字 <script>window.LEGACY_SCRIPT_EXECUTED=true</script> <img src=x onerror=alert(1)> [链接](javascript:alert(1))",
+          "preview_lines": 2
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_html\"><div class=\"system-notice\">旧系统文字 &lt;script&gt;window.LEGACY_SCRIPT_EXECUTED=true&lt;/script&gt; &lt;img src=x onerror=alert(1)&gt; [链接](javascript:alert(1))</div><button class=\"msg-del-btn\" onclick=\"delMsg('html')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "credentials",
+      "content": "旧接口错误\nAuthorization: Basic MATRIX_BASIC\nCookie: session=MATRIX_COOKIE; another=MATRIX_SECOND\npassword=\"two secret words\" api_key=MATRIX_SECRET\n安全错误正文保留。",
+      "expected": [
+        "安全错误正文保留。"
+      ],
+      "forbidden": [
+        "MATRIX_BASIC",
+        "MATRIX_COOKIE",
+        "MATRIX_SECOND",
+        "two secret words",
+        "MATRIX_SECRET"
+      ],
+      "unknown": true,
+      "raw": {
+        "id": "credentials",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "旧接口错误\nAuthorization: Basic MATRIX_BASIC\nCookie: session=MATRIX_COOKIE; another=MATRIX_SECOND\npassword=\"two secret words\" api_key=MATRIX_SECRET\n安全错误正文保留。",
+        "created_at": 1792800021,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "credentials",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800021,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "legacy-text",
+          "title": "旧版系统内容",
+          "status": "unknown",
+          "fields": [
+            {
+              "label": "旧版系统原文",
+              "text": "旧接口错误\nAuthorization: <redacted>\nCookie: <redacted>\npassword=<redacted> api_key=<redacted>\n安全错误正文保留。"
+            }
+          ],
+          "notices": [
+            "保留旧版系统文本；不据此推断执行状态或调用身份。"
+          ],
+          "preview": "旧接口错误\nAuthorization: <redacted>\nCookie: <redacted>\npassword=<redacted> api_key=<redacted>\n安全错误正文保留。",
+          "preview_lines": 2
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_credentials\"><div class=\"system-notice\">旧接口错误\nAuthorization: Basic MATRIX_BASIC\nCookie: session=MATRIX_COOKIE; another=MATRIX_SECOND\npassword=&quot;two secret words&quot; api_key=MATRIX_SECRET\n安全错误正文保留。</div><button class=\"msg-del-btn\" onclick=\"delMsg('credentials')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "json-prompt",
+      "content": "{\"prompt\":\"旧版已可读的提示说明\",\"context\":\"旧结果上下文\",\"token\":\"MATRIX_SECRET\"}",
+      "expected": [
+        "旧版已可读的提示说明",
+        "旧结果上下文"
+      ],
+      "forbidden": [
+        "MATRIX_SECRET"
+      ],
+      "unknown": true,
+      "raw": {
+        "id": "json-prompt",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "{\"prompt\":\"旧版已可读的提示说明\",\"context\":\"旧结果上下文\",\"token\":\"MATRIX_SECRET\"}",
+        "created_at": 1792800022,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "json-prompt",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800022,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "legacy-text",
+          "title": "旧版系统内容",
+          "status": "unknown",
+          "fields": [
+            {
+              "label": "旧版系统原文",
+              "text": "{\n  \"prompt\": \"旧版已可读的提示说明\",\n  \"context\": \"旧结果上下文\",\n  \"token\": \"<redacted>\"\n}"
+            }
+          ],
+          "notices": [
+            "保留旧版系统文本；不据此推断执行状态或调用身份。"
+          ],
+          "preview": "{\n  \"prompt\": \"旧版已可读的提示说明\",\n  \"context\": \"旧结果上下文\",\n  \"token\": \"<redacted>\"\n}",
+          "preview_lines": 2
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_json-prompt\"><div class=\"system-notice\">{&quot;prompt&quot;:&quot;旧版已可读的提示说明&quot;,&quot;context&quot;:&quot;旧结果上下文&quot;,&quot;token&quot;:&quot;MATRIX_SECRET&quot;}</div><button class=\"msg-del-btn\" onclick=\"delMsg('json-prompt')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "empty",
+      "content": "",
+      "expected": [],
+      "placeholder": true,
+      "raw": {
+        "id": "empty",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800023,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "empty",
+        "conv_id": "legacy-matrix",
+        "role": "system",
+        "content": "",
+        "created_at": 1792800023,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": [],
+        "public_display": {
+          "version": 1,
+          "kind": "operation",
+          "capability": "legacy",
+          "title": "历史系统记录",
+          "status": "unknown",
+          "fields": [],
+          "notices": [
+            "这条旧记录没有可用的系统文本或执行结果"
+          ]
+        }
+      },
+      "legacyHtml": "<div class=\"msg-row system\" id=\"m_empty\"><div class=\"system-notice\"></div><button class=\"msg-del-btn\" onclick=\"delMsg('empty')\" title=\"删除此通知\">×</button></div>"
+    },
+    {
+      "id": "hidden-camera",
+      "role": "cam_trigger",
+      "content": "HIDDEN_CAMERA_CONTEXT",
+      "expected": [],
+      "hidden": true,
+      "raw": {
+        "id": "hidden-camera",
+        "conv_id": "legacy-matrix",
+        "role": "cam_trigger",
+        "content": "HIDDEN_CAMERA_CONTEXT",
+        "created_at": 1792800024,
+        "attachments": [],
+        "mcp_tool_calls": [],
+        "is_carryover": 0,
+        "thinking": null,
+        "drift": null,
+        "cache_region": null
+      },
+      "paired": {
+        "id": "hidden-camera",
+        "conv_id": "legacy-matrix",
+        "role": "cam_trigger",
+        "content": "",
+        "created_at": 1792800024,
+        "drift": null,
+        "thinking": null,
+        "is_carryover": 0,
+        "attachments": [],
+        "cache_region": null,
+        "public_view_version": 1,
+        "mcp_tool_calls": []
+      },
+      "legacyHtml": ""
+    }
+  ]
+}

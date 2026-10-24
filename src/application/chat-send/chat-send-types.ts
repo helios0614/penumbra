@@ -29,6 +29,7 @@ export type StreamingAssistantMessage = {
   readonly usage: SafeUsageSummary | null;
   readonly createdAt: number;
   readonly error?: string;
+  readonly toolPending?: boolean;
 };
 
 export type SafeChatExecutionErrorCode =

@@ -25,6 +25,7 @@ export type MessageDto = {
   mcp_tool_calls: JsonValue[];
   cache_region: string | null;
   voice?: MessageVoiceDto;
+  capabilities?: import("./capability-types").MessageCapabilities;
 };
 
 export type MessageHistoryDto = MessageDto[];

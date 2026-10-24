@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { Bot, CircleHelp, Info, Paperclip, User } from "lucide-react";
+import { Bot, CircleHelp, Paperclip, User } from "lucide-react";
 import { memo, useRef } from "react";
 import { readMessageSelection } from "./message-selection";
 import { insertableBody } from "./insertable-body";
@@ -10,12 +10,15 @@ import type { ChatMessageViewModel } from "./chat-ui-types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 
-import { MarkdownRenderer } from "./MarkdownRenderer";
+import { BubbleSegment } from "./BubbleSegment";
 import { MessageActions } from "./MessageActions";
 import { GenerationIndicator } from "./GenerationIndicator";
 import { AI_BUBBLE_SURFACE, BUBBLE_SURFACE } from "./bubble-surface";
 import "./chat.css";
 import { SimpleThink, ThinkingBlock } from "./system-command/InlineIndicator";
+import { CapabilityMessage } from "./capabilities/CapabilityMessage";
+import { ToolResult } from "./capabilities/ToolResult";
+import { HeartMarker } from "./capabilities/HeartMarker";
 
 // Temporary visual-only sources. Replace these imports when avatar settings land.
 const temporaryAvatarImages = {
@@ -88,69 +91,29 @@ function MessageAvatar({ kind }: { kind: "user" | "assistant" }) {
   );
 }
 
-function BubbleSegment({
-  kind,
-  content,
-}: {
-  readonly kind: "user" | "assistant";
-  readonly content: string;
-}) {
-  const isUser = kind === "user";
-
-  return (
-    <div
-      className={cn(
-        BUBBLE_SURFACE,
-        isUser
-          ? "border-primary/20 bg-primary/10 text-primary shadow-sm backdrop-blur-md"
-          : AI_BUBBLE_SURFACE,
-      )}
-    >
-      {isUser ? (
-        <span className="whitespace-pre-wrap">{content}</span>
-      ) : (
-        <MarkdownRenderer content={content} />
-      )}
-    </div>
-  );
-}
-
 function NeutralMessage({
   message,
 }: {
-  readonly message: Extract<ChatMessageViewModel, { kind: "system" | "unknown" }>;
+  readonly message: Extract<ChatMessageViewModel, { kind: "unknown" }>;
 }) {
-  const isUnknown = message.kind === "unknown";
-  const Icon = isUnknown ? CircleHelp : Info;
-
   return (
     <div
-      className={cn(
-        "flex items-start gap-2 text-muted-foreground",
-        isUnknown
-          ? "mist-glass mx-auto w-full max-w-[560px] rounded-lg px-3 py-2 shadow-sm! sm:px-4"
-          : "-my-1 mx-auto w-fit max-w-full rounded-sm border-l border-border/35 bg-surface-secondary/25 px-2 py-1.5 shadow-none sm:max-w-[560px]",
-      )}
+      className="mist-glass mx-auto flex w-full max-w-[560px] items-start gap-2 rounded-lg px-3 py-2 text-muted-foreground shadow-sm! sm:px-4"
       role="note"
     >
-      <Icon className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+      <CircleHelp className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-medium leading-4">
-          <span>{isUnknown ? "暂不支持的消息类型" : "系统消息"}</span>
-          {isUnknown && (
-            <code className="max-w-full break-all rounded bg-background/45 px-1.5 py-0.5 font-mono text-muted-strong">
-              {message.rawRole}
-            </code>
-          )}
+          <span>暂不支持的消息类型</span>
+          <code className="max-w-full break-all rounded bg-background/45 px-1.5 py-0.5 font-mono text-muted-strong">
+            {message.rawRole}
+          </code>
           <span className="font-normal">
             {format(new Date(message.createdAt * 1000), "HH:mm")}
           </span>
         </div>
         <p
-          className={cn(
-            "mt-0.5 min-h-5 whitespace-pre-wrap break-words leading-[1.55]",
-            isUnknown ? "text-sm text-foreground" : "text-[13px] text-foreground/80",
-          )}
+          className="mt-0.5 min-h-5 whitespace-pre-wrap break-words text-sm leading-[1.55] text-foreground"
         >
           {message.content}
         </p>
@@ -173,7 +136,12 @@ function BubbleInner({
   onInsert,
 }: BubbleProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
-  if (message.kind === "system" || message.kind === "unknown") {
+  if (message.kind === "system") {
+    return <div data-message-id={message.id} tabIndex={-1} className="min-w-0 w-full outline-none">
+      <CapabilityMessage record={message.capabilities?.display} identity={message.id} />
+    </div>;
+  }
+  if (message.kind === "unknown") {
     return <NeutralMessage message={message} />;
   }
 
@@ -264,6 +232,7 @@ function BubbleInner({
               key={`${message.id}:${index}`}
               kind={message.kind}
               content={chunk}
+              reaction={message.kind === "user" && index === chunks.length - 1 ? message.capabilities?.reaction : null}
             />
           ))}
           {message.kind === "assistant" && message.error && <div className={cn(BUBBLE_SURFACE, AI_BUBBLE_SURFACE, "whitespace-pre-wrap text-sm break-words")} role="alert">{message.error}</div>}
@@ -284,6 +253,14 @@ function BubbleInner({
             ))}
           </div>
         )}
+        {message.capabilities?.results.map(result => <div key={result.id} className="mt-2 min-w-0 w-full">
+          <ToolResult record={result} identity={`${message.id}:${result.id}`} />
+        </div>)}
+        {message.toolPending && <p role="status" className="px-2 py-1 text-[11px] text-muted-foreground">
+          {message.executionStatus === "streaming" ? "远程调用中 · 结果待确认" : "远程调用结果待确认"}
+        </p>}
+        {message.kind === "assistant" && message.capabilities?.hasHeart && <HeartMarker key={`${message.id}:${message.capabilities.heartRevision ?? ""}`} messageId={message.id}
+          conversationId={message.capabilities.conversationId} />}
       </div>
     </div>
   );

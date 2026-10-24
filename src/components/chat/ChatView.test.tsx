@@ -114,8 +114,8 @@ describe("ChatWorkspaceView ready states", () => {
     expect(html).toContain("h-14");
     expect(html).toContain("用户内容");
     expect(html).toContain("知远内容");
-    expect(html).toContain("系统消息");
-    expect(html).toContain("系统内容");
+    expect(html).toContain("历史系统记录");
+    expect(html).not.toContain("系统内容");
     expect(html).toContain("暂不支持的消息类型");
     expect(html).toContain("future_role");
     expect(html).toContain("&lt;b&gt;未知内容&lt;/b&gt;");

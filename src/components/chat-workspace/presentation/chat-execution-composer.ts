@@ -13,6 +13,7 @@ export function composeVisibleChatMessages(
   if (execution.kind === "error" && execution.conversationId === conversationId && execution.assistant && !execution.optimisticUser && !execution.failedMessageId) {
     visible.push({ kind: "assistant", id: execution.assistant.overlayId, content: execution.assistant.content,
       createdAt: execution.assistant.createdAt, thinking: execution.assistant.thinking, simpleThink: execution.assistant.simpleThink,
+      toolPending: execution.assistant.toolPending,
       error: execution.assistant.error ?? execution.error.message, attachments: [], executionStatus: "unconfirmed" });
     return visible;
   }
@@ -32,6 +33,7 @@ export function composeVisibleChatMessages(
     visible.push({ kind: "assistant", id: execution.assistant.overlayId,
       content: execution.assistant.content, createdAt: execution.assistant.createdAt,
       thinking: execution.assistant.thinking, simpleThink: execution.assistant.simpleThink,
+      toolPending: execution.assistant.toolPending,
       error: execution.assistant.error ?? execution.executionError?.message,
       attachments: [], executionStatus: "unconfirmed" });
     return visible;
@@ -49,6 +51,7 @@ export function composeVisibleChatMessages(
       createdAt: regenerate.assistant.createdAt,
       thinking: regenerate.assistant.thinking,
       simpleThink: regenerate.assistant.simpleThink,
+      toolPending: regenerate.assistant.toolPending,
       error: regenerate.assistant.error,
       attachments: [],
       executionStatus: regenerate.status,
@@ -80,6 +83,7 @@ export function composeVisibleChatMessages(
       createdAt: overlay.assistant.createdAt,
       thinking: overlay.assistant.thinking,
       simpleThink: overlay.assistant.simpleThink,
+      toolPending: overlay.assistant.toolPending,
       error: overlay.assistant.error ?? (execution.kind === "finalization-uncertain" ? execution.executionError?.message : undefined),
       attachments: [],
       executionStatus: overlay.status,

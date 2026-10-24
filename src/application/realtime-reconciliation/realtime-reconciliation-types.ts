@@ -4,6 +4,7 @@ import type {
 } from "@/application/message-history";
 
 export type RealtimeReconciliationPlan =
+  | { readonly kind: "refresh-capability-anchor"; readonly messageId: string; readonly conversationId: string | null }
   | {
       readonly kind: "refresh-latest-history";
       readonly conversationId: string;

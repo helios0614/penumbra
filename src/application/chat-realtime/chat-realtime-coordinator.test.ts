@@ -10,6 +10,23 @@ import type { WebSocketCloseInfo } from "@/lib/websocket";
 import { WebSocketTransportError } from "@/lib/websocket";
 
 describe("chat realtime connection lifecycle", () => {
+  it("retains exact older capability anchors during active SSE and concurrent reads", async () => {
+    const harness = createHarness({ context: activeContext() });
+    harness.coordinator.start();
+    await flushAsync();
+    const first: RealtimeEvent = { type: "capability-invalidated", messageId: "old-user", conversationId: "conv-a" };
+    const second: RealtimeEvent = { type: "capability-invalidated", messageId: "older-user", conversationId: "conv-a" };
+    await harness.coordinator.handleEvent(first);
+    await harness.coordinator.handleEvent(second);
+    await harness.coordinator.handleEvent(second);
+    expect(harness.reconcileEvent).not.toHaveBeenCalled();
+    harness.context.execution = { kind: "idle" };
+    harness.coordinator.contextChanged();
+    await flushAsync();
+    expect(harness.reconcileEvent).toHaveBeenNthCalledWith(1, first);
+    expect(harness.reconcileEvent).toHaveBeenNthCalledWith(2, second);
+    harness.coordinator.stop();
+  });
   it("connects once, stays idempotent, and closes on stop", async () => {
     const socket = controlledConnection();
     const openConnection = vi.fn(async () => socket.connection);

@@ -335,7 +335,7 @@ describe("message history application services", () => {
       olderPageStatus: "maybe-more",
     });
     expect(requestPaths()).toEqual([
-      "/api/conversations/conv_1/messages?limit=2",
+      "/api/conversations/conv_1/messages?limit=2&public_view=true",
     ]);
     expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("x-history"))
       .toBe("initial");
@@ -435,7 +435,7 @@ describe("message history application services", () => {
     });
 
     expect(requestPaths()).toEqual([
-      "/api/conversations/conv_1/messages?limit=2&before=20",
+      "/api/conversations/conv_1/messages?limit=2&before=20&public_view=true",
     ]);
     expect(result.messages.map(({ id }) => id)).toEqual(["older", "existing"]);
     expect(result).toMatchObject({
@@ -479,7 +479,7 @@ describe("message history application services", () => {
     });
 
     expect(requestPaths()).toEqual([
-      "/api/conversations/conv_1/messages?limit=1&before=0",
+      "/api/conversations/conv_1/messages?limit=1&before=0&public_view=true",
     ]);
     expect(result.olderPageStatus).toBe("exhausted");
   });
@@ -499,7 +499,7 @@ describe("message history application services", () => {
     });
 
     expect(requestPaths()).toEqual([
-      "/api/conversations/conv_1/messages?limit=2",
+      "/api/conversations/conv_1/messages?limit=2&public_view=true",
     ]);
     expect(result.messages.map(({ id }) => id)).toEqual([
       "oldest",
@@ -543,7 +543,7 @@ describe("message history application services", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(requestPaths()).toEqual([
-      "/api/conversations/conv_1/messages?limit=2",
+      "/api/conversations/conv_1/messages?limit=2&public_view=true",
     ]);
     expect(result.messages.map(({ id }) => id)).toEqual(["fresh-a", "fresh-b"]);
     expect(result).toMatchObject({
@@ -571,8 +571,8 @@ describe("message history application services", () => {
     expect(overridden.pageSize).toBe(1);
     expect(byId.pageSize).toBe(50);
     expect(requestPaths()).toEqual([
-      "/api/conversations/conv_1/messages?limit=1",
-      "/api/conversations/conv_1/messages?limit=50",
+      "/api/conversations/conv_1/messages?limit=1&public_view=true",
+      "/api/conversations/conv_1/messages?limit=50&public_view=true",
     ]);
   });
 
@@ -585,7 +585,7 @@ describe("message history application services", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const paths = requestPaths().join(" ");
-    expect(paths).toContain("/api/conversations/conv_1/messages?limit=50");
+    expect(paths).toContain("/api/conversations/conv_1/messages?limit=50&public_view=true");
     expect(paths).not.toMatch(
       /settings|readiness|send|regenerate|message_count|\/ws|websocket/,
     );
