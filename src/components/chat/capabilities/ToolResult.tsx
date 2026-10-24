@@ -1,6 +1,7 @@
 import type { CapabilityRecord, CapabilityStatus } from "@/domain/message/capability-types";
 import { CapabilityDisclosure } from "./CapabilityDisclosure";
 import { CapabilityDetails } from "./CapabilityDetails";
+import { ToolCallDetails } from "./ToolCallDetails";
 
 export function toolBatchStatus(statuses: readonly CapabilityStatus[]): CapabilityStatus {
   if (statuses.length === 0 || statuses.some(s => s === "unknown")) return "unknown";
@@ -12,16 +13,19 @@ export function toolBatchStatus(statuses: readonly CapabilityStatus[]): Capabili
 }
 export function ToolResult({ record, identity }: { record: CapabilityRecord; identity: string }) {
   const status = record.calls.length ? toolBatchStatus(record.calls.map(call => call.status)) : record.status;
-  return <CapabilityDisclosure identity={identity} title={record.title} summary={record.summary} previewLines={record.previewLines} status={status} result
+  const single = record.calls.length === 1 ? record.calls[0] : null;
+  return <CapabilityDisclosure identity={identity} title={record.title}
+    summary={record.summary ?? (record.calls.length ? `${record.calls.length} 项调用` : undefined)} previewLines={record.previewLines}
+    status={status} capability={single?.capability ?? record.capability}
     hasDetails={record.calls.length > 0 || record.fields.length > 0 || record.notices.length > 0}
-    preview={record.calls.length ? `${record.calls.length} 项调用` : record.preview ?? record.fields[0]?.text}>
-    {record.calls.length > 0 ? <div className="space-y-1">
+    preview={single?.identifier || record.preview || (!record.calls.length ? record.fields[0]?.text : undefined)}>
+    {single ? <ToolCallDetails call={single} identity={`${identity}:call:0`} /> : record.calls.length > 1 ? <div className="capability-call-list">
       {record.calls.map((call, index) => <CapabilityDisclosure key={index} identity={`${identity}:call:${index}`}
-        title={call.capability === "MCP" ? "远程调用" : call.capability === "POI_SEARCH" ? "查找地点" : "查询路线"}
-        preview={call.identifier} status={call.status}>
-        <p className="break-all py-1 font-mono text-[11px] text-muted-foreground">{call.identifier}</p>
-        <CapabilityDetails fields={call.fields} notices={call.notices} />
+        title={call.capability === "POI_SEARCH" ? "查找地点" : call.capability === "ROUTE_PLAN" ? "查询路线" : "远程调用"}
+        preview={call.identifier} status={call.status} capability={call.capability} contained>
+        <ToolCallDetails call={call} identity={`${identity}:call:${index}`} />
       </CapabilityDisclosure>)}
-    </div> : <CapabilityDetails fields={record.fields} notices={record.notices} />}
+    </div> : null}
+    <CapabilityDetails fields={record.fields} notices={record.notices} />
   </CapabilityDisclosure>;
 }

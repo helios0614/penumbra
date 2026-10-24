@@ -13,7 +13,7 @@ describe("legacy semantic rows and folded previews", () => {
       summary:"重要度 0.8", preview:body.slice(0,240), preview_lines:2,
       fields:[{label:"记忆正文（旧通知）",text:body},{label:"重要度",text:"0.8"}] })!;
     const closed = renderToStaticMarkup(<CapabilityMessage record={record} identity="memory" />);
-    expect(closed).toContain("已写入记忆 · 重要度 0.8");
+    expect(closed.replace(/<[^>]+>/g, "")).toContain("已写入记忆 · 重要度 0.8");
     expect(closed).toContain("正文有「嵌套“引号”」");
     expect(closed).toContain("line-clamp-2");
     expect(closed).toContain('aria-expanded="false"');

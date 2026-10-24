@@ -852,6 +852,7 @@
         "请结合这些记录继续回复。"
       ],
       "unknown": true,
+      "parsed_capability": "ACTIVITY_CHECK",
       "raw": {
         "id": "activity",
         "conv_id": "legacy-matrix",
@@ -881,8 +882,8 @@
         "public_display": {
           "version": 1,
           "kind": "operation",
-          "capability": "legacy-text",
-          "title": "旧版系统内容",
+          "capability": "ACTIVITY_CHECK",
+          "title": "查看动态",
           "status": "unknown",
           "fields": [
             {
@@ -893,7 +894,7 @@
           "notices": [
             "保留旧版系统文本；不据此推断执行状态或调用身份。"
           ],
-          "preview": "[ACTIVITY_CHECK 成功]\n过去 30 分钟：阅读 20 分钟，步行 10 分钟。\n请结合这些记录继续回复。",
+          "preview": "过去 30 分钟：阅读 20 分钟，步行 10 分钟。\n请结合这些记录继续回复。",
           "preview_lines": 2
         }
       },
@@ -908,6 +909,7 @@
         "自然回复"
       ],
       "unknown": true,
+      "parsed_capability": "Location",
       "raw": {
         "id": "location",
         "conv_id": "legacy-matrix",
@@ -937,8 +939,8 @@
         "public_display": {
           "version": 1,
           "kind": "operation",
-          "capability": "legacy-text",
-          "title": "旧版系统内容",
+          "capability": "Location",
+          "title": "查询位置",
           "status": "unknown",
           "fields": [
             {
@@ -949,7 +951,7 @@
           "notices": [
             "保留旧版系统文本；不据此推断执行状态或调用身份。"
           ],
-          "preview": "[Location 成功]\n位置状态：在外面；地址：示例街道；距家 800 米。\n请根据位置结果自然回复。",
+          "preview": "位置状态：在外面；地址：示例街道；距家 800 米。\n请根据位置结果自然回复。",
           "preview_lines": 2
         }
       },

@@ -32,12 +32,20 @@ export function trackChatScroll(
     if (following.current) viewport.scrollTop = viewport.scrollHeight;
     else restoreChatScrollAnchor(viewport, anchor.current);
   };
+  // Explicit detail reading takes precedence over automatic bottom following.
+  // Capture before expansion changes geometry, including nested technical views.
+  const readCapability = () => {
+    following.current = false;
+    anchor.current = captureChatScrollAnchor(viewport);
+  };
   viewport.addEventListener("scroll", updateFollow, { passive: true });
+  viewport.addEventListener("chat-capability-toggle", readCapability);
   const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(followResize);
   observer?.observe(viewport);
   observer?.observe(content);
   return () => {
     viewport.removeEventListener("scroll", updateFollow);
+    viewport.removeEventListener("chat-capability-toggle", readCapability);
     observer?.disconnect();
   };
 }

@@ -432,8 +432,8 @@
       "public_display": {
         "version": 1,
         "kind": "operation",
-        "capability": "legacy-text",
-        "title": "旧版系统内容",
+        "capability": "Location",
+        "title": "查询位置",
         "status": "unknown",
         "fields": [
           {
@@ -444,7 +444,7 @@
         "notices": [
           "保留旧版系统文本；不据此推断执行状态或调用身份。"
         ],
-        "preview": "[Location 成功]\nPRIVATE_LOCATION_PROMPT",
+        "preview": "PRIVATE_LOCATION_PROMPT",
         "preview_lines": 2
       }
     },

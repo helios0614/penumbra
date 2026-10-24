@@ -57,6 +57,35 @@ describe("Chat geometry and reading intent", () => {
       viewport.clientHeight = height; resize(); expect(viewport.scrollTop).toBe(600);
     }
     viewport.clientHeight = 480; resize(); expect(viewport.scrollTop).toBe(600);
-    stop(); expect(disconnect).toHaveBeenCalledOnce(); expect(remove).toHaveBeenCalledOnce();
+    stop(); expect(disconnect).toHaveBeenCalledOnce();
+    expect(remove).toHaveBeenCalledWith("scroll", expect.any(Function));
+    expect(remove).toHaveBeenCalledWith("chat-capability-toggle", expect.any(Function));
+  });
+  it("keeps explicit tool reading anchored during repeated expansions and resumes following on user scroll", () => {
+    let resize = () => {};
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: () => void) { resize = callback; }
+      observe = vi.fn(); disconnect = vi.fn();
+    });
+    let messageTop = 40;
+    const item = { dataset: { messageId: "first-visible" }, getBoundingClientRect: () => ({ top: messageTop, bottom: messageTop + 100 }) };
+    const viewport = Object.assign(new EventTarget(), {
+      scrollTop: 1520, scrollHeight: 2000, clientHeight: 480,
+      getBoundingClientRect: () => ({ top: 20 }), querySelectorAll: () => [item],
+    });
+    const following = { current: true }, anchor = { current: null };
+    const stop = trackChatScroll(viewport as unknown as HTMLElement, {} as HTMLElement, following, anchor);
+    viewport.dispatchEvent(new Event("chat-capability-toggle"));
+    expect(following.current).toBe(false);
+    expect(anchor.current).toEqual({ id: "first-visible", offset: 20 });
+    viewport.scrollHeight += 300; resize(); expect(viewport.scrollTop).toBe(1520);
+    messageTop += 120; resize(); expect(viewport.scrollTop).toBe(1640);
+    messageTop -= 120;
+    viewport.dispatchEvent(new Event("chat-capability-toggle"));
+    viewport.scrollHeight += 200; resize(); expect(viewport.scrollTop).toBe(1640);
+    viewport.scrollTop = viewport.scrollHeight - viewport.clientHeight;
+    viewport.dispatchEvent(new Event("scroll")); expect(following.current).toBe(true);
+    viewport.scrollHeight += 100; resize(); expect(viewport.scrollTop).toBe(viewport.scrollHeight);
+    stop();
   });
 });
