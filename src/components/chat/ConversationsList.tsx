@@ -1,6 +1,8 @@
 import { formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
-import { LoaderCircle, MessageCircle } from "lucide-react";
+import { LoaderCircle, MessageCircle, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ConversationMenu, type ConversationAction } from "./ConversationActions";
 
 import type { ChatConversationItemViewModel } from "@/components/chat-workspace/presentation";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -12,6 +14,10 @@ interface ConversationsListProps {
   readonly disabled?: boolean;
   readonly mobileDrawer?: boolean;
   readonly className?: string;
+  readonly onCreate?: () => void;
+  readonly onAction?: (action: ConversationAction) => void;
+  readonly managementDisabled?: boolean;
+  readonly creating?: boolean;
 }
 
 export function ConversationsList({
@@ -20,6 +26,10 @@ export function ConversationsList({
   disabled = false,
   mobileDrawer = false,
   className,
+  onCreate,
+  onAction,
+  managementDisabled,
+  creating,
 }: ConversationsListProps) {
   return (
     <div
@@ -38,6 +48,9 @@ export function ConversationsList({
         )}
       >
         <span className="text-sm font-semibold text-foreground">会话</span>
+        {onCreate && <Button type="button" variant="ghost" size="icon" disabled={disabled || managementDisabled} onClick={onCreate} aria-label="新建会话" title="新建会话">
+          {creating ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : <Plus className="size-4" aria-hidden="true" />}
+        </Button>}
         {!mobileDrawer && (
           <span className="text-xs tabular-nums text-muted-foreground">
             {conversations.length}
@@ -63,6 +76,7 @@ export function ConversationsList({
                 });
 
             return (
+              <div key={conversation.id} className="flex items-center gap-0.5">
               <button
                 key={conversation.id}
                 type="button"
@@ -77,7 +91,7 @@ export function ConversationsList({
                 }
                 onClick={() => onSelect(conversation.id)}
                 className={cn(
-                  "group relative flex w-full items-start gap-2 rounded-lg px-3 py-2.5 text-left",
+                  "group relative flex min-w-0 flex-1 items-start gap-2 rounded-lg px-3 py-2.5 text-left",
                   "transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-65",
                   conversation.isSelected
                     ? "bg-surface-secondary"
@@ -124,6 +138,8 @@ export function ConversationsList({
                   )}
                 </span>
               </button>
+              {onAction && <ConversationMenu id={conversation.id} title={conversation.title} disabled={disabled || managementDisabled} onAction={onAction} />}
+              </div>
             );
           })}
         </div>

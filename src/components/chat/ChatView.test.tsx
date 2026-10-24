@@ -59,8 +59,7 @@ describe("ChatWorkspaceView ready states", () => {
     const html = render(ready(snapshot([], null, null)));
 
     expect(html).toContain("暂无会话");
-    expect(html).toContain("创建会话将在后续阶段接入");
-    expect(html).not.toContain("新建会话");
+    expect(html).toContain("新建会话，开始聊天");
     expect(html).not.toContain("今天天气真好");
   });
 

@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" /><title>Chat PR3 synthetic fixture</title></head>
+<body><div id="root" style="display:flex;height:100dvh;overflow:hidden"></div>
+<script type="module">
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { ChatView } from '/src/components/chat/ChatView.tsx';
+import { ToastProvider } from '/src/components/ui/toast.tsx';
+import '/src/index.css';
+createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode, null,
+  React.createElement(ToastProvider, null, React.createElement(ChatView, { onBack: () => { window.__chatHomeReturns = (window.__chatHomeReturns || 0) + 1; } }))));
+</script></body></html>

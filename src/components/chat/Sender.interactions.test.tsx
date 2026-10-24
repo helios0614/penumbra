@@ -179,3 +179,43 @@ describe("floating Sender interactions", () => {
     expect(css).toContain("padding: 12px 16px 60px"); expect(css).toContain("height 200ms ease");
   });
 });
+
+describe("PR3 Composer insertion and draft snapshots", () => {
+  it("appends after existing text, focuses without scrolling ancestors, and moves the cursor to the end", () => {
+    const apiRef: React.RefObject<import("./composer-draft").SenderHandle | null> = { current: null };
+    const snapshot = vi.fn(), focus = vi.fn(), selection = vi.fn(), onSend = vi.fn();
+    const hooks = hookSession(() => Sender({ apiRef, onDraftChange: snapshot, onSend, initialDraft: { value: "我还想问一个问题：", recoveryDrafts: [] } }));
+    const textarea = () => find(hooks.render(), "textarea").props;
+    (textarea().ref as React.RefObject<unknown>).current = { focus, setSelectionRange: selection, scrollHeight: 200, scrollTop: 0 };
+    hooks.commit(); expect(apiRef.current?.append("好，我信你一次。\n下一行")).toBe(true);
+    hooks.render(); hooks.commit();
+    expect(textarea().value).toBe("我还想问一个问题：\n\n好，我信你一次。\n下一行");
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+    const length = String(textarea().value).length; expect(selection).toHaveBeenLastCalledWith(length, length);
+    expect(snapshot).toHaveBeenLastCalledWith({ value: textarea().value, recoveryDrafts: [] }); expect(onSend).not.toHaveBeenCalled();
+    hooks.dispose(); expect(apiRef.current).toBeNull();
+  });
+  it("queues insertion until composition finishes and keeps the final IME text", () => {
+    const apiRef: React.RefObject<import("./composer-draft").SenderHandle | null> = { current: null };
+    const hooks = hookSession(() => Sender({ apiRef }));
+    const textarea = () => find(hooks.render(), "textarea").props;
+    hooks.render(); hooks.commit();
+    textarea().onCompositionStart?.({} as never);
+    expect(apiRef.current?.append("追加正文")).toBe(true); expect(textarea().value).toBe("");
+    textarea().onChange?.({ target: { value: "输入法完成" } } as never);
+    textarea().onCompositionEnd?.({} as never);
+    expect(textarea().value).toBe("输入法完成\n\n追加正文");
+    hooks.dispose();
+  });
+  it("restores a conversation's draft and recovery text when the keyed Sender returns", () => {
+    let draft = { value: "A 草稿", recoveryDrafts: ["A 未确认原文"] as readonly string[] };
+    const hooks = hookSession(() => Sender({ initialDraft: draft, onDraftChange: (next) => { draft = next; } }));
+    const textarea = find(hooks.render(), "textarea").props;
+    textarea.onChange?.({ target: { value: "A 修改后" } } as never); hooks.render(); hooks.commit(); hooks.dispose();
+    const other = hookSession(() => Sender({ initialDraft: undefined }));
+    expect(find(other.render(), "textarea").props.value).toBe(""); other.dispose();
+    const returned = hookSession(() => Sender({ initialDraft: draft }));
+    expect(find(returned.render(), "textarea").props.value).toBe("A 修改后");
+    expect(find(returned.render(), "summary").props.children).toContain("未确认的提交原文已保留（"); returned.dispose();
+  });
+});

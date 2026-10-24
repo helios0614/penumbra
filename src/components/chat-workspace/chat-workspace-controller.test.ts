@@ -834,3 +834,158 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
+
+describe("PR3 real conversation management", () => {
+  const loader: ChatWorkspaceConversationLoader = async (snapshot, id) => workspace(id, snapshot.conversations);
+  it("creates once, with server defaults, and selects only after the real list and history are ready", async () => {
+    const post = deferred<ConversationSummary>();
+    const created = { ...conversations()[0], id: "new", modelKey: "server-default" };
+    const create = vi.fn((_input?: unknown, _options?: unknown) => post.promise);
+    const controller = createChatWorkspaceController({}, {
+      loadWorkspace: async () => workspace("conv_a"), createConversation: create,
+      loadConversationList: async () => [created, ...conversations()], loadConversation: loader,
+    });
+    await controller.load();
+    const first = controller.createConversation(), duplicate = controller.createConversation();
+    await controller.selectConversation("conv_b");
+    expect(controller.getState()).toMatchObject({ workspace: { selectedConversationId: "conv_a" }, conversationMutation: "create" });
+    expect(create).toHaveBeenCalledOnce(); expect(create.mock.calls[0]?.[0]).toEqual({});
+    post.resolve(created); await Promise.all([first, duplicate]);
+    expect(controller.getState()).toMatchObject({ workspace: { selectedConversationId: "new", selectedConversation: { modelKey: "server-default" } }, conversationMutation: undefined });
+  });
+  it("keeps the old workspace on POST failure and makes no selection request", async () => {
+    const original = workspace("conv_a"), select = vi.fn(loader);
+    const controller = createChatWorkspaceController({}, { loadWorkspace: async () => original,
+      createConversation: async () => { throw new Error("synthetic"); }, loadConversation: select });
+    await controller.load(); await expect(controller.createConversation()).rejects.toThrow();
+    expect(controller.getState()).toMatchObject({ workspace: original }); expect(select).not.toHaveBeenCalled();
+  });
+  it("does not pretend a successful POST failed when the list cannot be confirmed", async () => {
+    const post = vi.fn(async () => conversations()[0]);
+    const controller = createChatWorkspaceController({}, { loadWorkspace: async () => workspace("conv_b"), createConversation: post,
+      loadConversationList: async () => { throw new Error("private"); } });
+    await controller.load(); await controller.createConversation();
+    expect(post).toHaveBeenCalledOnce();
+    expect(controller.getState()).toMatchObject({ workspace: { selectedConversationId: "conv_b" }, conversationListError: { message: expect.stringContaining("已创建") } });
+  });
+  it("trims a rename, sends only title and accepts the backend's ordering", async () => {
+    const list = [conversations()[1], { ...conversations()[0], title: "新标题" }, conversations()[2]];
+    const update = vi.fn(async () => ({ ok: true as const }));
+    const controller = createChatWorkspaceController({}, { loadWorkspace: async () => workspace("conv_a"),
+      updateConversation: update, loadConversationList: async () => list });
+    await controller.load(); await controller.renameConversation("conv_a", "  新标题  ");
+    expect(update).toHaveBeenCalledWith("conv_a", { title: "新标题" }, expect.anything());
+    expect(controller.getState()).toMatchObject({ workspace: { conversations: list, selectedConversation: { title: "新标题" } } });
+    await expect(controller.renameConversation("conv_a", " \n ")).rejects.toThrow(); expect(update).toHaveBeenCalledOnce();
+  });
+  it("retains the original title when rename fails", async () => {
+    const controller = createChatWorkspaceController({}, { loadWorkspace: async () => workspace("conv_a"),
+      updateConversation: async () => { throw new Error("synthetic"); } });
+    await controller.load(); await expect(controller.renameConversation("conv_a", "编辑值")).rejects.toThrow();
+    expect(controller.getState()).toMatchObject({ workspace: { selectedConversation: { title: "Conversation conv_a" } } });
+  });
+  it.each(["conv_a", "conv_b"])("deletes %s only after acknowledgment, preserving unrelated Chat", async (id) => {
+    const deletion = deferred<{ ok: true }>();
+    const remaining = conversations().filter((item) => item.id !== id);
+    const original = workspace("conv_a");
+    const controller = createChatWorkspaceController({}, { loadWorkspace: async () => original,
+      deleteConversation: () => deletion.promise, loadConversationList: async () => remaining, loadConversation: loader });
+    await controller.load(); const request = controller.deleteConversation(id);
+    expect(controller.getState()).toMatchObject({ workspace: original });
+    deletion.resolve({ ok: true }); await request;
+    expect(controller.getState()).toMatchObject({ workspace: { conversations: remaining, selectedConversationId: id === "conv_a" ? "conv_b" : "conv_a" } });
+    if (id !== "conv_a") expect(controller.getState()).toMatchObject({ workspace: { history: original.history } });
+  });
+  it("deletes the last conversation safely and retains failures", async () => {
+    let fail = true;
+    const controller = createChatWorkspaceController({}, { loadWorkspace: async () => workspace("conv_a", [conversations()[0]]),
+      deleteConversation: async () => { if (fail) throw new Error("synthetic"); return { ok: true }; }, loadConversationList: async () => [] });
+    await controller.load(); await expect(controller.deleteConversation("conv_a")).rejects.toThrow();
+    expect(controller.getState()).toMatchObject({ workspace: { selectedConversationId: "conv_a" } });
+    fail = false; await controller.deleteConversation("conv_a");
+    expect(controller.getState()).toMatchObject({ workspace: { conversations: [], selectedConversationId: null, history: null } });
+  });
+  it("guards all mutations and navigation synchronously while execution/unknown result owns Chat", async () => {
+    let allowed = true;
+    const create = vi.fn(), update = vi.fn(), remove = vi.fn(), select = vi.fn(loader);
+    const controller = createChatWorkspaceController({}, { loadWorkspace: async () => workspace("conv_a"), canNavigate: () => allowed,
+      createConversation: create, updateConversation: update, deleteConversation: remove, loadConversation: select });
+    await controller.load(); allowed = false;
+    await controller.selectConversation("conv_b");
+    await expect(controller.createConversation()).rejects.toThrow();
+    await expect(controller.renameConversation("conv_a", "title")).rejects.toThrow();
+    await expect(controller.deleteConversation("conv_b")).rejects.toThrow();
+    expect(create).not.toHaveBeenCalled(); expect(update).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled(); expect(select).not.toHaveBeenCalled();
+  });
+  it("suppresses an older WS list response after rename", async () => {
+    const stale = deferred<ConversationSummary[]>();
+    const current = conversations().map((item) => item.id === "conv_a" ? { ...item, title: "最新标题" } : item);
+    const list = vi.fn().mockReturnValueOnce(stale.promise).mockResolvedValueOnce(current);
+    const controller = createChatWorkspaceController({}, { loadWorkspace: async () => workspace("conv_a"), loadConversationList: list,
+      updateConversation: async () => ({ ok: true }) });
+    await controller.load();
+    const refresh = controller.refreshConversationList().catch(() => {});
+    await controller.renameConversation("conv_a", "最新标题"); stale.resolve(conversations()); await refresh;
+    expect(controller.getState()).toMatchObject({ workspace: { selectedConversation: { title: "最新标题" } } });
+  });
+});
+
+describe("PR3 older history ownership and realtime concurrency", () => {
+  const page = (ids: number[], title = "body"): MessageHistoryState => ({
+    ...history("conv_a", ""), pageSize: 2, oldestCursor: ids[0] ?? null, olderPageStatus: "maybe-more",
+    messages: ids.map((id) => ({ ...history("conv_a", title).messages[0], id: `m${id}`, createdAt: id })),
+  });
+  const initial = () => ({ ...workspace("conv_a"), history: page([30, 40]) });
+  it.each([true, false])("keeps canonical newer data and older pages in either response order (older first=%s)", async (olderFirst) => {
+    const older = deferred<MessageHistoryState>(), latest = deferred<RealtimeReconciliationResult>();
+    const controller = createChatWorkspaceController({}, { loadWorkspace: async () => initial(), loadOlderHistory: () => older.promise,
+      reconcileAfterReconnect: () => latest.promise });
+    await controller.load(); const loading = controller.loadOlderHistory(), realtime = controller.reconcileSelectedConversationAfterReconnect("conv_a");
+    if (olderFirst) { older.resolve(page([10, 20, 30, 40])); await loading; latest.resolve(reconnectResult(page([30, 40, 50], "canonical"))); }
+    else { latest.resolve(reconnectResult(page([30, 40, 50], "canonical"))); await realtime; older.resolve(page([10, 20, 30, 40])); }
+    await Promise.all([loading, realtime]);
+    const state = controller.getState(); if (state.status !== "ready") throw new Error("not ready");
+    expect(state.workspace.history?.messages.map(({ id }) => id)).toEqual(["m10", "m20", "m30", "m40", "m50"]);
+    expect(state.workspace.history?.messages.find(({ id }) => id === "m40")?.content).toBe("canonical");
+  });
+  it("drops a noncancelable older page after A/B switching and locks duplicate loads", async () => {
+    const request = deferred<MessageHistoryState>(), load = vi.fn(() => request.promise);
+    const controller = createChatWorkspaceController({}, { loadWorkspace: async () => initial(), loadOlderHistory: load,
+      loadConversation: async () => workspace("conv_b") });
+    await controller.load(); const first = controller.loadOlderHistory(); await controller.loadOlderHistory(); expect(load).toHaveBeenCalledOnce();
+    await controller.selectConversation("conv_b"); request.resolve(page([10, 20, 30, 40])); await first;
+    expect(controller.getState()).toMatchObject({ workspace: { selectedConversationId: "conv_b", history: { conversationId: "conv_b" } } });
+  });
+  it("retains history on a paging error and retries the same cursor", async () => {
+    const load = vi.fn().mockRejectedValueOnce(new Error("private")).mockResolvedValueOnce({ ...page([10, 20, 30, 40]), olderPageStatus: "exhausted" });
+    const controller = createChatWorkspaceController({}, { loadWorkspace: async () => initial(), loadOlderHistory: load });
+    await controller.load(); await controller.loadOlderHistory();
+    expect(controller.getState()).toMatchObject({ olderHistoryPending: false, olderHistoryError: { code: "unknown" }, workspace: { history: page([30, 40]) } });
+    await controller.loadOlderHistory(); expect(load.mock.calls[0][0]).toBe(load.mock.calls[1][0]);
+    expect(controller.getState()).toMatchObject({ olderHistoryError: null, workspace: { history: { olderPageStatus: "exhausted" } } });
+  });
+});
+
+describe("PR3 explicit WS deletion outranks cached history", () => {
+  const initial = () => {
+    const base = history("conv_a", "body").messages[0];
+    return { ...workspace("conv_a"), history: { ...history("conv_a", "body"), oldestCursor: 30, olderPageStatus: "maybe-more" as const,
+      messages: [30, 40].map(createdAt => ({ ...base, id: `m${createdAt}`, createdAt })) } };
+  };
+  it.each(["m10", "m30", "m40"])("does not resurrect deleted %s from retention or a pending older request", async (id) => {
+    const old = initial(); const older = deferred<MessageHistoryState>();
+    const controller = createChatWorkspaceController({}, {
+      loadWorkspace: async () => old, loadOlderHistory: () => older.promise,
+      reconcileRealtimeEvent: async (current, event) => {
+        const messages = current.messages.filter(item => item.id !== id);
+        return reconciliationResult({ ...current, messages, oldestCursor: messages[0].createdAt }, event);
+      },
+    });
+    await controller.load(); const paging = controller.loadOlderHistory();
+    await controller.reconcileSelectedConversationRealtimeEvent({ type: "message-deleted", conversationId: "conv_a", messageId: id });
+    older.resolve({ ...old.history, oldestCursor: 10, messages: [{ ...old.history.messages[0], id: "m10", createdAt: 10 }, ...old.history.messages] });
+    await paging;
+    const state = controller.getState(); if (state.status !== "ready") throw new Error("not ready");
+    expect(state.workspace.history?.messages.map(item => item.id)).not.toContain(id);
+  });
+});

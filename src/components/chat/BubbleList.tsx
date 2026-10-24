@@ -1,13 +1,15 @@
 import { format, isToday, isYesterday } from "date-fns";
 import { zhCN } from "date-fns/locale";
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import type { ChatMessageViewModel } from "./chat-ui-types";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 import { Bubble } from "./Bubble";
-import { trackChatScroll } from "./chat-scroll";
+import { captureChatScrollAnchor, restoreChatScrollAnchor, trackChatScroll, type ChatScrollAnchor } from "./chat-scroll";
+import { Button } from "@/components/ui/button";
+import type { OlderPageStatus } from "@/application/message-history";
 
 function DateSeparator({ timestamp }: { readonly timestamp: number }) {
   const date = new Date(timestamp * 1000);
@@ -66,6 +68,11 @@ interface BubbleListProps {
   readonly regenerateTargetId?: string | null;
   readonly regenerateEnabled?: boolean;
   readonly onRegenerate?: (messageId: string) => void;
+  readonly onInsert?: (text: string) => void;
+  readonly onLoadOlder?: () => void;
+  readonly olderStatus?: OlderPageStatus;
+  readonly olderPending?: boolean;
+  readonly olderError?: string | null;
 }
 
 function BubbleListInner({
@@ -75,11 +82,21 @@ function BubbleListInner({
   regenerateTargetId = null,
   regenerateEnabled = false,
   onRegenerate,
+  onInsert,
+  onLoadOlder,
+  olderStatus,
+  olderPending = false,
+  olderError,
 }: BubbleListProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const shouldFollowRef = useRef(true);
   const previousTimelineRef = useRef<string | null>(null);
   const previousForceKeyRef = useRef<string | null>(null);
+  const anchorRef = useRef<ChatScrollAnchor | null>(null);
+  const loadRef = useRef(onLoadOlder);
+  loadRef.current = onLoadOlder;
+  const olderRef = useRef({ olderStatus, olderPending, olderError });
+  olderRef.current = { olderStatus, olderPending, olderError };
   const lastMessageId = messages[messages.length - 1]?.id ?? null;
   const lastMessage = messages[messages.length - 1];
   const tailRevision = lastMessage === undefined
@@ -94,8 +111,20 @@ function BubbleListInner({
     );
     const content = rootRef.current?.querySelector<HTMLElement>("[data-chat-message-content]");
     if (!viewport || !content) return;
-    return trackChatScroll(viewport, content, shouldFollowRef);
+    anchorRef.current = null;
+    const cleanup = trackChatScroll(viewport, content, shouldFollowRef, anchorRef);
+    const loadOnScroll = () => {
+      if (viewport.scrollTop < 80 && !shouldFollowRef.current && olderRef.current.olderStatus === "maybe-more" && !olderRef.current.olderPending && !olderRef.current.olderError) loadRef.current?.();
+    };
+    viewport.addEventListener("scroll", loadOnScroll, { passive: true });
+    return () => { cleanup(); viewport.removeEventListener("scroll", loadOnScroll); };
   }, [timelineKey]);
+
+  useLayoutEffect(() => {
+    if (previousTimelineRef.current !== timelineKey || shouldFollowRef.current) return;
+    const viewport = rootRef.current?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
+    if (viewport) restoreChatScrollAnchor(viewport, anchorRef.current);
+  }, [messages, timelineKey, olderPending, olderError]);
 
   useEffect(() => {
     const conversationChanged = previousTimelineRef.current !== timelineKey;
@@ -116,6 +145,16 @@ function BubbleListInner({
     <div ref={rootRef} className="chat-message-scroll min-h-0 w-full flex-1 overflow-hidden">
       <ScrollArea className="h-full w-full overflow-hidden">
         <div data-chat-message-content className="mx-auto flex max-w-[720px] flex-col gap-2 px-4 py-3">
+        {onLoadOlder && <div className="flex flex-col items-center gap-1 py-1 text-xs text-muted-foreground" aria-live="polite">
+          {olderStatus === "maybe-more" && <Button variant="ghost" size="sm" disabled={olderPending} onClick={() => {
+            const viewport = rootRef.current?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
+            if (viewport) { shouldFollowRef.current = false; anchorRef.current = captureChatScrollAnchor(viewport); }
+            onLoadOlder();
+          }}>{olderPending ? "正在加载更早消息…" : olderError ? "重试加载更早消息" : "加载更早消息"}</Button>}
+          {olderError && <p role="alert">{olderError}</p>}
+          {olderStatus === "stalled" && <p>历史游标无法继续，请稍后重读。</p>}
+          {olderStatus === "exhausted" && <p>已加载接口可返回的历史</p>}
+        </div>}
         {dateGroups.map((group) => (
           <div key={group.dateKey}>
             <DateSeparator timestamp={group.timestamp} />
@@ -137,6 +176,7 @@ function BubbleListInner({
                           : undefined
                       }
                       regenerateDisabled={!regenerateEnabled}
+                      onInsert={onInsert}
                     />
                   </div>
                 );

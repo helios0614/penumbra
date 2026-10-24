@@ -8,6 +8,9 @@ import {
 } from "@/application/chat-workspace";
 import {
   reloadMessageHistoryFromScratch,
+  loadOlderMessageHistory,
+  createMessageHistoryState,
+  mergeOlderMessagePage,
   type MessageHistoryRequestOptions,
   type MessageHistoryState,
 } from "@/application/message-history";
@@ -24,6 +27,8 @@ import {
 } from "@/application/realtime-reconciliation";
 import {
   listConversations,
+  createConversation,
+  deleteConversation,
   updateConversation,
   type ConversationSummary,
 } from "@/domain/conversation";
@@ -53,6 +58,10 @@ export type ChatWorkspaceControllerState =
       readonly pendingConversationId: string | null;
       readonly switchError: ChatWorkspaceSafeUiError | null;
       readonly configurationPending?: boolean;
+      readonly conversationMutation?: "create" | "rename" | "delete";
+      readonly conversationListError?: ChatWorkspaceSafeUiError | null;
+      readonly olderHistoryPending?: boolean;
+      readonly olderHistoryError?: ChatWorkspaceSafeUiError | null;
     }
   | {
       readonly status: "error";
@@ -103,6 +112,10 @@ export type ChatWorkspaceControllerDependencies = {
   readonly reconcileAfterReconnect?: ChatWorkspaceReconnectReconciler;
   readonly loadSetup?: typeof loadChatSetupForConversation;
   readonly updateConversation?: typeof updateConversation;
+  readonly createConversation?: typeof createConversation;
+  readonly deleteConversation?: typeof deleteConversation;
+  readonly loadOlderHistory?: typeof loadOlderMessageHistory;
+  readonly canNavigate?: () => boolean;
 };
 
 export interface ChatWorkspaceController {
@@ -110,6 +123,10 @@ export interface ChatWorkspaceController {
   load(): Promise<void>;
   retry(): Promise<void>;
   selectConversation(conversationId: string): Promise<void>;
+  createConversation(): Promise<void>;
+  renameConversation(conversationId: string, title: string): Promise<void>;
+  deleteConversation(conversationId: string): Promise<void>;
+  loadOlderHistory(): Promise<void>;
   retryConversationSwitch(): Promise<void>;
   reloadSelectedConversationHistory(
     conversationId: string,
@@ -157,16 +174,22 @@ export function createChatWorkspaceController(
   let conversationListSequence = 0;
   let lastFailedConversationId: string | null = null;
   let disposed = false;
+  let mutation: "create" | "rename" | "delete" | undefined;
+  let mutationController: AbortController | null = null;
+  let olderController: AbortController | null = null;
+  let olderSequence = 0;
+  let olderDeletedIds = new Set<string>();
   const listeners = new Set<(state: ChatWorkspaceControllerState) => void>();
 
   const publish = (nextState: ChatWorkspaceControllerState) => {
     if (disposed) return;
-    state = nextState;
+    state = nextState.status === "ready" && mutation
+      ? { ...nextState, conversationMutation: mutation } : nextState;
     listeners.forEach((listener) => listener(state));
   };
 
   const load = async () => {
-    if (disposed) return;
+    if (disposed || mutation || dependencies.canNavigate?.() === false) return;
     configurationSequence += 1;
     configurationController?.abort();
 
@@ -190,6 +213,9 @@ export function createChatWorkspaceController(
     conversationListController?.abort();
     conversationListController = null;
     lastFailedConversationId = null;
+    olderSequence += 1;
+    olderController?.abort();
+    olderController = null;
 
     publish({ status: "loading" });
 
@@ -225,8 +251,11 @@ export function createChatWorkspaceController(
     }
   };
 
-  const selectConversation = async (conversationId: string) => {
-    if (disposed || state.status !== "ready") return;
+  const selectConversation = async (conversationId: string, internal = false) => {
+    if (disposed || state.status !== "ready" || (mutation && !internal) || dependencies.canNavigate?.() === false) return;
+    olderSequence += 1;
+    olderController?.abort();
+    olderController = null;
     configurationSequence += 1;
     configurationController?.abort();
 
@@ -304,6 +333,7 @@ export function createChatWorkspaceController(
       history: MessageHistoryState,
       signal: AbortSignal,
     ) => Promise<MessageHistoryState>,
+    removedMessageId?: string,
   ) => {
     if (
       disposed ||
@@ -345,11 +375,18 @@ export function createChatWorkspaceController(
       }
 
       const latestWorkspace = state.workspace;
+      const retainedHistory = retainEarlierHistory(latestWorkspace.history, history);
+      const nextHistory = removedMessageId === undefined ? retainedHistory : createMessageHistoryState(
+        retainedHistory.conversationId,
+        retainedHistory.messages.filter(({ id }) => id !== removedMessageId),
+        { pageSize: retainedHistory.pageSize, olderPageStatus: retainedHistory.olderPageStatus },
+      );
       const nextWorkspace = createChatWorkspaceSnapshot({
         setup: latestWorkspace.setup,
         conversations: latestWorkspace.conversations,
         selectedConversation: latestWorkspace.selectedConversation,
-        history,
+        // A latest-window reread must not discard pages the user is reading.
+        history: nextHistory,
       });
       publish({
         status: "ready",
@@ -357,6 +394,8 @@ export function createChatWorkspaceController(
         pendingConversationId: state.pendingConversationId,
         switchError: state.switchError,
         configurationPending: state.configurationPending,
+        olderHistoryPending: state.olderHistoryPending,
+        olderHistoryError: state.olderHistoryError,
       });
       return history;
     } finally {
@@ -397,6 +436,7 @@ export function createChatWorkspaceController(
       );
     }
     const conversationId = state.workspace.history.conversationId;
+    if (olderController && event.type === "message-deleted" && event.conversationId === conversationId) olderDeletedIds.add(event.messageId);
     await updateSelectedHistory(
       conversationId,
       async (history, signal) => (await realtimeEventReconciler(
@@ -404,6 +444,7 @@ export function createChatWorkspaceController(
         event,
         { history: { request: { signal } } },
       )).state,
+      event.type === "message-deleted" && event.conversationId === conversationId ? event.messageId : undefined,
     );
   };
 
@@ -423,7 +464,7 @@ export function createChatWorkspaceController(
     if (
       disposed ||
       state.status !== "ready" ||
-      state.pendingConversationId !== null || state.configurationPending
+      state.pendingConversationId !== null || state.configurationPending || mutation
     ) {
       throw new ChatWorkspaceContractError(
         "Conversation refresh requires a stable workspace",
@@ -463,6 +504,9 @@ export function createChatWorkspaceController(
           selectedConversation === null
         )
       ) {
+        if (dependencies.canNavigate?.() === false) {
+          throw new ChatWorkspaceContractError("Active execution prevents changing the conversation");
+        }
         historySequence += 1;
         historyController?.abort();
         historyController = null;
@@ -498,10 +542,12 @@ export function createChatWorkspaceController(
         history: state.workspace.history,
       });
       publish({
+        ...state,
         status: "ready",
         workspace: nextWorkspace,
         pendingConversationId: null,
         switchError: state.switchError,
+        conversationListError: null,
       });
     } finally {
       if (
@@ -514,7 +560,7 @@ export function createChatWorkspaceController(
   };
 
   const saveMainSelection = async (conversationId: string, selection: MainSelection) => {
-    if (disposed || state.status !== "ready" || state.pendingConversationId !== null ||
+    if (disposed || mutation || dependencies.canNavigate?.() === false || state.status !== "ready" || state.pendingConversationId !== null ||
         state.configurationPending || state.workspace.selectedConversationId !== conversationId) {
       throw new ChatWorkspaceContractError("Model selection owner is no longer current");
     }
@@ -554,6 +600,118 @@ export function createChatWorkspaceController(
     }
   };
 
+  // These writes share the Workspace owner and a synchronous lock. In particular,
+  // a click before React rerenders cannot bypass an active send or duplicate POST.
+  const mutateConversation = async (
+    kind: "create" | "rename" | "delete",
+    conversationId?: string,
+    title?: string,
+  ) => {
+    if (mutation) {
+      if (kind === "create" && mutation === "create") return;
+      throw new ChatWorkspaceContractError("Another conversation mutation is in progress");
+    }
+    if (disposed || state.status !== "ready" || state.pendingConversationId !== null ||
+        state.configurationPending || dependencies.canNavigate?.() === false) {
+      throw new ChatWorkspaceContractError("Conversation management requires a stable workspace");
+    }
+    if (kind !== "create" && !state.workspace.conversations.some(({ id }) => id === conversationId)) {
+      throw new ChatWorkspaceContractError("Conversation is no longer available");
+    }
+    const normalizedTitle = title?.trim();
+    if (kind === "rename" && !normalizedTitle) throw new ChatWorkspaceContractError("Conversation title is empty");
+    mutation = kind;
+    const controller = new AbortController();
+    mutationController = controller;
+    conversationListSequence += 1;
+    conversationListController?.abort();
+    publish({ ...state, conversationListError: null });
+    const current = () => !disposed && !controller.signal.aborted && state.status === "ready";
+    let createdId: string | null = null;
+    try {
+      if (kind === "create") {
+        // An empty body intentionally uses the server's new-conversation default.
+        createdId = (await (dependencies.createConversation ?? createConversation)({}, { signal: controller.signal })).id;
+      } else if (kind === "rename") {
+        await conversationUpdater(conversationId!, { title: normalizedTitle }, { signal: controller.signal });
+      } else {
+        await (dependencies.deleteConversation ?? deleteConversation)(conversationId!, { signal: controller.signal });
+      }
+      if (!current() || state.status !== "ready") return;
+      if (kind !== "create") {
+        const workspace = state.workspace;
+        const conversations = kind === "delete"
+          ? workspace.conversations.filter(({ id }) => id !== conversationId)
+          : workspace.conversations.map((item) => item.id === conversationId ? { ...item, title: normalizedTitle! } : item);
+        const selected = conversations.find(({ id }) => id === workspace.selectedConversationId) ?? null;
+        if (!selected) {
+          historySequence += 1; historyController?.abort();
+          olderSequence += 1; olderController?.abort(); olderController = null;
+        }
+        publish({ ...state, workspace: createChatWorkspaceSnapshot({
+          setup: workspace.setup, conversations, selectedConversation: selected,
+          history: selected ? workspace.history : null,
+        }), olderHistoryPending: selected ? state.olderHistoryPending : false });
+      }
+      try {
+        const conversations = await conversationListLoader({ signal: controller.signal });
+        if (!current() || state.status !== "ready") return;
+        if (createdId && !conversations.some(({ id }) => id === createdId)) {
+          throw new ChatWorkspaceContractError("Created conversation is not in the confirmed list");
+        }
+        const workspace = state.workspace;
+        const selected = conversations.find(({ id }) => id === workspace.selectedConversationId) ?? null;
+        publish({ ...state, workspace: createChatWorkspaceSnapshot({
+          setup: workspace.setup, conversations, selectedConversation: selected,
+          history: selected ? workspace.history : null,
+        }) });
+        const target = createdId ?? (kind === "delete" && !selected ? conversations[0]?.id : null);
+        if (target) await selectConversation(target, true);
+      } catch {
+        if (current() && state.status === "ready") publish({ ...state, conversationListError: {
+          code: "service", message: kind === "create"
+            ? "会话已创建，但列表尚未确认。请刷新列表核对，避免重复新建。"
+            : "操作已完成，但列表更新失败，请刷新列表。",
+        } });
+      }
+    } finally {
+      mutation = undefined;
+      if (mutationController === controller) mutationController = null;
+      if (current() && state.status === "ready") publish({ ...state, conversationMutation: undefined });
+    }
+  };
+
+  const loadOlderHistory = async () => {
+    if (disposed || state.status !== "ready" || state.pendingConversationId !== null || olderController) return;
+    const history = state.workspace.history;
+    if (!history || history.olderPageStatus !== "maybe-more") return;
+    const sequence = ++olderSequence;
+    const owner = state.workspace.selectedConversationId;
+    const controller = new AbortController();
+    olderController = controller;
+    const deletedDuringRequest = new Set<string>();
+    olderDeletedIds = deletedDuringRequest;
+    publish({ ...state, olderHistoryPending: true, olderHistoryError: null });
+    const current = () => !disposed && !controller.signal.aborted && sequence === olderSequence &&
+      state.status === "ready" && state.pendingConversationId === null && state.workspace.selectedConversationId === owner;
+    try {
+      const result = await (dependencies.loadOlderHistory ?? loadOlderMessageHistory)(history, { request: { signal: controller.signal } });
+      if (!current() || state.status !== "ready") return;
+      const latest = state.workspace.history;
+      if (!latest || latest.oldestCursor !== history.oldestCursor) return;
+      const latestIds = new Set(latest.messages.map(({ id }) => id));
+      const originalIds = new Set(history.messages.map(({ id }) => id));
+      const older = result.messages.filter((item) => !originalIds.has(item.id) && !latestIds.has(item.id) && !deletedDuringRequest.has(item.id));
+      const merged = mergeOlderMessagePage(latest, older);
+      publish({ ...state, workspace: { ...state.workspace, history: { ...merged, olderPageStatus: result.olderPageStatus } } });
+    } catch (error) {
+      if (current() && state.status === "ready") publish({ ...state, olderHistoryError: toSafeUiError(error) });
+    } finally {
+      if (olderController === controller) olderController = null;
+      if (current() && state.status === "ready") publish({ ...state, olderHistoryPending: false });
+    }
+  };
+
   return {
     getState() {
       return state;
@@ -564,6 +722,10 @@ export function createChatWorkspaceController(
     retry: load,
 
     selectConversation,
+    createConversation: () => mutateConversation("create"),
+    renameConversation: (id, title) => mutateConversation("rename", id, title),
+    deleteConversation: (id) => mutateConversation("delete", id),
+    loadOlderHistory,
 
     reloadSelectedConversationHistory,
 
@@ -598,6 +760,8 @@ export function createChatWorkspaceController(
     dispose() {
       if (disposed) return;
       disposed = true;
+      mutationController?.abort();
+      olderController?.abort();
       configurationSequence += 1;
       configurationController?.abort();
       bootstrapSequence += 1;
@@ -661,4 +825,14 @@ function isAbortError(error: unknown): boolean {
     (error instanceof ApiError && error.code === "ABORTED") ||
     (error instanceof DOMException && error.name === "AbortError")
   );
+}
+
+function retainEarlierHistory(current: MessageHistoryState | null, incoming: MessageHistoryState): MessageHistoryState {
+  if (!current || current.conversationId !== incoming.conversationId || incoming.oldestCursor === null) return incoming;
+  const ids = new Set(incoming.messages.map(({ id }) => id));
+  const earlier = current.messages.filter((item) => item.createdAt < incoming.oldestCursor! && !ids.has(item.id));
+  if (!earlier.length) return incoming;
+  return createMessageHistoryState(incoming.conversationId, [...earlier, ...incoming.messages], {
+    pageSize: incoming.pageSize, olderPageStatus: current.olderPageStatus,
+  });
 }

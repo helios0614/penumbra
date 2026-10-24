@@ -18,6 +18,7 @@ export type ChatMessageViewModel =
     })
   | (ChatVisibleMessageBase & {
       readonly kind: "assistant";
+      readonly insertable?: boolean;
       readonly thinking: string | null;
       readonly simpleThink: string | null;
       readonly attachments: readonly ChatAttachmentViewModel[];

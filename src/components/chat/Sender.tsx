@@ -9,12 +9,14 @@ import {
   type ReactNode,
   type KeyboardEvent,
   type ChangeEvent,
+  type RefObject,
 } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ComposerToolsMenu } from "./ComposerToolsMenu";
 import "./chat.css";
+import { appendComposerText, type SenderDraft, type SenderHandle } from "./composer-draft";
 
 interface SenderProps {
   onSend?: (content: string) => boolean | void | Promise<boolean | void>;
@@ -25,6 +27,9 @@ interface SenderProps {
   tools?: ReactNode;
   toolsLabel?: string;
   feedback?: ReactNode;
+  initialDraft?: SenderDraft;
+  onDraftChange?: (draft: SenderDraft) => void;
+  apiRef?: RefObject<SenderHandle | null>;
 }
 
 export function shouldSubmitSenderKey(input: {
@@ -52,8 +57,11 @@ export function Sender({
   tools,
   toolsLabel = "会话模型",
   feedback,
+  initialDraft,
+  onDraftChange,
+  apiRef,
 }: SenderProps) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initialDraft?.value ?? "");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const statusId = useId();
   const submittingRef = useRef(false);
@@ -67,10 +75,44 @@ export function Sender({
   const [multiline, setMultiline] = useState(false);
   const [textHeight, setTextHeight] = useState(24);
   const [pendingDraft, setPendingDraft] = useState<string | null>(null);
-  const [recoveryDrafts, setRecoveryDrafts] = useState<readonly string[]>([]);
+  const [recoveryDrafts, setRecoveryDrafts] = useState<readonly string[]>(initialDraft?.recoveryDrafts ?? []);
   const draftRevisionRef = useRef(0);
+  const cursorToEnd = useRef(false);
+  const queuedAppend = useRef<string[]>([]);
+  const valueRef = useRef(value);
+  valueRef.current = value;
   const expanded = focused || multiline;
   const displayedValue = pendingDraft === null ? value : "";
+
+  useLayoutEffect(() => {
+    onDraftChange?.({ value, recoveryDrafts });
+    if (cursorToEnd.current && textareaRef.current) {
+      cursorToEnd.current = false;
+      textareaRef.current.setSelectionRange(value.length, value.length);
+      textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
+    }
+  }, [value, recoveryDrafts, onDraftChange]);
+
+  const append = useCallback((text: string) => {
+    if (!text.trim() || disabled || submittingRef.current) return false;
+    if (composingRef.current) { queuedAppend.current.push(text); return true; }
+    draftRevisionRef.current += 1;
+    const next = appendComposerText(valueRef.current, text);
+    valueRef.current = next;
+    setPendingDraft(null);
+    setValue(next);
+    // Focus in the user's click gesture so touch browsers can open the keyboard.
+    setFocused(true);
+    textareaRef.current?.focus({ preventScroll: true });
+    cursorToEnd.current = true;
+    return true;
+  }, [disabled]);
+  useLayoutEffect(() => {
+    if (!apiRef) return;
+    const handle = { append };
+    apiRef.current = handle;
+    return () => { if (apiRef.current === handle) apiRef.current = null; };
+  }, [apiRef, append]);
 
   // Measure inert text mirrors, never resize/reset the focused textarea to measure it.
   // Compact width is stable across expansion, so soft wrapping cannot toggle the layout back and forth.
@@ -150,6 +192,7 @@ export function Sender({
     (e: ChangeEvent<HTMLTextAreaElement>) => {
       draftRevisionRef.current += 1;
       setPendingDraft(null);
+      valueRef.current = e.target.value;
       setValue(e.target.value);
     },
     [],
@@ -191,7 +234,12 @@ export function Sender({
             onFocus={() => setFocused(true)}
             onKeyDown={handleKeyDown}
             onCompositionStart={() => { composingRef.current = true; }}
-            onCompositionEnd={() => { composingRef.current = false; }}
+            onCompositionEnd={(event) => {
+              composingRef.current = false;
+              const queued = queuedAppend.current.splice(0);
+              if (queued.length && event.currentTarget) valueRef.current = event.currentTarget.value;
+              queued.forEach(append);
+            }}
             placeholder={pendingDraft === null ? placeholder : "正在提交，原文已暂存…"}
             aria-label="消息正文"
             disabled={disabled}

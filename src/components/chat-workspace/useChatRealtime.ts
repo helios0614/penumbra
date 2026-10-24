@@ -62,6 +62,9 @@ export function useChatRealtime(
     context.workspaceAvailable,
     coordinator,
     sendState,
+    workspaceState.status === "ready" ? workspaceState.pendingConversationId : null,
+    workspaceState.status === "ready" ? workspaceState.configurationPending : false,
+    workspaceState.status === "ready" ? workspaceState.conversationMutation : undefined,
   ]);
 
   return state;

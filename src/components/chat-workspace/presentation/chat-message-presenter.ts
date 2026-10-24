@@ -48,6 +48,7 @@ export function presentChatMessage(
       return Object.freeze({
         ...base,
         content: presentSafeAssistantContent(message.content),
+        ...(PROVIDER_FAILURE_MARKERS.some((marker) => message.content.includes(marker)) ? { insertable: false } : {}),
         kind: "assistant",
         thinking: message.thinking,
         simpleThink: message.simpleThink,

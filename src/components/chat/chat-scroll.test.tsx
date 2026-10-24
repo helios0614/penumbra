@@ -5,7 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof React>();
-  return { ...actual, useRef: vi.fn(actual.useRef), useEffect: vi.fn(actual.useEffect), useMemo: vi.fn(actual.useMemo) };
+  return { ...actual, useRef: vi.fn(actual.useRef), useEffect: vi.fn(actual.useEffect), useLayoutEffect: vi.fn(actual.useLayoutEffect), useMemo: vi.fn(actual.useMemo) };
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -30,6 +30,7 @@ function session() {
       effects.push(() => { cleanups[index]?.(); cleanups[index] = effect() || (() => {}); });
     }
   }) as typeof React.useEffect);
+  vi.spyOn(React, "useLayoutEffect").mockImplementation(React.useEffect);
   const render = (content: string, conversationId = "a", forceFollowKey: string | null = null) => {
     refIndex = 0; effectIndex = 0;
     const component = BubbleList as unknown as { type: (props: React.ComponentProps<typeof BubbleList>) => React.ReactElement<{ children: React.ReactElement }> };
@@ -58,6 +59,6 @@ describe("Chat message scroll regression", () => {
     s.render("two", "a", "sent-message"); expect(s.scroll).toHaveBeenCalledOnce();
     s.viewport.dispatchEvent(new Event("scroll")); s.scroll.mockClear();
     s.render("three", "b"); expect(s.scroll).toHaveBeenCalledOnce();
-    expect(remove).toHaveBeenCalledOnce(); s.dispose(); expect(remove).toHaveBeenCalledTimes(2);
+    expect(remove).toHaveBeenCalledTimes(2); s.dispose(); expect(remove).toHaveBeenCalledTimes(4);
   });
 });

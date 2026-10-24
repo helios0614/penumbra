@@ -109,7 +109,7 @@ export function ChatWorkspaceEmpty({
   const copy = {
     conversations: {
       title: "暂无会话",
-      description: "当前没有可读取的会话。创建会话将在后续阶段接入。",
+      description: "从会话列表新建会话，开始聊天。",
     },
     selection: {
       title: "请选择会话",
@@ -142,7 +142,7 @@ function ChatBackButton({ onBack }: { readonly onBack: () => void }) {
       type="button"
       variant="ghost"
       size="icon-lg"
-      className="rounded-xl border border-border-strong/50 bg-background/25 text-foreground shadow-sm hover:border-primary/30 hover:bg-primary/10 active:bg-primary/15"
+      className="text-muted-foreground"
       onClick={onBack}
       aria-label="返回桌面"
       title="返回桌面"

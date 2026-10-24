@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createChatSendController,
   INITIAL_CHAT_SEND_STATE,
+  isChatExecutionActive,
   type ChatHistoryReconciler,
   type ChatRegenerateInput,
   type ChatSendController,
@@ -11,12 +12,14 @@ import {
 } from "@/application/chat-send";
 
 export type UseChatSendResult = {
+  readonly getState: () => ChatSendState;
   readonly state: ChatSendState;
   readonly send: (input: ChatSendInput) => Promise<boolean>;
   readonly regenerate: (input: ChatRegenerateInput) => Promise<boolean>;
   readonly retryFinalization: () => Promise<void>;
   readonly resetError: () => void;
   readonly releaseAfterReview: () => void;
+  readonly isExecutionActive: () => boolean;
 };
 
 export function useChatSend(
@@ -54,5 +57,7 @@ export function useChatSend(
   }, []);
 
   const releaseAfterReview = useCallback(() => { controllerRef.current?.releaseAfterReview(); }, []);
-  return { state, send, regenerate, retryFinalization, resetError, releaseAfterReview };
+  const isExecutionActive = useCallback(() => isChatExecutionActive(controllerRef.current?.getState() ?? INITIAL_CHAT_SEND_STATE), []);
+  const getState = useCallback(() => controllerRef.current?.getState() ?? INITIAL_CHAT_SEND_STATE, []);
+  return { state, send, regenerate, retryFinalization, resetError, releaseAfterReview, isExecutionActive, getState };
 }

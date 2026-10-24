@@ -48,6 +48,7 @@ export function getChatSenderAvailability(
     return unavailable("正在切换会话。");
   }
   if (workspaceState.configurationPending) return unavailable("正在保存并确认模型选择。");
+  if (workspaceState.conversationMutation) return unavailable("正在更新会话。");
 
   const { workspace } = workspaceState;
   const selected = workspace.selectedConversation;

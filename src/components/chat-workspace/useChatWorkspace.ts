@@ -12,6 +12,7 @@ import {
 } from "@/components/chat-workspace/chat-workspace-controller";
 
 export type UseChatWorkspaceResult = {
+  readonly getState: () => ChatWorkspaceControllerState;
   readonly state: ChatWorkspaceControllerState;
   readonly retry: () => void;
   readonly selectConversation: (conversationId: string) => void;
@@ -28,11 +29,18 @@ export type UseChatWorkspaceResult = {
   ) => Promise<void>;
   readonly refreshConversationList: () => Promise<void>;
   readonly saveMainSelection: (conversationId: string, selection: MainSelection) => Promise<void>;
+  readonly createConversation: () => Promise<void>;
+  readonly renameConversation: (id: string, title: string) => Promise<void>;
+  readonly deleteConversation: (id: string) => Promise<void>;
+  readonly loadOlderHistory: () => Promise<void>;
 };
 
 export function useChatWorkspace(
   input: ChatWorkspaceLoadInput = {},
+  canNavigate?: () => boolean,
 ): UseChatWorkspaceResult {
+  const navigationGuard = useRef(canNavigate);
+  navigationGuard.current = canNavigate;
   const {
     preferredConversationId,
     currentConversationId,
@@ -48,7 +56,7 @@ export function useChatWorkspace(
       preferredConversationId,
       currentConversationId,
       historyPageSize,
-    });
+    }, { canNavigate: () => navigationGuard.current?.() !== false });
     controllerRef.current = controller;
     const unsubscribe = controller.subscribe(setState);
     void controller.load();
@@ -127,8 +135,14 @@ export function useChatWorkspace(
     if (!controller) throw new Error("Workspace unavailable");
     await controller.saveMainSelection(conversationId, selection);
   }, []);
+  const createConversation = useCallback(async () => { await controllerRef.current?.createConversation(); }, []);
+  const renameConversation = useCallback(async (id: string, title: string) => { await controllerRef.current?.renameConversation(id, title); }, []);
+  const deleteConversation = useCallback(async (id: string) => { await controllerRef.current?.deleteConversation(id); }, []);
+  const loadOlderHistory = useCallback(async () => { await controllerRef.current?.loadOlderHistory(); }, []);
+  const getState = useCallback(() => controllerRef.current?.getState() ?? INITIAL_CHAT_WORKSPACE_CONTROLLER_STATE, []);
 
   return {
+    getState,
     state,
     retry,
     selectConversation,
@@ -138,5 +152,9 @@ export function useChatWorkspace(
     reconcileSelectedConversationAfterReconnect,
     refreshConversationList,
     saveMainSelection,
+    createConversation,
+    renameConversation,
+    deleteConversation,
+    loadOlderHistory,
   };
 }

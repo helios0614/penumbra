@@ -1,6 +1,8 @@
 import { format } from "date-fns";
 import { Bot, CircleHelp, Info, Paperclip, User } from "lucide-react";
-import { memo } from "react";
+import { memo, useRef } from "react";
+import { readMessageSelection } from "./message-selection";
+import { insertableBody } from "./insertable-body";
 
 import aiAvatarPlaceholder from "@/assets/chat/avatar-ai-placeholder.png";
 import userAvatarPlaceholder from "@/assets/chat/avatar-user-placeholder.png";
@@ -161,19 +163,23 @@ interface BubbleProps {
   readonly message: ChatMessageViewModel;
   readonly onRegenerate?: () => void;
   readonly regenerateDisabled?: boolean;
+  readonly onInsert?: (text: string) => void;
 }
 
 function BubbleInner({
   message,
   onRegenerate,
   regenerateDisabled = false,
+  onInsert,
 }: BubbleProps) {
+  const bodyRef = useRef<HTMLDivElement>(null);
   if (message.kind === "system" || message.kind === "unknown") {
     return <NeutralMessage message={message} />;
   }
 
   const isUser = message.kind === "user";
   const hasBody = message.content.trim().length > 0;
+  const insertText = message.kind === "assistant" && message.insertable !== false && onInsert ? insertableBody(message.content) : "";
   const chunks = splitIntoChunks(message.content);
   const time = format(new Date(message.createdAt * 1000), "HH:mm");
   const executionLabel = message.executionStatus === undefined
@@ -218,12 +224,19 @@ function BubbleInner({
           </span>
         )}
         {message.executionStatus === undefined && (
-          <div className="shrink-0 opacity-0 transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100">
+          <div className="chat-message-actions shrink-0 opacity-0 transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100">
             <MessageActions
               role={message.kind}
               content={message.content}
               onRegenerate={onRegenerate}
               regenerateDisabled={regenerateDisabled}
+              onInsert={insertText ? onInsert : undefined}
+              insertContent={insertText}
+              getSelectedText={() => readMessageSelection(bodyRef.current)}
+              canUseCapturedSelection={() => {
+                const selection = bodyRef.current?.ownerDocument.getSelection();
+                return !!bodyRef.current?.isConnected && (!selection || selection.isCollapsed || selection.rangeCount === 0);
+              }}
             />
           </div>
         )}
@@ -239,6 +252,8 @@ function BubbleInner({
         )}
 
         <div
+          ref={bodyRef}
+          data-message-body
           className={cn(
             "flex min-w-0 flex-col gap-1",
             isUser ? "items-end" : "items-start gap-0.5",
