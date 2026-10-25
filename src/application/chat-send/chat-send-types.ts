@@ -18,6 +18,7 @@ export type OptimisticUserMessage = {
   readonly clientMessageId: string;
   readonly content: string;
   readonly createdAt: number;
+  readonly attachments?: readonly string[];
 };
 
 export type StreamingAssistantMessage = {

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetTrigger } from "@/components/ui/sheet";
 import { elements, find, hookSession } from "./test-utils/hook-session";
 
-const live = vi.hoisted(() => ({ active: false, state: null as unknown as ChatWorkspaceControllerState }));
+const live = vi.hoisted(() => ({ active: false, state: null as unknown as ChatWorkspaceControllerState, send: vi.fn(async () => true) }));
 vi.mock("react", async (original) => {
   const actual = await original<typeof React>();
   return { ...actual, ...Object.fromEntries(["useState", "useRef", "useCallback", "useId", "useEffect", "useLayoutEffect"].map(key => [key, vi.fn(actual[key as keyof typeof actual] as never)])) };
@@ -19,10 +19,10 @@ vi.mock("@/components/chat-workspace/useChatWorkspace", () => ({ useChatWorkspac
 vi.mock("@/components/chat-workspace", async original => ({
   ...await original<typeof import("@/components/chat-workspace")>(),
   useChatRealtime: () => ({ kind: "idle" }),
-  useChatSend: () => ({ state: { kind: "idle" }, getState: () => ({ kind: "idle" }), isExecutionActive: () => live.active }),
+  useChatSend: () => ({ state: { kind: "idle" }, getState: () => ({ kind: "idle" }), isExecutionActive: () => live.active, send: live.send }),
 }));
 afterEach(() => vi.restoreAllMocks());
-beforeEach(() => { live.active = false; live.state = ready(); });
+beforeEach(() => { live.active = false; live.state = ready(); live.send.mockClear(); });
 
 function ready(): Extract<ChatWorkspaceControllerState, { status: "ready" }> {
   return {
@@ -36,6 +36,21 @@ function ready(): Extract<ChatWorkspaceControllerState, { status: "ready" }> {
 }
 
 describe("Chat home and conversation navigation are independent", () => {
+  it("rejects an old conversation's media callback even before React renders the new selection", async () => {
+    const selected = (id: string): Extract<ChatWorkspaceControllerState, { status: "ready" }> => {
+      const state = ready(), conversation = { id, title: id, modelKey: "fixture", createdAt: 1, updatedAt: 1, messageCount: 0 };
+      return { ...state, workspace: { ...state.workspace, selectedConversationId: id, selectedConversation: conversation,
+        history: { conversationId: id, messages: [], pageSize: 50, oldestCursor: null, olderPageStatus: "exhausted" },
+        setup: { ...state.workspace.setup, conversationId: id, modelKey: "fixture", status: "ready", readiness: { kind: "available", value: { ready: true, reason: "ready", modelKey: "fixture", setupActionRequired: false } } } } };
+    };
+    live.state = selected("A");
+    const hooks = hookSession(() => ChatView({}));
+    const oldCallback = (hooks.render() as React.ReactElement<ChatWorkspaceViewProps>).props.onSend!;
+    live.state = selected("B");
+    expect(await oldCallback("", ["/uploads/1700000000000.png"], "A")).toBe(false); expect(live.send).not.toHaveBeenCalled();
+    expect(await oldCallback("", ["/uploads/1700000000000.png"], "B")).toBe(true);
+    expect(live.send).toHaveBeenCalledWith({ conversationId: "B", content: "", generation: { attachments: ["/uploads/1700000000000.png"] } }); hooks.dispose();
+  });
   it("keeps ArrowLeft bound to the supplied home callback and Menu bound only to Sheet", () => {
     const home = vi.fn(), select = vi.fn();
     const hooks = hookSession(() => ChatWorkspaceView({ state: ready(), onBack: home, onCreateConversation: vi.fn(async () => {}), onRetry: vi.fn(), onSelectConversation: select, onRetryConversationSwitch: vi.fn() }));

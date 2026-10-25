@@ -1,5 +1,5 @@
 import { ArrowLeft, LoaderCircle, Menu, RefreshCw } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   getChatSenderAvailability,
@@ -44,6 +44,8 @@ import type { MainSelection } from "@/domain/runtime";
 import { ConversationDialog, ConversationMenu, type ConversationAction } from "./ConversationActions";
 import type { SenderDraft, SenderHandle } from "./composer-draft";
 import { useToast } from "@/components/ui/toast";
+import { useAttachmentDrafts } from "./useAttachmentDrafts";
+import { AttachmentDrafts, AttachmentDrop, AttachmentPicker } from "./AttachmentDrafts";
 
 const CHAT_HEADER_ACTION_CLASS =
   "shrink-0 text-muted-foreground";
@@ -76,11 +78,12 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
     workspace.selectConversation(conversationId);
   };
 
-  const sendMessage = (content: string): Promise<boolean> => {
+  const sendMessage = (content: string, attachments: readonly string[] = [], expectedOwner?: string): Promise<boolean> => {
     const current = workspace.getState();
     if (
       current.status !== "ready" ||
       current.workspace.selectedConversation === null ||
+      (expectedOwner !== undefined && current.workspace.selectedConversation.id !== expectedOwner) ||
       !getChatSenderAvailability(current, send.getState()).enabled
     ) {
       return Promise.resolve(false);
@@ -88,6 +91,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
     return send.send({
       conversationId: current.workspace.selectedConversation.id,
       content,
+      ...(attachments.length ? { generation: { attachments } } : {}),
     });
   };
 
@@ -172,7 +176,7 @@ export interface ChatWorkspaceViewProps {
   readonly onSelectConversation: (conversationId: string) => void;
   readonly onRetryConversationSwitch: () => void;
   readonly sendState?: ChatSendState;
-  readonly onSend?: (content: string) => Promise<boolean>;
+  readonly onSend?: (content: string, attachments?: readonly string[], expectedOwner?: string) => Promise<boolean>;
   readonly onRegenerate?: (messageId: string) => Promise<boolean>;
   readonly onRetryFinalization?: () => void | Promise<void>;
   readonly onReleaseAfterReview?: () => void;
@@ -216,6 +220,12 @@ export function ChatWorkspaceView({
   const senderRef = useRef<SenderHandle | null>(null);
   const ownerRef = useRef<string | null>(null);
   ownerRef.current = state.status === "ready" ? state.workspace.selectedConversationId : null;
+  const media = useAttachmentDrafts(ownerRef.current);
+  useEffect(() => {
+    if (state.status !== "ready") return;
+    const existing = new Set(state.workspace.conversations.map(item => item.id));
+    media.store.owners().forEach(id => { if (!existing.has(id)) { media.store.delete(id); drafts.current.delete(id); } });
+  }, [state, media.store]);
 
   if (state.status === "idle" || state.status === "loading") {
     return (
@@ -382,7 +392,7 @@ export function ChatWorkspaceView({
 
           <ChatRealtimeNotice state={realtimeState} />
         </>}
-        composer={<Sender
+        composer={<AttachmentDrop disabled={!sender.enabled || modelSelectionPending || !onSend} onFiles={files => { if (draftOwner && ownerRef.current === draftOwner) media.store.add(draftOwner, files); }}><Sender
           key={draftOwner ?? "unselected"}
           initialDraft={draftOwner ? drafts.current.get(draftOwner) : undefined}
           onDraftChange={draftOwner ? (draft) => { drafts.current.set(draftOwner, draft); } : undefined}
@@ -391,9 +401,19 @@ export function ChatWorkspaceView({
           placeholder="输入消息…"
           statusMessage={executionActive || executionNoticeVisible ? undefined : modelSelectionPending ? "正在切换模型…" : sender.statusMessage ?? undefined}
           feedback={<ChatExecutionNotice state={sendState} onRetryFinalization={onRetryFinalization} onReleaseAfterReview={onReleaseAfterReview} />}
-          onSend={onSend}
+          hasAttachments={media.items.length > 0}
+          attachmentsReady={media.ready}
+          onFiles={files => { if (draftOwner && ownerRef.current === draftOwner) media.store.add(draftOwner, files); }}
+          attachments={draftOwner ? <AttachmentDrafts owner={draftOwner} store={media.store} items={media.items} disabled={!sender.enabled || modelSelectionPending} /> : undefined}
+          onSend={onSend ? async content => {
+            if (!draftOwner || ownerRef.current !== draftOwner) return false;
+            const snapshot = media.store.capture(draftOwner);
+            if (!snapshot) return false;
+            try { const accepted = await onSend(content, snapshot.urls, draftOwner); if (accepted) snapshot.accept(); return accepted; }
+            finally { snapshot.release(); }
+          } : undefined}
           toolsLabel={`会话模型：${workspace.setup.configuration?.selection?.model ?? "尚未选择"}`}
-          tools={<MainModelSelection
+          tools={<><AttachmentPicker disabled={!sender.enabled || modelSelectionPending || !draftOwner} onFiles={files => { if (draftOwner && ownerRef.current === draftOwner) media.store.add(draftOwner, files); }} /><MainModelSelection
             key={workspace.selectedConversationId}
             setup={workspace.setup}
             disabled={navigationLocked || pendingConversationId !== null}
@@ -401,8 +421,8 @@ export function ChatWorkspaceView({
             onPendingChange={setModelSelectionPending}
             onSave={onSaveMainSelection}
             onRefresh={onRefreshState}
-          />}
-        />}
+          /></>}
+        /></AttachmentDrop>}
       >
           {workspace.conversations.length === 0 ? (
             <ChatWorkspaceEmpty kind="conversations" />
@@ -439,7 +459,7 @@ export function ChatWorkspaceView({
         action={conversationAction}
         locked={managementLocked}
         onRename={onRenameConversation}
-        onDelete={async (id) => { await onDeleteConversation(id); drafts.current.delete(id); }}
+        onDelete={async (id) => { await onDeleteConversation(id); drafts.current.delete(id); media.store.delete(id); }}
         onClose={() => setConversationAction(null)}
       />}
     </TooltipProvider>

@@ -1,8 +1,5 @@
 /** Display-only values. Business adapters own persistence and execution. */
-export type ChatAttachmentViewModel = {
-  readonly kind: "unsupported";
-  readonly label: "附件暂不支持";
-};
+export type ChatAttachmentViewModel = import("@/domain/media/media-types").MediaAttachment;
 
 type ChatVisibleMessageBase = {
   readonly id: string;

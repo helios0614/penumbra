@@ -1,5 +1,6 @@
 import type { ChatSendState } from "@/application/chat-send";
 import type { Message } from "@/domain/message";
+import { mapMediaAttachments } from "@/domain/media/media-mappers";
 
 import { presentChatMessages } from "@/components/chat-workspace/presentation/chat-message-presenter";
 import type { ChatMessageViewModel } from "@/components/chat-workspace/presentation/chat-presentation-types";
@@ -69,7 +70,7 @@ export function composeVisibleChatMessages(
     id: overlay.optimisticUser.overlayId,
     content: overlay.optimisticUser.content,
     createdAt: overlay.optimisticUser.createdAt,
-    attachments: [],
+    attachments: mapMediaAttachments(overlay.optimisticUser.attachments ?? [], "user"),
     executionStatus: overlay.status === "unconfirmed"
       ? "unconfirmed"
       : "optimistic",

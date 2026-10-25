@@ -64,6 +64,7 @@ export function trackChatScroll(
   };
   viewport.addEventListener("scroll", updateFollow, { passive: true });
   viewport.addEventListener("chat-capability-toggle", readCapability);
+  viewport.addEventListener("chat-media-preview", readCapability);
   viewport.addEventListener("wheel", scrollIntent, { passive: true });
   viewport.addEventListener("touchmove", scrollIntent, { passive: true });
   viewport.addEventListener("keydown", keyIntent);
@@ -73,6 +74,7 @@ export function trackChatScroll(
   return () => {
     viewport.removeEventListener("scroll", updateFollow);
     viewport.removeEventListener("chat-capability-toggle", readCapability);
+    viewport.removeEventListener("chat-media-preview", readCapability);
     viewport.removeEventListener("wheel", scrollIntent);
     viewport.removeEventListener("touchmove", scrollIntent);
     viewport.removeEventListener("keydown", keyIntent);

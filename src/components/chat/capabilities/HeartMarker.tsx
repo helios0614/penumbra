@@ -21,7 +21,7 @@ export function HeartMarker({ messageId, conversationId }: { messageId: string; 
       className="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] text-muted-foreground outline-none hover:bg-ai/5 focus-visible:ring-2 focus-visible:ring-ring/40">
       <Heart aria-hidden="true" className="size-3" />心声
     </button>
-    {open && <div className="capability-detail-scroll capability-detail-surface" tabIndex={0} role="region" aria-label="心声详情">
+    {open && <div className="capability-detail-scroll capability-detail-surface heart-detail-surface" tabIndex={0} role="region" aria-label="心声详情">
       {state.kind === "loading" ? <p className="text-xs text-muted-foreground" role="status">正在读取心声…</p>
         : state.kind === "error" ? <div className="text-xs text-muted-strong" role="alert">心声读取失败。<button type="button" className="min-h-9 px-2 underline" onClick={() => setAttempt(attempt + 1)}>重新读取</button></div>
         : state.content.length ? <CapabilityDetails fields={state.content.map(text => ({ label: "心声", text }))} />

@@ -11,6 +11,8 @@ import { Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 import { useCopyFeedback } from "./copy-feedback";
+import { markdownImageResource } from "@/domain/media/media-resources";
+import { MediaImage } from "@/components/media/MediaImage";
 
 // ─── 辅助函数 ───
 
@@ -164,6 +166,10 @@ interface MarkdownRendererProps {
 
 function MarkdownRendererInner({ content, className, previewMarkdownCode = true }: MarkdownRendererProps) {
   const components: Components = {
+    img: ({ src, alt }) => {
+      const url = markdownImageResource(src);
+      return url ? <MediaImage image={{ url, label: alt || "正文图片" }} /> : <span className="text-xs text-muted-strong">[图片引用不可用]</span>;
+    },
     code: (props) => (
       <CodeBlock {...props} previewMarkdownCode={previewMarkdownCode} />
     ),

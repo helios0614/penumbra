@@ -1,5 +1,6 @@
 import { format } from "date-fns";
-import { Bot, CircleHelp, Paperclip, User } from "lucide-react";
+import { Bot, CircleHelp, User } from "lucide-react";
+import { ChatAttachments } from "@/components/media/ChatAttachments";
 import { memo, useRef } from "react";
 import { readMessageSelection } from "./message-selection";
 import { insertableBody } from "./insertable-body";
@@ -229,7 +230,7 @@ function BubbleInner({
             isUser ? "items-end" : "items-start gap-0.5",
           )}
         >
-          {((generationLabel || (message.kind === "assistant" && message.error)) && !hasBody ? [] : chunks).map((chunk, index) => (
+          {((generationLabel || message.attachments.length > 0 || (message.kind === "assistant" && message.error)) && !hasBody ? [] : chunks).map((chunk, index) => (
             <BubbleSegment
               key={`${message.id}:${index}`}
               kind={message.kind}
@@ -243,19 +244,8 @@ function BubbleInner({
             active={message.executionStatus === "streaming" || message.executionStatus === "finalizing"} />}
         </div>
 
-        {message.attachments.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-1.5" aria-label="消息附件">
-            {message.attachments.map((attachment, index) => (
-              <span
-                key={`${message.id}:attachment:${index}`}
-                className="inline-flex max-w-full items-center gap-1 rounded-md border border-border/80 bg-surface-secondary/70 px-2 py-1 text-[11px] text-muted-strong"
-              >
-                <Paperclip className="size-3 shrink-0" aria-hidden="true" />
-                {attachment.label}
-              </span>
-            ))}
-          </div>
-        )}
+        {message.attachments.length > 0 && <ChatAttachments attachments={message.attachments} messageId={message.id} kind={message.kind}
+          reaction={!hasBody && message.kind === "user" ? message.capabilities?.reaction : null} />}
         {message.capabilities?.results.map(result => <div key={result.id} className="mt-2 min-w-0 w-full">
           <ToolResult record={result} identity={`${message.id}:${result.id}`} />
         </div>)}

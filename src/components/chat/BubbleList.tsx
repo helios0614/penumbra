@@ -7,6 +7,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 import { Bubble } from "./Bubble";
+import { ChatAudio } from "@/components/media/ChatAudio";
+import { musicIdentity } from "@/components/media/media-identity";
+import type { AudioController } from "@/application/chat-media/audio-controller";
 import { CapabilityExpansionProvider } from "./capabilities/CapabilityDisclosure";
 import { captureChatScrollAnchor, restoreChatScrollAnchor, trackChatScroll, type ChatScrollAnchor } from "./chat-scroll";
 import { Button } from "@/components/ui/button";
@@ -63,6 +66,7 @@ function groupByDate(messages: readonly ChatMessageViewModel[]): DateGroup[] {
 }
 
 interface BubbleListProps {
+  readonly audioControllerFactory?: () => AudioController;
   readonly timelineKey: string;
   readonly messages: readonly ChatMessageViewModel[];
   readonly userName?: string;
@@ -78,6 +82,7 @@ interface BubbleListProps {
 }
 
 function BubbleListInner({
+  audioControllerFactory,
   timelineKey,
   messages,
   userName,
@@ -158,6 +163,7 @@ function BubbleListInner({
           {olderStatus === "stalled" && <p>历史游标无法继续，请稍后重读。</p>}
           {olderStatus === "exhausted" && <p>已加载接口可返回的历史</p>}
         </div>}
+        <ChatAudio scope={timelineKey} createController={audioControllerFactory} identities={messages.flatMap(message => "attachments" in message ? message.attachments.flatMap((a, index) => a.kind === "music" ? [musicIdentity(message.id, index, a)] : []) : [])}>
         <CapabilityExpansionProvider>{dateGroups.map((group) => (
           <div key={group.dateKey}>
             <DateSeparator timestamp={group.timestamp} />
@@ -187,7 +193,7 @@ function BubbleListInner({
               })}
             </div>
           </div>
-        ))}</CapabilityExpansionProvider>
+        ))}</CapabilityExpansionProvider></ChatAudio>
         </div>
       </ScrollArea>
     </div>

@@ -324,7 +324,7 @@ export function createChatSendController(
       }
 
       const content = input.content.trim();
-      if (!content || !input.conversationId) {
+      if ((!content && !input.generation?.attachments?.length) || !input.conversationId) {
         return false;
       }
 
@@ -343,6 +343,7 @@ export function createChatSendController(
         clientMessageId,
         content,
         createdAt,
+        ...(input.generation?.attachments?.length ? { attachments: [...input.generation.attachments] } : {}),
       };
       const execution: ActiveExecution = {
         kind: "send",

@@ -30,6 +30,10 @@ interface SenderProps {
   initialDraft?: SenderDraft;
   onDraftChange?: (draft: SenderDraft) => void;
   apiRef?: RefObject<SenderHandle | null>;
+  attachments?: ReactNode;
+  hasAttachments?: boolean;
+  attachmentsReady?: boolean;
+  onFiles?: (files: readonly File[]) => void;
 }
 
 export function shouldSubmitSenderKey(input: {
@@ -60,6 +64,10 @@ export function Sender({
   initialDraft,
   onDraftChange,
   apiRef,
+  attachments,
+  hasAttachments = false,
+  attachmentsReady = true,
+  onFiles,
 }: SenderProps) {
   const [value, setValue] = useState(initialDraft?.value ?? "");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -146,7 +154,7 @@ export function Sender({
     const submittedDraft = value;
     const submittedRevision = draftRevisionRef.current;
     const trimmed = submittedDraft.trim();
-    if (!trimmed || disabled || !onSend || submittingRef.current) return;
+    if ((!trimmed && !hasAttachments) || !attachmentsReady || disabled || !onSend || submittingRef.current) return;
 
     submittingRef.current = true;
     setIsSubmitting(true);
@@ -171,7 +179,7 @@ export function Sender({
       submittingRef.current = false;
       setIsSubmitting(false);
     }
-  }, [value, disabled, onSend]);
+  }, [value, disabled, onSend, hasAttachments, attachmentsReady]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -199,7 +207,7 @@ export function Sender({
   );
 
   const canSend =
-    value.trim().length > 0 &&
+    (value.trim().length > 0 || hasAttachments) && attachmentsReady &&
     !disabled &&
     !isSubmitting &&
     onSend !== undefined;
@@ -213,6 +221,7 @@ export function Sender({
       )}
     >
         {feedback}
+        {attachments}
         <div ref={composerRef} className="chat-composer mist-solid" data-expanded={expanded}
           style={{ "--chat-text-height": `${textHeight}px` } as CSSProperties}
           aria-busy={isSubmitting}
@@ -231,6 +240,12 @@ export function Sender({
             ref={textareaRef}
             value={displayedValue}
             onChange={handleChange}
+            onPaste={event => {
+              if (disabled || !onFiles) return;
+              const files = Array.from(event.clipboardData.items).filter(item => item.kind === "file" && item.type.startsWith("image/"))
+                .map(item => item.getAsFile()).filter((file): file is File => file !== null);
+              if (files.length) { event.preventDefault(); onFiles(files); }
+            }}
             onFocus={() => setFocused(true)}
             onKeyDown={handleKeyDown}
             onCompositionStart={() => { composingRef.current = true; }}

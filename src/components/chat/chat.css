@@ -128,6 +128,12 @@ button.capability-header:hover, .capability-technical-toggle:hover {
   border-radius: 14px;
   background: var(--capability-paper, var(--chat-ai-surface));
 }
+.heart-detail-surface {
+  border-color: var(--chat-ai-border);
+  background: var(--chat-ai-surface);
+  backdrop-filter: blur(2px);
+}
+.heart-detail-surface .capability-field-text { color: var(--color-ai); font-style: italic; }
 .capability-detail-scroll {
   max-height: min(44dvh, calc(var(--chat-visual-height, 100dvh) * .44));
   min-width: 0;

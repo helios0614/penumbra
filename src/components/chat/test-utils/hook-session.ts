@@ -20,6 +20,7 @@ export function hookSession<T>(component: () => T) {
     return callbacks[i].value;
   }) as typeof React.useCallback);
   vi.spyOn(React, "useId").mockReturnValue("synthetic-id");
+  vi.spyOn(React, "useSyncExternalStore").mockImplementation(((_subscribe: unknown, snapshot: () => unknown) => snapshot()) as typeof React.useSyncExternalStore);
   const effect = ((callback: () => void | (() => void), next?: readonly unknown[]) => {
     const i = effectIndex++;
     if (!(i in deps) || !next || next.some((value, n) => value !== deps[i]?.[n])) {

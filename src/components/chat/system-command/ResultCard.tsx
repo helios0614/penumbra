@@ -3,85 +3,17 @@
  * 普通 system 结果不在这里做类型猜测。
  */
 import { memo, useState } from "react";
-import { ChevronDown, Pause, Play } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MusicCard } from "@/components/media/MusicCard";
+import { mapMediaAttachments } from "@/domain/media/media-mappers";
 import type { McpToolCall, MusicAttachment } from "../types";
 
-// ─── 音乐卡片 ───
-
-interface MusicResultCardProps {
-  attachment: MusicAttachment;
+// Legacy export uses the same real player as the Main media presenter.
+export function MusicResultCard({ attachment }: { attachment: MusicAttachment }) {
+  const song = mapMediaAttachments([attachment], "assistant")[0];
+  return song?.kind === "music" ? <MusicCard song={song} identity={`legacy-music:${song.id ?? attachment.name}`} /> : null;
 }
-
-function MusicResultCardInner({ attachment }: MusicResultCardProps) {
-  const [playing, setPlaying] = useState(false);
-
-  return (
-    <div
-      className={cn(
-        "flex w-full max-w-[480px] items-center gap-3 rounded-md p-2.5",
-        "border border-ai/20 bg-ai/10",
-      )}
-    >
-      <div
-        className={cn(
-          "relative size-14 shrink-0 overflow-hidden rounded-md",
-          "bg-gradient-to-br from-ai/40 via-ai/20 to-ai-subtle",
-        )}
-      >
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="flex size-8 items-center justify-center rounded-full border-2 border-ai/20">
-            <div className="size-3 rounded-full bg-ai/15" />
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => setPlaying((current) => !current)}
-          aria-label={
-            playing ? `暂停 ${attachment.name}` : `播放 ${attachment.name}`
-          }
-          className="absolute inset-0 flex items-center justify-center bg-black/0 transition-all duration-200 hover:bg-black/10"
-        >
-          <span className="flex size-7 items-center justify-center rounded-full border border-border bg-card/90 text-card-foreground shadow-sm transition-transform duration-200 hover:scale-105">
-            {playing ? (
-              <Pause className="size-3.5 text-ai" />
-            ) : (
-              <Play className="ml-0.5 size-3.5 text-ai" />
-            )}
-          </span>
-        </button>
-      </div>
-
-      <div className="min-w-0 flex-1 py-0.5">
-        <p className="truncate text-sm font-semibold leading-tight text-foreground">
-          {attachment.name}
-        </p>
-        <p className="mt-0.5 truncate text-[11px] leading-tight text-muted-foreground">
-          {attachment.artist}
-          {attachment.album ? ` · ${attachment.album}` : ""}
-        </p>
-
-        {playing && (
-          <div className="mt-1.5 flex h-3 items-end gap-[2px]">
-            {[5, 10, 7, 12, 8].map((height, index) => (
-              <span
-                key={index}
-                className="w-[2px] animate-pulse rounded-full bg-ai"
-                style={{
-                  height: `${height}px`,
-                  animationDelay: `${index * 150}ms`,
-                }}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-export const MusicResultCard = memo(MusicResultCardInner);
-
 // ─── MCP 工具调用 ───
 
 interface McpResultCardProps {

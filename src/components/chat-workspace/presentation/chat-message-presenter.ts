@@ -1,9 +1,9 @@
 import type { Message } from "@/domain/message";
+import { mapMediaAttachments } from "@/domain/media/media-mappers";
 import { assistantFailureIndex, formatAssistantFailure } from "@/domain/message/assistant-failure";
 import { appendAssistantChunk, createStreamingAssistantAccumulator, flushAssistantAccumulator } from "@/application/chat-send/chat-send-accumulator";
 
 import type {
-  ChatAttachmentViewModel,
   ChatMessageViewModel,
 } from "@/components/chat-workspace/presentation/chat-presentation-types";
 
@@ -40,7 +40,7 @@ export function presentChatMessage(
       return Object.freeze({
         ...base,
         kind: "user",
-        attachments: presentUnsupportedAttachments(message),
+        attachments: mapMediaAttachments(message.attachments, "user"),
       });
     case "assistant":
       return Object.freeze({
@@ -49,7 +49,7 @@ export function presentChatMessage(
         kind: "assistant",
         thinking: message.thinking,
         simpleThink: message.simpleThink,
-        attachments: presentUnsupportedAttachments(message),
+        attachments: mapMediaAttachments(message.attachments, "assistant"),
       });
     case "system":
       return Object.freeze({ ...base, content: "", kind: "system" });
@@ -82,17 +82,4 @@ export function presentSafeUnknownRole(rawRole: string): string {
     return "unknown";
   }
   return candidate;
-}
-
-function presentUnsupportedAttachments(
-  message: Message,
-): readonly ChatAttachmentViewModel[] {
-  return Object.freeze(
-    message.attachments.map(() =>
-      Object.freeze({
-        kind: "unsupported" as const,
-        label: "附件暂不支持" as const,
-      }),
-    ),
-  );
 }
