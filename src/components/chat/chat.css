@@ -199,6 +199,8 @@ button.capability-header:hover, .capability-technical-toggle:hover {
   width: fit-content;
 }
 .chat-generation-dots { display: inline-flex; gap: 3px; }
+.chat-generation-label { animation: chat-generation-label-in .2s ease-in-out; }
+@keyframes chat-generation-label-in { from { opacity: 0; } to { opacity: 1; } }
 .chat-reaction-sticker {
   position: absolute;
   right: 12px;
@@ -250,6 +252,7 @@ button.capability-header:hover, .capability-technical-toggle:hover {
   .chat-composer[data-expanded="true"] .chat-composer-send { bottom: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
+  .chat-generation-label { animation: none; }
   .chat-generation-dots i { animation: none; opacity: .6; }
   .chat-composer, .chat-composer-input, .chat-composer-menu { animation: none !important; transition: none !important; }
 }

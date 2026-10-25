@@ -124,6 +124,7 @@ function NeutralMessage({
 
 interface BubbleProps {
   readonly message: ChatMessageViewModel;
+  readonly userName?: string;
   readonly onRegenerate?: () => void;
   readonly regenerateDisabled?: boolean;
   readonly onInsert?: (text: string) => void;
@@ -131,6 +132,7 @@ interface BubbleProps {
 
 function BubbleInner({
   message,
+  userName = "你",
   onRegenerate,
   regenerateDisabled = false,
   onInsert,
@@ -161,7 +163,7 @@ function BubbleInner({
       }[message.executionStatus];
   const generationLabel = isUser || message.executionStatus === undefined ? null
     : message.executionStatus === "streaming"
-      ? (hasBody ? null : "正在生成")
+      ? (hasBody ? null : "思考中")
       : message.executionStatus === "finalizing" ? "正在确认保存"
       : message.executionStatus === "unconfirmed" ? "结果待确认" : "正在发送";
 
@@ -181,7 +183,7 @@ function BubbleInner({
         )}
       >
         <MessageAvatar kind={message.kind} />
-        <span className="text-xs font-medium">{isUser ? "你" : "知远"}</span>
+        <span className="text-xs font-medium">{isUser ? userName : "知远"}</span>
         <span className="text-xs opacity-60">{time}</span>
         {executionLabel && (
           <span
@@ -237,6 +239,7 @@ function BubbleInner({
           ))}
           {message.kind === "assistant" && message.error && <div className={cn(BUBBLE_SURFACE, AI_BUBBLE_SURFACE, "whitespace-pre-wrap text-sm break-words")} role="alert">{message.error}</div>}
           {generationLabel && !hasBody && !(message.kind === "assistant" && message.error) && <GenerationIndicator label={generationLabel}
+            rotating={message.executionStatus === "streaming"}
             active={message.executionStatus === "streaming" || message.executionStatus === "finalizing"} />}
         </div>
 

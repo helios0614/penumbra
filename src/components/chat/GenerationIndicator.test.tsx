@@ -8,11 +8,11 @@ function bubble(patch: Partial<Extract<ChatMessageViewModel, { kind: "assistant"
     thinking: null, simpleThink: null, attachments: [], executionStatus: "streaming", ...patch }} />);
 }
 describe("assistant generation bubble", () => {
-  it("shows a small truthful waiting state without an empty body bubble", () => {
+  it("starts with AionHome's thinking label without an empty body bubble", () => {
     const html = bubble();
-    expect(html).toContain("正在生成"); expect(html).toContain('data-message-id="same-target"');
+    expect(html).toContain("思考中"); expect(html).toContain('data-message-id="same-target"');
     expect(html).toContain("min-h-9"); expect(html).toContain("bg-[var(--chat-ai-surface)]");
-    expect(html).toContain("rounded-md"); expect(html).toContain("px-4 py-2"); expect(html).not.toContain("思考中");
+    expect(html).toContain("rounded-md"); expect(html).toContain("px-4 py-2"); expect(html).not.toContain("正在生成");
     expect(html).toContain('aria-hidden="true"'); expect(html).toContain('role="status"');
   });
   it("transitions to visible streaming text while keeping Thinking and DRIFT separate", () => {

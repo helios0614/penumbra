@@ -65,6 +65,7 @@ function groupByDate(messages: readonly ChatMessageViewModel[]): DateGroup[] {
 interface BubbleListProps {
   readonly timelineKey: string;
   readonly messages: readonly ChatMessageViewModel[];
+  readonly userName?: string;
   readonly forceFollowKey?: string | null;
   readonly regenerateTargetId?: string | null;
   readonly regenerateEnabled?: boolean;
@@ -79,6 +80,7 @@ interface BubbleListProps {
 function BubbleListInner({
   timelineKey,
   messages,
+  userName,
   forceFollowKey = null,
   regenerateTargetId = null,
   regenerateEnabled = false,
@@ -171,6 +173,7 @@ function BubbleListInner({
                   >
                     <Bubble
                       message={message}
+                      userName={userName}
                       onRegenerate={
                         message.id === regenerateTargetId && onRegenerate
                           ? () => onRegenerate(message.id)

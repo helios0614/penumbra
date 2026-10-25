@@ -19,6 +19,7 @@ import {
   presentChatConversations,
 } from "@/components/chat-workspace/presentation";
 import { useChatWorkspace } from "@/components/chat-workspace/useChatWorkspace";
+import { useChatUserName } from "@/components/chat-workspace/useChatUserName";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -51,6 +52,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
   const executionGuard = useRef<() => boolean>(() => true);
   const toast = useToast("chat-conversations");
   const workspace = useChatWorkspace({}, () => executionGuard.current());
+  const userName = useChatUserName(workspace.state.status === "ready");
   const send = useChatSend(workspace.reloadSelectedConversationHistory);
   executionGuard.current = () => !send.isExecutionActive();
   const realtime = useChatRealtime(workspace.state, send.state, {
@@ -127,6 +129,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
   return (
     <ChatWorkspaceView
       state={workspace.state}
+      userName={userName}
       onRetry={workspace.retry}
       onSelectConversation={selectConversation}
       onRetryConversationSwitch={workspace.retryConversationSwitch}
@@ -164,6 +167,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
 
 export interface ChatWorkspaceViewProps {
   readonly state: ChatWorkspaceControllerState;
+  readonly userName?: string;
   readonly onRetry: () => void;
   readonly onSelectConversation: (conversationId: string) => void;
   readonly onRetryConversationSwitch: () => void;
@@ -185,6 +189,7 @@ export interface ChatWorkspaceViewProps {
 
 export function ChatWorkspaceView({
   state,
+  userName,
   onRetry,
   onSelectConversation,
   onRetryConversationSwitch,
@@ -409,6 +414,7 @@ export function ChatWorkspaceView({
             <BubbleList
               timelineKey={workspace.selectedConversation.id}
               messages={messages}
+              userName={userName}
               onInsert={sender.enabled && !managementLocked && !modelSelectionPending ? (text) => {
                 if (ownerRef.current === draftOwner) senderRef.current?.append(text);
               } : undefined}

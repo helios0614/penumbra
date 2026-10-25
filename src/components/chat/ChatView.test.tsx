@@ -106,6 +106,7 @@ describe("ChatWorkspaceView ready states", () => {
         ]),
       )),
       vi.fn(),
+      { userName: "合成用户" },
     );
 
     expect(html).toContain("真实标题");
@@ -113,6 +114,7 @@ describe("ChatWorkspaceView ready states", () => {
     expect(html).toContain('aria-label="返回桌面"');
     expect(html).toContain("h-14");
     expect(html).toContain("用户内容");
+    expect(html).toContain('<span class="text-xs font-medium">合成用户</span>');
     expect(html).toContain("知远内容");
     expect(html).toContain("历史系统记录");
     expect(html).not.toContain("系统内容");
@@ -387,6 +389,7 @@ function render(
   state: ChatWorkspaceControllerState,
   onBack?: () => void,
   props: {
+    readonly userName?: string;
     readonly onSend?: (content: string) => Promise<boolean>;
     readonly onRegenerate?: (messageId: string) => Promise<boolean>;
     readonly sendState?: ChatSendState;
@@ -398,6 +401,7 @@ function render(
   const html = renderToStaticMarkup(
     <ChatWorkspaceView
       state={state}
+      userName={props.userName}
       onRetry={vi.fn()}
       onSelectConversation={vi.fn()}
       onRetryConversationSwitch={vi.fn()}

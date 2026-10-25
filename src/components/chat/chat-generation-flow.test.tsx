@@ -47,12 +47,12 @@ describe("Main wire → controller → UI generation states", () => {
     const messages = () => composeVisibleChatMessages(history, controller.getState(), "conv_a");
     const html = () => renderToStaticMarkup(<>{messages().map((message) => <Bubble key={message.id} message={message} />)}</>);
     expect(await controller.send({ conversationId: "conv_a", content: "question" })).toBe(true);
-    expect(html()).toContain("正在生成");
+    expect(html()).toContain("思考中");
     const overlayId = messages().slice(-1)[0]?.id;
     wire.emit({ type: "start", id: "new-reply" });
     wire.emit({ type: "chunk", content: "[THINKING_START]separate thinking[THINKING_END][DRIFT:separate drift][HEART:private][TODO:private]" });
     await waitFor(() => JSON.stringify(messages()).includes("separate drift"));
-    expect(html()).toContain("正在生成"); expect(JSON.stringify(messages())).not.toMatch(/private|THINKING_START|HEART|TODO:/);
+    expect(html()).toContain("思考中"); expect(JSON.stringify(messages())).not.toMatch(/private|THINKING_START|HEART|TODO:/);
     wire.emit({ type: "chunk", content: "visible body" });
     await waitFor(() => html().includes("visible body"));
     expect(messages().slice(-1)[0]?.id).toBe(overlayId); expect(html()).not.toContain("chat-generation");
@@ -81,7 +81,7 @@ describe("Main wire → controller → UI generation states", () => {
     const html = () => renderToStaticMarkup(<Bubble message={messages()[0]} />);
     await controller.regenerate({ conversationId: "conv_a", targetMessageId: original.id, targetCreatedAt: original.createdAt });
     expect(messages()).toHaveLength(1); expect(messages()[0].id).toBe(original.id);
-    expect(html()).toContain("正在生成"); expect(html()).not.toContain("original persisted body");
+    expect(html()).toContain("思考中"); expect(html()).not.toContain("original persisted body");
     wire.emit({ type: "start", id: original.id });
     wire.emit({ type: "chunk", content: "replacement body" });
     await waitFor(() => html().includes("replacement body")); expect(html()).not.toContain("chat-generation");
