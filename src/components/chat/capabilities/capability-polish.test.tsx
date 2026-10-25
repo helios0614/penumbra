@@ -127,7 +127,11 @@ describe("system and MCP reading hierarchy", () => {
     const record = tool([{ args: { opaque: [1, 2] }, executed_args: { opaque: [3] }, result: "safe result", ai_result: "safe result ",
       original_length: 9999, storage_truncated: true, ai_truncated: true, args_truncated: true, error: "安全错误" }]);
     const html = expanded(record, ["batch", "batch:call:0:technical"]);
-    for (const field of record.calls[0].fields) expect(html).toContain(field.text.replace(/"/g, "&quot;"));
+    // Nested values may now be collapsed; every field and full clipboard payload remains.
+    for (const field of record.calls[0].fields) {
+      expect(html).toContain(`aria-label="复制${field.label}"`);
+      expect(vi.mocked(useCopyFeedback).mock.calls.some(([text]) => text === field.text)).toBe(true);
+    }
     for (const notice of record.calls[0].notices) expect(html).toContain(notice);
     expect(html).not.toContain("内容与已保存结果一致");
   });

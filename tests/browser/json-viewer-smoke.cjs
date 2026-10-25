@@ -1,0 +1,161 @@
+/* Real Chromium, synthetic local fixtures only; never connects to the backend. */
+const { chromium } = require(process.env.JSON_VIEWER_PLAYWRIGHT || 'playwright');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const origin = process.env.JSON_VIEWER_ORIGIN || 'http://127.0.0.1:45341';
+const output = process.env.JSON_VIEWER_OUTPUT || '.tmp/json-viewer';
+fs.mkdirSync(output, { recursive: true });
+
+(async () => {
+  const browser = await chromium.launch({ headless: true, channel: process.env.JSON_VIEWER_BROWSER || 'chrome' });
+  const report = [];
+  try {
+    for (const width of [320, 390, 1280]) {
+      const page = await browser.newPage({ viewport: { width, height: 900 } });
+      const errors = [], requests = [];
+      page.on('pageerror', error => errors.push(error.message));
+      page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/')) requests.push(request.url()); });
+      await page.addInitScript(() => {
+        window.__copies = [];
+        Object.defineProperty(navigator, 'clipboard', { value: { writeText: async text => window.__copies.push(text) } });
+      });
+      await page.goto(`${origin}/tests/browser/json-viewer.html`, { waitUntil: 'networkidle' });
+      const ordinary = page.locator('[data-case=ordinary]');
+      assert.equal(await ordinary.getByRole('tree').count(), 1);
+      assert.equal(await ordinary.getByText('合成城市', { exact: true }).count(), 0);
+      await ordinary.getByRole('button', { name: '原文', exact: true }).click();
+      const raw = await ordinary.locator('pre').textContent();
+      assert(raw.startsWith(' \n{\n')); assert(raw.endsWith('\n '));
+      await ordinary.getByRole('button', { name: /^复制/ }).click();
+      assert.equal(await page.evaluate(() => window.__copies.at(-1)), raw);
+      await ordinary.getByRole('button', { name: '结构化', exact: true }).click();
+      const tree = ordinary.getByRole('tree');
+      await tree.locator('.json-viewer-arrow').first().focus();
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('ArrowRight');
+      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-expanded')), 'true');
+      await page.keyboard.press('Enter');
+      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-expanded')), 'false');
+      await page.keyboard.press('Space');
+      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-expanded')), 'true');
+      assert((await tree.innerText()).includes('合成城市'));
+      const deep = page.locator('[data-case=deep]');
+      for (let index = 0; index < 16; index++) await deep.getByRole('button', { name: '展开 JSON 节点', exact: true }).first().click();
+      assert((await deep.innerText()).includes('深层中文最终叶子'));
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      assert(await deep.evaluate(el => el.scrollWidth <= el.clientWidth));
+      assert(await deep.locator('.json-viewer-arrow').evaluateAll(els => els.every((el, index) => !index || els[index - 1].getBoundingClientRect().bottom <= el.getBoundingClientRect().top + 0.5)), 'tree arrow hit areas overlap');
+      await deep.screenshot({ path: `${output}/${width}-deep.png` });
+      const large = page.locator('[data-case=large]');
+      assert.equal(await large.getByRole('tree').count(), 0);
+      const start = Date.now();
+      await large.getByRole('button', { name: '查看结构', exact: true }).click();
+      await large.getByRole('tree').waitFor();
+      assert.equal(await large.locator('[role=treeitem]').count(), 1);
+      await large.getByRole('button', { name: '展开 JSON 节点', exact: true }).click();
+      const expandMs = Date.now() - start;
+      assert.equal(await large.locator('[role=treeitem]').count(), 601);
+      assert(expandMs < 3000, `large structure took ${expandMs}ms`);
+      assert.equal(await page.evaluate(() => new Promise(resolve => setTimeout(() => resolve('responsive'), 0))), 'responsive');
+      await large.getByRole('button', { name: '原文', exact: true }).click();
+      const fullLarge = await large.locator('pre').textContent();
+      await large.getByRole('button', { name: /^复制/ }).click();
+      assert.equal(await page.evaluate(() => window.__copies.at(-1)), fullLarge);
+      assert(fullLarge.includes('大型结果 599'));
+      for (const id of ['plain', 'invalid', 'wide']) assert.equal(await page.locator(`[data-case=${id}]`).getByRole('button', { name: '结构化', exact: true }).count(), 0);
+      assert.equal(await page.locator('[data-case=ordinary] script, [data-case=ordinary] img, [data-case=invalid] script').count(), 0);
+      assert.equal(await page.evaluate(() => window.__jsonExecuted), undefined);
+      await page.locator('[data-case=copy-source]').getByRole('button', { name: /^复制/ }).click();
+      assert.equal(await page.evaluate(() => window.__copies.at(-1)), ' \n{ "value": 0 }\n ');
+      await ordinary.scrollIntoViewIfNeeded();
+      for (const appearance of ['light', 'dark']) {
+        await page.getByLabel('明暗模式', { exact: true }).selectOption(appearance);
+        await page.screenshot({ path: `${output}/${width}-${appearance}-shared.png` });
+      }
+
+      await page.goto(`${origin}/tests/browser/json-viewer.html?view=chat`, { waitUntil: 'networkidle' });
+      const write = page.locator('[data-message-id=forum-write]');
+      await write.getByRole('button', { name: /工具执行/ }).click();
+      await write.getByText('论坛写入的唯一实际正文起始', { exact: false }).waitFor();
+      assert.equal((await write.innerText()).split('论坛写入的唯一实际正文起始').length, 2);
+      assert.equal(await write.locator('.capability-detail-scroll').count(), 1);
+      assert.equal(await write.locator('[data-capability$=":call:0"]').count(), 0);
+      await write.getByRole('button', { name: '复制已保存结果', exact: true }).click();
+      assert.equal(await page.evaluate(() => window.__copies.at(-1)), ' { "success": true, "message_id": "synthetic-45304" }\n');
+      await write.getByRole('button', { name: /技术详情/ }).click();
+      const args = write.getByRole('tree', { name: '调用参数', exact: true });
+      await args.waitFor();
+      assert((await write.innerText()).includes('实际执行参数'));
+      assert((await write.innerText()).includes('是否送达模型尚无法确认'));
+      assert((await write.innerText()).includes('上下文预算截断'));
+      await write.getByRole('button', { name: '复制调用参数', exact: true }).click();
+      const copiedArgs = await page.evaluate(() => window.__copies.at(-1));
+      assert.equal(JSON.parse(copiedArgs).thread_id, 3502);
+      assert(JSON.parse(copiedArgs).content.endsWith('这是只读合成验收正文，没有执行论坛请求。\n'));
+      await write.getByRole('button', { name: '复制实际执行参数', exact: true }).click();
+      assert.equal(JSON.parse(await page.evaluate(() => window.__copies.at(-1))).thread_id, 3503);
+      assert.equal(await write.locator('.json-viewer').evaluateAll(els => els.filter(el => ['auto', 'scroll'].includes(getComputedStyle(el).overflowY)).length), 0);
+      const viewport = page.locator('[data-slot=scroll-area-viewport]').first();
+      await viewport.evaluate(el => el.scrollTop = Math.max(0, el.scrollTop - 50));
+      const anchorBefore = await write.boundingBox();
+      await write.getByRole('group', { name: '本次 AI 有界结果阅读模式', exact: true }).getByRole('button', { name: '原文', exact: true }).evaluate(el => el.click());
+      await page.waitForTimeout(300);
+      const anchorAfter = await write.boundingBox();
+      assert(Math.abs(anchorAfter.y - anchorBefore.y) < 3, `anchor moved ${anchorAfter.y - anchorBefore.y}px`);
+      const profile = page.locator('[data-message-id=forum-profile]');
+      await profile.getByRole('button', { name: /工具执行/ }).click();
+      assert.equal(await profile.getByRole('tree', { name: '结果正文', exact: true }).count(), 1);
+      assert.equal(await profile.getByRole('tree', { name: '已保存结果', exact: true }).count(), 0);
+      const plain = page.locator('[data-message-id=plain-result]');
+      await plain.getByRole('button', { name: /工具执行/ }).click();
+      assert.equal(await plain.getByRole('tree').count(), 0);
+      const mixed = page.locator('[data-message-id=mixed-result]');
+      await mixed.getByRole('button', { name: /工具执行/ }).click();
+      assert.equal(await mixed.getByRole('tree').count(), 1); assert((await mixed.innerText()).includes('第一段普通文本'));
+      const largeCall = page.locator('[data-message-id=large-result]');
+      await largeCall.getByRole('button', { name: /工具执行/ }).click();
+      assert.equal(await largeCall.getByRole('tree').count(), 0);
+      await largeCall.getByRole('button', { name: '查看结构', exact: true }).click();
+      assert.equal(await largeCall.getByRole('tree').count(), 1);
+      await largeCall.getByRole('button', { name: '复制已保存结果', exact: true }).click();
+      assert.equal(await page.evaluate(() => window.__copies.at(-1)), fullLarge);
+      await largeCall.getByRole('button', { name: /工具执行/ }).click();
+      await page.waitForTimeout(250);
+      assert.equal(await largeCall.getByRole('tree').count(), 0);
+      const batch = page.locator('[data-message-id=batch-result]');
+      await batch.getByRole('button', { name: /工具执行/ }).click();
+      const calls = batch.locator('.capability-call-list > section');
+      await calls.nth(0).locator('button[aria-expanded]').first().click();
+      await calls.nth(1).locator('button[aria-expanded]').first().click();
+      assert.equal(await calls.nth(0).locator('button[aria-expanded]').first().getAttribute('aria-expanded'), 'true');
+      assert.equal(await calls.nth(1).locator('button[aria-expanded]').first().getAttribute('aria-expanded'), 'true');
+      assert.equal(await calls.nth(2).locator('button[aria-expanded]').first().getAttribute('aria-expanded'), 'false');
+      assert((await batch.innerText()).includes('未注入 AI'));
+      await batch.getByRole('button', { name: /工具执行/ }).click();
+      await page.waitForTimeout(250);
+      await batch.getByRole('button', { name: /工具执行/ }).click();
+      assert.equal(await calls.nth(0).locator('button[aria-expanded]').first().getAttribute('aria-expanded'), 'true');
+      assert.equal(await calls.nth(1).locator('button[aria-expanded]').first().getAttribute('aria-expanded'), 'true');
+      const legacy = page.locator('[data-message-id=legacy-result]');
+      await legacy.getByRole('button', { name: /工具执行/ }).click();
+      await legacy.getByRole('button', { name: /技术详情/ }).click();
+      assert(!(await legacy.innerText()).includes('PRIVATE_FIXTURE_CREDENTIAL'));
+      await legacy.getByRole('button', { name: '复制已保存结果', exact: true }).click();
+      assert(!(await page.evaluate(() => window.__copies.at(-1))).includes('PRIVATE_FIXTURE_CREDENTIAL'));
+      for (const appearance of ['light', 'dark']) {
+        await page.getByLabel('明暗模式', { exact: true }).selectOption(appearance);
+        for (const color of ['#000000', '#ffffff']) {
+          await page.getByLabel('AI 主题色', { exact: true }).selectOption(color);
+          assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+        }
+      }
+      await profile.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `${output}/${width}-chat.png` });
+      assert.deepEqual(errors, []); assert.deepEqual(requests, []);
+      report.push({ width, expandMs, copiedLargeCharacters: fullLarge.length, errors: errors.length, backendRequests: requests.length });
+      await page.close();
+    }
+    fs.writeFileSync(`${output}/report.json`, JSON.stringify(report, null, 2));
+    console.log(JSON.stringify(report, null, 2));
+  } finally { await browser.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });

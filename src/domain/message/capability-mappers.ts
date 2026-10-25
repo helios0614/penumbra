@@ -10,10 +10,16 @@ const statuses = new Set(["success", "failed", "partial", "skipped", "timeout", 
 const status = (value: unknown): CapabilityStatus => statuses.has(text(value)) ? value as CapabilityStatus : "unknown";
 const strings = (value: unknown): string[] => Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 export function formatPublicValue(value: unknown): string {
-  if (typeof value === "string") {
-    try { return JSON.stringify(JSON.parse(value), null, 2); } catch { return value; }
-  }
+  if (typeof value === "string") return value;
   return JSON.stringify(value, null, 2) ?? "";
+}
+
+/** Only explicit MCP text blocks; never search ordinary prose for JSON fragments. */
+export function toolResultBody(value: unknown): CapabilityField | null {
+  const content = record(value).content;
+  if (!Array.isArray(content)) return null;
+  const blocks = content.flatMap(item => { const block = record(item); return block.type === "text" && typeof block.text === "string" ? [block.text] : []; });
+  return blocks.length ? { label: "结果正文", text: blocks.join("\n\n"), textBlocks: blocks } : null;
 }
 export function deliveryNotice(value: unknown): string {
   return value === "not_included" ? "本批结果未注入 AI（上下文预算上限），已停止续写。"
@@ -25,7 +31,7 @@ export function deliveryNotice(value: unknown): string {
 
 function toolCall(value: unknown): PublicToolCall {
   const dto = record(value), fields: CapabilityField[] = [], notices: string[] = [];
-  const field = (label: string, v: unknown) => { if (v !== undefined && v !== null) fields.push({ label, text: formatPublicValue(v) }); };
+  const field = (label: string, v: unknown) => { if (v !== undefined) fields.push({ label, text: formatPublicValue(v) }); };
   const args = record(dto.executed_args ?? dto.args);
   // Only explicit text-bearing fields. Never infer a remote business receipt
   // from the server/tool name or from the transport success boolean.
@@ -34,13 +40,10 @@ function toolCall(value: unknown): PublicToolCall {
   }
   field("调用参数", dto.args);
   if (dto.executed_args !== undefined && formatPublicValue(dto.executed_args) !== formatPublicValue(dto.args)) field("实际执行参数", dto.executed_args);
-  let result: unknown = dto.result;
-  if (typeof result === "string") { try { result = JSON.parse(result); } catch { /* Plain remote text already has its own result field. */ } }
-  const content = record(result).content;
-  if (Array.isArray(content)) {
-    const blocks = content.flatMap(item => { const block = record(item); return block.type === "text" && typeof block.text === "string" ? [block.text] : []; });
-    if (blocks.length) field("结果正文", blocks.join("\n\n"));
-  }
+  // String envelopes are interpreted only when the corresponding detail mounts.
+  // Parsed public DTOs need no extra parsing to retain their readable text blocks.
+  const resultBody = toolResultBody(dto.result);
+  if (resultBody) fields.push(resultBody);
   field("已保存结果", dto.result);
   if (typeof dto.original_length === "number" && Number.isFinite(dto.original_length)) field("结果长度（截断前）", `${dto.original_length} 字符`);
   if (dto.error && dto.error !== dto.result) field("错误信息", dto.error);

@@ -145,6 +145,8 @@ button.capability-header:hover, .capability-technical-toggle:hover {
   outline-offset: -2px;
 }
 .capability-field { padding-block: 6px 10px; }
+.capability-json { --json-viewer-accent: var(--capability-accent); }
+.capability-json > .json-viewer + .json-viewer { margin-top: 12px; }
 .capability-field + .capability-field, .capability-notices, .capability-technical {
   border-top: 1px solid var(--capability-rule, var(--color-border));
 }
@@ -200,7 +202,8 @@ button.capability-header:hover, .capability-technical-toggle:hover {
 .chat-reaction-sticker {
   position: absolute;
   right: 12px;
-  bottom: -10px;
+  /* Overlap only the bubble's existing bottom padding; reserve the rest outside. */
+  top: calc(100% - 0.5rem);
   z-index: 1;
   display: inline-flex;
   align-items: center;

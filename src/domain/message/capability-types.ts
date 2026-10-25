@@ -1,7 +1,7 @@
 /** Display-only facts and sanitized legacy system prose; never runtime inputs. */
 export type CapabilityStatus = "success" | "failed" | "partial" | "skipped" | "timeout" | "cancelled" | "unknown" | "sent";
 export type AiDelivery = "response_received" | "prepared" | "not_included" | "not_requested" | "unknown";
-export type CapabilityField = { readonly label: string; readonly text: string };
+export type CapabilityField = { readonly label: string; readonly text: string; readonly textBlocks?: readonly string[] };
 export type PublicToolCall = {
   readonly identifier: string;
   readonly capability: string;
