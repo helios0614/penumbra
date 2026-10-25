@@ -49,6 +49,9 @@
   --theme-primary-ink-dark: #f4845f;
   --ai-theme-color: #7BA7BC;
   --ai-theme-foreground: #111110;
+  /* Shared by AI bubbles and quiet capability details; only the surface is translucent. */
+  --chat-ai-surface: color-mix(in srgb, var(--color-ai, var(--color-theme)) 6%, transparent);
+  --chat-ai-border: color-mix(in srgb, var(--color-ai, var(--color-theme)) 10%, transparent);
 }
 
 @theme {

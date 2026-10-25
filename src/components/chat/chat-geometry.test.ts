@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { trackChatViewport } from "./chat-viewport";
 import { trackChatScroll } from "./chat-scroll";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe("Chat geometry and reading intent", () => {
   it("handles overlay keyboards, pan, rotation and layout resize without double compensation", () => {
@@ -84,8 +84,42 @@ describe("Chat geometry and reading intent", () => {
     viewport.dispatchEvent(new Event("chat-capability-toggle"));
     viewport.scrollHeight += 200; resize(); expect(viewport.scrollTop).toBe(1640);
     viewport.scrollTop = viewport.scrollHeight - viewport.clientHeight;
+    viewport.dispatchEvent(new Event("wheel"));
     viewport.dispatchEvent(new Event("scroll")); expect(following.current).toBe(true);
     viewport.scrollHeight += 100; resize(); expect(viewport.scrollTop).toBe(viewport.scrollHeight);
+    stop();
+  });
+  it("does not resume bottom-follow during animation clamping, anchor scroll events or keyboard resize", () => {
+    vi.useFakeTimers();
+    let resize = () => {};
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: () => void) { resize = callback; }
+      observe = vi.fn(); disconnect = vi.fn();
+    });
+    let messageTop = 20;
+    const item = { dataset: { messageId: "reading" }, getBoundingClientRect: () => ({ top: messageTop, bottom: messageTop + 100 }) };
+    const viewport = Object.assign(new EventTarget(), { scrollTop: 1520, scrollHeight: 2000, clientHeight: 480,
+      getBoundingClientRect: () => ({ top: 20 }), querySelectorAll: () => [item] });
+    const following = { current: true };
+    const stop = trackChatScroll(viewport as unknown as HTMLElement, {} as HTMLElement, following);
+    for (let click = 0; click < 5; click++) {
+      viewport.dispatchEvent(new Event("chat-capability-toggle"));
+      for (const height of [280, 260, 240, 230, 220, 480]) {
+        viewport.clientHeight = height;
+        viewport.scrollHeight = viewport.scrollTop + height; // Browser clamps to the new bottom.
+        viewport.dispatchEvent(new Event("scroll")); resize();
+        expect(following.current).toBe(false);
+      }
+      vi.advanceTimersByTime(100);
+    }
+    messageTop += 20; resize();
+    vi.advanceTimersByTime(300);
+    viewport.dispatchEvent(new Event("scroll")); // Anchor restoration scroll is still not user intent.
+    expect(following.current).toBe(false);
+    viewport.dispatchEvent(new Event("touchmove"));
+    viewport.scrollTop = viewport.scrollHeight - viewport.clientHeight;
+    viewport.dispatchEvent(new Event("scroll"));
+    expect(following.current).toBe(true);
     stop();
   });
 });

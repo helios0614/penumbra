@@ -2,6 +2,8 @@ import type { CapabilityRecord, CapabilityStatus } from "@/domain/message/capabi
 import { CapabilityDisclosure } from "./CapabilityDisclosure";
 import { CapabilityDetails } from "./CapabilityDetails";
 import { ToolCallDetails } from "./ToolCallDetails";
+import { SystemOperationDetails } from "./SystemOperationDetails";
+import { systemOperationPresentation } from "./system-operation-presentation";
 
 export function toolBatchStatus(statuses: readonly CapabilityStatus[]): CapabilityStatus {
   if (statuses.length === 0 || statuses.some(s => s === "unknown")) return "unknown";
@@ -14,11 +16,13 @@ export function toolBatchStatus(statuses: readonly CapabilityStatus[]): Capabili
 export function ToolResult({ record, identity }: { record: CapabilityRecord; identity: string }) {
   const status = record.calls.length ? toolBatchStatus(record.calls.map(call => call.status)) : record.status;
   const single = record.calls.length === 1 ? record.calls[0] : null;
+  const view = systemOperationPresentation(record);
   return <CapabilityDisclosure identity={identity} title={record.title}
-    summary={record.summary ?? (record.calls.length ? `${record.calls.length} 项调用` : undefined)} previewLines={record.previewLines}
+    summary={view.summary ?? (record.calls.length ? `${record.calls.length} 项调用` : undefined)} previewLines={view.previewLines}
+    hideSummaryWhenOpen={view.hideSummaryWhenOpen}
     status={status} capability={single?.capability ?? record.capability}
     hasDetails={record.calls.length > 0 || record.fields.length > 0 || record.notices.length > 0}
-    preview={single?.identifier || record.preview || (!record.calls.length ? record.fields[0]?.text : undefined)}>
+    preview={single?.identifier || record.preview || (!record.calls.length ? view.preview : undefined)}>
     {single ? <ToolCallDetails call={single} identity={`${identity}:call:0`} /> : record.calls.length > 1 ? <div className="capability-call-list">
       {record.calls.map((call, index) => <CapabilityDisclosure key={index} identity={`${identity}:call:${index}`}
         title={call.capability === "POI_SEARCH" ? "查找地点" : call.capability === "ROUTE_PLAN" ? "查询路线" : "远程调用"}
@@ -26,6 +30,6 @@ export function ToolResult({ record, identity }: { record: CapabilityRecord; ide
         <ToolCallDetails call={call} identity={`${identity}:call:${index}`} />
       </CapabilityDisclosure>)}
     </div> : null}
-    <CapabilityDetails fields={record.fields} notices={record.notices} />
+    {record.calls.length ? <CapabilityDetails fields={record.fields} notices={record.notices} /> : <SystemOperationDetails record={record} identity={identity} />}
   </CapabilityDisclosure>;
 }

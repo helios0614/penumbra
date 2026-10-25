@@ -16,7 +16,7 @@ describe("user Reaction sticker", () => {
     expect(html.match(/data-reaction-target=/g)).toHaveLength(1);
     expect(html).toContain('data-reaction-anchor="target"');
     expect(html.indexOf('data-reaction-target=')).toBeGreaterThan(html.indexOf("最后一段"));
-    expect(html).toMatch(/chat-reaction-sticker border border-ai\/10 bg-ai\/\[0\.06\]/);
+    expect(html).toContain("chat-reaction-sticker border border-[var(--chat-ai-border)] bg-[var(--chat-ai-surface)]");
     expect(html).toContain("🛒");
     expect(html).toContain('data-reaction-source="source"');
   });

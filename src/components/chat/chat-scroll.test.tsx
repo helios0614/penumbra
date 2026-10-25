@@ -59,6 +59,9 @@ describe("Chat message scroll regression", () => {
     s.render("two", "a", "sent-message"); expect(s.scroll).toHaveBeenCalledOnce();
     s.viewport.dispatchEvent(new Event("scroll")); s.scroll.mockClear();
     s.render("three", "b"); expect(s.scroll).toHaveBeenCalledOnce();
-    expect(remove).toHaveBeenCalledTimes(3); s.dispose(); expect(remove).toHaveBeenCalledTimes(6);
+    const types = ["scroll", "chat-capability-toggle", "wheel", "touchmove", "keydown"];
+    for (const type of types) expect(remove.mock.calls.filter(([event]) => event === type)).toHaveLength(type === "scroll" ? 2 : 1);
+    s.dispose();
+    for (const type of types) expect(remove.mock.calls.filter(([event]) => event === type)).toHaveLength(type === "scroll" ? 4 : 2);
   });
 });

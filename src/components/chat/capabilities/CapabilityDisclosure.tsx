@@ -3,6 +3,7 @@ import { ChevronDown } from "lucide-react";
 import type { CapabilityStatus } from "@/domain/message/capability-types";
 import { cn } from "@/lib/utils";
 import { CapabilityIcon } from "./CapabilityIcon";
+import { CapabilityReveal } from "./CapabilityReveal";
 import "../chat.css";
 
 const ExpansionContext = createContext<Map<string, boolean> | null>(null);
@@ -25,8 +26,8 @@ export function notifyCapabilityToggle(target: HTMLElement) {
   target.dispatchEvent(new Event("chat-capability-toggle", { bubbles: true }));
 }
 
-export function CapabilityDisclosure({ identity, title, summary, preview, previewLines, status, capability, contained = false, children, hasDetails = true }: {
-  identity: string; title: string; summary?: string; preview?: string; previewLines?: 2; status?: CapabilityStatus; capability?: string; contained?: boolean; children?: ReactNode; hasDetails?: boolean;
+export function CapabilityDisclosure({ identity, title, summary, preview, previewLines, status, capability, contained = false, children, hasDetails = true, hideSummaryWhenOpen = false }: {
+  identity: string; title: string; summary?: string; preview?: string; previewLines?: 2; status?: CapabilityStatus; capability?: string; contained?: boolean; children?: ReactNode; hasDetails?: boolean; hideSummaryWhenOpen?: boolean;
 }) {
   const regionId = useId();
   const [open, setOpen] = useCapabilityExpansion(identity);
@@ -36,23 +37,23 @@ export function CapabilityDisclosure({ identity, title, summary, preview, previe
   const header = <>
     <CapabilityIcon capability={capability} className="capability-icon size-3.5 text-ai/80" />
     <span className="min-w-0">
-      <span className="block break-words font-medium [overflow-wrap:anywhere]">{title}{summary && <span className="font-normal text-muted-foreground">{` · ${summary}`}</span>}</span>
-      {shortPreview && <span data-capability-preview className={cn("block whitespace-normal break-words text-muted-foreground [overflow-wrap:anywhere]", stacked ? "line-clamp-2" : "line-clamp-1")}>{shortPreview}</span>}
+      <span className="capability-title block break-words font-medium [overflow-wrap:anywhere]">{title}{summary && !(open && hideSummaryWhenOpen) && <span className="font-normal text-muted-foreground">{` · ${summary}`}</span>}</span>
+      {shortPreview && (!open || capability === "MUSIC") && <span data-capability-preview className={cn("block whitespace-normal break-words text-muted-foreground [overflow-wrap:anywhere]", stacked ? "line-clamp-2" : "line-clamp-1")}>{shortPreview}</span>}
     </span>
     {status && <span className={cn("capability-status text-[11px]", ["failed", "timeout", "partial"].includes(status) ? "text-destructive-foreground" : "text-muted-foreground")}>
       {statusLabel[status]}
     </span>}
-    {hasDetails && <ChevronDown aria-hidden="true" className={cn("capability-chevron size-3.5 transition-transform motion-reduce:transition-none", open && "rotate-180")} />}
+    {hasDetails && <ChevronDown aria-hidden="true" className={cn("capability-chevron size-3.5", open && "rotate-180")} />}
   </>;
   const headerClass = "capability-header text-left text-xs leading-5 text-muted-strong";
   return <section data-capability={identity} data-contained={contained || undefined} className="capability-disclosure w-full min-w-0 max-w-full">
-    {hasDetails ? <button type="button" className={cn(headerClass, "outline-none hover:bg-ai/5 focus-visible:ring-2 focus-visible:ring-ring/40")}
+    {hasDetails ? <button type="button" className={cn(headerClass, "outline-none")}
       aria-expanded={open} aria-controls={open ? regionId : undefined} onClick={event => {
         notifyCapabilityToggle(event.currentTarget); setOpen(!open);
       }}>{header}</button> : <div className={headerClass}>{header}</div>}
-    {hasDetails && open && <div id={regionId} role="region" aria-label={`${title}详情`} tabIndex={contained ? undefined : 0}
+    {hasDetails && <CapabilityReveal key={identity} open={open}><div id={regionId} role="region" aria-label={`${title}详情`} tabIndex={contained ? undefined : 0}
       className={contained ? "capability-contained-details" : "capability-detail-scroll capability-detail-surface"}>
       {children}
-    </div>}
+    </div></CapabilityReveal>}
   </section>;
 }
