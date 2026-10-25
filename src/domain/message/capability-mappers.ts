@@ -1,4 +1,4 @@
-import type { CapabilityField, CapabilityRecord, CapabilityStatus, MessageCapabilities, PublicToolCall } from "./capability-types";
+import type { AiDelivery, CapabilityField, CapabilityNoticeFact, CapabilityRecord, CapabilityStatus, MessageCapabilities, PublicToolCall } from "./capability-types";
 import { mapWebReceipts } from "./web-receipt-mappers";
 import { projectLegacyTools } from "./legacy-tool-projection";
 import { projectLegacySystemText } from "./legacy-system-projection";
@@ -9,6 +9,8 @@ export const text = (value: unknown): string => typeof value === "string" ? valu
 const statuses = new Set(["success", "failed", "partial", "skipped", "timeout", "cancelled", "unknown", "sent"]);
 const status = (value: unknown): CapabilityStatus => statuses.has(text(value)) ? value as CapabilityStatus : "unknown";
 const strings = (value: unknown): string[] => Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+const aiDelivery = (value: unknown): AiDelivery =>
+  value === "response_received" || value === "prepared" || value === "not_included" || value === "not_requested" ? value : "unknown";
 export function formatPublicValue(value: unknown): string {
   if (typeof value === "string") return value;
   return JSON.stringify(value, null, 2) ?? "";
@@ -31,6 +33,7 @@ export function deliveryNotice(value: unknown): string {
 
 function toolCall(value: unknown): PublicToolCall {
   const dto = record(value), fields: CapabilityField[] = [], notices: string[] = [];
+  const noticeFacts: CapabilityNoticeFact[] = [];
   const field = (label: string, v: unknown) => { if (v !== undefined) fields.push({ label, text: formatPublicValue(v) }); };
   const args = record(dto.executed_args ?? dto.args);
   // Only explicit text-bearing fields. Never infer a remote business receipt
@@ -48,16 +51,22 @@ function toolCall(value: unknown): PublicToolCall {
   if (typeof dto.original_length === "number" && Number.isFinite(dto.original_length)) field("结果长度（截断前）", `${dto.original_length} 字符`);
   if (dto.error && dto.error !== dto.result) field("错误信息", dto.error);
   if (dto.ai_result !== undefined && dto.ai_delivery !== "not_included") field("本次 AI 有界结果", dto.ai_result);
+  const legacyTruncated = dto.result_version == null && typeof dto.original_length === "number" && dto.original_length > text(dto.result).length;
   if (dto.storage_truncated === true) notices.push("结果达到保存上限，完整原文不可恢复。");
-  else if (dto.result_version == null && typeof dto.original_length === "number" && dto.original_length > text(dto.result).length) notices.push("旧记录仅保存了部分结果，完整原文不可恢复。");
+  else if (legacyTruncated) notices.push("旧记录仅保存了部分结果，完整原文不可恢复。");
   if (dto.args_truncated === true) notices.push("调用参数已按保存上限截断。");
   if (dto.executed_args_truncated === true) notices.push("实际执行参数已按保存上限截断。");
   if (dto.command_truncated === true) notices.push("原始命令已按保存上限截断。");
   if (dto.ai_truncated === true && dto.ai_delivery !== "not_included") notices.push("为本次 AI 准备的结果已按上下文预算截断。");
+  noticeFacts.push({ index: notices.length, kind: "ai-delivery", status: aiDelivery(dto.ai_delivery) });
   notices.push(deliveryNotice(dto.ai_delivery));
-  if (!dto.command_type) notices.push("状态表示调用层结果，业务是否完成以实际返回回执为准。");
+  if (!dto.command_type) {
+    noticeFacts.push({ index: notices.length, kind: "execution-scope" });
+    notices.push("状态表示调用层结果，业务是否完成以实际返回回执为准。");
+  }
   return { identifier: [text(dto.server), text(dto.tool)].filter(Boolean).join(":"),
-    capability: text(dto.command_type) || "MCP", status: status(dto.status), fields, notices };
+    capability: text(dto.command_type) || "MCP", status: status(dto.status), fields, notices, noticeFacts,
+    resultTruncated: dto.storage_truncated === true || legacyTruncated || (dto.ai_truncated === true && dto.ai_delivery !== "not_included") };
 }
 
 export function mapCapabilityRecord(value: unknown): CapabilityRecord | null {
@@ -77,8 +86,13 @@ export function mapCapabilityRecord(value: unknown): CapabilityRecord | null {
   if (typeof facts.threshold_minutes === "number" && Number.isFinite(facts.threshold_minutes)) fields.push({ label: "触发阈值", text: `${facts.threshold_minutes} 分钟` });
   timestamp("last_user_ts", "用户上次回复");
   const notices = strings(dto.notices);
-  if (dto.ai_delivery !== undefined) notices.push(deliveryNotice(dto.ai_delivery));
+  const noticeFacts: CapabilityNoticeFact[] = [];
+  if (dto.ai_delivery !== undefined) {
+    noticeFacts.push({ index: notices.length, kind: "ai-delivery", status: aiDelivery(dto.ai_delivery) });
+    notices.push(deliveryNotice(dto.ai_delivery));
+  }
   return { kind: dto.kind as CapabilityRecord["kind"], title: text(dto.title), capability: text(dto.capability), status: status(dto.status), fields, notices,
+    ...(noticeFacts.length ? { noticeFacts } : {}),
     calls: Array.isArray(dto.calls) ? dto.calls.map(toolCall) : [],
     ...(typeof dto.summary === "string" ? { summary: dto.summary } : {}),
     ...(typeof dto.preview === "string" ? { preview: dto.preview } : {}),

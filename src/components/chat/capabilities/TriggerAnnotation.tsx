@@ -1,5 +1,6 @@
 import type { CapabilityRecord } from "@/domain/message/capability-types";
 import { CapabilityIcon } from "./CapabilityIcon";
+import { capabilityNotices } from "./capability-notice-presentation";
 
 export function TriggerAnnotation({ record }: { record: CapabilityRecord }) {
   return <div role="note" className="flex min-w-0 items-start gap-2 px-2 py-1 text-[11px] leading-6 text-muted-foreground">
@@ -7,7 +8,7 @@ export function TriggerAnnotation({ record }: { record: CapabilityRecord }) {
     <p className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">
       <span className="text-muted-strong">{record.title}</span>
       {record.fields.map((field, index) => <span key={index}> · {field.label} {field.text}</span>)}
-      {record.notices.map((notice, index) => <span key={`notice:${index}`}> · {notice}</span>)}
+      {capabilityNotices(record).map((notice, index) => <span key={`notice:${index}`}> · {notice}</span>)}
     </p>
   </div>;
 }

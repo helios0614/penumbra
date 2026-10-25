@@ -46,10 +46,10 @@ describe("MCP structured reading adapter", () => {
     const raw = JSON.stringify({ content: [{ type: "text", text: "自然语言 {\"示例\":1}" }, { type: "text", text: '{"profile":{"name":"测试"}}' }, { type: "image", data: "SAFE_IGNORED_IMAGE_BLOCK" }] });
     const record = tool(raw), fields = record.calls[0].fields;
     expect(fields.some(field => field.label === "结果正文")).toBe(false);
-    const layout = toolDetailFields(fields);
+    const layout = toolDetailFields(record.calls[0]);
     expect(layout.primary[0].textBlocks).toEqual(['自然语言 {"示例":1}', '{"profile":{"name":"测试"}}']);
     expect(layout.technical.find(field => field.label === "已保存结果")?.text).toBe(raw);
-    expect(toolDetailFields(fields)).toBe(layout);
+    expect(toolDetailFields(record.calls[0])).toBe(layout);
     const html = expanded(record);
     expect(html.match(/role="tree"/g)).toHaveLength(1);
     expect(html).toContain("自然语言"); expect(html).not.toContain("SAFE_IGNORED_IMAGE_BLOCK");

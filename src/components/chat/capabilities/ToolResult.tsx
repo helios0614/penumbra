@@ -1,6 +1,5 @@
 import type { CapabilityRecord, CapabilityStatus } from "@/domain/message/capability-types";
 import { CapabilityDisclosure } from "./CapabilityDisclosure";
-import { CapabilityDetails } from "./CapabilityDetails";
 import { ToolCallDetails } from "./ToolCallDetails";
 import { SystemOperationDetails } from "./SystemOperationDetails";
 import { systemOperationPresentation } from "./system-operation-presentation";
@@ -14,14 +13,14 @@ export function toolBatchStatus(statuses: readonly CapabilityStatus[]): Capabili
   return "failed";
 }
 export function ToolResult({ record, identity }: { record: CapabilityRecord; identity: string }) {
-  const status = record.calls.length ? toolBatchStatus(record.calls.map(call => call.status)) : record.status;
   const single = record.calls.length === 1 ? record.calls[0] : null;
+  const status = single?.status ?? (record.calls.length ? toolBatchStatus(record.calls.map(call => call.status)) : record.status);
   const view = systemOperationPresentation(record);
   return <CapabilityDisclosure identity={identity} title={record.title}
     summary={view.summary ?? (record.calls.length ? `${record.calls.length} 项调用` : undefined)} previewLines={view.previewLines}
     hideSummaryWhenOpen={view.hideSummaryWhenOpen}
     status={status} capability={single?.capability ?? record.capability}
-    hasDetails={record.calls.length > 0 || record.fields.length > 0 || record.notices.length > 0}
+    hasDetails={record.calls.length > 0 || view.primary.length > 0 || view.technical.length > 0 || view.notices.length > 0}
     preview={single?.identifier || record.preview || (!record.calls.length ? view.preview : undefined)}>
     {single ? <ToolCallDetails call={single} identity={`${identity}:call:0`} /> : record.calls.length > 1 ? <div className="capability-call-list">
       {record.calls.map((call, index) => <CapabilityDisclosure key={index} identity={`${identity}:call:${index}`}
@@ -30,6 +29,6 @@ export function ToolResult({ record, identity }: { record: CapabilityRecord; ide
         <ToolCallDetails call={call} identity={`${identity}:call:${index}`} />
       </CapabilityDisclosure>)}
     </div> : null}
-    {record.calls.length ? <CapabilityDetails fields={record.fields} notices={record.notices} /> : <SystemOperationDetails record={record} identity={identity} />}
+    <SystemOperationDetails record={record} identity={identity} />
   </CapabilityDisclosure>;
 }

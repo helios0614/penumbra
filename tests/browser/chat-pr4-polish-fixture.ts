@@ -10,13 +10,17 @@ export function polishFixture() {
   const activity = "09:00–09:20 阅读文档；09:20–09:30 步行；其余时段缺少观测。";
   const position = "位置状态：在外面\n地址：示例街道\n距家 800 米（旧记录，不代表当前位置）";
   const call = (overrides: Record<string, unknown> = {}) => ({ server: "community", tool: "forum_write", status: "success", result_version: 1,
-    args: { action: "reply", thread_id: 3502, content: body }, result, ai_result: result, ai_delivery: "unknown", original_length: result.length, ...overrides });
+    args: { action: "reply", thread_id: 3502, content: body }, result, ai_result: result, ai_delivery: "response_received", original_length: result.length, ...overrides });
   return [
     matrix.cases.find(test => test.id === "memory")!.paired,
     row("polish-memory-long", { version: 1, kind: "operation", capability: "MEMORY_WRITE", title: "写入记忆", status: "success",
       fields: [{ label: "记忆 ID", text: "synthetic-memory-id" }, { label: "重要度", text: "0.6" }, { label: "记忆正文", text: body }] }),
     matrix.cases.find(test => test.id === "todo")!.paired,
+    matrix.cases.find(test => test.id === "alarm")!.paired,
     row("polish-single", { version: 1, kind: "result", capability: "tools", title: "工具执行", calls: [call()] }),
+    row("polish-undelivered", { version: 1, kind: "result", capability: "tools", title: "工具执行", calls: [
+      call({ ai_delivery: "not_included", ai_truncated: true, storage_truncated: true, original_length: 40000, ai_result: "未交付的合成内容" }),
+    ] }),
     matrix.cases.find(test => test.id === "activity")!.paired,
     matrix.cases.find(test => test.id === "location")!.paired,
     row("polish-activity-structured", { version: 1, kind: "operation", capability: "ACTIVITY_CHECK", title: "查看动态", status: "success", summary: `覆盖 ${range}`, preview: activity, preview_lines: 2,
@@ -31,7 +35,7 @@ export function polishFixture() {
     row("polish-multiple", { version: 1, kind: "result", capability: "tools", title: "工具执行", notices: ["此批次包含成功、失败和未知结果，分别查看实际回执。"], calls: [
       call({ result: { content: [{ type: "text", text: "主要返回正文\n" + body }], diagnostic: "完整结构仅在技术详情显示" }, ai_result: "为 AI 准备的短结果", ai_truncated: true, ai_delivery: "prepared" }),
       call({ tool: "opaque_schema", status: "failed", args: { nested: Array.from({ length: 100 }, (_, i) => ({ id: i, payload: "长参数".repeat(20) })) },
-        executed_args: { retry: false }, result: "实际失败回执\n".repeat(400), error: "合成失败，工具未返回预期回执", ai_result: "失败摘要", ai_delivery: "not_requested", storage_truncated: true }),
+        executed_args: { retry: false }, result: "实际失败回执\n".repeat(400), error: "合成失败，工具未返回预期回执", ai_result: "失败摘要", ai_delivery: "not_requested", storage_truncated: true, original_length: 40000 }),
       call({ tool: "unknown_result", status: "unknown", result: "结果仍待确认", ai_result: "不同的 AI 内容", ai_delivery: "unknown" }),
     ] }),
     matrix.cases.find(test => test.id === "unknown")!.paired,

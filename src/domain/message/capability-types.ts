@@ -1,6 +1,10 @@
 /** Display-only facts and sanitized legacy system prose; never runtime inputs. */
 export type CapabilityStatus = "success" | "failed" | "partial" | "skipped" | "timeout" | "cancelled" | "unknown" | "sent";
 export type AiDelivery = "response_received" | "prepared" | "not_included" | "not_requested" | "unknown";
+/** Provenance of adapter-generated notices; producer text remains unclassified. */
+export type CapabilityNoticeFact = { readonly index: number } & (
+  { readonly kind: "ai-delivery"; readonly status: AiDelivery } | { readonly kind: "execution-scope" }
+);
 export type CapabilityField = { readonly label: string; readonly text: string; readonly textBlocks?: readonly string[] };
 export type PublicToolCall = {
   readonly identifier: string;
@@ -8,6 +12,8 @@ export type PublicToolCall = {
   readonly status: CapabilityStatus;
   readonly fields: readonly CapabilityField[];
   readonly notices: readonly string[];
+  readonly noticeFacts?: readonly CapabilityNoticeFact[];
+  readonly resultTruncated?: boolean;
 };
 export type CapabilityRecord = {
   readonly kind: "trigger" | "operation" | "result";
@@ -16,6 +22,7 @@ export type CapabilityRecord = {
   readonly status: CapabilityStatus;
   readonly fields: readonly CapabilityField[];
   readonly notices: readonly string[];
+  readonly noticeFacts?: readonly CapabilityNoticeFact[];
   readonly calls: readonly PublicToolCall[];
   readonly summary?: string;
   readonly preview?: string;

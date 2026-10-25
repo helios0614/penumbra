@@ -4,14 +4,14 @@ import { useCopyFeedback } from "../copy-feedback";
 import { JsonViewer } from "@/components/ui/json-viewer";
 import { notifyCapabilityToggle } from "./CapabilityDisclosure";
 
-export function DetailField({ field, sameAsSaved = false, json = false }: { field: CapabilityField; sameAsSaved?: boolean; json?: boolean }) {
+export function DetailField({ field, json = false }: { field: CapabilityField; json?: boolean }) {
   const copy = useCopyFeedback(field.text);
   return <div className="capability-field min-w-0">
     <div className="flex min-w-0 items-center justify-between gap-2">
       <span className="text-[11px] text-muted-foreground">{field.label}</span>
       {field.text && <Button variant="ghost" size="sm" className="capability-copy text-[11px] text-muted-foreground" onClick={copy} aria-label={`复制${field.label}`}>复制</Button>}
     </div>
-    {sameAsSaved ? <p className="text-xs leading-6 text-muted-foreground">内容与已保存结果一致</p> : json ? <div className="capability-json">
+    {json ? <div className="capability-json">
       {(field.textBlocks ?? [field.text]).map((text, index) => <JsonViewer key={index} rawText={text}
         label={field.textBlocks && field.textBlocks.length > 1 ? `${field.label} ${index + 1}` : field.label} showCopy={false}
         onBeforeLayoutChange={notifyCapabilityToggle} />)}

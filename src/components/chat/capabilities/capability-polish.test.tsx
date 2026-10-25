@@ -13,6 +13,7 @@ import { elements, find, hookSession } from "../test-utils/hook-session";
 import { Button } from "@/components/ui/button";
 import { CapabilityTechnicalDetails } from "./CapabilityTechnicalDetails";
 import { systemOperationPresentation } from "./system-operation-presentation";
+import { capabilityNotices } from "./capability-notice-presentation";
 import matrix from "../../../../tests/browser/chat-pr4-legacy-matrix.json";
 
 vi.mock("react", async importOriginal => {
@@ -100,7 +101,7 @@ describe("system and MCP reading hierarchy", () => {
   it("moves only known technical fields and duplicate result wrappers out of the primary reading area", () => {
     const record = tool([{ result: { content: [{ type: "text", text: "主要返回正文" }], diagnostic: 42 }, ai_result: "不同的 AI 有界结果" }]);
     const fields = record.calls[0].fields;
-    const layout = toolDetailFields(fields);
+    const layout = toolDetailFields(record.calls[0]);
     expect(layout.primary.map(field => field.label)).toEqual(["调用正文", "结果正文"]);
     expect(layout.technical.map(field => field.label)).toEqual(["调用参数", "已保存结果", "本次 AI 有界结果"]);
     expect([...layout.primary, ...layout.technical]).toHaveLength(fields.length);
@@ -113,14 +114,15 @@ describe("system and MCP reading hierarchy", () => {
     expect(full).not.toContain("内容与已保存结果一致");
   });
 
-  it.each(["unknown", "prepared", "response_received", "not_requested"])("compacts exactly equal safe results without inferring AI delivery (%s)", ai_delivery => {
+  it.each(["unknown", "prepared", "response_received", "not_requested"])("omits exactly equal safe results without inferring AI delivery (%s)", ai_delivery => {
     const result = '{"success":true,"message_id":"45304"}';
     const record = tool([{ result, ai_result: result, ai_delivery }]);
     const html = expanded(record, ["batch", "batch:call:0:technical"]);
-    expect(html).toContain("内容与已保存结果一致");
+    expect(html).not.toContain("内容与已保存结果一致");
+    expect(html).not.toContain("本次 AI 有界结果");
     expect(html.match(/45304/g)).toHaveLength(1);
-    expect(html).toContain(record.calls[0].notices[0]);
-    if (ai_delivery !== "response_received") expect(html).not.toContain("已收到使用本次结果的续写响应");
+    for (const notice of capabilityNotices(record.calls[0])) expect(html).toContain(notice);
+    expect(html).not.toContain("已收到使用本次结果的续写响应");
   });
 
   it("retains unequal whitespace and every diagnostic field for heterogeneous MCP", () => {
@@ -132,11 +134,11 @@ describe("system and MCP reading hierarchy", () => {
       expect(html).toContain(`aria-label="复制${field.label}"`);
       expect(vi.mocked(useCopyFeedback).mock.calls.some(([text]) => text === field.text)).toBe(true);
     }
-    for (const notice of record.calls[0].notices) expect(html).toContain(notice);
+    for (const notice of capabilityNotices(record.calls[0])) expect(html).toContain(notice);
     expect(html).not.toContain("内容与已保存结果一致");
   });
 
-  it("keeps complete long text selectable and copies full values even when the AI result is compacted", async () => {
+  it("keeps complete long text selectable and copies the saved value when the equal AI result is omitted", async () => {
     const text = "长正文 <script>不执行</script>\n".repeat(6000);
     const fields = [{ label: "调用正文", text }, { label: "已保存结果", text }, { label: "本次 AI 有界结果", text }];
     const html = renderToStaticMarkup(<CapabilityDetails fields={fields.slice(0, 1)} />);
@@ -144,10 +146,10 @@ describe("system and MCP reading hierarchy", () => {
     expect(/<script|max-h-|overflow-auto|<pre[^>]*tabindex/.test(html)).toBe(false);
     const write = vi.fn();
     vi.mocked(useCopyFeedback).mockImplementation(value => async () => { write(value); return true; });
-    const compact = DetailField({ field: fields[2], sameAsSaved: true });
-    await find(compact, Button).props.onClick?.({} as never);
+    const saved = DetailField({ field: fields[1] });
+    await find(saved, Button).props.onClick?.({} as never);
     expect(write).toHaveBeenCalledExactlyOnceWith(text);
-    expect(renderToStaticMarkup(compact)).not.toContain("长正文");
+    expect(renderToStaticMarkup(saved)).toContain("长正文");
   });
 
   it("keeps triggers as separate timeline notes", () => {
@@ -210,7 +212,7 @@ describe("PR4 follow-up display deduplication", () => {
     expect(html).not.toContain('aria-label="重要度"');
     expect(html).toContain("旧记录未保存可靠记忆 ID。");
     const technical = expanded(record, ["batch", "batch:technical"]);
-    expect(technical).toContain('aria-label="复制重要度"');
+    expect(technical).not.toContain('aria-label="复制重要度"');
     expect(JSON.stringify(record)).toBe(snapshot);
   });
 
@@ -252,7 +254,7 @@ describe("PR4 follow-up display deduplication", () => {
     expect(closed.split(range)).toHaveLength(2);
     expect(expanded(record).split(range)).toHaveLength(2);
     const view = systemOperationPresentation(record);
-    expect([...view.primary, ...view.technical]).toHaveLength(record.fields.length);
+    expect([...view.primary, ...view.technical]).toHaveLength(record.fields.length - (placement === "separate" ? 0 : 1));
   });
 
   it("does not merge similar but different ranges or parse generic old text", () => {
