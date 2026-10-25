@@ -1,6 +1,6 @@
 # Chat PR5-B — 附件、图片预览与真实音乐播放
 
-日期：2026-10-25（Asia/Shanghai）。代码及自动回归完成，**等待人工视觉、设备与真实服务联调验收**。未 commit、push、部署或重启真实后端。
+日期：2026-10-25（Asia/Shanghai）。PR5-B 主体已提交；本次第 8 节 Follow-up 的代码及自动回归完成，**等待人工验收**，未 commit、push、部署或重启真实后端。真实服务与设备联调仍不作额外验证承诺。
 
 基线：Penumbra `d4d7104cec8eecb5ff34b62dd88126a653ad63c5`，AionHome `bc3cc6c94212d60a95f809c66725b3dd10ac5d14`；开工时两仓库无待处理业务修改。需求依据为 [PR5-A 审计](./chat-pr5-media-audit.md) 和本轮已确认范围。
 
@@ -24,9 +24,9 @@ Sender 的 + 菜单选择 / textarea 粘贴图片 / Composer 范围拖放
 - `src/domain/media/media-types.ts` 定义 MIME/字节限制，`media-client.ts::uploadMedia` 使用原 API client 的 FormData、Cookie、超时与 AbortSignal；`media-mappers.ts::mapUploadResponse` 不把 HTTP 200 当作必然成功，还验证 URL、MIME、文件名与本地类型。
 - `src/application/chat-media/attachment-drafts.ts::createAttachmentDraftStore` 持有 owner、revision、requestId、File、本地预览、上传状态、错误与 server URL。A→B→A 保留页面内草稿；迟到/已移除/已取消的请求不能进入其他会话或复活项目。
 - upload 自动开始，失败只允许显式重试；发送失败保留已取得 URL，**不会自动重传/重发，也不会删除服务端文件**。未完成/失败项仍在草稿时不允许悄悄遗漏后发送。
-- capture 只接受全部已上传的项目，按 ID 固定本次集合；接受时只释放该集合，后来新选项目不被清空。Object URL 由草稿、提交快照和打开的查看器引用计数持有；移除、删会话、离页及最后一个引用释放时 revoke。
+- capture 只接受全部已上传的项目，按 ID 固定本次集合并立即移出可编辑草稿；接受时只释放该集合，后来新选项目不被清空。失败/未知提交单独暂存并显式恢复，见第 8 节。Object URL 由草稿、提交快照、暂存和打开的查看器引用计数持有；移除、删会话、离页及最后一个引用释放时 revoke。
 - 页面内存之外没有新增持久化；刷新后不承诺恢复本地 File。历史不编造原文件名或大小。
-- `ChatView.tsx` 接入页面 store 与原发送回调，向执行入口带上 expectedOwner 并与实时 Workspace 身份复核：即使 B 已加载、React 仍显示 A 的一帧中触发旧回调，也不能把 A 附件发进 B。`Sender.tsx` 保留文本 revision/IME/恢复机制，仅增加通用附件插槽、选择回调与纯附件发送资格。模型入口仍在原 + 菜单内。
+- `ChatView.tsx` 接入页面 store 与原发送回调，向执行入口带上 expectedOwner 并与实时 Workspace 身份复核：即使 B 已加载、React 仍显示 A 的一帧中触发旧回调，也不能把 A 附件发进 B。`Sender.tsx` 保留文本 revision/IME/恢复机制、通用附件插槽、选择回调与纯附件发送资格；第 8 节进一步拆分编辑和提交资格。模型入口仍在原 + 菜单内。
 - `chat-send-controller.ts` 仅放开“有附件、无正文”的入口并保存乐观附件快照；`chat-execution-composer.ts` 呈现同一快照。原 UUID、opening/streaming/finalizing/unknown、HTTP receipt、导航保护和 canonical regenerate 均未改写。
 
 ## 2. 消息、图片与共享查看器
@@ -142,3 +142,37 @@ npm run dev -- --host 127.0.0.1 --port 45345 --strictPort
 - 基础播放已接真实 Audio；资源/版权/鉴权/编码/上游 Range 是否可用仍取决于实际环境。桌面其他 mock 音乐小组件不属于本轮 Main Chat 播放器迁移。
 
 以上为本轮可供人工验收的实现；未创建额外 PR、未提交、未推送、未部署。
+
+## 8. Follow-up：发送期间的下一轮草稿与附件入口
+
+基线：Penumbra `a3ac4fa0c8f928de4c18560903c6754531eef1a0`。本次只修改前端；不调整后端、Audio、Viewer、MUSIC 或生成协议。
+
+重复展示的原因是 `AttachmentDraftStore.capture()` 原先只 retain 资源，直到 `onSend()` 接受后才移除 Composer 中的附件；HTTP 响应头等待期间，乐观消息已经显示上传 URL，而可编辑草稿仍保留同一附件。另一个问题是 ChatView 将 `sender.enabled` 同时用于输入与提交，因此生成、最终确认及未知状态都禁用了文字输入。
+
+本次处理：
+
+- `attachment-drafts.ts`：capture 原子地将**当次附件**从可编辑草稿转交给提交快照。快照独立保有租约、上传 URL 和附件版本；下一轮添加的文件不在旧快照中。`accept()`/`preserve(content)`/`release()` 均按该快照处理，不清空新草稿。
+- `Sender.tsx`：同步腾出下一轮文字，当前发送保留原文与版本；新增 `submitDisabled`，与输入 `disabled` 独立。等待响应和生成期间可以正常输入、粘贴图片；发送按钮与 Enter 仍受提交锁和同步重入保护。占位文字始终为“输入消息…”，IME 保护不变。父级返回 `retained` 仅表示原提交被单独暂存，不表示服务端已接受。
+- `ChatView.tsx`：输入与附件编辑沿用工作区就绪/会话切换/配置及管理锁，提交继续沿用完整 execution policy；导航保护保持原样。未完成的提交统一存为按会话隔离的冻结恢复记录，避免覆盖或混入下一轮草稿。
+- `SubmissionRecovery.tsx`：折叠展示暂存原文和附件名称，不重复展示提交图片缩略图。用户核对历史后才能显式追加原文及已上传附件到当前草稿；不会上传或发送。执行及未知状态仍锁定时，恢复和丢弃均禁用。重复恢复回调不会再次追加。
+- `AttachmentPicker`：整行按钮、附件图标、操作箭头、“添加图片或视频”和小号“单个文件最大 20 MiB”，沿用 Paper/Mist token 及按钮 Hover/Focus/Pressed 反馈。文件回调、MIME/大小限制及模型菜单不变。
+
+| 状态 | 当前可编辑草稿 | 已提交快照及恢复策略 |
+| --- | --- | --- |
+| 上传中或上传失败 | 文件仍在原草稿，可显式重试/移除 | 不允许提交未完成附件 |
+| 正在等待发送响应 | 新文字和新文件独立编辑 | 原文和附件固定，附件不重复出现在 Composer |
+| `onSend=true`，SSE 已接受或 duplicate | 保留下一轮内容 | 释放本地提交租约；乐观/历史媒体使用上传 URL，不依赖草稿 Blob。后续生成失败不复活原提交 |
+| `onSend=false` 或抛错 | 保留下一轮内容 | 原提交单独暂存，包括已上传 URL；明确失败也通过显式恢复避免覆盖新草稿 |
+| 结果未知/HTTP 仍待确认 | 可以继续编辑，禁止提交 | 不自动恢复、不重传、不重发；现有 HTTP 恢复及人工核对解锁流程保持 |
+| HTTP 最终确认/人工解锁 | 不覆盖、不清空新草稿 | 对先前未确认的暂存记录仍保守地保留，人工选择恢复或丢弃；解锁本身不证明原提交未被接受 |
+| 删除会话/页面卸载/迟到回调 | 删除对应页面内草稿 | owner epoch 防止旧快照回填已删除会话；资源按快照、草稿及 Viewer 各自租约释放 |
+
+资源边界：capture 转移租约，发送接受不会提前 revoke 仍被 Viewer 持有的 Object URL。恢复记录使用已有上传 URL，不重复上传；丢弃本地暂存不删除服务端资源。暂存仍仅在页面生命周期内有效，不承诺刷新恢复 File。冻结记录在核对后需人工处理，可能在页面内继续持有内存直至丢弃或离页。登录级资源权限、孤立上传等第 7 节限制保持。
+
+验证：
+
+- 新增/更新 store、Main Chat 集成与 Sender 测试，覆盖立即脱离草稿、乐观 URL、新文件与新文字保留、显式恢复、重复回调、未知锁、会话切换/删除、迟到响应和租约；既有上传失败/重试、client_msg_id、HTTP/SSE、canonical regenerate 专项均继续通过。
+- 全量前端：143 文件、2019 项通过；TypeScript、生产构建与 diff 检查通过。
+- 对既有合成页做轻量 Chromium 检查：纯文字和图片发送期间编辑、Enter 锁、新附件不被旧完成回调清除、未知状态显式恢复、A/B 隔离；附件入口 320px/390px/1440px 无溢出，触摸高度 60px，键盘 Enter 打开系统文件选择器。没有真实上传、私人 Chat 或远端请求。
+
+人工入口仍为第 6 节的 `tests/browser/chat-pr5-media.html`：发送后由顶部“接受本次提交 / 明确拒绝本次提交 / 本次结果未知”控制响应；接受后点击“完成回复与保存”。期间编辑下一条文字或添加合成附件，观察旧提交和新草稿隔离。未知状态可模拟核对后解锁，再手动恢复/丢弃；切换会话只在空闲时开放。未做复杂浏览器视觉验收，真实移动端 IME/原生文件选择器及 Firefox/Safari 留待人工验收。

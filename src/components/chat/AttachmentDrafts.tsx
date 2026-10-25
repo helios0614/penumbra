@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from "react";
-import { Paperclip, RotateCcw, X, LoaderCircle } from "lucide-react";
+import { ChevronRight, Paperclip, RotateCcw, X, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { UPLOAD_MIME_TYPES } from "@/domain/media/media-types";
 import type { AttachmentDraftStore, DraftAttachment } from "@/application/chat-media/attachment-drafts";
@@ -9,8 +9,17 @@ import "@/components/media/media.css";
 export function AttachmentPicker({ disabled, onFiles }: { disabled: boolean; onFiles: (files: readonly File[]) => void }) {
   const input = useRef<HTMLInputElement>(null);
   return <>
-    <Button type="button" variant="ghost" className="min-h-11 w-full justify-start gap-2 rounded-none px-4 text-muted-strong" disabled={disabled}
-      onClick={() => input.current?.click()} title="选择图片或视频"><Paperclip className="size-4" />图片或视频<span className="ml-auto text-[11px] text-muted-foreground">每个 20 MiB</span></Button>
+    <div className="border-b border-border/50 p-1.5">
+      <Button type="button" variant="ghost" className="h-auto min-h-14 w-full justify-start gap-3 rounded-xl px-3 py-2 text-left text-foreground hover:bg-ai/5 focus-visible:bg-ai/5 active:bg-ai/10" disabled={disabled}
+        onClick={() => input.current?.click()} aria-label="添加图片或视频" title="添加图片或视频">
+        <Paperclip className="size-4 shrink-0 text-muted-strong" aria-hidden="true" />
+        <span className="grid min-w-0 flex-1 gap-0.5">
+          <span className="text-sm font-medium">添加图片或视频</span>
+          <span className="text-[11px] font-normal text-muted-foreground">单个文件最大 20 MiB</span>
+        </span>
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      </Button>
+    </div>
     <input ref={input} type="file" multiple accept={UPLOAD_MIME_TYPES.join(",")} className="hidden" aria-label="选择图片或视频" disabled={disabled}
       onChange={event => { onFiles(Array.from(event.currentTarget.files ?? [])); event.currentTarget.value = ""; }} />
   </>;

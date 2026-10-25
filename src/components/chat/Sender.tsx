@@ -19,8 +19,10 @@ import "./chat.css";
 import { appendComposerText, type SenderDraft, type SenderHandle } from "./composer-draft";
 
 interface SenderProps {
-  onSend?: (content: string) => boolean | void | Promise<boolean | void>;
+  // "retained" means the parent owns the unconfirmed submission, separately from the next draft.
+  onSend?: (content: string) => boolean | void | "retained" | Promise<boolean | void | "retained">;
   disabled?: boolean;
+  submitDisabled?: boolean;
   placeholder?: string;
   statusMessage?: string;
   className?: string;
@@ -55,6 +57,7 @@ export function clearAcceptedSenderDraft(
 export function Sender({
   onSend,
   disabled,
+  submitDisabled = false,
   placeholder = "输入消息…",
   statusMessage,
   className,
@@ -82,7 +85,6 @@ export function Sender({
   const contentMeasureRef = useRef<HTMLDivElement>(null);
   const [multiline, setMultiline] = useState(false);
   const [textHeight, setTextHeight] = useState(24);
-  const [pendingDraft, setPendingDraft] = useState<string | null>(null);
   const [recoveryDrafts, setRecoveryDrafts] = useState<readonly string[]>(initialDraft?.recoveryDrafts ?? []);
   const draftRevisionRef = useRef(0);
   const cursorToEnd = useRef(false);
@@ -90,7 +92,7 @@ export function Sender({
   const valueRef = useRef(value);
   valueRef.current = value;
   const expanded = focused || multiline;
-  const displayedValue = pendingDraft === null ? value : "";
+  const displayedValue = value;
 
   useLayoutEffect(() => {
     onDraftChange?.({ value, recoveryDrafts });
@@ -102,12 +104,11 @@ export function Sender({
   }, [value, recoveryDrafts, onDraftChange]);
 
   const append = useCallback((text: string) => {
-    if (!text.trim() || disabled || submittingRef.current) return false;
+    if (!text.trim() || disabled) return false;
     if (composingRef.current) { queuedAppend.current.push(text); return true; }
     draftRevisionRef.current += 1;
     const next = appendComposerText(valueRef.current, text);
     valueRef.current = next;
-    setPendingDraft(null);
     setValue(next);
     // Focus in the user's click gesture so touch browsers can open the keyboard.
     setFocused(true);
@@ -151,35 +152,34 @@ export function Sender({
   }, [autoResize]);
 
   const handleSubmit = useCallback(async () => {
-    const submittedDraft = value;
+    const submittedDraft = valueRef.current;
     const submittedRevision = draftRevisionRef.current;
     const trimmed = submittedDraft.trim();
-    if ((!trimmed && !hasAttachments) || !attachmentsReady || disabled || !onSend || submittingRef.current) return;
+    if ((!trimmed && !hasAttachments) || !attachmentsReady || disabled || submitDisabled || !onSend || submittingRef.current) return;
 
     submittingRef.current = true;
     setIsSubmitting(true);
-    setPendingDraft(submittedDraft);
+    valueRef.current = "";
+    setValue("");
     const retainUnacceptedDraft = () => {
-      if (draftRevisionRef.current !== submittedRevision) {
+      if (draftRevisionRef.current === submittedRevision) {
+        valueRef.current = submittedDraft;
+        setValue(submittedDraft);
+      } else if (submittedDraft.trim()) {
         setRecoveryDrafts((drafts) => [...drafts, submittedDraft]);
       }
     };
     try {
       const accepted = await onSend(trimmed);
-      if (accepted !== false) {
-        if (draftRevisionRef.current === submittedRevision) {
-          setValue((current) => clearAcceptedSenderDraft(current, submittedDraft));
-        }
-      } else retainUnacceptedDraft();
+      if (accepted === false) retainUnacceptedDraft();
     } catch {
       // The parent owns safe error presentation; retain the current draft.
       retainUnacceptedDraft();
     } finally {
-      setPendingDraft(null);
       submittingRef.current = false;
       setIsSubmitting(false);
     }
-  }, [value, disabled, onSend, hasAttachments, attachmentsReady]);
+  }, [disabled, submitDisabled, onSend, hasAttachments, attachmentsReady]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -199,7 +199,6 @@ export function Sender({
   const handleChange = useCallback(
     (e: ChangeEvent<HTMLTextAreaElement>) => {
       draftRevisionRef.current += 1;
-      setPendingDraft(null);
       valueRef.current = e.target.value;
       setValue(e.target.value);
     },
@@ -209,6 +208,7 @@ export function Sender({
   const canSend =
     (value.trim().length > 0 || hasAttachments) && attachmentsReady &&
     !disabled &&
+    !submitDisabled &&
     !isSubmitting &&
     onSend !== undefined;
 
@@ -255,7 +255,7 @@ export function Sender({
               if (queued.length && event.currentTarget) valueRef.current = event.currentTarget.value;
               queued.forEach(append);
             }}
-            placeholder={pendingDraft === null ? placeholder : "正在提交，原文已暂存…"}
+            placeholder={placeholder}
             aria-label="消息正文"
             disabled={disabled}
             aria-describedby={statusMessage ? statusId : undefined}

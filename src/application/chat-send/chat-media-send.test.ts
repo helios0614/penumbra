@@ -28,10 +28,11 @@ describe("attachments through the existing send owner", () => {
     const reconcile = vi.fn(async () => ({ persistedMessageIds: ["user"], regenerateTarget: null }));
     const controller = createChatSendController({ openExecution: open, createUuid: () => "unknown-media", reconcileHistory: reconcile });
     expect(await controller.send({ conversationId: "A", content: "", generation: { attachments: snapshot.urls } })).toBe(false);
-    snapshot.release(); await tick(); expect(controller.getState().kind).toBe("finalization-uncertain");
+    snapshot.preserve(""); snapshot.release(); await tick(); expect(controller.getState().kind).toBe("finalization-uncertain");
     await controller.retryFinalization();
     expect(await controller.send({ conversationId: "A", content: "", generation: { attachments: [url] } })).toBe(false);
-    expect(drafts.get("A")[0].uploaded?.url).toBe(url); expect(upload).toHaveBeenCalledOnce(); expect(open).toHaveBeenCalledOnce(); expect(reconcile).toHaveBeenCalledTimes(2);
+    expect(drafts.get("A")).toEqual([]); expect(drafts.getRecoveries("A")[0].items[0].uploaded?.url).toBe(url);
+    expect(upload).toHaveBeenCalledOnce(); expect(open).toHaveBeenCalledOnce(); expect(reconcile).toHaveBeenCalledTimes(2);
     drafts.dispose(); controller.dispose();
   });
 });

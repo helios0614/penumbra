@@ -14,8 +14,8 @@ vi.mock("react", async (importOriginal) => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 function session(onSend: React.ComponentProps<typeof Sender>["onSend"] = vi.fn(() => true)) {
-  let disabled = false;
-  const hooks = hookSession(() => Sender({ onSend, disabled, tools: <div>真实模型编辑器</div> }));
+  let disabled = false, submitDisabled = false;
+  const hooks = hookSession(() => Sender({ onSend, disabled, submitDisabled, tools: <div>真实模型编辑器</div> }));
   const textarea = () => find(hooks.render(), "textarea").props;
   const frame = () => find(hooks.render(), "div", (p) => p.className === "chat-composer mist-solid").props;
   const expanded = () => elements(hooks.render()).find((el) => el.props["data-expanded"] !== undefined)?.props["data-expanded"];
@@ -24,7 +24,7 @@ function session(onSend: React.ComponentProps<typeof Sender>["onSend"] = vi.fn((
   const focus = () => textarea().onFocus?.({} as never);
   const menu = (open: boolean) => find(hooks.render(), ComposerToolsMenu).props.onOpenChange(open);
   const submit = () => find(hooks.render(), Button, (p) => p["aria-label"] === "发送消息").props.onClick?.({} as never);
-  return { ...hooks, textarea, frame, expanded, change, blur, focus, menu, submit, setDisabled: (value: boolean) => { disabled = value; } };
+  return { ...hooks, textarea, frame, expanded, change, blur, focus, menu, submit, setDisabled: (value: boolean) => { disabled = value; }, setSubmitDisabled: (value: boolean) => { submitDisabled = value; } };
 }
 
 function mountMeasurements(s: ReturnType<typeof session>, compactHeight = 24, contentHeight = compactHeight) {
@@ -39,6 +39,29 @@ function mountMeasurements(s: ReturnType<typeof session>, compactHeight = 24, co
 }
 
 describe("floating Sender interactions", () => {
+  it("edits the next draft throughout header wait and generation, but Enter and clicks cannot submit until unlocked", async () => {
+    let accept!: (accepted: boolean) => void;
+    const onSend = vi.fn(() => new Promise<boolean>(resolve => { accept = resolve; }));
+    const s = session(onSend); s.change("第一条"); s.submit();
+    expect(s.textarea().disabled).not.toBe(true); expect(s.textarea().placeholder).toBe("输入消息…");
+    s.change("下一条"); s.submit(); expect(onSend).toHaveBeenCalledOnce();
+    s.setSubmitDisabled(true); accept(true); await Promise.resolve();
+    const blockedEnter = vi.fn(); s.textarea().onKeyDown?.({ key: "Enter", nativeEvent: {}, preventDefault: blockedEnter } as never);
+    expect(blockedEnter).toHaveBeenCalledOnce(); expect(onSend).toHaveBeenCalledOnce(); expect(s.textarea().value).toBe("下一条");
+    s.textarea().onCompositionStart?.({} as never); s.change("下一条中文"); s.setSubmitDisabled(false);
+    const compositionEnter = vi.fn(); s.textarea().onKeyDown?.({ key: "Enter", nativeEvent: {}, preventDefault: compositionEnter } as never);
+    expect(compositionEnter).not.toHaveBeenCalled(); expect(onSend).toHaveBeenCalledOnce();
+    s.textarea().onCompositionEnd?.({} as never); expect(s.textarea().value).toBe("下一条中文");
+    expect(find(s.render(), Button, p => p["aria-label"] === "发送消息").props.disabled).toBe(false);
+    expect(onSend).toHaveBeenCalledOnce(); s.submit(); expect(onSend).toHaveBeenLastCalledWith("下一条中文");
+    accept(true); await Promise.resolve(); s.dispose();
+  });
+  it("leaves parent-retained unknown submissions outside the next editable text draft", async () => {
+    let finish!: (value: "retained") => void;
+    const s = session(() => new Promise<"retained">(resolve => { finish = resolve; }));
+    s.change("不可重复的原提交"); s.submit(); s.change("下一轮草稿"); finish("retained"); await Promise.resolve();
+    expect(s.textarea().value).toBe("下一轮草稿"); expect(elements(s.render()).some(item => item.type === "summary")).toBe(false); s.dispose();
+  });
   it("expands on empty focus, stays expanded through menu blur, and collapses outside without losing text", () => {
     const s = session();
     expect(s.expanded()).toBe(false); s.focus(); expect(s.expanded()).toBe(true);
@@ -59,7 +82,7 @@ describe("floating Sender interactions", () => {
     const onSend = vi.fn(() => new Promise<boolean>((resolve) => { accept = resolve; }));
     const s = session(onSend); s.change("  第一份草稿  "); s.submit(); s.submit();
     expect(onSend).toHaveBeenCalledOnce(); expect(onSend).toHaveBeenCalledWith("第一份草稿");
-    expect(s.textarea().value).toBe(""); expect(s.textarea().placeholder).toContain("原文已暂存");
+    expect(s.textarea().value).toBe(""); expect(s.textarea().placeholder).toBe("输入消息…");
     s.change("后来编辑的草稿"); accept(true); await Promise.resolve();
     expect(s.textarea().value).toBe("后来编辑的草稿");
     s.submit(); accept(true); await Promise.resolve(); expect(s.textarea().value).toBe("");
@@ -139,10 +162,10 @@ describe("floating Sender interactions", () => {
     const s = session((content) => controller.send({ conversationId: "synthetic", content }));
     s.change("待提交原文"); s.submit();
     expect(controller.getState().kind).toBe("sending-user"); expect(s.textarea().value).toBe("");
-    expect(s.textarea().placeholder).toContain("原文已暂存");
+    expect(s.textarea().placeholder).toBe("输入消息…");
     accept(new Response(stream, { headers: { "content-type": "text/event-stream" } }));
     await vi.waitFor(() => expect(controller.getState().kind).toBe("streaming"));
-    await vi.waitFor(() => expect(s.textarea().placeholder).not.toContain("原文已暂存"));
+    await vi.waitFor(() => expect(s.textarea().placeholder).toBe("输入消息…"));
     expect(s.textarea().value).toBe("");
     body.close(); await vi.waitFor(() => expect(controller.getState().kind).toBe("finalization-uncertain"));
     expect(s.textarea().value).toBe(""); expect(fetch).toHaveBeenCalledOnce(); controller.dispose();

@@ -33,9 +33,40 @@ describe("page-owned attachment drafts", () => {
   it("accepts only the exact snapshot; later attachments survive and preview leases delay revoke", async () => {
     const s = setup(); s.store.add("A", [file()]); s.calls[0].resolve(result()); await Promise.resolve();
     const holdViewer = s.store.retain(["1"]), snap = s.store.capture("A")!;
+    expect(s.store.get("A")).toEqual([]); expect(snap.urls).toEqual([result().url]); expect(s.revoke).not.toHaveBeenCalled();
     s.store.add("A", [file("new.png")]); snap.accept(); snap.release();
     expect(s.store.get("A").map(item => item.id)).toEqual(["2"]); expect(s.revoke).not.toHaveBeenCalled();
     holdViewer(); holdViewer(); expect(s.revoke).toHaveBeenCalledOnce(); s.store.dispose();
+  });
+  it("keeps a rejected/unknown submission separate, restoring text and uploaded URLs only explicitly", async () => {
+    const s = setup(); s.store.add("A", [file()]); s.calls[0].resolve(result()); await Promise.resolve();
+    const snap = s.store.capture("A")!;
+    s.store.add("A", [file("next.png")]);
+    snap.preserve("原始提交"); snap.preserve("重复回调"); snap.release(); snap.release();
+    expect(s.store.get("A").map(item => item.file.name)).toEqual(["next.png"]);
+    const recovery = s.store.getRecoveries("A")[0];
+    expect(s.store.getRecoveries("B")).toEqual([]); expect(recovery.content).toBe("原始提交");
+    expect(s.revoke).not.toHaveBeenCalled(); expect(s.upload).toHaveBeenCalledTimes(2);
+    expect(s.store.restoreRecovery("B", recovery.id)).toBeNull();
+    expect(s.store.restoreRecovery("A", recovery.id)).toBe("原始提交");
+    expect(s.store.get("A").map(item => item.file.name)).toEqual(["photo.png", "next.png"]);
+    expect(s.store.get("A")[0].uploaded?.url).toBe(result().url);
+    expect(s.store.restoreRecovery("A", recovery.id)).toBeNull(); s.store.dispose(); expect(s.revoke).toHaveBeenCalledTimes(2);
+  });
+  it("does not resurrect deleted owners or disposed snapshots after a late callback", async () => {
+    const s = setup(); s.store.add("A", [file()]); s.calls[0].resolve(result()); await Promise.resolve();
+    const snap = s.store.capture("A")!; s.store.delete("A");
+    s.store.add("A", [file("new-owner.png")]); snap.preserve("late"); snap.release();
+    expect(s.store.get("A").map(item => item.file.name)).toEqual(["new-owner.png"]); expect(s.store.getRecoveries("A")).toEqual([]);
+    s.calls[1].resolve(result()); await Promise.resolve(); const later = s.store.capture("A")!;
+    s.store.dispose(); s.store.activate(); later.release(); expect(s.store.get("A")).toEqual([]); expect(s.revoke).toHaveBeenCalledTimes(2);
+  });
+  it("explicitly discards frozen submissions while an open preview keeps its own lease", async () => {
+    const s = setup(); s.store.add("A", [file()]); s.calls[0].resolve(result()); await Promise.resolve();
+    const viewer = s.store.retain(["1"]), snap = s.store.capture("A")!;
+    snap.preserve(""); snap.release(); s.store.discardRecovery("A", s.store.getRecoveries("A")[0].id);
+    expect(s.store.getRecoveries("A")).toEqual([]); expect(s.revoke).not.toHaveBeenCalled();
+    viewer(); expect(s.revoke).toHaveBeenCalledOnce(); s.store.dispose();
   });
   it("failed send releases its snapshot without retrying upload, keeping the existing URL", async () => {
     const s = setup(); s.store.add("A", [file()]); s.calls[0].resolve(result()); await Promise.resolve();

@@ -272,7 +272,7 @@ describe("ChatWorkspaceView ready states", () => {
     expect(html).toContain("最新回复");
   });
 
-  it("disables sender and conversation switching while regenerate owns execution", () => {
+  it("allows next-draft editing but disables submission and conversation switching while regenerate owns execution", () => {
     const selected = conversation("conv_a", "会话 A");
     const sendState: ChatSendState = {
       kind: "regenerate-streaming",
@@ -306,7 +306,8 @@ describe("ChatWorkspaceView ready states", () => {
     expect(html).not.toContain("原回复");
     expect(html).not.toContain("正在输入");
     expect(html).not.toContain("chat-generation");
-    expect(html).toMatch(/<textarea[^>]*disabled/);
+    expect(html).not.toMatch(/<textarea[^>]*disabled/);
+    expect(html).toMatch(/aria-label="发送消息"[^>]*disabled|disabled=""[^>]*aria-label="发送消息"/);
     expect(html).toMatch(
       /<button[^>]*disabled[^>]*aria-label="当前无法切换到会话 A"|<button[^>]*aria-label="当前无法切换到会话 A"[^>]*disabled/,
     );

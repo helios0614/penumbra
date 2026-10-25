@@ -46,6 +46,7 @@ import type { SenderDraft, SenderHandle } from "./composer-draft";
 import { useToast } from "@/components/ui/toast";
 import { useAttachmentDrafts } from "./useAttachmentDrafts";
 import { AttachmentDrafts, AttachmentDrop, AttachmentPicker } from "./AttachmentDrafts";
+import { SubmissionRecovery } from "./SubmissionRecovery";
 
 const CHAT_HEADER_ACTION_CLASS =
   "shrink-0 text-muted-foreground";
@@ -255,6 +256,8 @@ export function ChatWorkspaceView({
     workspace.selectedConversationId ?? "",
   );
   const sender = getChatSenderAvailability(state, sendState);
+  // Workspace readiness still gates editing; execution ownership only gates submission.
+  const draftEditable = getChatSenderAvailability(state, INITIAL_CHAT_SEND_STATE).enabled && !modelSelectionPending && onSend !== undefined;
   const executionNoticeVisible = executionNoticeError(sendState) !== null;
   const regenerate = getChatRegenerateAvailability(state, sendState);
   const executionActive = isChatExecutionActive(sendState);
@@ -392,28 +395,39 @@ export function ChatWorkspaceView({
 
           <ChatRealtimeNotice state={realtimeState} />
         </>}
-        composer={<AttachmentDrop disabled={!sender.enabled || modelSelectionPending || !onSend} onFiles={files => { if (draftOwner && ownerRef.current === draftOwner) media.store.add(draftOwner, files); }}><Sender
+        composer={<AttachmentDrop disabled={!draftEditable} onFiles={files => { if (draftOwner && ownerRef.current === draftOwner) media.store.add(draftOwner, files); }}><Sender
           key={draftOwner ?? "unselected"}
           initialDraft={draftOwner ? drafts.current.get(draftOwner) : undefined}
           onDraftChange={draftOwner ? (draft) => { drafts.current.set(draftOwner, draft); } : undefined}
           apiRef={senderRef}
-          disabled={!sender.enabled || modelSelectionPending || onSend === undefined}
+          disabled={!draftEditable}
+          submitDisabled={!sender.enabled || modelSelectionPending}
           placeholder="输入消息…"
           statusMessage={executionActive || executionNoticeVisible ? undefined : modelSelectionPending ? "正在切换模型…" : sender.statusMessage ?? undefined}
-          feedback={<ChatExecutionNotice state={sendState} onRetryFinalization={onRetryFinalization} onReleaseAfterReview={onReleaseAfterReview} />}
+          feedback={<><ChatExecutionNotice state={sendState} onRetryFinalization={onRetryFinalization} onReleaseAfterReview={onReleaseAfterReview} />
+            <SubmissionRecovery items={media.recoveries} locked={!draftEditable || executionActive} onRestore={item => {
+              if (!draftOwner || ownerRef.current !== draftOwner || executionActive || !draftEditable) return;
+              if (!media.store.getRecoveries(draftOwner).some(current => current.id === item.id)) return;
+              if (item.content && !senderRef.current?.append(item.content)) return;
+              media.store.restoreRecovery(draftOwner, item.id);
+            }} onDiscard={id => { if (draftOwner && ownerRef.current === draftOwner && !executionActive && draftEditable) media.store.discardRecovery(draftOwner, id); }} /></>}
           hasAttachments={media.items.length > 0}
           attachmentsReady={media.ready}
           onFiles={files => { if (draftOwner && ownerRef.current === draftOwner) media.store.add(draftOwner, files); }}
-          attachments={draftOwner ? <AttachmentDrafts owner={draftOwner} store={media.store} items={media.items} disabled={!sender.enabled || modelSelectionPending} /> : undefined}
+          attachments={draftOwner ? <AttachmentDrafts owner={draftOwner} store={media.store} items={media.items} disabled={!draftEditable} /> : undefined}
           onSend={onSend ? async content => {
             if (!draftOwner || ownerRef.current !== draftOwner) return false;
             const snapshot = media.store.capture(draftOwner);
             if (!snapshot) return false;
-            try { const accepted = await onSend(content, snapshot.urls, draftOwner); if (accepted) snapshot.accept(); return accepted; }
+            try {
+              const accepted = await onSend(content, snapshot.urls, draftOwner);
+              if (accepted) { snapshot.accept(); return true; }
+              snapshot.preserve(content); return "retained";
+            } catch { snapshot.preserve(content); return "retained"; }
             finally { snapshot.release(); }
           } : undefined}
           toolsLabel={`会话模型：${workspace.setup.configuration?.selection?.model ?? "尚未选择"}`}
-          tools={<><AttachmentPicker disabled={!sender.enabled || modelSelectionPending || !draftOwner} onFiles={files => { if (draftOwner && ownerRef.current === draftOwner) media.store.add(draftOwner, files); }} /><MainModelSelection
+          tools={<><AttachmentPicker disabled={!draftEditable} onFiles={files => { if (draftOwner && ownerRef.current === draftOwner) media.store.add(draftOwner, files); }} /><MainModelSelection
             key={workspace.selectedConversationId}
             setup={workspace.setup}
             disabled={navigationLocked || pendingConversationId !== null}

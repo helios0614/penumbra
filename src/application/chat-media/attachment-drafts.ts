@@ -7,6 +7,9 @@ export type DraftAttachment = {
   readonly status: "uploading" | "uploaded" | "failed"; readonly error: string | null;
   readonly uploaded: UploadedMedia | null; readonly retryable: boolean;
 };
+export type AttachmentSubmissionRecovery = {
+  readonly id: string; readonly owner: string; readonly content: string; readonly items: readonly DraftAttachment[];
+};
 type Entry = { item: DraftAttachment; refs: number; abort: AbortController | null };
 type Dependencies = {
   upload: typeof uploadMedia; createUrl: (file: File) => string; revokeUrl: (url: string) => void; id: () => string;
@@ -18,10 +21,12 @@ export function createAttachmentDraftStore(overrides: Partial<Dependencies> = {}
   // Draft IDs are local to this store, never server file IDs or client_msg_id.
   const deps: Dependencies = { upload: uploadMedia, createUrl: file => URL.createObjectURL(file), revokeUrl: url => URL.revokeObjectURL(url), id: () => `draft:${++nextId}`, ...overrides };
   const drafts = new Map<string, readonly DraftAttachment[]>(), entries = new Map<string, Entry>();
+  const recoveries = new Map<string, readonly AttachmentSubmissionRecovery[]>(), ownerEpochs = new Map<string, number>();
   const listeners = new Set<() => void>();
-  let revision = 0, alive = true;
+  let revision = 0, submissionId = 0, alive = true;
   const emit = () => listeners.forEach(fn => fn());
   const get = (owner: string) => drafts.get(owner) ?? EMPTY;
+  const getRecoveries = (owner: string) => recoveries.get(owner) ?? EMPTY_RECOVERIES;
   const release = (id: string) => {
     const entry = entries.get(id);
     if (!entry || --entry.refs > 0) return;
@@ -59,7 +64,7 @@ export function createAttachmentDraftStore(overrides: Partial<Dependencies> = {}
     drafts.set(owner, get(owner).filter(item => item.id !== id)); release(id); emit();
   };
   return {
-    get, owners: () => [...drafts.keys()], subscribe: (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; }, retain,
+    get, getRecoveries, owners: () => [...new Set([...drafts.keys(), ...recoveries.keys()])], subscribe: (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; }, retain,
     add(owner: string, files: readonly File[]) {
       if (!alive || !owner) return;
       for (const file of files) {
@@ -80,20 +85,63 @@ export function createAttachmentDraftStore(overrides: Partial<Dependencies> = {}
     },
     capture(owner: string) {
       const items = get(owner);
-      if (items.some(item => item.status !== "uploaded" || !item.uploaded)) return null;
+      if (!alive || !owner || items.some(item => item.status !== "uploaded" || !item.uploaded)) return null;
       const ids = items.map(item => item.id), done = retain(ids);
-      return { urls: items.map(item => item.uploaded!.url), release: done,
-        accept: () => { ids.forEach(id => remove(owner, id)); } };
+      const epoch = ownerEpochs.get(owner), id = `submission:${++submissionId}`;
+      let settled = false, released = false;
+      const current = () => alive && ownerEpochs.get(owner) === epoch;
+      // Transfer draft ownership to the immutable submission before the optimistic row appears.
+      drafts.set(owner, EMPTY); ids.forEach(release); emit();
+      return { urls: items.map(item => item.uploaded!.url),
+        accept: () => { settled = true; },
+        preserve: (content: string) => {
+          if (released || settled || !current()) return;
+          settled = true;
+          ids.forEach(id => { entries.get(id)!.refs++; });
+          recoveries.set(owner, [...getRecoveries(owner), { id, owner, content, items }]); emit();
+        },
+        release: () => {
+          if (released) return;
+          released = true;
+          if (!settled && current()) {
+            ids.forEach(id => { entries.get(id)!.refs++; });
+            drafts.set(owner, [...items, ...get(owner)]); emit();
+          }
+          done();
+        } };
     },
-    delete(owner: string) { get(owner).forEach(item => remove(owner, item.id)); drafts.delete(owner); },
+    restoreRecovery(owner: string, id: string) {
+      const recovery = getRecoveries(owner).find(item => item.id === id);
+      if (!alive || !recovery) return null;
+      drafts.set(owner, [...recovery.items, ...get(owner)]);
+      recoveries.set(owner, getRecoveries(owner).filter(item => item.id !== id)); emit();
+      return recovery.content;
+    },
+    discardRecovery(owner: string, id: string) {
+      const recovery = getRecoveries(owner).find(item => item.id === id);
+      if (!recovery) return;
+      recoveries.set(owner, getRecoveries(owner).filter(item => item.id !== id));
+      recovery.items.forEach(item => release(item.id)); emit();
+    },
+    delete(owner: string) {
+      ownerEpochs.set(owner, (ownerEpochs.get(owner) ?? 0) + 1);
+      get(owner).forEach(item => remove(owner, item.id)); drafts.delete(owner);
+      getRecoveries(owner).forEach(item => item.items.forEach(item => release(item.id))); recoveries.delete(owner); emit();
+    },
     activate() { alive = true; },
     dispose() {
       alive = false;
       [...drafts.keys()].forEach(owner => get(owner).forEach(item => remove(owner, item.id)));
+      [...new Set([...drafts.keys(), ...recoveries.keys()])].forEach(owner => {
+        ownerEpochs.set(owner, (ownerEpochs.get(owner) ?? 0) + 1);
+        getRecoveries(owner).forEach(item => item.items.forEach(item => release(item.id)));
+      });
+      recoveries.clear();
       drafts.clear();
       // Viewer/snapshot leases may outlive the draft but still release their handles.
     },
   };
 }
 const EMPTY: readonly DraftAttachment[] = Object.freeze([]);
+const EMPTY_RECOVERIES: readonly AttachmentSubmissionRecovery[] = Object.freeze([]);
 export type AttachmentDraftStore = ReturnType<typeof createAttachmentDraftStore>;
