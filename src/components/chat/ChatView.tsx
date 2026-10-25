@@ -32,6 +32,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { BubbleList, type ChatReadingHandle, type ChatJump, type ReadingBookmark } from "./BubbleList";
 import { useChatSearch } from "./useChatSearch";
 import { ChatSearchPanel } from "./ChatSearchPanel";
+import { ChatSearchReveal } from "./ChatSearchReveal";
 import type { MessageSearchResult } from "@/domain/message";
 import { useSearchBack, hasOpenChatDialog } from "./search-history";
 import { normalizeSearch, searchTextRanges } from "./search-highlight";
@@ -310,7 +311,7 @@ export function ChatWorkspaceView({
   };
   const closeSearch=()=>{
     if(jumped.current&&!userRead.current)void returnReading();
-    else if(!jumped.current&&bookmark.current?.position.following&&!userRead.current)setJump({token:++jumpSequence.current,following:true});
+    else if(!jumped.current&&bookmark.current?.position.following&&!userRead.current)readingRef.current?.resumeFollowing();
     search.dismiss();setNavigationError(null);
     requestAnimationFrame(()=>searchTrigger.current?.focus({preventScroll:true}));
   };
@@ -440,8 +441,8 @@ export function ChatWorkspaceView({
             </Sheet>
 
             <HeaderCopy title={selectedConversation?.title ?? "Penumbra"} />
-            {selectedConversation && canManage && <ConversationMenu id={selectedConversation.id} title={workspace.selectedConversation!.title} disabled={managementLocked} onAction={setConversationAction} />}
             <Button ref={searchTrigger} variant="ghost" size="icon-lg" className={CHAT_HEADER_ACTION_CLASS} aria-label="搜索聊天历史" title="搜索聊天历史" disabled={!selectedConversation||pendingConversationId!==null} onClick={search.open?closeSearch:showSearch}><Search className="size-4.5" aria-hidden="true"/></Button>
+            {selectedConversation && canManage && <ConversationMenu id={selectedConversation.id} title={workspace.selectedConversation!.title} disabled={managementLocked} onAction={setConversationAction} />}
             {pendingConversationId && (
               <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" role="status">
                 <LoaderCircle
@@ -452,11 +453,13 @@ export function ChatWorkspaceView({
               </span>
             )}
           </header>}
+        overlay={<>
+          <ChatSearchReveal key={workspace.selectedConversationId} open={search.open}><ChatSearchPanel search={search} onJump={result=>void jumpResult(result)} onClose={closeSearch} onReturn={()=>void returnReading()} onLatest={()=>void latest()} pending={state.historyNavigationPending} error={navigationError}/>
+          {search.open&&selectedMessage?.searchSegments&&normalizeSearch(search.query)&&!activeResult&&<p className="px-4 py-1 text-xs text-muted-foreground" role="status">当前消息已更新或不再匹配关键词，仍保留原消息身份。</p>}</ChatSearchReveal>
+          {!search.open&&navigationError&&<p role="alert" className="pointer-events-auto px-4 py-2 text-xs text-muted-foreground">{navigationError}<button className="ml-2 underline" onClick={()=>void latest()}>回到最新</button></p>}
+          {!search.open&&bookmark.current&&jumped.current&&<div className="pointer-events-auto flex justify-end gap-3 px-4 text-xs text-muted-foreground"><button className="min-h-9" onClick={()=>void returnReading()}>返回搜索前位置</button><button className="min-h-9" onClick={()=>void latest()}>回到最新</button></div>}
+        </>}
         notices={<>
-          {search.open&&<ChatSearchPanel search={search} onJump={result=>void jumpResult(result)} onClose={closeSearch} onReturn={()=>void returnReading()} onLatest={()=>void latest()} pending={state.historyNavigationPending} error={navigationError}/>}
-          {search.open&&selectedMessage?.searchSegments&&normalizeSearch(search.query)&&!activeResult&&<p className="px-4 py-1 text-xs text-muted-foreground" role="status">当前消息已更新或不再匹配关键词，仍保留原消息身份。</p>}
-          {!search.open&&navigationError&&<p role="alert" className="px-4 py-2 text-xs text-muted-foreground">{navigationError}<button className="ml-2 underline" onClick={()=>void latest()}>回到最新</button></p>}
-          {!search.open&&bookmark.current&&jumped.current&&<div className="flex justify-end gap-3 px-4 text-xs text-muted-foreground"><button className="min-h-9" onClick={()=>void returnReading()}>返回搜索前位置</button><button className="min-h-9" onClick={()=>void latest()}>回到最新</button></div>}
           {(executionActive || state.conversationMutation) && <p className="border-b border-border px-4 py-1.5 text-xs text-muted-foreground" role="status">
             {executionActive ? "当前请求尚未结束或结果待确认，处理完成后可切换、新建或删除会话。" : "正在更新会话，请稍候。"}
           </p>}

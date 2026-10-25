@@ -11,14 +11,14 @@ import { ChatAudio } from "@/components/media/ChatAudio";
 import { musicIdentity } from "@/components/media/media-identity";
 import type { AudioController } from "@/application/chat-media/audio-controller";
 import { CapabilityExpansionProvider } from "./capabilities/CapabilityDisclosure";
-import { captureChatScrollAnchor, restoreChatScrollAnchor, trackChatScroll, type ChatScrollAnchor, type ChatScrollPin } from "./chat-scroll";
+import { captureChatScrollAnchor, restoreChatScrollAnchor, trackChatScroll, chatJumpOffset, type ChatScrollAnchor, type ChatScrollPin } from "./chat-scroll";
 import { Button } from "@/components/ui/button";
 import type { OlderPageStatus } from "@/application/message-history";
 import type { MessageSearchResult } from "@/domain/message";
 import { SearchHighlightContext, highlightSearchText } from "./search-highlight";
 
 export type ReadingBookmark = { anchor: ChatScrollAnchor | null; following: boolean };
-export type ChatReadingHandle = { capture(): ReadingBookmark; suspend(): void };
+export type ChatReadingHandle = { capture(): ReadingBookmark; suspend(): void; resumeFollowing(): void };
 export type ChatJump = { token: number; messageId?: string; offset?: number; following?: boolean };
 
 function DateSeparator({ timestamp }: { readonly timestamp: number }) {
@@ -129,7 +129,7 @@ function BubbleListInner({
   const pinRef=useRef<ChatScrollPin|null>(null);
   useLayoutEffect(()=>{
     if(!readingRef)return;
-    readingRef.current={capture:()=>{const v=rootRef.current?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');return {anchor:v?captureChatScrollAnchor(v):null,following:shouldFollowRef.current};},suspend:()=>{shouldFollowRef.current=false;const v=rootRef.current?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');if(v)anchorRef.current=captureChatScrollAnchor(v);}};
+    readingRef.current={capture:()=>{const v=rootRef.current?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');return {anchor:v?captureChatScrollAnchor(v):null,following:shouldFollowRef.current};},suspend:()=>{shouldFollowRef.current=false;const v=rootRef.current?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');if(v)anchorRef.current=captureChatScrollAnchor(v);},resumeFollowing:()=>{shouldFollowRef.current=true;anchorRef.current=null;}};
     return()=>{readingRef.current=null;};
   },[readingRef]);
   useLayoutEffect(()=>{
@@ -143,7 +143,7 @@ function BubbleListInner({
     pinRef.current=null;
     shouldFollowRef.current=!!jump.following;
     if(jump.following) {viewport.scrollTop=viewport.scrollHeight;anchorRef.current=null;}
-    else if(target){viewport.scrollTop+=target.getBoundingClientRect().top-viewport.getBoundingClientRect().top-(jump.offset??Math.min(100,viewport.clientHeight*.2));anchorRef.current={id:target.dataset.messageId!,offset:target.getBoundingClientRect().top-viewport.getBoundingClientRect().top};pinRef.current={anchor:anchorRef.current,until:Date.now()+2000};target.focus({preventScroll:true});}
+    else if(target){viewport.scrollTop+=target.getBoundingClientRect().top-viewport.getBoundingClientRect().top-chatJumpOffset(viewport,jump.offset);anchorRef.current={id:target.dataset.messageId!,offset:target.getBoundingClientRect().top-viewport.getBoundingClientRect().top};pinRef.current={anchor:anchorRef.current,until:Date.now()+2000};target.focus({preventScroll:true});}
     highlighted.current?.removeAttribute("data-search-target");if(highlightTimer.current)clearTimeout(highlightTimer.current);
     if(target){target.dataset.searchTarget="true";highlighted.current=target;highlightTimer.current=setTimeout(()=>{target.removeAttribute("data-search-target");pinRef.current=null;anchorRef.current=captureChatScrollAnchor(viewport);},2000);}
   },[jump,messages,readingMode]);

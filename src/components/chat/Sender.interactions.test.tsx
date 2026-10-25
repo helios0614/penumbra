@@ -194,7 +194,7 @@ describe("floating Sender interactions", () => {
   it("centers the 24px text line and button hit boxes on one axis without a translate offset", () => {
     const css = readFileSync(new URL("./chat.css", import.meta.url), "utf8");
     expect(css).toContain("padding: 13px 52px"); expect(css).toContain("padding: 17px 60px");
-    expect(css).toContain("bottom: 7px"); expect(css).not.toContain("translateY");
+    expect(css).toContain("bottom: 7px"); expect(css).not.toMatch(/\.chat-composer(?:-[\w-]+)?[^{}]*\{[^{}]*translateY/);
     expect(1 + 13 + 24 / 2).toBe(52 / 2);
     expect(52 - 1 - 7 - 36 / 2).toBe(52 / 2);
     expect(1 + 17 + 24 / 2).toBe(60 / 2);

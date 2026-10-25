@@ -171,6 +171,16 @@ Escape、Header 返回/关闭、浏览器/Android Back 优先关闭搜索，焦�
 
 搜索打开/修改词/高亮不改变 `ChatAudio` 的会话 scope 或音乐身份，不发播放/detail 请求。只有实际活动窗口不再含当前媒体身份、切会话或离页时，沿用原 Audio Controller 生命周期。图片查看器、附件草稿、生成期间提前输入下一条消息的原回归仍通过。
 
+### 5.1 材质过白复核（2026-10-25）
+
+对照 `docs/ui-patterns.md` 的 “Backdrop / Glass Pitfalls” 与 `docs/quick-note-implementation.md` 的 “Memory 材质依据” 检查：
+
+- 原 Memory 白膜问题有历史 runtime 单变量 A/B 证据，根因是祖先 opacity 动画的 persistent fill；当前 `src/index.css` 的 `[data-testid="desktop-app-view"]` 已不带 `both`。经典与 Editorial 的 App 分支共用这个容器，首页的独立动画不在其祖先链上。本轮不改全局动画。
+- 搜索的 `ChatShell → overlay → ChatSearchReveal` 没有增加 opacity 动画、persistent fill、filter 或 will-change。展开/收起只过渡 transform 和 visibility；普通 transform 不直接判为 Backdrop Root 根因。结果列表的边缘 mask 是面板的后代，不是玻璃面板的祖先。
+- `.mist-paper` 与 `.memory-reading-panel` 共用 69% strong / 31% normal 背景。发现 `.chat-search-paper` 仍额外叠加 `glass-surface` 的 50% 白底，局部两层的白色覆盖约从 64% 增至 72%（不计 Chat 外壳和实际背景），与 Memory 的透明内部条目不同；现已改为透明，让列表和 footer 共享外层 Paper。保留当前单层 8px blur、小阴影、分隔线、主题色数量和 AI 名称颜色，不再靠加白或增加模糊掩盖材质问题。
+
+本节是源码与样式复核，不能替代历史报告中的 runtime A/B；本轮未做新的浏览器视觉验证，未改搜索、定位或执行契约。
+
 ## 6. 验证结果与性能
 
 ### 6.1 自动验证

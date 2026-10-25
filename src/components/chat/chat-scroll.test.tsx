@@ -1,6 +1,7 @@
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BubbleList } from "./BubbleList";
+import { BubbleList, type ChatReadingHandle } from "./BubbleList";
+import { chatJumpOffset } from "./chat-scroll";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 vi.mock("react", async (importOriginal) => {
@@ -31,10 +32,10 @@ function session() {
     }
   }) as typeof React.useEffect);
   vi.spyOn(React, "useLayoutEffect").mockImplementation(React.useEffect);
-  const render = (content: string, conversationId = "a", forceFollowKey: string | null = null) => {
+  const render = (content: string, conversationId = "a", forceFollowKey: string | null = null, options: Partial<React.ComponentProps<typeof BubbleList>> = {}) => {
     refIndex = 0; effectIndex = 0;
     const component = BubbleList as unknown as { type: (props: React.ComponentProps<typeof BubbleList>) => React.ReactElement<{ children: React.ReactElement }> };
-    const tree = component.type({ timelineKey: conversationId, forceFollowKey, messages: [{ id: "reply", kind: "assistant", content, createdAt: 1, thinking: null, simpleThink: null, attachments: [] }] });
+    const tree = component.type({ timelineKey: conversationId, forceFollowKey, messages: [{ id: "reply", kind: "assistant", content, createdAt: 1, thinking: null, simpleThink: null, attachments: [] }], ...options });
     effects.splice(0).forEach((effect) => effect());
     return tree;
   };
@@ -42,6 +43,29 @@ function session() {
 }
 
 describe("Chat message scroll regression", () => {
+  it("resumes following after closing an overlay without moving the current near-bottom position", () => {
+    const s = session(), readingRef: React.MutableRefObject<ChatReadingHandle | null> = { current: null };
+    s.render("one", "a", null, { readingRef });
+    s.viewport.scrollTop = 1450; s.viewport.dispatchEvent(new Event("scroll")); s.scroll.mockClear();
+    readingRef.current!.suspend(); readingRef.current!.resumeFollowing();
+    s.render("one", "a", null, { readingRef });
+    expect(s.viewport.scrollTop).toBe(1450);
+    expect(s.scroll).not.toHaveBeenCalled();
+    s.render("new confirmed reply", "a", null, { readingRef });
+    expect(s.scroll).toHaveBeenCalledOnce();
+    s.dispose();
+  });
+  it("avoids the covering search panel for result jumps while preserving bookmark offsets", () => {
+    let bottom = 400;
+    const panel = { getBoundingClientRect: () => ({ bottom }) };
+    const anchor = { dataset: { chatSearchAnchor: "search-a" }, ownerDocument: { getElementById: (id: string) => id === "search-a" ? { querySelector: () => panel } : null } };
+    const viewport = { clientHeight: 480, getBoundingClientRect: () => ({ top: 100 }), closest: () => ({ querySelector: () => anchor }) } as unknown as HTMLElement;
+    expect(chatJumpOffset(viewport)).toBe(316);
+    expect(chatJumpOffset(viewport, 23)).toBe(23);
+    bottom = 800;
+    expect(chatJumpOffset(viewport)).toBe(432);
+    expect(chatJumpOffset({ ...viewport, closest: () => null } as unknown as HTMLElement)).toBe(96);
+  });
   it("keeps the ScrollArea owner, follows new text near the bottom and respects upward reading", () => {
     const s = session(), tree = s.render("hello");
     expect(tree.props.children.type).toBe(ScrollArea);

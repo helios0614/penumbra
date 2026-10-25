@@ -15,6 +15,7 @@ import { insertableBody } from "/src/components/chat/insertable-body.ts";
 import "/src/index.css";
 
 const requests: string[] = [];
+const visual = new URLSearchParams(location.search).get("visual") === "1";
 const message = (i: number) =>
   messageWire({
     id: `message-${i}`,
@@ -28,7 +29,9 @@ const message = (i: number) =>
         ? "很久以前的 **古老关键词** 与 [公开文字](https://example.invalid/PRIVATE_DESTINATION)。\n\n```js\nconst ancient = '古老关键词';\n```"
         : i % 91 === 0
           ? `第 ${i} 条公开关键词消息。`
-          : `第 ${i} 条合成历史，正文可用于阅读位置验证。`,
+          : visual
+            ? `第 ${i} 条合成聊天：今天把书架和工作记录慢慢整理好，搜索时也希望看见熟悉的上下文。公开关键词帮助我们找到过去的对话，但此刻的阅读位置应该安静地保留。\n\n聊天里的暖色和冷色气泡交错，有较长的正文、日期和不同长度的句子。这些文字只用于检查前景纸面是否清楚，搜索面板下面仍有完整的聊天记录。`
+            : `第 ${i} 条合成历史，正文可用于阅读位置验证。`,
   });
 const rows = Array.from({ length: 1300 }, (_, i) => message(i));
 rows[3] = messageWire({
@@ -246,7 +249,17 @@ function Fixture() {
     },
   };
   return (
-    <main className="flex h-dvh min-h-0 flex-col bg-background text-foreground">
+    <main
+      className="flex h-dvh min-h-0 flex-col bg-background text-foreground"
+      style={
+        visual
+          ? {
+              background:
+                "linear-gradient(135deg, var(--color-amber-subtle), var(--color-background) 50%, var(--color-ai-subtle))",
+            }
+          : undefined
+      }
+    >
       <div className="shrink-0 border-b border-border px-3 py-1 text-[11px] text-muted-foreground">
         PR6 合成验收 · 1300 条 · 无真实后端{" "}
         <button

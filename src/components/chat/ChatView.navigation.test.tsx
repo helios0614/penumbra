@@ -8,6 +8,11 @@ import { ConversationsList } from "./ConversationsList";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetTrigger } from "@/components/ui/sheet";
 import { elements, find, hookSession } from "./test-utils/hook-session";
+import { ConversationMenu } from "./ConversationActions";
+import { BubbleList } from "./BubbleList";
+import { ChatSearchReveal } from "./ChatSearchReveal";
+import { mapMessage } from "@/domain/message";
+import { messageWire } from "@/test-fixtures/main-chat-wire";
 
 const live = vi.hoisted(() => ({ active: false, state: null as unknown as ChatWorkspaceControllerState, send: vi.fn(async () => true) }));
 vi.mock("react", async (original) => {
@@ -21,7 +26,7 @@ vi.mock("@/components/chat-workspace", async original => ({
   useChatRealtime: () => ({ kind: "idle" }),
   useChatSend: () => ({ state: { kind: "idle" }, getState: () => ({ kind: "idle" }), isExecutionActive: () => live.active, send: live.send }),
 }));
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 beforeEach(() => { live.active = false; live.state = ready(); live.send.mockClear(); });
 
 function ready(): Extract<ChatWorkspaceControllerState, { status: "ready" }> {
@@ -36,6 +41,43 @@ function ready(): Extract<ChatWorkspaceControllerState, { status: "ready" }> {
 }
 
 describe("Chat home and conversation navigation are independent", () => {
+  it("keeps search in the overlay and closes without issuing a chat scroll jump", () => {
+    vi.stubGlobal("document", new EventTarget());
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { callback(0); return 0; });
+    const base = ready(), conversation = { id: "conv_a", title: "A", modelKey: "fixture", createdAt: 1, updatedAt: 1, messageCount: 1 };
+    const state = { ...base, workspace: { ...base.workspace, conversations: [conversation], selectedConversationId: conversation.id, selectedConversation: conversation,
+      history: { conversationId: conversation.id, messages: [mapMessage(messageWire())], pageSize: 50, oldestCursor: 1, olderPageStatus: "exhausted" as const } } };
+    const hooks = hookSession(() => ChatWorkspaceView({ state, onRetry: vi.fn(), onSelectConversation: vi.fn(), onRetryConversationSwitch: vi.fn() }));
+    const shell = () => find(hooks.render(), ChatShell).props;
+    const first = shell(); hooks.commit();
+    const reading = { capture: () => ({ following: true, anchor: { id: "message", offset: 16 } }), suspend: vi.fn(), resumeFollowing: vi.fn() };
+    find(first.children, BubbleList).props.readingRef!.current = reading;
+    find(first.header, Button, p => p["aria-label"] === "搜索聊天历史").props.onClick?.({} as never);
+    const opened = shell(); hooks.commit();
+    expect(find(opened.overlay, ChatSearchReveal).props.open).toBe(true);
+    expect(elements(opened.notices).some(n => n.type === ChatSearchReveal)).toBe(false);
+    find(opened.header, Button, p => p["aria-label"] === "搜索聊天历史").props.onClick?.({} as never);
+    const closed = shell(); hooks.commit();
+    expect(find(closed.overlay, ChatSearchReveal).props.open).toBe(false);
+    expect(find(closed.children, BubbleList).props.jump).toBeNull();
+    expect(reading.resumeFollowing).toHaveBeenCalledOnce();
+    hooks.dispose();
+  });
+  it("places search before the conversation menu without changing their names or menu actions", () => {
+    const base = ready(), conversation = { id: "a", title: "一个需要保留省略逻辑的很长会话标题", modelKey: "fixture", createdAt: 1, updatedAt: 1, messageCount: 0 };
+    const state = { ...base, workspace: { ...base.workspace, conversations: [conversation], selectedConversationId: "a", selectedConversation: conversation } };
+    const hooks = hookSession(() => ChatWorkspaceView({ state, onRetry: vi.fn(), onSelectConversation: vi.fn(), onRetryConversationSwitch: vi.fn(), onRenameConversation: vi.fn(async () => {}), onDeleteConversation: vi.fn(async () => {}) }));
+    const header = find(hooks.render(), ChatShell).props.header;
+    const controls = elements(header);
+    const searchIndex = controls.findIndex(n => n.type === Button && n.props["aria-label"] === "搜索聊天历史");
+    const menuIndex = controls.findIndex(n => n.type === ConversationMenu);
+    expect(searchIndex).toBeGreaterThanOrEqual(0);
+    expect(searchIndex).toBeLessThan(menuIndex);
+    expect(find(header, Button, p => p["aria-label"] === "搜索聊天历史").props.title).toBe("搜索聊天历史");
+    expect(find(header, ConversationMenu).props).toMatchObject({ id: "a", title: conversation.title, disabled: false });
+    expect(find(header, ConversationMenu).props.onAction).toBeTypeOf("function");
+    hooks.dispose();
+  });
   it("rejects an old conversation's media callback even before React renders the new selection", async () => {
     const selected = (id: string): Extract<ChatWorkspaceControllerState, { status: "ready" }> => {
       const state = ready(), conversation = { id, title: id, modelKey: "fixture", createdAt: 1, updatedAt: 1, messageCount: 0 };

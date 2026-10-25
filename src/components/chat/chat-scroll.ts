@@ -3,6 +3,17 @@
 export type ChatScrollAnchor = { readonly id: string; readonly offset: number };
 export type ChatScrollPin = { readonly anchor: ChatScrollAnchor; readonly until: number };
 
+/** Only an explicit result jump avoids the covering panel; bookmarks keep their exact offset. */
+export function chatJumpOffset(viewport: HTMLElement, offset?: number): number {
+  if (offset !== undefined) return offset;
+  const normal = Math.min(100, viewport.clientHeight * .2);
+  const anchor = viewport.closest('[data-chat-reading-region]')?.querySelector<HTMLElement>('[data-chat-search-anchor][data-open="true"]');
+  const panel = anchor?.ownerDocument.getElementById(anchor.dataset.chatSearchAnchor!)?.querySelector<HTMLElement>('.chat-search-panel');
+  if (!panel) return normal;
+  const covered = Math.max(0, panel.getBoundingClientRect().bottom - viewport.getBoundingClientRect().top + 16);
+  return Math.max(normal, Math.min(covered, Math.max(0, viewport.clientHeight - 48)));
+}
+
 export function captureChatScrollAnchor(viewport: HTMLElement): ChatScrollAnchor | null {
   if (!viewport.querySelectorAll || !viewport.getBoundingClientRect) return null;
   const top = viewport.getBoundingClientRect().top;
