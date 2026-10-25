@@ -2,23 +2,116 @@ import type { MessageReaction } from "@/domain/message/capability-types";
 import { cn } from "@/lib/utils";
 import { AI_BUBBLE_SURFACE, BUBBLE_SURFACE } from "./bubble-surface";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import {
+  SearchText,
+  SearchHighlightContext,
+  searchTextRanges,
+} from "./search-highlight";
+import { useContext, useMemo } from "react";
+import { insertableBody } from "./insertable-body";
+
+/** Map full-message phrase ranges into the existing paragraph bubbles. */
+export function SearchableBubbleSegments({
+  chunks,
+  kind,
+  reaction,
+  identity,
+}: {
+  chunks: readonly string[];
+  kind: "user" | "assistant";
+  reaction?: MessageReaction | null;
+  identity: string;
+}) {
+  const search = useContext(SearchHighlightContext);
+  const queries = useMemo(() => {
+    if (!search.active) return null;
+    const plain = chunks.map((chunk) => insertableBody(chunk)),
+      ranges = searchTextRanges(plain.join("\n\n"), search.query);
+    let offset = 0;
+    return plain.map((text) => {
+      const terms = ranges
+        .flatMap(([a, b]) =>
+          a < offset + text.length && b > offset
+            ? [
+                text
+                  .slice(
+                    Math.max(0, a - offset),
+                    Math.min(text.length, b - offset),
+                  )
+                  .trim(),
+              ]
+            : [],
+        )
+        .filter(Boolean);
+      offset += text.length + 2;
+      return kind === "user"
+        ? [...new Set(terms.flatMap((term) => [term, ...term.split(/\s+/u)]))]
+        : terms;
+    });
+  }, [chunks, search.active, search.query, kind]);
+  return (
+    <>
+      {chunks.map((content, index) => (
+        <SearchHighlightContext
+          key={`${identity}:${index}`}
+          value={{ ...search, bodyQueries: queries?.[index] }}
+        >
+          <BubbleSegment
+            kind={kind}
+            content={content}
+            reaction={index === chunks.length - 1 ? reaction : null}
+          />
+        </SearchHighlightContext>
+      ))}
+    </>
+  );
+}
 
 /** Position the decoration against the final user bubble, outside its clipping surface. */
-export function BubbleSegment({ kind, content, reaction }: {
+export function BubbleSegment({
+  kind,
+  content,
+  reaction,
+}: {
   readonly kind: "user" | "assistant";
   readonly content: string;
   readonly reaction?: MessageReaction | null;
 }) {
   const user = kind === "user";
   const sticker = user ? reaction : null;
-  return <div className={cn("relative min-w-0 max-w-full", sticker && "mb-5")} data-reaction-anchor={sticker ? reaction?.targetMessageId : undefined}>
-    <div data-user-bubble={user ? "" : undefined} className={cn(BUBBLE_SURFACE,
-      user ? "border-primary/20 bg-primary/10 text-primary shadow-sm backdrop-blur-md" : AI_BUBBLE_SURFACE)}>
-      {user ? <span className="whitespace-pre-wrap">{content}</span> : <MarkdownRenderer content={content} />}
+  return (
+    <div
+      className={cn("relative min-w-0 max-w-full", sticker && "mb-5")}
+      data-reaction-anchor={sticker ? reaction?.targetMessageId : undefined}
+    >
+      <div
+        data-user-bubble={user ? "" : undefined}
+        className={cn(
+          BUBBLE_SURFACE,
+          user
+            ? "border-primary/20 bg-primary/10 text-primary shadow-sm backdrop-blur-md"
+            : AI_BUBBLE_SURFACE,
+        )}
+      >
+        {user ? (
+          <span className="whitespace-pre-wrap">
+            <SearchText text={content} />
+          </span>
+        ) : (
+          <MarkdownRenderer content={content} />
+        )}
+      </div>
+      {sticker && (
+        <span
+          role="img"
+          data-reaction-target={sticker.targetMessageId}
+          data-reaction-source={sticker.sourceMessageId ?? undefined}
+          aria-label={`知远的表情回应 ${sticker.emoji}`}
+          className={cn("chat-reaction-sticker border", AI_BUBBLE_SURFACE)}
+        >
+          {sticker.emoji}
+        </span>
+      )}
     </div>
-    {sticker && <span role="img" data-reaction-target={sticker.targetMessageId} data-reaction-source={sticker.sourceMessageId ?? undefined}
-      aria-label={`知远的表情回应 ${sticker.emoji}`} className={cn("chat-reaction-sticker border", AI_BUBBLE_SURFACE)}>
-      {sticker.emoji}
-    </span>}
-  </div>;
+  );
 }

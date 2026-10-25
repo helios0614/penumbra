@@ -9,6 +9,9 @@ import {
 import {
   reloadMessageHistoryFromScratch,
   loadOlderMessageHistory,
+  loadNewerMessageHistory,
+  loadMessageHistoryAround,
+  reconcileHistoryWindow,
   createMessageHistoryState,
   mergeOlderMessagePage,
   type MessageHistoryRequestOptions,
@@ -42,6 +45,7 @@ export type ChatWorkspaceSafeUiErrorCode =
   | "timeout"
   | "service"
   | "contract"
+  | "cursor-stale"
   | "unknown";
 
 export type ChatWorkspaceSafeUiError = {
@@ -62,6 +66,10 @@ export type ChatWorkspaceControllerState =
       readonly conversationListError?: ChatWorkspaceSafeUiError | null;
       readonly olderHistoryPending?: boolean;
       readonly olderHistoryError?: ChatWorkspaceSafeUiError | null;
+      readonly newerHistoryPending?: boolean;
+      readonly newerHistoryError?: ChatWorkspaceSafeUiError | null;
+      readonly historyNavigationPending?: boolean;
+      readonly searchRevision?: number;
     }
   | {
       readonly status: "error";
@@ -115,6 +123,8 @@ export type ChatWorkspaceControllerDependencies = {
   readonly createConversation?: typeof createConversation;
   readonly deleteConversation?: typeof deleteConversation;
   readonly loadOlderHistory?: typeof loadOlderMessageHistory;
+  readonly loadNewerHistory?: typeof loadNewerMessageHistory;
+  readonly loadAroundHistory?: typeof loadMessageHistoryAround;
   readonly canNavigate?: () => boolean;
 };
 
@@ -127,6 +137,8 @@ export interface ChatWorkspaceController {
   renameConversation(conversationId: string, title: string): Promise<void>;
   deleteConversation(conversationId: string): Promise<void>;
   loadOlderHistory(): Promise<void>;
+  loadNewerHistory(): Promise<void>;
+  navigateHistory(conversationId: string, messageId?: string): Promise<void>;
   retryConversationSwitch(): Promise<void>;
   reloadSelectedConversationHistory(
     conversationId: string,
@@ -178,6 +190,9 @@ export function createChatWorkspaceController(
   let mutationController: AbortController | null = null;
   let olderController: AbortController | null = null;
   let olderSequence = 0;
+  let windowGeneration = 0;
+  let navigationController: AbortController | null = null;
+  let navigationDeletedIds = new Set<string>();
   let olderDeletedIds = new Set<string>();
   const listeners = new Set<(state: ChatWorkspaceControllerState) => void>();
 
@@ -190,6 +205,8 @@ export function createChatWorkspaceController(
 
   const load = async () => {
     if (disposed || mutation || dependencies.canNavigate?.() === false) return;
+    windowGeneration += 1;
+    navigationController?.abort();
     configurationSequence += 1;
     configurationController?.abort();
 
@@ -253,6 +270,8 @@ export function createChatWorkspaceController(
 
   const selectConversation = async (conversationId: string, internal = false) => {
     if (disposed || state.status !== "ready" || (mutation && !internal) || dependencies.canNavigate?.() === false) return;
+    windowGeneration += 1;
+    navigationController?.abort();
     olderSequence += 1;
     olderController?.abort();
     olderController = null;
@@ -334,6 +353,7 @@ export function createChatWorkspaceController(
       signal: AbortSignal,
     ) => Promise<MessageHistoryState>,
     removedMessageId?: string,
+    resetWindow = false,
   ) => {
     if (
       disposed ||
@@ -349,6 +369,7 @@ export function createChatWorkspaceController(
     }
 
     const workspace = state.workspace;
+    const generation = windowGeneration;
     const currentHistory = workspace.history;
     if (currentHistory === null) {
       throw new ChatWorkspaceContractError(
@@ -375,12 +396,11 @@ export function createChatWorkspaceController(
       }
 
       const latestWorkspace = state.workspace;
-      const retainedHistory = retainEarlierHistory(latestWorkspace.history, history);
-      const nextHistory = removedMessageId === undefined ? retainedHistory : createMessageHistoryState(
-        retainedHistory.conversationId,
-        retainedHistory.messages.filter(({ id }) => id !== removedMessageId),
-        { pageSize: retainedHistory.pageSize, olderPageStatus: retainedHistory.olderPageStatus },
-      );
+      const retainedHistory = resetWindow && generation === windowGeneration ? history : latestWorkspace.history?.window && history.window
+        ? reconcileHistoryWindow(latestWorkspace.history, history, generation === windowGeneration)
+        : retainEarlierHistory(latestWorkspace.history, history);
+      const filtered = removedMessageId === undefined ? retainedHistory.messages : retainedHistory.messages.filter(({ id }) => id !== removedMessageId);
+      const nextHistory = { ...retainedHistory, messages: filtered, oldestCursor: filtered[0]?.createdAt ?? null };
       const nextWorkspace = createChatWorkspaceSnapshot({
         setup: latestWorkspace.setup,
         conversations: latestWorkspace.conversations,
@@ -389,6 +409,7 @@ export function createChatWorkspaceController(
         history: nextHistory,
       });
       publish({
+        ...state,
         status: "ready",
         workspace: nextWorkspace,
         pendingConversationId: state.pendingConversationId,
@@ -415,6 +436,7 @@ export function createChatWorkspaceController(
         request: { signal },
       }),
     );
+    if (state.status === "ready" && state.workspace.selectedConversationId === conversationId) publish({ ...state, searchRevision: (state.searchRevision ?? 0) + 1 });
     const regenerateTarget = regenerateTargetMessageId === undefined
       ? null
       : history.messages.find(({ id }) => id === regenerateTargetMessageId) ??
@@ -436,6 +458,11 @@ export function createChatWorkspaceController(
       );
     }
     const conversationId = state.workspace.history.conversationId;
+    if (navigationController && event.type === "message-deleted" && event.conversationId === conversationId) navigationDeletedIds.add(event.messageId);
+    if (event.type === "file-synced" && event.conversationId === conversationId) {
+      windowGeneration += 1;
+      navigationController?.abort();
+    }
     if (olderController && event.type === "message-deleted" && event.conversationId === conversationId) olderDeletedIds.add(event.messageId);
     await updateSelectedHistory(
       conversationId,
@@ -445,19 +472,28 @@ export function createChatWorkspaceController(
         { history: { request: { signal } } },
       )).state,
       event.type === "message-deleted" && event.conversationId === conversationId ? event.messageId : undefined,
+      event.type === "file-synced" && event.conversationId === conversationId,
     );
+    if (state.status === "ready" && state.workspace.selectedConversationId === conversationId &&
+        (event.type === "message-updated" || event.type === "message-deleted" || event.type === "file-synced" || event.type === "capability-invalidated")) {
+      publish({ ...state, searchRevision: (state.searchRevision ?? 0) + 1 });
+    }
   };
 
   const reconcileSelectedConversationAfterReconnect = async (
     conversationId: string,
   ) => {
+    const reset = state.status === "ready" && state.workspace.history?.window?.reachesLatest === false;
     await updateSelectedHistory(
       conversationId,
       async (history, signal) => (await reconnectReconciler(
         history,
         { history: { request: { signal } } },
       )).state,
+      undefined,
+      reset,
     );
+    if (state.status === "ready" && state.workspace.selectedConversationId === conversationId) publish({ ...state, searchRevision: (state.searchRevision ?? 0) + 1 });
   };
 
   const refreshConversationList = async () => {
@@ -681,7 +717,71 @@ export function createChatWorkspaceController(
     }
   };
 
+  const navigateHistory = async (conversationId: string, messageId?: string) => {
+    if (disposed || state.status !== "ready" || state.pendingConversationId !== null || state.workspace.selectedConversationId !== conversationId || mutation) throw new ChatWorkspaceContractError("History navigation owner is no longer current");
+    const generation = ++windowGeneration;
+    navigationController?.abort();
+    olderController?.abort(); olderController = null; olderSequence += 1;
+    const controller = new AbortController(); navigationController = controller;
+    const deletedDuringNavigation = new Set<string>(); navigationDeletedIds = deletedDuringNavigation;
+    publish({ ...state, historyNavigationPending: true, olderHistoryPending: false, newerHistoryPending: false });
+    const history = state.workspace.history;
+    try {
+      if (!history) throw new ChatWorkspaceContractError("History unavailable");
+      const next = messageId === undefined
+        ? await historyReloader(history, { request: { signal: controller.signal } })
+        : await (dependencies.loadAroundHistory ?? loadMessageHistoryAround)(conversationId, messageId, { pageSize: history.pageSize, request: { signal: controller.signal } });
+      if (disposed || controller.signal.aborted || generation !== windowGeneration || state.status !== "ready" || state.workspace.selectedConversationId !== conversationId || state.pendingConversationId !== null) throw new ChatWorkspaceContractError("History navigation became stale");
+      if (messageId && deletedDuringNavigation.has(messageId)) throw new ChatWorkspaceContractError("History target no longer exists");
+      const messages = next.messages.filter(item=>!deletedDuringNavigation.has(item.id));
+      publish({ ...state, workspace: { ...state.workspace, history: { ...next, messages, oldestCursor: messages[0]?.createdAt ?? null } }, historyNavigationPending: false, olderHistoryError: null, newerHistoryError: null });
+    } finally {
+      if (navigationController === controller) navigationController = null;
+      if (!disposed && generation === windowGeneration && state.status === "ready") publish({ ...state, historyNavigationPending: false });
+    }
+  };
+
+  const loadWindowPage = async (direction: "older" | "newer") => {
+    if (disposed || state.status !== "ready" || state.pendingConversationId !== null || olderController || state.historyNavigationPending) return;
+    const history = state.workspace.history;
+    if (!history?.window || (direction === "older" ? history.olderPageStatus !== "maybe-more" : !history.window.hasNewer)) return;
+    const previousError = direction === "older" ? state.olderHistoryError : state.newerHistoryError;
+    if (previousError?.code === "cursor-stale") {
+      const edge = direction === "older" ? history.messages[0] : history.messages[history.messages.length-1];
+      try { await navigateHistory(history.conversationId, edge?.id); }
+      catch (error) { if(state.status==="ready")publish({...state,[direction==="older"?"olderHistoryError":"newerHistoryError"]:toSafeUiError(error)}); }
+      return;
+    }
+    const generation = windowGeneration, owner = history.conversationId;
+    const controller = new AbortController(); olderController = controller;
+    const deleted = new Set<string>(); olderDeletedIds = deleted;
+    publish({ ...state, [direction === "older" ? "olderHistoryPending" : "newerHistoryPending"]: true,
+      [direction === "older" ? "olderHistoryError" : "newerHistoryError"]: null });
+    const current = () => !disposed && !controller.signal.aborted && generation === windowGeneration && state.status === "ready" && state.pendingConversationId === null && state.workspace.selectedConversationId === owner;
+    try {
+      const result = await (direction === "older" ? dependencies.loadOlderHistory ?? loadOlderMessageHistory : dependencies.loadNewerHistory ?? loadNewerMessageHistory)(history, { request: { signal: controller.signal } });
+      if (!current() || state.status !== "ready") return;
+      const latest = state.workspace.history!;
+      const oldIds = new Set(history.messages.map(m => m.id));
+      const latestById = new Map(latest.messages.map(m => [m.id, m]));
+      let messages = result.messages.filter(m => !deleted.has(m.id)).map(m => latestById.get(m.id) ?? m);
+      const resultIds = new Set(messages.map(m => m.id));
+      const extra = latest.messages.filter(m => !oldIds.has(m.id) && !resultIds.has(m.id));
+      messages = direction === "older" ? [...messages, ...extra] : [...extra, ...messages];
+      const next = { ...result, messages, oldestCursor: messages[0]?.createdAt ?? null,
+        window: direction === "older" ? { ...result.window!, newerCursor: latest.window!.newerCursor, hasNewer: latest.window!.hasNewer, reachesLatest: latest.window!.reachesLatest } : { ...result.window!, olderCursor: latest.window!.olderCursor },
+        olderPageStatus: direction === "older" ? result.olderPageStatus : latest.olderPageStatus };
+      publish({ ...state, workspace: { ...state.workspace, history: next } });
+    } catch (error) {
+      if (current() && state.status === "ready") publish({ ...state, [direction === "older" ? "olderHistoryError" : "newerHistoryError"]: toSafeUiError(error) });
+    } finally {
+      if (olderController === controller) olderController = null;
+      if (current() && state.status === "ready") publish({ ...state, olderHistoryPending: false, newerHistoryPending: false });
+    }
+  };
+
   const loadOlderHistory = async () => {
+    if (state.status === "ready" && state.workspace.history?.window) return loadWindowPage("older");
     if (disposed || state.status !== "ready" || state.pendingConversationId !== null || olderController) return;
     const history = state.workspace.history;
     if (!history || history.olderPageStatus !== "maybe-more") return;
@@ -726,6 +826,8 @@ export function createChatWorkspaceController(
     renameConversation: (id, title) => mutateConversation("rename", id, title),
     deleteConversation: (id) => mutateConversation("delete", id),
     loadOlderHistory,
+    loadNewerHistory: () => loadWindowPage("newer"),
+    navigateHistory,
 
     reloadSelectedConversationHistory,
 
@@ -760,6 +862,8 @@ export function createChatWorkspaceController(
     dispose() {
       if (disposed) return;
       disposed = true;
+      windowGeneration += 1;
+      navigationController?.abort();
       mutationController?.abort();
       olderController?.abort();
       configurationSequence += 1;
@@ -784,6 +888,8 @@ export function createChatWorkspaceController(
 
 export function toSafeUiError(error: unknown): ChatWorkspaceSafeUiError {
   if (error instanceof ApiError) {
+    const data = error.data as {detail?:{code?:unknown}} | null;
+    if (error.status === 409 && data?.detail?.code === "cursor_stale") return {code:"cursor-stale",message:"历史游标已失效。再次点击可重新读取当前位置；也可回到最新。"};
     if (error.status === 401 || error.status === 403) {
       return {
         code: "authentication",
@@ -828,9 +934,11 @@ function isAbortError(error: unknown): boolean {
 }
 
 function retainEarlierHistory(current: MessageHistoryState | null, incoming: MessageHistoryState): MessageHistoryState {
+  if (current?.window && incoming.window) return reconcileHistoryWindow(current, incoming);
   if (!current || current.conversationId !== incoming.conversationId || incoming.oldestCursor === null) return incoming;
   const ids = new Set(incoming.messages.map(({ id }) => id));
-  const earlier = current.messages.filter((item) => item.createdAt < incoming.oldestCursor! && !ids.has(item.id));
+  const overlap = current.messages.findIndex(item => ids.has(item.id));
+  const earlier = (overlap >= 0 ? current.messages.slice(0, overlap) : current.messages.filter(item => item.createdAt < incoming.oldestCursor!)).filter(item => !ids.has(item.id));
   if (!earlier.length) return incoming;
   return createMessageHistoryState(incoming.conversationId, [...earlier, ...incoming.messages], {
     pageSize: incoming.pageSize, olderPageStatus: current.olderPageStatus,

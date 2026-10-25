@@ -1,6 +1,6 @@
 import { format, isToday, isYesterday } from "date-fns";
 import { zhCN } from "date-fns/locale";
-import { memo, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, type MutableRefObject } from "react";
 
 import type { ChatMessageViewModel } from "./chat-ui-types";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -11,9 +11,15 @@ import { ChatAudio } from "@/components/media/ChatAudio";
 import { musicIdentity } from "@/components/media/media-identity";
 import type { AudioController } from "@/application/chat-media/audio-controller";
 import { CapabilityExpansionProvider } from "./capabilities/CapabilityDisclosure";
-import { captureChatScrollAnchor, restoreChatScrollAnchor, trackChatScroll, type ChatScrollAnchor } from "./chat-scroll";
+import { captureChatScrollAnchor, restoreChatScrollAnchor, trackChatScroll, type ChatScrollAnchor, type ChatScrollPin } from "./chat-scroll";
 import { Button } from "@/components/ui/button";
 import type { OlderPageStatus } from "@/application/message-history";
+import type { MessageSearchResult } from "@/domain/message";
+import { SearchHighlightContext, highlightSearchText } from "./search-highlight";
+
+export type ReadingBookmark = { anchor: ChatScrollAnchor | null; following: boolean };
+export type ChatReadingHandle = { capture(): ReadingBookmark; suspend(): void };
+export type ChatJump = { token: number; messageId?: string; offset?: number; following?: boolean };
 
 function DateSeparator({ timestamp }: { readonly timestamp: number }) {
   const date = new Date(timestamp * 1000);
@@ -66,6 +72,18 @@ function groupByDate(messages: readonly ChatMessageViewModel[]): DateGroup[] {
 }
 
 interface BubbleListProps {
+  readonly readingRef?: MutableRefObject<ChatReadingHandle | null>;
+  readonly jump?: ChatJump | null;
+  readonly readingMode?: boolean;
+  readonly query?: string;
+  readonly activeResult?: MessageSearchResult | null;
+  readonly activeMessageId?: string | null;
+  readonly onUserRead?: () => void;
+  readonly onLoadNewer?: () => void;
+  readonly hasNewer?: boolean;
+  readonly newerPending?: boolean;
+  readonly newerError?: string | null;
+  readonly onLatest?: () => void;
   readonly audioControllerFactory?: () => AudioController;
   readonly timelineKey: string;
   readonly messages: readonly ChatMessageViewModel[];
@@ -82,6 +100,8 @@ interface BubbleListProps {
 }
 
 function BubbleListInner({
+  readingRef, jump, readingMode=false, query="", activeResult, activeMessageId, onUserRead,
+  onLoadNewer, hasNewer=false, newerPending=false, newerError, onLatest,
   audioControllerFactory,
   timelineKey,
   messages,
@@ -101,6 +121,33 @@ function BubbleListInner({
   const previousTimelineRef = useRef<string | null>(null);
   const previousForceKeyRef = useRef<string | null>(null);
   const anchorRef = useRef<ChatScrollAnchor | null>(null);
+  const blockedRef=useRef(readingMode);blockedRef.current=readingMode;
+  const userIntentRef=useRef(onUserRead);userIntentRef.current=onUserRead;
+  const appliedJump=useRef<number|null>(null);
+  const highlightTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const highlighted=useRef<HTMLElement|null>(null);
+  const pinRef=useRef<ChatScrollPin|null>(null);
+  useLayoutEffect(()=>{
+    if(!readingRef)return;
+    readingRef.current={capture:()=>{const v=rootRef.current?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');return {anchor:v?captureChatScrollAnchor(v):null,following:shouldFollowRef.current};},suspend:()=>{shouldFollowRef.current=false;const v=rootRef.current?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');if(v)anchorRef.current=captureChatScrollAnchor(v);}};
+    return()=>{readingRef.current=null;};
+  },[readingRef]);
+  useLayoutEffect(()=>{
+    if(readingMode)shouldFollowRef.current=false;
+    if(!jump||appliedJump.current===jump.token)return;
+    const viewport=rootRef.current?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
+    if(!viewport)return;
+    const target=jump.messageId?Array.from(viewport.querySelectorAll<HTMLElement>('[data-message-id]')).find(n=>n.dataset.messageId===jump.messageId):null;
+    if(jump.messageId&&!target)return;
+    appliedJump.current=jump.token;
+    pinRef.current=null;
+    shouldFollowRef.current=!!jump.following;
+    if(jump.following) {viewport.scrollTop=viewport.scrollHeight;anchorRef.current=null;}
+    else if(target){viewport.scrollTop+=target.getBoundingClientRect().top-viewport.getBoundingClientRect().top-(jump.offset??Math.min(100,viewport.clientHeight*.2));anchorRef.current={id:target.dataset.messageId!,offset:target.getBoundingClientRect().top-viewport.getBoundingClientRect().top};pinRef.current={anchor:anchorRef.current,until:Date.now()+2000};target.focus({preventScroll:true});}
+    highlighted.current?.removeAttribute("data-search-target");if(highlightTimer.current)clearTimeout(highlightTimer.current);
+    if(target){target.dataset.searchTarget="true";highlighted.current=target;highlightTimer.current=setTimeout(()=>{target.removeAttribute("data-search-target");pinRef.current=null;anchorRef.current=captureChatScrollAnchor(viewport);},2000);}
+  },[jump,messages,readingMode]);
+  useEffect(()=>()=>{if(highlightTimer.current)clearTimeout(highlightTimer.current);},[]);
   const loadRef = useRef(onLoadOlder);
   loadRef.current = onLoadOlder;
   const olderRef = useRef({ olderStatus, olderPending, olderError });
@@ -120,7 +167,7 @@ function BubbleListInner({
     const content = rootRef.current?.querySelector<HTMLElement>("[data-chat-message-content]");
     if (!viewport || !content) return;
     anchorRef.current = null;
-    const cleanup = trackChatScroll(viewport, content, shouldFollowRef, anchorRef);
+    const cleanup = trackChatScroll(viewport, content, shouldFollowRef, anchorRef,()=>userIntentRef.current?.(),blockedRef,pinRef);
     const loadOnScroll = () => {
       if (viewport.scrollTop < 80 && !shouldFollowRef.current && olderRef.current.olderStatus === "maybe-more" && !olderRef.current.olderPending && !olderRef.current.olderError) loadRef.current?.();
     };
@@ -138,7 +185,7 @@ function BubbleListInner({
     const conversationChanged = previousTimelineRef.current !== timelineKey;
     const forced = forceFollowKey !== null &&
       previousForceKeyRef.current !== forceFollowKey;
-    if (conversationChanged || forced || shouldFollowRef.current) {
+    if (!blockedRef.current && (conversationChanged || forced || shouldFollowRef.current)) {
       const viewport = rootRef.current?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
       if (viewport) viewport.scrollTop = viewport.scrollHeight;
       shouldFollowRef.current = true;
@@ -160,6 +207,7 @@ function BubbleListInner({
             onLoadOlder();
           }}>{olderPending ? "正在加载更早消息…" : olderError ? "重试加载更早消息" : "加载更早消息"}</Button>}
           {olderError && <p role="alert">{olderError}</p>}
+          {olderError && onLatest && <Button variant="ghost" size="sm" onClick={onLatest}>回到最新</Button>}
           {olderStatus === "stalled" && <p>历史游标无法继续，请稍后重读。</p>}
           {olderStatus === "exhausted" && <p>已加载接口可返回的历史</p>}
         </div>}
@@ -177,7 +225,7 @@ function BubbleListInner({
                     key={message.id}
                     className={cn(isRoleSwitch ? "my-3" : "mt-1")}
                   >
-                    <Bubble
+                    <SearchHighlightContext value={{query,active:message.id===activeMessageId&&!!query,segments:activeResult?.snippets.map(s=>s.segmentKey)}}><Bubble
                       message={message}
                       userName={userName}
                       onRegenerate={
@@ -188,12 +236,20 @@ function BubbleListInner({
                       regenerateDisabled={!regenerateEnabled}
                       onInsert={onInsert}
                     />
+                    {message.id===activeMessageId&&activeResult&&<div className="chat-search-match mt-2 rounded-lg px-3 py-2 text-xs text-muted-strong" aria-label="当前消息匹配内容">
+                      {activeResult.snippets.map((s,i)=><p key={i} className="break-words leading-6 [overflow-wrap:anywhere]">{highlightSearchText(s.text,query)}</p>)}
+                    </div>}</SearchHighlightContext>
                   </div>
                 );
               })}
             </div>
           </div>
         ))}</CapabilityExpansionProvider></ChatAudio>
+        {hasNewer&&<div className="flex flex-wrap justify-center gap-2 py-2 text-xs text-muted-foreground">
+          <Button variant="ghost" size="sm" disabled={newerPending} onClick={onLoadNewer}>{newerPending?"正在加载更新消息…":"加载更新消息"}</Button>
+          <Button variant="ghost" size="sm" onClick={onLatest}>回到最新</Button>
+          {newerError&&<p role="alert">{newerError}</p>}
+        </div>}
         </div>
       </ScrollArea>
     </div>

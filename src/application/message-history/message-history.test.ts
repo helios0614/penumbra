@@ -1,3 +1,4 @@
+import { messageWindowWire } from "@/test-fixtures/message-window-wire";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as messageHistory from "@/application/message-history";
@@ -294,10 +295,15 @@ describe("message history state and pure merges", () => {
       "DEFAULT_MESSAGE_HISTORY_PAGE_SIZE",
       "MessageHistoryContractError",
       "createMessageHistoryState",
+      "historyFromWindow",
       "loadInitialMessageHistory",
+      "loadMessageHistoryAround",
+      "loadNewerMessageHistory",
       "loadOlderMessageHistory",
+      "mergeAdjacentHistory",
       "mergeLatestMessagePage",
       "mergeOlderMessagePage",
+      "reconcileHistoryWindow",
       "refreshLatestMessageHistory",
       "reloadMessageHistoryFromScratch",
     ]);
@@ -317,7 +323,7 @@ describe("message history application services", () => {
   });
 
   it("loads one latest page in oldest-to-newest order with the requested page size", async () => {
-    fetchMock.mockResolvedValue(json([
+    fetchMock.mockResolvedValue(windowJson([
       wireMessage("older", 10),
       wireMessage("newer", 20),
     ]));
@@ -335,7 +341,7 @@ describe("message history application services", () => {
       olderPageStatus: "maybe-more",
     });
     expect(requestPaths()).toEqual([
-      "/api/conversations/conv_1/messages?limit=2&public_view=true",
+      "/api/conversations/conv_1/messages/window?limit=2",
     ]);
     expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("x-history"))
       .toBe("initial");
@@ -343,8 +349,8 @@ describe("message history application services", () => {
 
   it("marks empty and short initial pages exhausted without probing again", async () => {
     fetchMock
-      .mockResolvedValueOnce(json([]))
-      .mockResolvedValueOnce(json([wireMessage("only", 0)]));
+      .mockResolvedValueOnce(windowJson([]))
+      .mockResolvedValueOnce(windowJson([wireMessage("only", 0)]));
 
     const empty = await loadInitialMessageHistory("conv_1", {
       pageSize: 2,
@@ -435,7 +441,7 @@ describe("message history application services", () => {
     });
 
     expect(requestPaths()).toEqual([
-      "/api/conversations/conv_1/messages?limit=2&before=20&public_view=true",
+      "/api/conversations/conv_1/messages?limit=2&before=20&before_id=existing&public_view=true",
     ]);
     expect(result.messages.map(({ id }) => id)).toEqual(["older", "existing"]);
     expect(result).toMatchObject({
@@ -479,7 +485,7 @@ describe("message history application services", () => {
     });
 
     expect(requestPaths()).toEqual([
-      "/api/conversations/conv_1/messages?limit=1&before=0&public_view=true",
+      "/api/conversations/conv_1/messages?limit=1&before=0&before_id=epoch&public_view=true",
     ]);
     expect(result.olderPageStatus).toBe("exhausted");
   });
@@ -532,7 +538,7 @@ describe("message history application services", () => {
       message("old-page", 1),
       message("old-latest", 2),
     ], 2, "stalled");
-    fetchMock.mockResolvedValue(json([
+    fetchMock.mockResolvedValue(windowJson([
       wireMessage("fresh-a", 100),
       wireMessage("fresh-b", 200),
     ]));
@@ -543,7 +549,7 @@ describe("message history application services", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(requestPaths()).toEqual([
-      "/api/conversations/conv_1/messages?limit=2&public_view=true",
+      "/api/conversations/conv_1/messages/window?limit=2",
     ]);
     expect(result.messages.map(({ id }) => id)).toEqual(["fresh-a", "fresh-b"]);
     expect(result).toMatchObject({
@@ -556,8 +562,8 @@ describe("message history application services", () => {
 
   it("allows reload to explicitly replace page size and accepts a conversation ID", async () => {
     fetchMock
-      .mockResolvedValueOnce(json([wireMessage("one", 1)]))
-      .mockResolvedValueOnce(json([]));
+      .mockResolvedValueOnce(windowJson([wireMessage("one", 1)]))
+      .mockResolvedValueOnce(windowJson([]));
     const state = historyState([message("old", 0)], 2);
 
     const overridden = await reloadMessageHistoryFromScratch(state, {
@@ -571,13 +577,13 @@ describe("message history application services", () => {
     expect(overridden.pageSize).toBe(1);
     expect(byId.pageSize).toBe(50);
     expect(requestPaths()).toEqual([
-      "/api/conversations/conv_1/messages?limit=1&public_view=true",
-      "/api/conversations/conv_1/messages?limit=50&public_view=true",
+      "/api/conversations/conv_1/messages/window?limit=1",
+      "/api/conversations/conv_1/messages/window?limit=50",
     ]);
   });
 
   it("only calls message history and no settings, conversation-list, send, or realtime endpoint", async () => {
-    fetchMock.mockResolvedValue(json([]));
+    fetchMock.mockResolvedValue(windowJson([]));
 
     await loadInitialMessageHistory("conv_1", {
       request: { timeoutMs: 0 },
@@ -585,7 +591,7 @@ describe("message history application services", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const paths = requestPaths().join(" ");
-    expect(paths).toContain("/api/conversations/conv_1/messages?limit=50&public_view=true");
+    expect(paths).toContain("/api/conversations/conv_1/messages/window?limit=50");
     expect(paths).not.toMatch(
       /settings|readiness|send|regenerate|message_count|\/ws|websocket/,
     );
@@ -666,3 +672,5 @@ function json(payload: unknown, status = 200): Response {
     headers: { "content-type": "application/json" },
   });
 }
+
+function windowJson(value: unknown, status=200) { return json(Array.isArray(value) ? messageWindowWire(value, "conv_1", value.length >= 2) : value, status); }

@@ -68,6 +68,7 @@ function latestTailAssistant(
   ) {
     return null;
   }
+  if (history.window && !history.window.reachesLatest) return null;
 
   for (let index = history.messages.length - 1; index >= 0; index -= 1) {
     const message = history.messages[index]!;

@@ -1,5 +1,6 @@
 import {
   isValidElement,
+  useContext,
   memo,
   type ComponentProps,
   type ReactNode,
@@ -13,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { useCopyFeedback } from "./copy-feedback";
 import { markdownImageResource } from "@/domain/media/media-resources";
 import { MediaImage } from "@/components/media/MediaImage";
+import { SearchHighlightContext, rehypeSearchHighlight } from "./search-highlight";
 
 // ─── 辅助函数 ───
 
@@ -165,6 +167,7 @@ interface MarkdownRendererProps {
 }
 
 function MarkdownRendererInner({ content, className, previewMarkdownCode = true }: MarkdownRendererProps) {
+  const search=useContext(SearchHighlightContext);
   const components: Components = {
     img: ({ src, alt }) => {
       const url = markdownImageResource(src);
@@ -212,7 +215,7 @@ function MarkdownRendererInner({ content, className, previewMarkdownCode = true 
     >
       <Markdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
+        rehypePlugins={[rehypeHighlight, [rehypeSearchHighlight, { query: search.active ? search.bodyQueries ?? search.query : "" }]]}
         components={components}
       >
         {content}

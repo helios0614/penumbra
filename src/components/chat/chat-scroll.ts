@@ -1,6 +1,7 @@
 /** Observe the message viewport and its content, including expanded Thinking.
  * Read follow intent before geometry changes; never scroll an ancestor/page. */
 export type ChatScrollAnchor = { readonly id: string; readonly offset: number };
+export type ChatScrollPin = { readonly anchor: ChatScrollAnchor; readonly until: number };
 
 export function captureChatScrollAnchor(viewport: HTMLElement): ChatScrollAnchor | null {
   if (!viewport.querySelectorAll || !viewport.getBoundingClientRect) return null;
@@ -23,6 +24,9 @@ export function trackChatScroll(
   content: HTMLElement,
   following: { current: boolean },
   anchor: { current: ChatScrollAnchor | null } = { current: null },
+  onUserIntent?: () => void,
+  blocked: { current: boolean } = { current: false },
+  pin: { current: ChatScrollPin | null } = { current: null },
 ) {
   let settlingUntil = 0, userScrollIntent = false;
   let restoredScrollTop: number | null = null;
@@ -32,20 +36,22 @@ export function trackChatScroll(
     if (restoredScrollTop !== null && Math.abs(viewport.scrollTop - restoredScrollTop) < .5) return;
     restoredScrollTop = null;
     if (Date.now() < settlingUntil && !userScrollIntent) return;
-    following.current = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 96;
-    anchor.current = following.current ? null : captureChatScrollAnchor(viewport);
+    following.current = !blocked.current && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 96;
+    anchor.current = following.current ? null : pin.current && Date.now() < pin.current.until ? pin.current.anchor : captureChatScrollAnchor(viewport);
   };
   const followResize = () => {
     if (following.current) viewport.scrollTop = viewport.scrollHeight;
     else {
       const before = viewport.scrollTop;
-      restoreChatScrollAnchor(viewport, anchor.current);
+      restoreChatScrollAnchor(viewport, pin.current && Date.now() < pin.current.until ? pin.current.anchor : anchor.current);
       if (viewport.scrollTop !== before) restoredScrollTop = viewport.scrollTop;
     }
   };
   // Explicit detail reading takes precedence over automatic bottom following.
   // Capture before expansion changes geometry, including nested technical views.
   const readCapability = () => {
+    pin.current = null;
+    onUserIntent?.();
     following.current = false;
     anchor.current = captureChatScrollAnchor(viewport);
     // Slightly longer than the shared 200ms transition and 220ms exit cleanup.
@@ -57,6 +63,8 @@ export function trackChatScroll(
     // Wheel/touch/key input in the bounded detail reader belongs to that reader.
     const target = event.target as HTMLElement | null;
     if (target?.closest?.(".capability-detail-scroll")) return;
+    pin.current = null;
+    onUserIntent?.();
     userScrollIntent = true; restoredScrollTop = null;
   };
   const keyIntent = (event: KeyboardEvent) => {

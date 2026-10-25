@@ -1,10 +1,12 @@
 import {
   refreshLatestMessageHistory,
   reloadMessageHistoryFromScratch,
+  loadMessageHistoryAround,
   type MessageHistoryState,
 } from "@/application/message-history";
 import type { RealtimeEvent } from "@/application/realtime";
 import { readPublicMessage } from "@/domain/message";
+import { ApiError } from "@/lib/api";
 
 import {
   assertReconciliationId,
@@ -33,6 +35,16 @@ export async function reconcileRealtimeEvent(
   options: RealtimeReconciliationOptions = {},
 ): Promise<RealtimeReconciliationResult> {
   assertReconciliationStateInput(state);
+  if (state.window && event.type === "message-updated" && event.conversationId === state.conversationId && state.messages.some(m => m.id === event.messageId)) {
+    try {
+      const page = await loadMessageHistoryAround(state.conversationId, event.messageId, { request: options.history?.request });
+      const canonical = page.messages.find(m => m.id === event.messageId)!;
+      return changedResult(state, { ...state, messages: state.messages.map(m => m.id === canonical.id ? canonical : m) }, planRealtimeReconciliation(event), "refreshed-latest", "latest-window-only");
+    } catch(error) {
+      if (error instanceof ApiError && error.status === 404) return changedResult(state, removeMessageFromHistory(state,state.conversationId,event.messageId),planRealtimeReconciliation(event),"removed-message","authoritative");
+      throw error;
+    }
+  }
   return executePlan(state, planRealtimeReconciliation(event), options);
 }
 
@@ -81,13 +93,15 @@ async function executePlan(
       if ((plan.conversationId !== null && plan.conversationId !== state.conversationId) || !state.messages.some(m => m.id === plan.messageId)) {
         return unchangedResult(state, plan, "other-conversation");
       }
-      const canonical = await readPublicMessage(plan.messageId, options.history?.request);
+      const canonical = state.window
+        ? (await loadMessageHistoryAround(state.conversationId, plan.messageId, { request: options.history?.request })).messages.find(m => m.id === plan.messageId)!
+        : await readPublicMessage(plan.messageId, options.history?.request);
       if (canonical.id !== plan.messageId || canonical.conversationId !== state.conversationId) {
         throw new Error("Capability anchor response violates its identity");
       }
       // Replace only this message's decorations. Preserve order, paging cursors,
       // body and regenerate authority; WS carries no business result itself.
-      const next = { ...state, messages: state.messages.map(m => m.id === canonical.id ? { ...m, capabilities: canonical.capabilities } : m) };
+      const next = { ...state, messages: state.messages.map(m => m.id === canonical.id ? { ...m, capabilities: canonical.capabilities, ...(state.window ? { searchSegments: canonical.searchSegments } : {}) } : m) };
       return changedResult(state, next, plan, "refreshed-latest", "latest-window-only");
     }
     case "refresh-latest-history": {
@@ -133,7 +147,10 @@ async function executePlan(
 
       const reload = options.dependencies?.reloadMessageHistoryFromScratch ??
         reloadMessageHistoryFromScratch;
-      const nextState = await reload(state, options.history);
+      const anchor = state.messages.find(m => m.roleKind === "user" || m.roleKind === "assistant" || m.roleKind === "system");
+      const nextState = state.window && !state.window.reachesLatest && anchor && plan.reason === "reconnect"
+        ? await loadMessageHistoryAround(state.conversationId, anchor.id, { pageSize: state.pageSize, request: options.history?.request })
+        : await reload(state, options.history);
       return changedResult(
         state,
         nextState,

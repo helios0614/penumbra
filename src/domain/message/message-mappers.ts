@@ -1,10 +1,10 @@
 import type {
   MessageDto,
-  MessageHistoryDto,
   MessageVoiceDto,
 } from "@/domain/message/message-dto";
 import { readDriftWire } from "@/domain/message/drift-wire";
 import { mapMessageCapabilities } from "./capability-mappers";
+import { mapSearchSegments } from "./message-window";
 import {
   MessageContractError,
   type JsonValue,
@@ -14,7 +14,9 @@ import {
 } from "@/domain/message/message-types";
 
 export function mapMessage(payload: unknown): Message {
-  return toMessage(parseMessage(payload, "message"));
+  const message = toMessage(parseMessage(payload, "message"));
+  const segments = (payload as Record<string, unknown>).search_segments;
+  return segments === undefined ? message : { ...message, searchSegments: mapSearchSegments(segments) };
 }
 
 export function mapMessageHistory(payload: unknown): Message[] {
@@ -22,10 +24,7 @@ export function mapMessageHistory(payload: unknown): Message[] {
     throw contractError("message history");
   }
 
-  const dto: MessageHistoryDto = payload.map((item) =>
-    parseMessage(item, "message history item"),
-  );
-  return dto.map(toMessage);
+  return payload.map(mapMessage);
 }
 
 function parseMessage(payload: unknown, contract: string): MessageDto {

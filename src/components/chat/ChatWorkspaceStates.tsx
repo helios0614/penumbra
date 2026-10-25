@@ -172,6 +172,8 @@ function getErrorTitle(code: ChatWorkspaceSafeUiError["code"]): string {
       return "会话服务暂时不可用";
     case "contract":
       return "会话数据暂时不可用";
+    case "cursor-stale":
+      return "历史位置需要重新读取";
     case "unknown":
       return "无法加载会话";
   }

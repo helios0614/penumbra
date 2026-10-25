@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import type { MusicMedia } from "@/domain/media/media-types";
 import { readMusicDetail } from "@/domain/media/media-client";
 import { useChatAudio } from "./ChatAudio";
+import { SearchText } from "@/components/chat/search-highlight";
 import "./media.css";
 
 export function MusicCard({ song, identity }: { song: MusicMedia; identity: string }) {
@@ -35,9 +36,9 @@ export function MusicCard({ song, identity }: { song: MusicMedia; identity: stri
         {cover && !coverFailed ? <img src={cover} alt="" loading="lazy" onError={() => setCoverFailed(true)} /> : <Music2 className="size-6" />}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-foreground" title={song.name}>{song.name || "未知歌曲"}</p>
-        <p className="mt-0.5 truncate text-xs text-muted-strong">{song.artist || "未知歌手"}</p>
-        {(detail.album || song.album) && <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{detail.album || song.album}</p>}
+        <p className="truncate text-sm font-semibold text-foreground" title={song.name}><SearchText text={song.name || "未知歌曲"}/></p>
+        <p className="mt-0.5 truncate text-xs text-muted-strong"><SearchText text={song.artist || "未知歌手"}/></p>
+        {(detail.album || song.album) && <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{detail.album&&detail.album!==song.album?detail.album:<SearchText text={song.album??""}/>}</p>}
       </div>
       <Button type="button" variant="ghost" size="icon-lg" className="size-11 shrink-0 rounded-full text-ai" disabled={!song.id || !controller}
         aria-label={`${label} ${song.name}`} title={label} onClick={() => { if (song.id) { controller?.play(identity, song.id); if (detailStatus === "idle") void loadDetail(); } }}>

@@ -1,3 +1,4 @@
+import { messageWindowWire } from "@/test-fixtures/message-window-wire";
 import { mainConfigurationWire } from "@/test-fixtures/main-chat-wire";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -29,7 +30,7 @@ describe("chat workspace readiness degradation", () => {
       if (path === "/api/conversations") {
         return Promise.resolve(json(conversationDtos()));
       }
-      if (path === "/api/conversations/conv_a/messages?limit=50&public_view=true") {
+      if (path === "/api/conversations/conv_a/messages/window?limit=50") {
         return Promise.resolve(json([messageDto("conv_a", "真实持久化历史")]));
       }
       return Promise.resolve(json({ error: "unexpected request" }, 500));
@@ -49,7 +50,7 @@ describe("chat workspace readiness degradation", () => {
       "/api/conversations",
       "/api/main/configuration?conv_id=conv_a",
       "/api/chat/readiness?conv_id=conv_a",
-      "/api/conversations/conv_a/messages?limit=50&public_view=true",
+      "/api/conversations/conv_a/messages/window?limit=50",
     ]);
     expect(requestPaths().join(" ")).not.toMatch(
       /send|regenerate|reconciliation|event-stream|\/ws|websocket|provider/,
@@ -118,7 +119,7 @@ describe("chat workspace readiness degradation", () => {
         expected: { status: "error", error: { code: "authentication" } },
       },
       {
-        failingPath: "/api/conversations/conv_a/messages?limit=50&public_view=true",
+        failingPath: "/api/conversations/conv_a/messages/window?limit=50",
         response: json({ error: "history failure" }, 500),
         expected: { status: "error", error: { code: "service" } },
       },
@@ -228,7 +229,7 @@ function successfulReadResponse(path: string): Promise<Response> {
   if (path === "/api/conversations") {
     return Promise.resolve(json(conversationDtos()));
   }
-  const match = path.match(/^\/api\/conversations\/(conv_[ab])\/messages\?limit=50&public_view=true$/);
+  const match = path.match(/^\/api\/conversations\/(conv_[ab])\/messages\/window\?limit=50$/);
   if (match) {
     return Promise.resolve(json([messageDto(match[1]!, `history-${match[1]}`)]));
   }
@@ -285,7 +286,7 @@ function messageDto(conversationId: string, content: string) {
 }
 
 function json(payload: unknown, status = 200): Response {
-  return new Response(JSON.stringify(payload), {
+  return new Response(JSON.stringify(Array.isArray(payload) && payload[0]?.conv_id ? messageWindowWire(payload, payload[0].conv_id) : payload), {
     status,
     headers: { "content-type": "application/json" },
   });

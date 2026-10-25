@@ -54,6 +54,10 @@ function messageHistoryPath(
     }
     params.set("before", String(query.before));
   }
+  if (query.beforeId !== undefined) {
+    if (!query.beforeId || query.before === undefined) throw new MessageContractError("Paired history boundary requires a timestamp and message ID");
+    params.set("before_id", query.beforeId);
+  }
 
   const path = `/api/conversations/${encodeURIComponent(conversationId)}/messages`;
   params.set("public_view", "true");

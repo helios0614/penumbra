@@ -15,6 +15,14 @@ export type MessageHistoryState = {
   readonly pageSize: number;
   readonly oldestCursor: number | null;
   readonly olderPageStatus: OlderPageStatus;
+  /** Production reads use opaque two-key boundaries. Timestamp remains for legacy fixtures/adapters only. */
+  readonly window?: {
+    readonly olderCursor: string | null;
+    readonly newerCursor: string | null;
+    readonly hasNewer: boolean;
+    readonly reachesLatest: boolean;
+  };
+  readonly hasNewMessages?: boolean;
 };
 
 export type CreateMessageHistoryStateOptions = {

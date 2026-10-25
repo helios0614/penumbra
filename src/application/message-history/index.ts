@@ -20,6 +20,9 @@ export {
 export {
   loadInitialMessageHistory,
   loadOlderMessageHistory,
+  loadNewerMessageHistory,
+  loadMessageHistoryAround,
   refreshLatestMessageHistory,
   reloadMessageHistoryFromScratch,
 } from "@/application/message-history/message-history-service";
+export { historyFromWindow, mergeAdjacentHistory, reconcileHistoryWindow } from "./message-history-window";

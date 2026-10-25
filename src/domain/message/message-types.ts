@@ -40,11 +40,13 @@ export type Message = {
   readonly cacheRegion: string | null;
   readonly voice: MessageVoice | null;
   readonly capabilities?: import("./capability-types").MessageCapabilities;
+  readonly searchSegments?: readonly import("./message-window").PublicSearchSegment[];
 };
 
 export type MessageHistoryQuery = {
   readonly limit?: number;
   readonly before?: number;
+  readonly beforeId?: string;
 };
 
 export class MessageContractError extends Error {

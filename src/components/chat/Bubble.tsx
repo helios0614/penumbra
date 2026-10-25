@@ -11,7 +11,7 @@ import type { ChatMessageViewModel } from "./chat-ui-types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 
-import { BubbleSegment } from "./BubbleSegment";
+import { SearchableBubbleSegments } from "./BubbleSegment";
 import { MessageActions } from "./MessageActions";
 import { GenerationIndicator } from "./GenerationIndicator";
 import { AI_BUBBLE_SURFACE, BUBBLE_SURFACE } from "./bubble-surface";
@@ -230,14 +230,8 @@ function BubbleInner({
             isUser ? "items-end" : "items-start gap-0.5",
           )}
         >
-          {((generationLabel || message.attachments.length > 0 || (message.kind === "assistant" && message.error)) && !hasBody ? [] : chunks).map((chunk, index) => (
-            <BubbleSegment
-              key={`${message.id}:${index}`}
-              kind={message.kind}
-              content={chunk}
-              reaction={message.kind === "user" && index === chunks.length - 1 ? message.capabilities?.reaction : null}
-            />
-          ))}
+          <SearchableBubbleSegments identity={message.id} chunks={(generationLabel || message.attachments.length > 0 || (message.kind === "assistant" && message.error)) && !hasBody ? [] : chunks}
+            kind={message.kind} reaction={message.kind==="user"?message.capabilities?.reaction:null}/>
           {message.kind === "assistant" && message.error && <div className={cn(BUBBLE_SURFACE, AI_BUBBLE_SURFACE, "whitespace-pre-wrap text-sm break-words")} role="alert">{message.error}</div>}
           {generationLabel && !hasBody && !(message.kind === "assistant" && message.error) && <GenerationIndicator label={generationLabel}
             rotating={message.executionStatus === "streaming"}

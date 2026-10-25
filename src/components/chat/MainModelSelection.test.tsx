@@ -1,3 +1,4 @@
+import { messageWindowWire } from "@/test-fixtures/message-window-wire";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -168,7 +169,7 @@ describe("daily Main model selection", () => {
     const puts: typeof saved[] = [];
     let finishFirst!: (response: Response) => void;
     const first = new Promise<Response>((resolve) => { finishFirst = resolve; });
-    const json = (data: unknown) => new Response(JSON.stringify(data), { headers: { "content-type": "application/json" } });
+    const json = (data: unknown) => new Response(JSON.stringify(Array.isArray(data) && data[0]?.conv_id ? messageWindowWire(data, data[0].conv_id) : data), { headers: { "content-type": "application/json" } });
     vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input, init) => {
       const path = String(input);
       if (init?.method === "PUT") {
@@ -186,7 +187,7 @@ describe("daily Main model selection", () => {
           { ...wire.connections[0], id: "connection-c", name: "C", default_model: "preset-c" }] });
       }
       if (path.startsWith("/api/chat/readiness?")) return json(readinessWire(saved.model));
-      if (path.startsWith("/api/conversations/conv_a/messages?")) return json([messageWire()]);
+      if (path.startsWith("/api/conversations/conv_a/messages/window?")) return json([messageWire()]);
       throw new Error(`Unexpected synthetic request ${path}`);
     }));
     const controller = createChatWorkspaceController(); await controller.load();

@@ -33,6 +33,8 @@ export type UseChatWorkspaceResult = {
   readonly renameConversation: (id: string, title: string) => Promise<void>;
   readonly deleteConversation: (id: string) => Promise<void>;
   readonly loadOlderHistory: () => Promise<void>;
+  readonly loadNewerHistory: () => Promise<void>;
+  readonly navigateHistory: (conversationId: string, messageId?: string) => Promise<void>;
 };
 
 export function useChatWorkspace(
@@ -139,6 +141,11 @@ export function useChatWorkspace(
   const renameConversation = useCallback(async (id: string, title: string) => { await controllerRef.current?.renameConversation(id, title); }, []);
   const deleteConversation = useCallback(async (id: string) => { await controllerRef.current?.deleteConversation(id); }, []);
   const loadOlderHistory = useCallback(async () => { await controllerRef.current?.loadOlderHistory(); }, []);
+  const loadNewerHistory = useCallback(async () => { await controllerRef.current?.loadNewerHistory(); }, []);
+  const navigateHistory = useCallback(async (conversationId: string, messageId?: string) => {
+    if (!controllerRef.current) throw new Error("Workspace unavailable");
+    await controllerRef.current.navigateHistory(conversationId, messageId);
+  }, []);
   const getState = useCallback(() => controllerRef.current?.getState() ?? INITIAL_CHAT_WORKSPACE_CONTROLLER_STATE, []);
 
   return {
@@ -156,5 +163,7 @@ export function useChatWorkspace(
     renameConversation,
     deleteConversation,
     loadOlderHistory,
+    loadNewerHistory,
+    navigateHistory,
   };
 }

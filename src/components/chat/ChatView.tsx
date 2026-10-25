@@ -1,4 +1,4 @@
-import { ArrowLeft, LoaderCircle, Menu, RefreshCw } from "lucide-react";
+import { ArrowLeft, LoaderCircle, Menu, RefreshCw, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -29,7 +29,12 @@ import {
 } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-import { BubbleList } from "./BubbleList";
+import { BubbleList, type ChatReadingHandle, type ChatJump, type ReadingBookmark } from "./BubbleList";
+import { useChatSearch } from "./useChatSearch";
+import { ChatSearchPanel } from "./ChatSearchPanel";
+import type { MessageSearchResult } from "@/domain/message";
+import { useSearchBack, hasOpenChatDialog } from "./search-history";
+import { normalizeSearch, searchTextRanges } from "./search-highlight";
 import { ChatShell } from "./ChatShell";
 import { ChatExecutionFeedback } from "./ChatExecutionFeedback";
 import {
@@ -79,8 +84,12 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
     workspace.selectConversation(conversationId);
   };
 
-  const sendMessage = (content: string, attachments: readonly string[] = [], expectedOwner?: string): Promise<boolean> => {
-    const current = workspace.getState();
+  const sendMessage = async (content: string, attachments: readonly string[] = [], expectedOwner?: string): Promise<boolean> => {
+    let current = workspace.getState();
+    if (current.status === "ready" && current.workspace.history?.window && !current.workspace.history.window.reachesLatest && current.workspace.selectedConversationId) {
+      try { await workspace.navigateHistory(current.workspace.selectedConversationId); } catch { return false; }
+      current = workspace.getState();
+    }
     if (
       current.status !== "ready" ||
       current.workspace.selectedConversation === null ||
@@ -165,6 +174,8 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
         toast.show({ type: "success", text: "会话已删除" });
       }}
       onLoadOlderHistory={workspace.loadOlderHistory}
+      onLoadNewerHistory={workspace.loadNewerHistory}
+      onNavigateHistory={workspace.navigateHistory}
       onRefreshConversationList={workspace.refreshConversationList}
     />
   );
@@ -189,6 +200,8 @@ export interface ChatWorkspaceViewProps {
   readonly onRenameConversation?: (id: string, title: string) => Promise<void>;
   readonly onDeleteConversation?: (id: string) => Promise<void>;
   readonly onLoadOlderHistory?: () => Promise<void>;
+  readonly onLoadNewerHistory?: () => Promise<void>;
+  readonly onNavigateHistory?: (conversationId: string, messageId?: string) => Promise<void>;
   readonly onRefreshConversationList?: () => Promise<void>;
 }
 
@@ -211,6 +224,8 @@ export function ChatWorkspaceView({
   onRenameConversation,
   onDeleteConversation,
   onLoadOlderHistory,
+  onLoadNewerHistory,
+  onNavigateHistory,
   onRefreshConversationList,
 }: ChatWorkspaceViewProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -222,6 +237,20 @@ export function ChatWorkspaceView({
   const ownerRef = useRef<string | null>(null);
   ownerRef.current = state.status === "ready" ? state.workspace.selectedConversationId : null;
   const media = useAttachmentDrafts(ownerRef.current);
+  const search = useChatSearch(state.status === "ready" && !state.pendingConversationId ? ownerRef.current : null, state.status === "ready" ? state.searchRevision : 0);
+  const readingRef=useRef<ChatReadingHandle|null>(null);
+  const bookmark=useRef<{owner:string;position:ReadingBookmark}|null>(null);
+  const userRead=useRef(false), jumped=useRef(false), jumpSequence=useRef(0);
+  const [jump,setJump]=useState<ChatJump|null>(null), [navigationError,setNavigationError]=useState<string|null>(null), [searchFollowing,setSearchFollowing]=useState(false);
+  const closeRef=useRef<()=>void>(()=>{});
+  const searchTrigger=useRef<HTMLButtonElement|null>(null);
+  useSearchBack(search.open,()=>closeRef.current());
+  useEffect(()=>{bookmark.current=null;userRead.current=false;jumped.current=false;jumpSequence.current++;setJump(null);setNavigationError(null);},[ownerRef.current]);
+  useEffect(()=>{
+    if(!search.open)return;
+    const escape=(event:KeyboardEvent)=>{if(event.key==="Escape"&&!event.defaultPrevented&&!hasOpenChatDialog()){event.preventDefault();closeRef.current();}};
+    document.addEventListener("keydown",escape);return()=>document.removeEventListener("keydown",escape);
+  },[search.open]);
   useEffect(() => {
     if (state.status !== "ready") return;
     const existing = new Set(state.workspace.conversations.map(item => item.id));
@@ -252,7 +281,7 @@ export function ChatWorkspaceView({
   const selectedConversation = conversations.find(({ isSelected }) => isSelected) ?? null;
   const messages = composeVisibleChatMessages(
     workspace.history?.messages ?? [],
-    sendState,
+    search.open || workspace.history?.window && !workspace.history.window.reachesLatest ? INITIAL_CHAT_SEND_STATE : sendState,
     workspace.selectedConversationId ?? "",
   );
   const sender = getChatSenderAvailability(state, sendState);
@@ -264,6 +293,61 @@ export function ChatWorkspaceView({
   const navigationLocked = executionActive || !!state.conversationMutation;
   const managementLocked = navigationLocked || pendingConversationId !== null || !!state.configurationPending || modelSelectionPending;
   const canManage = onRenameConversation !== undefined && onDeleteConversation !== undefined;
+  const owner=workspace.selectedConversationId;
+  const returnReading=async()=>{
+    const original=bookmark.current;
+    if(!owner||original?.owner!==owner)return;
+    const sequence=++jumpSequence.current;
+    try {
+      const id=original.position.anchor?.id;
+      if(original.position.following)await onNavigateHistory?.(owner);
+      else if(id&&!workspace.history?.messages.some(m=>m.id===id))await onNavigateHistory?.(owner,id);
+      if(sequence!==jumpSequence.current||ownerRef.current!==owner)return;
+      setSearchFollowing(original.position.following);
+      setJump({token:sequence,messageId:original.position.following?undefined:id,offset:original.position.anchor?.offset,following:original.position.following});
+      userRead.current=false;jumped.current=false;setNavigationError(null);
+    }catch{if(sequence===jumpSequence.current)setNavigationError("搜索前的位置已失效或暂时无法读取。当前阅读位置已保留，可回到最新。");}
+  };
+  const closeSearch=()=>{
+    if(jumped.current&&!userRead.current)void returnReading();
+    else if(!jumped.current&&bookmark.current?.position.following&&!userRead.current)setJump({token:++jumpSequence.current,following:true});
+    search.dismiss();setNavigationError(null);
+    requestAnimationFrame(()=>searchTrigger.current?.focus({preventScroll:true}));
+  };
+  closeRef.current=closeSearch;
+  const showSearch=()=>{
+    if(!owner)return;
+    bookmark.current={owner,position:readingRef.current?.capture()??{anchor:null,following:true}};
+    userRead.current=false;jumped.current=false;setSearchFollowing(false);readingRef.current?.suspend();search.show();
+  };
+  const latest=async()=>{
+    if(!owner)return;const sequence=++jumpSequence.current;
+    try{await onNavigateHistory?.(owner);if(sequence!==jumpSequence.current||ownerRef.current!==owner)return;setSearchFollowing(true);setJump({token:sequence,following:true});userRead.current=true;setNavigationError(null);}
+    catch{if(sequence===jumpSequence.current)setNavigationError("最新历史暂时无法读取，当前阅读位置已保留。");}
+  };
+  const jumpResult=async(result:MessageSearchResult)=>{
+    if(!owner)return;
+    const sequence=++jumpSequence.current;
+    try{
+      readingRef.current?.suspend();setSearchFollowing(false);
+      if(!workspace.history?.messages.some(m=>m.id===result.messageId))await onNavigateHistory?.(owner,result.messageId);
+      if(sequence!==jumpSequence.current||ownerRef.current!==owner)return;
+      search.select(result.messageId);jumped.current=true;userRead.current=false;
+      setJump({token:sequence,messageId:result.messageId});setNavigationError(null);
+    }catch{if(sequence===jumpSequence.current)setNavigationError("目标消息已删除、身份失效或暂时无法读取。当前历史已保留。");}
+  };
+  const selectedResult=search.state.items.find(m=>m.messageId===search.state.selected);
+  const selectedMessage=workspace.history?.messages.find(m=>m.id===search.state.selected);
+  const liveSnippets=selectedMessage?.searchSegments?.flatMap(segment=>{
+    const text=segment.text.replace(/\s+/gu," "), range=searchTextRanges(text,search.query)[0];
+    if(!range)return[];
+    const start=Math.max(0,range[0]-60),end=Math.min(text.length,Math.max(range[1],range[0]+160),start+320);
+    return [{segmentKey:segment.segmentKey,text:text.slice(start,end),matchRanges:[]}];
+  }).slice(0,3)??[];
+  const activeResult=selectedMessage&&liveSnippets.length?{
+    messageId:selectedMessage.id,createdAt:selectedMessage.createdAt,role:selectedMessage.roleKind as MessageSearchResult["role"],
+    publicRevision:selectedResult?.publicRevision??"current-window",snippets:liveSnippets,
+  }:null;
   const draftOwner = workspace.selectedConversationId;
   const create = async () => {
     if (managementLocked || !onCreateConversation) return;
@@ -316,8 +400,8 @@ export function ChatWorkspaceView({
                 variant="ghost"
                 size="icon-lg"
                 className={CHAT_HEADER_ACTION_CLASS}
-                onClick={onBack}
-                disabled={navigationLocked}
+                onClick={search.open?closeSearch:onBack}
+                disabled={!search.open&&navigationLocked}
                 aria-label="返回桌面"
                 title="返回桌面"
               >
@@ -357,6 +441,7 @@ export function ChatWorkspaceView({
 
             <HeaderCopy title={selectedConversation?.title ?? "Penumbra"} />
             {selectedConversation && canManage && <ConversationMenu id={selectedConversation.id} title={workspace.selectedConversation!.title} disabled={managementLocked} onAction={setConversationAction} />}
+            <Button ref={searchTrigger} variant="ghost" size="icon-lg" className={CHAT_HEADER_ACTION_CLASS} aria-label="搜索聊天历史" title="搜索聊天历史" disabled={!selectedConversation||pendingConversationId!==null} onClick={search.open?closeSearch:showSearch}><Search className="size-4.5" aria-hidden="true"/></Button>
             {pendingConversationId && (
               <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" role="status">
                 <LoaderCircle
@@ -368,6 +453,10 @@ export function ChatWorkspaceView({
             )}
           </header>}
         notices={<>
+          {search.open&&<ChatSearchPanel search={search} onJump={result=>void jumpResult(result)} onClose={closeSearch} onReturn={()=>void returnReading()} onLatest={()=>void latest()} pending={state.historyNavigationPending} error={navigationError}/>}
+          {search.open&&selectedMessage?.searchSegments&&normalizeSearch(search.query)&&!activeResult&&<p className="px-4 py-1 text-xs text-muted-foreground" role="status">当前消息已更新或不再匹配关键词，仍保留原消息身份。</p>}
+          {!search.open&&navigationError&&<p role="alert" className="px-4 py-2 text-xs text-muted-foreground">{navigationError}<button className="ml-2 underline" onClick={()=>void latest()}>回到最新</button></p>}
+          {!search.open&&bookmark.current&&jumped.current&&<div className="flex justify-end gap-3 px-4 text-xs text-muted-foreground"><button className="min-h-9" onClick={()=>void returnReading()}>返回搜索前位置</button><button className="min-h-9" onClick={()=>void latest()}>回到最新</button></div>}
           {(executionActive || state.conversationMutation) && <p className="border-b border-border px-4 py-1.5 text-xs text-muted-foreground" role="status">
             {executionActive ? "当前请求尚未结束或结果待确认，处理完成后可切换、新建或删除会话。" : "正在更新会话，请稍候。"}
           </p>}
@@ -417,6 +506,7 @@ export function ChatWorkspaceView({
           attachments={draftOwner ? <AttachmentDrafts owner={draftOwner} store={media.store} items={media.items} disabled={!draftEditable} /> : undefined}
           onSend={onSend ? async content => {
             if (!draftOwner || ownerRef.current !== draftOwner) return false;
+            if(workspace.history?.window&&!workspace.history.window.reachesLatest){try{await onNavigateHistory?.(draftOwner);search.dismiss();setSearchFollowing(true);setJump({token:++jumpSequence.current,following:true});}catch{return false;}}
             const snapshot = media.store.capture(draftOwner);
             if (!snapshot) return false;
             try {
@@ -442,10 +532,22 @@ export function ChatWorkspaceView({
             <ChatWorkspaceEmpty kind="conversations" />
           ) : workspace.selectedConversation === null || workspace.history === null ? (
             <ChatWorkspaceEmpty kind="selection" />
-          ) : messages.length === 0 && workspace.history.olderPageStatus !== "maybe-more" ? (
+           ) : messages.length === 0 && workspace.history.olderPageStatus !== "maybe-more" && !workspace.history.window?.hasNewer ? (
             <ChatWorkspaceEmpty kind="history" />
           ) : (
             <BubbleList
+              readingRef={readingRef}
+              jump={jump}
+              readingMode={(search.open&&!searchFollowing)||workspace.history.window?.reachesLatest===false}
+              query={search.open?search.query:""}
+              activeMessageId={search.open?search.state.selected:null}
+              activeResult={activeResult}
+              onUserRead={()=>{userRead.current=true;}}
+              onLoadNewer={onLoadNewerHistory?()=>void onLoadNewerHistory():undefined}
+              hasNewer={workspace.history.window?.hasNewer||workspace.history.hasNewMessages}
+              newerPending={state.newerHistoryPending}
+              newerError={state.newerHistoryError?.message}
+              onLatest={()=>void latest()}
               timelineKey={workspace.selectedConversation.id}
               messages={messages}
               userName={userName}

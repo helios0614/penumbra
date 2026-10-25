@@ -1,3 +1,4 @@
+import { messageWindowWire } from "@/test-fixtures/message-window-wire";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createChatWorkspaceController } from "./chat-workspace-controller";
 import { getChatSenderAvailability } from "./chat-sender-policy";
@@ -8,7 +9,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("Main selection mutation and request ownership", () => {
   it("opens the workspace when all reads return 200 and empty HTTP drift is omitted", async () => {
-    syntheticServer((path) => path === "/api/conversations/conv_a/messages?limit=50&public_view=true"
+    syntheticServer((path) => path === "/api/conversations/conv_a/messages/window?limit=50"
       ? Promise.resolve(json([messageWithoutDriftWire({ content: "visible synthetic history" })])) : null);
     const controller = createChatWorkspaceController();
     await controller.load();
@@ -150,7 +151,7 @@ function syntheticServer(intercept?: (path: string, init?: RequestInit) => Promi
   }));
   return { paths, models, putBodies };
 }
-function json(value: unknown, status = 200) { return new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } }); }
+function json(value: unknown, status = 200) { return new Response(JSON.stringify(Array.isArray(value) && value[0]?.conv_id ? messageWindowWire(value, value[0].conv_id) : value), { status, headers: { "content-type": "application/json" } }); }
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((res) => { resolve = res; });
