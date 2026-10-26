@@ -1,5 +1,7 @@
 # Chat PR6.5-A — 聊天快捷配置与 Settings 归属审计
 
+> 实施指引：本文件保留PR6.5-A审计快照；已确认的临时作用域与实施结果见[PR6.5-B记录](./chat-pr6-5-config-implementation.md)。长期覆盖状态只维护[settings-inventory.md](./settings-inventory.md)。
+
 审计日期：2026-10-26（Asia/Shanghai）。Penumbra `31d1087`；AionHome `e7134ae`。两仓库开始时工作树均干净。本轮只新增本文档，不修改业务代码、测试、配置、运行数据或其他文档，不 commit、push、部署。
 
 依据为当前工作树的静态调用链，不是旧 UI 的控件清单，也不是生产验收。未读取真实 settings.json、SQLite、凭据或浏览器 localStorage；未 import 后端模块、启动服务或调用配置/模型 API。下文“生效”表示存在可追踪的消费者，不保证某个上游模型接受参数。

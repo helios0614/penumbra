@@ -47,7 +47,9 @@ import { ConversationsList } from "./ConversationsList";
 import { Sender } from "./Sender";
 import { MainModelSelection } from "./MainModelSelection";
 import type { MainSelection } from "@/domain/runtime";
-import { ConversationDialog, ConversationMenu, type ConversationAction } from "./ConversationActions";
+import { ConversationDialog, type ConversationAction } from "./ConversationActions";
+import { ChatRequestParametersMenu } from "./ChatRequestParametersMenu";
+import type { ChatRequestParameterDraft, ChatRequestParameterScope, ChatRequestParameterResult } from "@/components/chat-workspace/chat-request-parameters";
 import type { SenderDraft, SenderHandle } from "./composer-draft";
 import { useToast } from "@/components/ui/toast";
 import { useAttachmentDrafts } from "./useAttachmentDrafts";
@@ -99,10 +101,11 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
     ) {
       return Promise.resolve(false);
     }
+    const generation = { ...current.requestParameters?.overrides, ...(attachments.length ? { attachments } : {}) };
     return send.send({
       conversationId: current.workspace.selectedConversation.id,
       content,
-      ...(attachments.length ? { generation: { attachments } } : {}),
+      ...(Object.keys(generation).length ? { generation } : {}),
     });
   };
 
@@ -126,6 +129,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       conversationId: availability.target.conversationId,
       targetMessageId: availability.target.id,
       targetCreatedAt: availability.target.createdAt,
+      ...(Object.keys(current.requestParameters?.overrides ?? {}).length ? { generation: { ...current.requestParameters?.overrides } } : {}),
     });
   };
 
@@ -158,6 +162,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       onRetryFinalization={recoverExecution}
       onReleaseAfterReview={send.releaseAfterReview}
       onSaveMainSelection={workspace.saveMainSelection}
+      onApplyRequestParameters={workspace.applyRequestParameters}
       onRefreshState={refreshState}
       realtimeState={realtime}
       onCreateConversation={async () => {
@@ -194,6 +199,7 @@ export interface ChatWorkspaceViewProps {
   readonly onRetryFinalization?: () => void | Promise<void>;
   readonly onReleaseAfterReview?: () => void;
   readonly onSaveMainSelection?: (conversationId: string, selection: MainSelection) => Promise<void>;
+  readonly onApplyRequestParameters?: (scope: ChatRequestParameterScope, draft: ChatRequestParameterDraft) => ChatRequestParameterResult;
   readonly onRefreshState?: () => Promise<void>;
   readonly realtimeState?: ChatRealtimeState;
   readonly onBack?: () => void;
@@ -218,6 +224,7 @@ export function ChatWorkspaceView({
   onRetryFinalization,
   onReleaseAfterReview,
   onSaveMainSelection,
+  onApplyRequestParameters,
   onRefreshState,
   realtimeState = { kind: "idle" },
   onBack,
@@ -442,7 +449,7 @@ export function ChatWorkspaceView({
 
             <HeaderCopy title={selectedConversation?.title ?? "Penumbra"} />
             <Button ref={searchTrigger} variant="ghost" size="icon-lg" className={CHAT_HEADER_ACTION_CLASS} aria-label="搜索聊天历史" title="搜索聊天历史" disabled={!selectedConversation||pendingConversationId!==null} onClick={search.open?closeSearch:showSearch}><Search className="size-4.5" aria-hidden="true"/></Button>
-            {selectedConversation && canManage && <ConversationMenu id={selectedConversation.id} title={workspace.selectedConversation!.title} disabled={managementLocked} onAction={setConversationAction} />}
+            <ChatRequestParametersMenu parameters={state.requestParameters} disabled={managementLocked} onApply={onApplyRequestParameters} />
             {pendingConversationId && (
               <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" role="status">
                 <LoaderCircle

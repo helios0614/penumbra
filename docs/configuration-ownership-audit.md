@@ -6,6 +6,8 @@
 >
 > AionsHome：`refactor-code-main` @ `d0c0bdb0c265e145cf4bd01e52e63a78ab6b86e0`
 
+> 现行状态指引（2026-10-26）：本文保留审计当日判断。Main selection/Registry安全投影、C2A2请求参数及Composer现状已由后续契约取代；请查[统一清单](./settings-inventory.md)、[PR6.5审计](./chat-pr6-5-config-audit.md)与[实施记录](./chat-pr6-5-config-implementation.md)。本文中的Chat mock、旧model权威、raw secret、send忽略温度/effort写全局等历史描述不能作为当前实现依据。
+
 本文是跨仓库静态审计，不是新契约的实现说明。审计期间未读取数据目录中的实际配置值，未调用 provider、MCP 或设置写接口，也未发送消息。文中的字段名、默认来源和代码路径来自源码；不会记录任何实际 credential、完整 provider endpoint、Cookie、Token 或密码。
 
 事实等级：

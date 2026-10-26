@@ -10,7 +10,7 @@
 
 ## 最终菜单与状态规则
 
-`+` → 同一个工具浮层：
+`+` → 同一个工具浮层（当前还包含PR5已接附件入口）：
 
 - 日常：一个模型选择控件同时显示模型名称和友好连接名，下拉直接提供真实连接的默认模型；手动 literal 作为当前选择保留。正常就绪不单独占一行解释状态。
 - 手动调整：同一浮层内展开连接、模型名称、接口格式；此时不再重复展示日常选择控件。完整连接/接口标识仅在存在诊断时出现。长名称在选择控件中省略，展开候选可以换行；完整 literal 可在详情的输入框中查看、移动光标和编辑。
@@ -98,3 +98,7 @@
 5. 浅色/深色、系统字体放大和 reduced-motion 下做视觉确认；发送、重生成、草稿、Readiness 仍需一次真实服务冒烟。
 
 尚未验证：iOS Safari 原生键盘和自动缩放、地址栏伸缩、visualViewport 动画/pan、输入法候选栏与第三方键盘、Android Chrome/WebView 的 resize/pan、真机触屏及原生选区。桌面 Chromium 的窄视口和合成 viewport 测试不能代替这些真机行为；没有进行真实模型或后端联调。
+
+## PR6.5-B分工更新（2026-10-26）
+
+Composer继续是当前会话Connection/Protocol/Model的唯一编辑入口，沿用串行自动保存、PUT+readback及协议保留。Header新增的快捷参数只编辑上下文消息数/Temperature，由Workspace临时owner持有，不触发模型保存、Registry或全局Settings写入；已确认模型身份变化使参数草稿及覆盖失效。两端复用同一字段/校验，桌面Popover、手机Dialog，原Composer位置与自动保存行为不改。详情见[实施记录](./chat-pr6-5-config-implementation.md)与[统一设置清单](./settings-inventory.md)。

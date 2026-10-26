@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetTrigger } from "@/components/ui/sheet";
 import { elements, find, hookSession } from "./test-utils/hook-session";
 import { ConversationMenu } from "./ConversationActions";
+import { ChatRequestParametersMenu } from "./ChatRequestParametersMenu";
 import { BubbleList } from "./BubbleList";
 import { ChatSearchReveal } from "./ChatSearchReveal";
 import { mapMessage } from "@/domain/message";
@@ -63,19 +64,21 @@ describe("Chat home and conversation navigation are independent", () => {
     expect(reading.resumeFollowing).toHaveBeenCalledOnce();
     hooks.dispose();
   });
-  it("places search before the conversation menu without changing their names or menu actions", () => {
+  it("places search before quick parameters and keeps conversation actions in the shared sidebar/drawer", () => {
     const base = ready(), conversation = { id: "a", title: "一个需要保留省略逻辑的很长会话标题", modelKey: "fixture", createdAt: 1, updatedAt: 1, messageCount: 0 };
     const state = { ...base, workspace: { ...base.workspace, conversations: [conversation], selectedConversationId: "a", selectedConversation: conversation } };
     const hooks = hookSession(() => ChatWorkspaceView({ state, onRetry: vi.fn(), onSelectConversation: vi.fn(), onRetryConversationSwitch: vi.fn(), onRenameConversation: vi.fn(async () => {}), onDeleteConversation: vi.fn(async () => {}) }));
     const header = find(hooks.render(), ChatShell).props.header;
     const controls = elements(header);
     const searchIndex = controls.findIndex(n => n.type === Button && n.props["aria-label"] === "搜索聊天历史");
-    const menuIndex = controls.findIndex(n => n.type === ConversationMenu);
+    const menuIndex = controls.findIndex(n => n.type === ChatRequestParametersMenu);
     expect(searchIndex).toBeGreaterThanOrEqual(0);
     expect(searchIndex).toBeLessThan(menuIndex);
     expect(find(header, Button, p => p["aria-label"] === "搜索聊天历史").props.title).toBe("搜索聊天历史");
-    expect(find(header, ConversationMenu).props).toMatchObject({ id: "a", title: conversation.title, disabled: false });
-    expect(find(header, ConversationMenu).props.onAction).toBeTypeOf("function");
+    expect(controls.some(n => n.type === ConversationMenu)).toBe(false);
+    const shell = find(hooks.render(), ChatShell).props;
+    expect(find(shell.sidebar, ConversationsList).props.onAction).toBeTypeOf("function");
+    expect(find(header, ConversationsList).props.onAction).toBeTypeOf("function");
     hooks.dispose();
   });
   it("rejects an old conversation's media callback even before React renders the new selection", async () => {

@@ -1,6 +1,6 @@
 # Penumbra 前端契约摘要
 
-> 最后更新：2026-08-13
+> 最后更新：2026-10-26（Main配置与PR6.5-B请求边界）
 
 导航：[架构原则](./penumbra-architecture.md) · [迁移路线图](./frontend-migration-plan.md) · [前端契约](./frontend-contracts.md)
 
@@ -19,44 +19,36 @@
 
 | Method | Path | Request | Response |
 |---|---|---|---|
-| `GET` | `/api/conversations` | 无 | 按后端 `updated_at DESC` 顺序返回裸数组；列表项含 `id/title/model/created_at/updated_at/message_count` |
-| `POST` | `/api/conversations` | JSON object `{ title?: string, model?: string }`；`{}` 合法 | `id/title/model/created_at/updated_at`；不含 `message_count` |
-| `PUT` | `/api/conversations/{conv_id}` | `{ title?: string|null, model?: string|null }` | `{ ok: true }` |
+| `GET` | `/api/conversations` | 无 | 按后端 `updated_at DESC` 顺序返回裸数组；列表项含 `id/title/model/main_selection/main_selection_diagnostic/created_at/updated_at/message_count` |
+| `POST` | `/api/conversations` | JSON object `{ title?: string, main_selection?: MainSelection, model?: string }`；新客户端创建发送`{}`，复制后端Main默认 | `id/title/model/created_at/updated_at`；不含 `message_count` |
+| `PUT` | `/api/conversations/{conv_id}` | `{ title?: string\|null, main_selection?: MainSelection, model?: string\|null }`；不混传新选择与旧model | `{ ok: true }` |
 | `DELETE` | `/api/conversations/{conv_id}` | 无 | `{ ok: true }` |
 
 后端没有单个 conversation 详情 endpoint。时间字段是 Unix 秒数；ID、标题和模型是非空数据库列，列表的 `message_count` 是非 carryover user/assistant message 数量。当前契约没有 pinned 或 archived 字段。创建时省略字段会使用服务端标题和模型默认值。PUT 中 null 与省略字段都不会更新持久化值；不存在 ID 的 PUT/DELETE 当前仍返回成功，不能由前端假设 404。conversation create/update/delete 还会触发既有 WebSocket 广播与 Markdown 导出维护，delete 会级联删除 messages；这些副作用仍由后端拥有，Conversation Domain client 不复制或消费它们。
 
 Wire DTO 只存在于 `src/domain/conversation` 边界。mapper 将 snake_case 转换成 camelCase domain model：`model -> modelKey`、`created_at -> createdAt`、`updated_at -> updatedAt`，列表额外映射 `message_count -> messageCount`；raw DTO 不进入 React 组件。
 
-`conversation.model` 是当前 conversation 模型的事实来源。conversation create/update 当前不按 model registry 校验 model；历史或未知 model key 必须忠实保留，前端不自动替换为默认模型。创建请求不提供 model 时，由后端拥有默认语义；前端不复制 `DEFAULT_MODEL`。
+Main执行身份是DB `conversations.main_selection`；前端优先使用`GET /api/main/configuration?conv_id`返回的canonical `connection_selection`。旧`conversation.model`保留兼容，不参与当前发送资格。模型为明确Connection/Protocol/literal；不因catalog缺项改选。新建`{}`复制服务端main_chat默认；已有会话独立，不随全局默认变化。
 
-Conversation Domain 不拥有 available models、readiness、active API config、provider config、provider routing、fallback、message state、streaming 或 WebSocket 状态。Runtime Domain 拥有 available models 与按 `modelKey` 查询的 readiness；模型 registry、provider routing 和 fallback 继续由后端拥有。
+Conversation Domain 不拥有 available models、readiness、active API config、provider config、provider routing、fallback、message state、streaming 或 WebSocket 状态。Runtime Domain拥有目录只读摘要及按`conv_id`读取的Main configuration/readiness；模型 registry、provider routing 和 fallback 继续由后端拥有。
 
 ### Chat Setup Application Layer（S3B）
 
-Chat Setup 是 Conversation Domain 与 Runtime Domain 之上的 application composition，不定义新的后端 DTO，也不拥有任何一个领域的 wire contract。它把 `Conversation`、`AvailableModel[]` 和 readiness 读取结果组合为 UI 可消费的安全 ViewModel。Runtime Domain 的 `ChatReadiness` 仍只表示成功校验的后端事实；application 层另用 `ChatReadinessState` 明确区分已取得的事实与无法取得的降级状态。
+Chat Setup 是 Conversation Domain 与 Runtime Domain 之上的 application composition，不定义新的后端 DTO，也不拥有任何一个领域的 wire contract。它把当前Conversation、Main configuration和readiness组合为UI安全ViewModel；Main不以静态目录membership决定执行资格。Runtime Domain 的 `ChatReadiness` 仍只表示成功校验的后端事实；application 层另用 `ChatReadinessState` 明确区分已取得的事实与无法取得的降级状态。
 
-- 有 conversation 时，当前模型的唯一事实来源是 `conversation.modelKey`；readiness 必须按该 key 请求，响应中的 `modelKey` 必须与它完全一致。
-- conversation model 与 readiness model 不一致属于 application composition contract error。前端不得静默采用 readiness model、自动重新请求或改写 conversation。
-- bootstrap 没有持久化 conversation；当前模型来自不传 `model` 参数的 readiness response `modelKey`，代表服务端默认启动模型。
+- 有conversation时，configuration/readiness均传conv_id；模型身份来自已保存Main选择，readiness.modelKey须与该选择literal一致。
+- 已确认Main选择与readiness不一致时阻断发送并保留历史，不用旧modelKey纠正服务端身份，不自动换路由。
+- bootstrap省略conv_id读取新会话Main默认，只读；不把它写入已有会话。
 - 禁止从 available models 第一项推断默认模型，也禁止在前端硬编码服务端默认模型。
-- available models 保持 Runtime Domain 顺序，不排序、不去重；选中状态只按 key 精确匹配。
-- 历史或 bootstrap model 不在 available models 时仍保留原始 key，并以该 key 作为安全 label fallback；未知 model 不自动替换，所有 model options 均不选中。
+- 模型目录保留后端顺序供Settings只读概览；Main候选来自configuration.connections，不把目录当远端模型全集。
+- 历史或bootstrap literal不在目录时照常保留；未知/失效选择显示后端diagnostic，不自动改模型、连接或协议。
 - readiness reason 与 `setupActionRequired` 直接进入最小 ViewModel；`ready=false` 是正常业务状态，不转为异常，也不在本层重新判断 endpoint、secret、auth mode、provider 或 provider health。
 - `ChatReadinessState` 为 `{ kind: "available", value: ChatReadiness } | { kind: "unavailable", reason: SafeReadinessReason }`。`available` 只表示响应成功且 DTO 合法，不等于 `value.ready=true`；`unavailable` 只保留 `not-found/network/timeout/service/contract/unknown` 安全分类，不保留 response、endpoint、stack、内部 target 或 provider exception。
-- Chat Setup load service 对 readiness 的 404、network、timeout、其他非认证 HTTP 错误及 DTO contract error 返回 `readiness-unavailable` ViewModel；它不从 models 第一项补 model、不伪造 readiness，也不自动重试。readiness 的 401/403 与 abort 仍抛出，models 读取或 models DTO 失败仍为致命错误。
+- Chat Setup对configuration/readiness的非认证失败降级为不可发送状态，保留安全错误；401/403与abort继续抛出，不伪造readiness或自动重试。
 - 本层不读取 Settings 或 active API config，不拥有 provider routing、fallback、secret、endpoint、raw readiness 或 raw DTO，也不请求 messages。
-- 本阶段只提供普通 TypeScript 纯组合函数和异步 load service，不接入现有 Chat mock、React hook、可见 UI 或全局状态。
+- 本层提供纯组合函数与异步load service；真实Workspace/Composer消费它，不让旧Chat mock或全局配置缓存成为事实源。
 
-模型变更 command 延后到真实 conversation selection 与 Chat Setup UI 接入阶段。后续边界固定为：
-
-```text
-updateConversation(id, { modelKey: nextModelKey })
-  -> 获取 nextModelKey 的 readiness
-  -> 重新组合 Chat Setup ViewModel
-```
-
-update 成功与 readiness refresh 之间不是原子操作；在出现真实调用方前不提前实现未使用的 mutation command。
+模型选择已由Composer接入：`updateConversation(id,{mainSelection})` → 重读列表 → 按conv_id读取Main configuration/readiness。PUT只传main_selection，不双写旧model或全局默认；readback失败保留草稿并阻断发送。Header参数应用不调用这条保存链。
 
 **AionsHome 权威来源**：`docs/aionhome-runtime-model.md`、`docs/aionhome-refactor-master-plan.md` 及相关领域实现和 contract tests。
 
@@ -346,9 +338,20 @@ type SendMessageRequestDto = {
 };
 ```
 
-后端 canonical defaults 为 `temperature=1.0`、`context_limit=30`、`thinking_effort=null`、`fast_mode=false`、`whisper_mode=false`。client 不为服务端行为复制这些默认值，只保留调用者显式提供的 `false/0/null`；attachment item 必须是 string。send 不接受 model override，模型只来自 `Conversation.model`；carryover/cache/provider/raw history 不在 C2A2 envelope 中。
+后端 canonical defaults 为 `temperature=1.0`、`context_limit=30`、`thinking_effort=null`、`fast_mode=false`、`whisper_mode=false`。client 不为服务端行为复制这些默认值，只保留调用者显式提供的 `false/0/null`；attachment item 必须是 string。send 不接受 model override，模型只来自持久化Main selection；carryover/cache/provider/raw history 不在 C2A2 envelope 中。
 
 regenerate 使用 `POST /api/conversations/{encodedConversationId}/messages/{encodedMessageId}/regenerate`，没有 request body。可选 query 为 `context_limit`、`whisper_mode`、`fast_mode`、`temperature`、`thinking_effort`；未提供字段省略，显式 `false`、`0` 和空字符串保留，显式 null 省略。client 必须接收并 URL-encode target assistant ID，但不接收 model/provider override，不删除旧 assistant，也不编排 legacy delete-then-regenerate。
+
+### PR6.5-B 临时参数边界
+
+- Header只编辑`contextLimit`/`temperature`。Workspace controller持有唯一已应用快照，初始空；输入字符串不直接成为请求，必须通过整数/finite/协议范围校验并显式应用。0保留，空值删除覆盖键；默认不传字段，不传null或写死默认数字。
+- 上下文为1–100严格整数；温度Anthropic 0–1、OpenAI/Gemini明确协议0–2。历史Profile未提供协议时不推断温度范围。30/1.0只作后端契约默认说明，非读取的已保存配置；实际literal支持性由上游判断。
+- 临时快照仅属于当前已确认conversation与Connection/Protocol/Model，切换后失效；scope对象身份阻止A→B→A旧表单回写。无配置GET/PUT、DB/Settings JSON/LS保存，不承诺刷新或离开恢复。
+- production ChatView在调用时从最新Workspace捕获同一已应用快照，分别交给send与canonical regenerate的既有mapper；合并附件、保留client_msg_id/正文。regenerate仍空body/query传参；请求发起后的UI修改不会改变已捕获值。
+- 同步owner guard检查执行、结果未知、模型保存、会话mutation/切换；校验失败不覆盖已应用值，取消只丢编辑。恢复默认立即清空覆盖并关闭面板。422/上游/网络错误沿原流程与SubmissionRecovery暂存保留，参数应用不自动清错误、重发或换路由。
+- 全局temperature/enable_thinking/thinking_effort属于部分optionless/后台兼容路径，Main不自动继承。Thinking缺少模型级能力声明，首版不开放；HEART/DRIFT与TTS/Voice不在本轮。
+
+源码：[参数owner](/Users/remix/Desktop/Penumbra/src/components/chat-workspace/chat-request-parameters.ts:1)、[Workspace同步guard](/Users/remix/Desktop/Penumbra/src/components/chat-workspace/chat-workspace-controller.ts:1)、[Header表单](/Users/remix/Desktop/Penumbra/src/components/chat/ChatRequestParametersMenu.tsx:1)。覆盖状态统一维护于[settings-inventory.md](./settings-inventory.md)。
 
 ### Response contract
 
@@ -437,6 +440,8 @@ S4E2 服务一次只处理一个 plan，不拥有连接或并发控制。S6D coo
 
 ## 9. Carryover 和 prompt 顺序
 
+现行后端允许旧浏览器以`carryover:{source_conv_id,message_ids}`在新会话首次send请求受限引用；非空raw carryover_messages仍拒绝。Penumbra没有接入该输入，PR6.5-B不添加携带或改变prompt顺序。
+
 - 旧前端存在 carryover 筛选与 `localStorage` 行为，并在新 conversation 首次发送时提交 `carryover_messages`。
 - 这涉及 prompt 输入顺序、去重、持久化和上下文所有权。
 - 未确认后端当前职责前，不得原样迁移、删除或重新设计 carryover。
@@ -515,7 +520,7 @@ S7B 当前只接入 Create 与 Pin，不代表完整管理能力已迁移；其�
 - `ChatReadiness` 是后端对 bootstrap/current model 的事实投影；前端不重新计算 readiness。其 `modelKey` 即使不在 models 列表中也必须作为 unknown model 保留并展示。
 - `idle/loading/success/error`、retry、AbortController 和旧请求竞态保护属于 React/controller 层，不进入 Runtime Domain 或 `SettingsOverview` application model，也不持久缓存或轮询。
 - Settings Overview 不读取 Conversation 或 Message，不调用 Chat Execution，不消费 SSE，不连接 WebSocket，也不触发 Realtime Reconciliation。
-- Provider Administration、secret management、TTS/ASR、Memory、Camera、Location、MCP、Schedule 与高级模型参数留待后续独立迁移，不因安全概览完成而视为已接入。
+- Provider Administration、secret management和全局Feature默认仍未接入。安全概览不拥有各业务页已接的设置；PR6.5-B只新增Chat请求级两参数，不表示全局设置或语音能力已完成。
 
 **AionsHome 权威来源**：`aion-chat/main.py`、`aion-chat/auth.py`、部署配置和未来部署契约；Penumbra transport 事实见 `src/lib/runtime-config.ts` 与 `src/lib/api.ts`。
 
@@ -526,7 +531,7 @@ S7B 当前只接入 Create 与 Pin，不代表完整管理能力已迁移；其�
 - 可以从新 UI 主流程隐藏到兼容或高级区域，但隐藏不等于移除后端能力。
 - secret 不得直接展示，也不得进入普通展示组件、日志或通用 view model。
 - UI 应只接收 masked value、尾部掩码或 `hasSecret` 等安全形态。
-- 当前 `/api/settings` 同时存在原始值和 masked 字段；是否继续返回完整 secret 需要后端确认，前端不得将当前返回行为视为长期安全契约。
+- 当前Settings/Connection常规GET已有安全投影；密钥有意查看/替换/清除走专用secret_ref契约。旧raw key描述已过时。Penumbra连接管理/默认Feature绑定仍未接入，Header也不读取这些凭据。
 
 **AionsHome 权威来源**：`aion-chat/routes/settings.py`、`aion-chat/static/settings.html`、provider 配置实现和相关 contract tests。
 

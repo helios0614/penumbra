@@ -6,6 +6,8 @@
 
 [返回前端迁移路线图](../frontend-migration-plan.md)
 
+> 现行状态指引（2026-10-26）：本文保留审计当日判断。Main selection/Registry安全投影、C2A2请求参数及Composer现状已由后续契约取代；请查[统一清单](../settings-inventory.md)、[PR6.5审计](../chat-pr6-5-config-audit.md)与[实施记录](../chat-pr6-5-config-implementation.md)。本文中的Chat mock、旧model权威、raw secret、send忽略温度/effort写全局等历史描述不能作为当前实现依据。
+
 本报告记录 Penumbra 在接入真实 Chat 前对 AionsHome Settings 领域所做的只读扫描。结论基于审计日期当天两个仓库的实际 checkout；AionsHome 当前实现、契约测试和强制文档仍是运行语义的权威来源。
 
 核心结论：

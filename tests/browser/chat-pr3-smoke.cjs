@@ -57,14 +57,21 @@ async function fixture(browser, mobile) {
       const model = (url.searchParams.get('conv_id') || '').startsWith('new-') ? 'server-new-default' : 'literal-a';
       return json({ ready: true, model_key: model, reason_code: 'ready', setup_action_required: false });
     }
-    const history = url.pathname.match(/^\/api\/conversations\/([^/]+)\/messages$/);
+    const history = url.pathname.match(/^\/api\/conversations\/([^/]+)\/messages(?:\/window)?$/);
     if (history && method === 'GET') {
-      const id = history[1], limit = Number(url.searchParams.get('limit') || 50), before = url.searchParams.get('before');
+      const id = history[1], limit = Number(url.searchParams.get('limit') || 50);
+      const before = url.searchParams.get('before') || url.searchParams.get('before_cursor')?.replace('synthetic-before-', '');
       const snapshot = [...(state.messages[id] || [])];
       if (before) { state.counts.older++; await delay(200); if (state.failOlder) return json({}, 503); }
       else if (state.slowSwitch) await delay(id === 'b' ? 350 : 40);
       assert.equal(limit, 50, 'page size must never grow');
-      return json(snapshot.filter(item => before === null || item.created_at < Number(before)).slice(-limit));
+      const messages = snapshot.filter(item => before == null || item.created_at < Number(before)).slice(-limit);
+      if (!url.pathname.endsWith('/window')) return json(messages);
+      const older = messages.length > 0 && snapshot.some(item => item.created_at < messages[0].created_at);
+      const newer = messages.length > 0 && snapshot.some(item => item.created_at > messages.at(-1).created_at);
+      return json({ conversation_id: id, anchor_id: null, messages, has_older: older, has_newer: newer,
+        older_cursor: older ? `synthetic-before-${messages[0].created_at}` : null,
+        newer_cursor: newer ? `synthetic-after-${messages.at(-1).created_at}` : null, reaches_latest: !newer });
     }
     if (url.pathname.endsWith('/send')) { state.counts.send++; return route.abort('failed'); }
     return json({ detail: 'Synthetic fixture: unsupported endpoint' }, 404);
@@ -75,7 +82,11 @@ async function fixture(browser, mobile) {
   const title = async expected => { await page.waitForFunction(text => document.querySelector('header p')?.textContent === text, expected); };
   const nav = async () => { if (mobile) await page.getByRole('button', { name: '打开会话列表', exact: true }).click(); };
   const select = async id => { await nav(); await page.getByRole('button', { name: `打开会话会话 ${id.toUpperCase()}`, exact: true }).click(); await title(`会话 ${id.toUpperCase()}`); };
-  const menu = async () => { await page.locator('header').getByRole('button', { name: /^会话操作：/ }).click(); };
+  const menu = async () => {
+    const currentTitle = await page.locator('.chat-workspace-header p').textContent();
+    await nav();
+    await page.getByRole('button', { name: `会话操作：${currentTitle}`, exact: true }).filter({ visible: true }).click();
+  };
   const insert = () => page.locator('[data-message-id="a-m120"]').getByRole('button', { name: '放入输入框', exact: true });
   const input = () => page.getByRole('textbox', { name: '消息正文', exact: true });
   return { page, context, state, errors, title, nav, select, menu, insert, input };
@@ -114,7 +125,7 @@ async function run(browser, mobile) {
         title.textContent = original;
         return { buttons, clipped, overflow };
       });
-      assert.equal(geometry.buttons.length, 3); assert(geometry.clipped); assert(!geometry.overflow);
+      assert.equal(geometry.buttons.length, 4); assert(geometry.clipped); assert(!geometry.overflow);
       geometry.buttons.forEach((button, index) => { assert(button.width >= 44 && button.height >= 44); if (index) assert(button.left >= geometry.buttons[index - 1].right); });
     }
     await s.nav(); await page.getByRole('dialog', { name: '会话列表', exact: true }).waitFor();
@@ -145,7 +156,9 @@ async function run(browser, mobile) {
   await delay(450); await s.title('会话 C'); state.slowSwitch = false; await s.select('a');
   assert.equal(await s.input().inputValue(), 'A 草稿'); record('rapid B/C switching rejects stale responses');
   await s.menu(); await page.getByRole('menuitem', { name: '重命名', exact: true }).click();
+  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-invalid') !== null && document.activeElement?.tagName === 'INPUT');
   await page.getByRole('textbox', { name: '会话名称', exact: true }).fill('取消编辑'); await page.getByRole('button', { name: '取消', exact: true }).click();
+  await page.waitForFunction(mobile => document.activeElement?.getAttribute('aria-label') === (mobile ? '打开会话列表' : '会话操作：会话 A'), mobile);
   await s.title('会话 A'); assert.equal(state.counts.rename, 0);
   await s.menu(); await page.getByRole('menuitem', { name: '重命名', exact: true }).click();
   await page.getByRole('textbox', { name: '会话名称', exact: true }).fill('  重命名保留  '); state.failRename = true;
@@ -191,16 +204,18 @@ async function run(browser, mobile) {
   const dynamicOffset = await page.locator(`[data-message-id="${anchor.id}"]`).evaluate(el => el.getBoundingClientRect().top - el.closest('[data-slot="scroll-area-viewport"]').getBoundingClientRect().top);
   assert(Math.abs(dynamicOffset - anchor.offset) < 3, 'dynamic content moved reading anchor'); record('HTTP paging, concurrent WS, canonical dedupe and resize anchor');
   const beforeMenu = await viewport.evaluate(el => el.scrollTop); await s.menu(); await page.keyboard.press('Escape'); await page.getByRole('menu').waitFor({ state: 'hidden' });
+  if (mobile) { await page.keyboard.press('Escape'); await page.getByRole('dialog', { name: '会话列表', exact: true }).waitFor({ state: 'hidden' }); }
   assert(Math.abs(await viewport.evaluate(el => el.scrollTop) - beforeMenu) < 3); record('menu does not move reading position');
   await page.screenshot({ path: `${output}/${mobile ? 'mobile' : 'desktop'}.png` });
   await s.input().fill('结果未知保护'); await page.getByRole('button', { name: '发送消息', exact: true }).click();
   await page.getByRole('button', { name: '回复结果待确认，查看详情', exact: true }).waitFor();
-  assert.equal(await page.locator('header').getByRole('button', { name: /^会话操作：/ }).isDisabled(), true);
+  assert.equal(await page.getByRole('button', { name: '聊天快捷配置', exact: true }).isDisabled(), true);
   assert.equal(await home().isDisabled(), true);
   await home().evaluate(el => el.click());
   assert.equal(await page.evaluate(() => window.__chatHomeReturns), 1);
 
   await s.nav(); assert.equal(await page.getByRole('button', { name: '当前无法切换到会话 B', exact: true }).isDisabled(), true);
+  assert.equal(await page.getByRole('button', { name: /^会话操作：/ }).filter({ visible: true }).first().isDisabled(), true);
   assert.equal(state.counts.send, 1); record('unknown-result navigation/delete guards and no automatic retry');
 
   // Exercise the real parent navigation callbacks from direct Chat routes.
@@ -218,6 +233,16 @@ async function run(browser, mobile) {
     await page.waitForFunction(path => location.pathname === path && !document.querySelector('.chat-shell'), homeRoute);
   }
   record('original Desktop and Editorial home navigation callbacks restore their real home routes');
+  await page.goto(`${origin}/tests/browser/chat-pr3.html`); await page.locator('[data-message-id="a-m121"]').waitFor();
+  for (const item of [...state.list]) {
+    await s.nav(); await page.getByRole('button', { name: `会话操作：${item.title}`, exact: true }).filter({ visible: true }).click();
+    await page.getByRole('menuitem', { name: '删除会话', exact: true }).click();
+    await page.getByRole('button', { name: '确认删除', exact: true }).click();
+    await page.getByRole('dialog', { name: '删除会话', exact: true }).waitFor({ state: 'hidden' });
+  }
+  await page.getByText('从会话列表新建会话，开始聊天。', { exact: true }).waitFor();
+  assert.equal(state.list.length, 0); await s.nav(); assert.equal(await page.getByRole('button', { name: '新建会话', exact: true }).filter({ visible: true }).isEnabled(), true);
+  record('delete the final conversation through shared sidebar/drawer preserves empty state and create entry');
   assert.deepEqual(s.errors, []); await s.context.close();
 }
 (async () => {
