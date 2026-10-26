@@ -1,6 +1,6 @@
 # Settings Foundation · 全系统配置盘点与存储审计
 
-审计基线：2026-10-23（Asia/Shanghai）；Chat PR6.5-B 增量更新：2026-10-26。初始只读轮次仅新增本文档；本次只更新 Chat 相关字段与入口状态，实施见 [PR6.5-B记录](./chat-pr6-5-config-implementation.md)，不重做全系统审计。
+审计基线：2026-10-23（Asia/Shanghai）；Chat PR6.5 持久设置 follow-up 增量更新：2026-10-26。初始只读轮次仅新增本文档；本次只更新 Chat 相关字段与入口状态，实施见 [PR6.5-B记录](./chat-pr6-5-config-implementation.md)，不重做全系统审计。
 
 ## 1. 执行摘要
 
@@ -12,7 +12,7 @@
 
 **[现状]** AionHome后端已存在Registry v2连接、9种实际迁移的功能绑定、Main会话显式选择和独立Runtime选择。旧前端已经使用这些接口，不能把Model Registry整体当作规划；也不能把KNOWN_USAGES全部当作可编辑的已迁移功能。Prompt snapshot、shadow和受控canonical路径已存在，但没有面向用户的Prompt架构编辑器。
 
-**[问题]** Main selection/readiness 与 Composer 模型保存已在 PR1 对齐；PR6.5-B 已接两项临时请求覆盖。仍有 Worldbook 整文件保存可能清掉 Diary 自动投喂开关、Main 会话模型被部分后台任务复用，以及本地外观图片可能只有一个浏览器副本等原有缺口。AionHome已有通用文件上传，可复用基础，但未找到旧自定义壁纸管理链路；仍需补外观记录与资产引用、替换删除、权限和部署持久性。
+**[问题]** Main selection/readiness 与 Composer 模型保存已在 PR1 对齐；PR6.5 follow-up 已将两项临时覆盖替换为服务端 Main Chat 默认设置。仍有 Worldbook 整文件保存可能清掉 Diary 自动投喂开关、Main 会话模型被部分后台任务复用，以及本地外观图片可能只有一个浏览器副本等原有缺口。AionHome已有通用文件上传，可复用基础，但未找到旧自定义壁纸管理链路；仍需补外观记录与资产引用、替换删除、权限和部署持久性。
 
 ### 1.1 实际范围与Git保护
 
@@ -113,12 +113,12 @@ Diary保护：当前最近提交包括2f875e6（entry editing and auto-feed cont
 
 | ID | 分类/名称与真实字段 | 代码默认 | 旧前端入口 | Penumbra状态 | Penumbra入口/边界 | AionHome支持/真实读写链 | 存储与作用域 | 问题/建议 | 代码证据 |
 |---|---|---|---|---|---|---|---|---|---|
-| C01 | 会话模型 / conversations.main_selection；旧model另存 | 创建复制B08；已有会话自身值 | Chat API/协议/模型弹层 | **已实现** | Composer 快选及手动 Connection/Protocol/literal；配置/readiness按conv_id读取，保存后readback | GET /api/main/configuration?conv_id；PUT /api/conversations/{id} main_selection→DB；send读取resolve_main_request | DB会话持久→请求冻结 | 模型持久化与请求参数分开；不双写旧model；不改全局main_chat默认 | [Workspace参数owner](/Users/remix/Desktop/Penumbra/src/components/chat-workspace/chat-request-parameters.ts:1)；[Header表单](/Users/remix/Desktop/Penumbra/src/components/chat/ChatRequestParametersMenu.tsx:1)；[请求组装](/Users/remix/Desktop/Penumbra/src/components/chat/ChatView.tsx:88)；[aion-chat/routes/chat.py:940](/Users/remix/Desktop/AionsHome-main/aion-chat/routes/chat.py:940)；[src/domain/conversation/conversation-mappers.ts:50](/Users/remix/Desktop/Penumbra/src/domain/conversation/conversation-mappers.ts:50)；[src/components/chat/ChatView.tsx:59](/Users/remix/Desktop/Penumbra/src/components/chat/ChatView.tsx:59) |
-| C02 | 请求温度 / temperature | 1.0，null也回1.0 | Chat温度滑块 | **已实现** | Header聊天快捷配置；读取Workspace临时快照；显式应用后组装send body/regen query | send/ canonical regen→resolve_generation_options→provider_generation_payload→实际temperature；默认不传，0保留 | 当前会话+已确认模型身份内临时请求覆盖；不写S/DB/LS，切换身份清空 | 非S.temperature；协议范围OpenAI/Gemini 0–2、Anthropic 0–1；上游模型支持未知，不自动换路由 | [Workspace参数owner](/Users/remix/Desktop/Penumbra/src/components/chat-workspace/chat-request-parameters.ts:1)；[Header表单](/Users/remix/Desktop/Penumbra/src/components/chat/ChatRequestParametersMenu.tsx:1)；[请求组装](/Users/remix/Desktop/Penumbra/src/components/chat/ChatView.tsx:88)；[aion-chat/generation_options.py:86](/Users/remix/Desktop/AionsHome-main/aion-chat/generation_options.py:86)；[src/application/chat-send/chat-send-request.ts:10](/Users/remix/Desktop/Penumbra/src/application/chat-send/chat-send-request.ts:10)；[src/components/chat/ChatView.tsx:66](/Users/remix/Desktop/Penumbra/src/components/chat/ChatView.tsx:66) |
-| C03 | 请求上下文 / context_limit | 30，范围1–100 | Chat上下文；LS aion_context_limit | **已实现** | 同C02；严格整数1–100，留空省略；恢复默认删除覆盖键 | send body/ canonical regen query→resolve_generation_options→初始历史SQL LIMIT；regen取目标前history并retain_complete_turns | 同C02；非持久会话参数，无配置GET/PUT | 不是轮数/分页大小/最终token或消息总量上限；Anthropic cache-window仍可能重建历史 | [Workspace参数owner](/Users/remix/Desktop/Penumbra/src/components/chat-workspace/chat-request-parameters.ts:1)；[Header表单](/Users/remix/Desktop/Penumbra/src/components/chat/ChatRequestParametersMenu.tsx:1)；[请求组装](/Users/remix/Desktop/Penumbra/src/components/chat/ChatView.tsx:88)；[aion-chat/generation_options.py:104](/Users/remix/Desktop/AionsHome-main/aion-chat/generation_options.py:104)；[aion-chat/static/chat.html:1300](/Users/remix/Desktop/AionsHome-main/aion-chat/static/chat.html:1300)；[src/application/chat-execution/chat-execution-request.ts:14](/Users/remix/Desktop/Penumbra/src/application/chat-execution/chat-execution-request.ts:14) |
-| C04 | 请求thinking / thinking_effort | 不传/null=无request thinking | Chat强度，受thinking toggle控制 | **后端已有** | 适配器支持，无UI | 同C02；Anthropic支持low/medium/high/xhigh/max | 单次请求 | 缺少当前literal模型的可靠Thinking能力声明，首版暂缓；非Anthropic仅medium兼容no-op；不写全局 | [aion-chat/generation_options.py:122](/Users/remix/Desktop/AionsHome-main/aion-chat/generation_options.py:122)；[aion-chat/static/chat.html:1469](/Users/remix/Desktop/AionsHome-main/aion-chat/static/chat.html:1469) |
-| C05 | 请求快速模式 / fast_mode | false | 未发现显式控件 | **后端已有** | 适配器支持，无UI | 同C02→fast分支跳过RAG/即时摘要 | 单次请求 | 不是Provider能力开关 | [aion-chat/generation_options.py:20](/Users/remix/Desktop/AionsHome-main/aion-chat/generation_options.py:20)；[src/application/chat-send/chat-send-request.ts:24](/Users/remix/Desktop/Penumbra/src/application/chat-send/chat-send-request.ts:24) |
-| C06 | 请求密语模式 / whisper_mode | false | /chat?whisper=1 | **后端已有** | 适配器支持，无UI | 同C02→prompt能力上下文 | 单次请求/独立模式 | 不是全局Persona；协议旧路径差异需保留 | [aion-chat/generation_options.py:20](/Users/remix/Desktop/AionsHome-main/aion-chat/generation_options.py:20)；[aion-chat/static/home.html:201](/Users/remix/Desktop/AionsHome-main/aion-chat/static/home.html:201)；[src/application/chat-send/chat-send-request.ts:25](/Users/remix/Desktop/Penumbra/src/application/chat-send/chat-send-request.ts:25) |
+| C01 | 会话模型 / conversations.main_selection；旧model另存 | 创建复制B08；已有会话自身值 | Chat API/协议/模型弹层 | **已实现** | Composer快选/手动Connection/Protocol/literal，GET+readback | GET /api/main/configuration?conv_id；PUT /api/conversations/{id} main_selection→DB；resolve_main_request | DB会话持久→请求冻结 | 与C02/C03独立；不双写旧model，不改新会话模型默认 | [Composer](/Users/remix/Desktop/Penumbra/src/components/chat/MainModelSelection.tsx:1)；[Main配置](/Users/remix/Desktop/AionsHome-main/aion-chat/routes/main_configuration.py:1) |
+| C02 | Main默认温度 / main_chat_defaults.temperature_by_protocol；请求temperature仍可覆盖 | 1.0 | 旧Chat温度滑块（LS/兼容全局双写，不导入） | **已实现** | Header三点“聊天设置”；GET有效值/source/范围，拖动或键盘结束单字段PATCH，失败保留编辑/重试 | GET/PATCH /api/main/chat-defaults→S；Main HTTP共用resolver补缺失参数→resolve_generation_options→provider_generation_payload | 服务实例持久、按协议隔离，跨会话/刷新；后续手动send/canonical及legacy regen，在途冻结；后台不继承 | 非S.temperature；Anthropic 0–1，OpenAI/Gemini 0–2；切协议读取独立值/默认，不裁剪、不换路由；literal支持由上游判断 | [client](/Users/remix/Desktop/Penumbra/src/domain/runtime/chat-defaults.ts:1)；[owner](/Users/remix/Desktop/Penumbra/src/components/chat-workspace/chat-settings-controller.ts:1)；[存储与投影](/Users/remix/Desktop/AionsHome-main/aion-chat/chat_defaults.py:1)；[Main解析](/Users/remix/Desktop/AionsHome-main/aion-chat/main_configuration.py:123) |
+| C03 | Main默认上下文 / main_chat_defaults.context_limit；请求context_limit仍可覆盖 | 30，严格整数1–100 | 旧Chat上下文，LS aion_context_limit（不导入） | **已实现** | 同C02；单项恢复传null清持久覆盖，读取返回有效默认30 | GET/PATCH同C02→S；Main HTTP解析→初始历史SQL LIMIT；regen选择target前history并retain_complete_turns | 服务实例全局持久，跨会话/刷新；后续Main手动请求，在途冻结；非会话配置 | 非轮数/最终token或总消息上限；cache-window行为不变；前端不把保存值塞回send/regen | [滑条](/Users/remix/Desktop/Penumbra/src/components/chat/ChatRequestParametersMenu.tsx:1)；[Main HTTP opt-in](/Users/remix/Desktop/AionsHome-main/aion-chat/routes/chat.py:786)；[默认解析](/Users/remix/Desktop/AionsHome-main/aion-chat/chat_defaults.py:66) |
+| C04 | 请求thinking / thinking_effort | 不传/null=无request thinking | Chat强度，受thinking toggle控制 | **后端已有** | 适配器支持，无UI | send body/canonical regen query→resolver；Anthropic支持low/medium/high/xhigh/max，不读写新Main默认 | 单次请求 | 缺少当前literal模型的可靠Thinking能力声明，首版暂缓；非Anthropic仅medium兼容no-op；不写全局 | [aion-chat/generation_options.py:122](/Users/remix/Desktop/AionsHome-main/aion-chat/generation_options.py:122)；[aion-chat/static/chat.html:1469](/Users/remix/Desktop/AionsHome-main/aion-chat/static/chat.html:1469) |
+| C05 | 请求快速模式 / fast_mode | false | 未发现显式控件 | **后端已有** | 适配器支持，无UI | 显式请求→resolver→fast分支跳过RAG/即时摘要 | 单次请求 | 不是Provider能力开关 | [aion-chat/generation_options.py:20](/Users/remix/Desktop/AionsHome-main/aion-chat/generation_options.py:20)；[src/application/chat-send/chat-send-request.ts:24](/Users/remix/Desktop/Penumbra/src/application/chat-send/chat-send-request.ts:24) |
+| C06 | 请求密语模式 / whisper_mode | false | /chat?whisper=1 | **后端已有** | 适配器支持，无UI | 显式请求→resolver→prompt能力上下文 | 单次请求/独立模式 | 不是全局Persona；协议旧路径差异需保留 | [aion-chat/generation_options.py:20](/Users/remix/Desktop/AionsHome-main/aion-chat/generation_options.py:20)；[aion-chat/static/home.html:201](/Users/remix/Desktop/AionsHome-main/aion-chat/static/home.html:201)；[src/application/chat-send/chat-send-request.ts:25](/Users/remix/Desktop/Penumbra/src/application/chat-send/chat-send-request.ts:25) |
 | C07 | 新会话携带历史 / aion_carryover_count；carryover.source_conv_id/message_ids | 0 | Chat携带条数0–50 | **旧前端独有** | 无UI，request mapper未带carryover | LS计数→选消息ID→首次send；后端读source rows核验并持久注入 | 设备默认+首次请求→DB消息 | 旧carryover_messages非空被拒；不是全局历史窗口 | [aion-chat/static/chat.html:3903](/Users/remix/Desktop/AionsHome-main/aion-chat/static/chat.html:3903)；[aion-chat/routes/chat.py:697](/Users/remix/Desktop/AionsHome-main/aion-chat/routes/chat.py:697)；[aion-chat/routes/chat.py:676](/Users/remix/Desktop/AionsHome-main/aion-chat/routes/chat.py:676) |
 | C08 | 全局兼容温度 / temperature | 无持久值None；旧UI默认1 | Chat滑块双写aion_temperature | **旧前端独有** | 无全局编辑UI；Header温度是C02，互不继承 | PUT /api/settings/temperature→S；独立/optionless路径读取 | S全局跨业务 | safe GET不投影；旧setter先改RAM再保存，失败可能RAM/磁盘不一致；不能代替Main参数应用 | [aion-chat/routes/settings.py:249](/Users/remix/Desktop/AionsHome-main/aion-chat/routes/settings.py:249)；[aion-chat/main_configuration.py:176](/Users/remix/Desktop/AionsHome-main/aion-chat/main_configuration.py:176)；[aion-chat/settings_secret_projection.py:47](/Users/remix/Desktop/AionsHome-main/aion-chat/settings_secret_projection.py:47) |
 | C09 | 全局thinking开关 / enable_thinking | true | Chat扩展思考 | **旧前端独有** | 无 | GET /api/settings；PUT context_toggle→S；legacy optionless读取 | S全局 | 仅optionless/兼容路径；Main请求由C04决定，不可当当前Chat通用开关 | [aion-chat/routes/settings.py:268](/Users/remix/Desktop/AionsHome-main/aion-chat/routes/settings.py:268)；[aion-chat/main_configuration.py:176](/Users/remix/Desktop/AionsHome-main/aion-chat/main_configuration.py:176) |
@@ -277,7 +277,7 @@ Diary保护：当前最近提交包括2f875e6（entry editing and auto-feed cont
 | /app/activity | E11允许AI看手机状态；E12 Wi-Fi场景增改删 | E10旧活动AI联动只读；不是采集权限开关 |
 | /app/location | E14–E23总开关、三组静默时段、工作日、家庭坐标/范围、POI半径、Key | 心跳周期仅后端；类别映射/移动阈值仅内部 |
 | /app/calendar、/app/todo、/app/clock | E34记挂/TODO/Alarm/查岗四种任务创建/状态管理；clock标题切查岗 | 单条任务是业务数据；未有重复周期/全局暂停等设置 |
-| /app/chat | C01 Composer 模型持久化；C02/C03 Header临时参数→send/canonical regen；侧栏/抽屉管理 | C02/C03无服务器保存；C04 Thinking暂缓，C05/C06无UI；不建设第二份配置源 |
+| /app/chat | C01 Composer 模型持久化；C02/C03 Header持久默认设置→Main send/canonical regen；侧栏/抽屉管理 | C02/C03安全GET/单字段PATCH已接通；C04 Thinking暂缓，C05/C06无UI；复用S持久化 |
 
 证据：[Settings挂载](/Users/remix/Desktop/Penumbra/src/widgets/Desktop.tsx:551)、[Editorial挂载](/Users/remix/Desktop/Penumbra/src/components/desktop-v2/EditorialDesktop.tsx:118)、[Diary月历](/Users/remix/Desktop/Penumbra/src/components/diary/DiaryAutoFeed.tsx:8)、[Activity](/Users/remix/Desktop/Penumbra/src/components/activity/PhoneStatusPanel.tsx:45)、[查岗入口](/Users/remix/Desktop/Penumbra/src/components/schedule/ScheduleView.tsx:95)、[Chat请求](/Users/remix/Desktop/Penumbra/src/components/chat/ChatView.tsx:59)。
 
@@ -288,7 +288,7 @@ Diary保护：当前最近提交包括2f875e6（entry editing and auto-feed cont
 | Settings AI配置 | B01–B16连接与9种任务绑定；B23测试/B24发现 | Settings连接、模型与任务；复用v2权威 |
 | Settings基础与聊天 | C14–C17缓存，C20兼容format，D20 MCP链深，D07前缀 | Settings高级；cache-config有全库副作用 |
 | Settings Web/能力/高级 | D09–D12调试/Web/Brave，E42音乐登录，E44–E53语音/Embedding | 功能与集成；调试仅高级/管理员 |
-| Chat配置弹层 | C01模型已接通；C07携带、C08–C13全局兼容与C22–C27语音未迁移 | C02/C03已在Chat；全局兼容归Settings高级、语音归独立能力，勿整面板搬运 |
+| Chat配置弹层 | C01模型已接通；C07携带、C08–C13全局兼容与C22–C27语音未迁移 | C02/C03已在Chat持久保存；全局作用域不排除Chat入口，Thinking/浮现/携带/TTS待各自可靠契约后逐项接入 |
 | Worldbook | D01–D05人设、用户规则文本、名称 | 独立Persona/世界书页，Settings索引 |
 | MCP | D13–D18总开关/Server；D19仅后端 | 独立工具管理页/Settings深层页 |
 | Diary | E02模型和旧Diary聊天；E03内部缓存流程 | 保留Diary内；E01已经迁移，不能造第二份开关 |
@@ -347,7 +347,7 @@ v2 Connection是凭据权威；服务器JSON保存secret，GET仅投影metadata�
 
 证据：[Main写入](/Users/remix/Desktop/AionsHome-main/aion-chat/routes/chat.py:940)、[默认](/Users/remix/Desktop/AionsHome-main/aion-chat/main_configuration.py:94)、[参数](/Users/remix/Desktop/AionsHome-main/aion-chat/generation_options.py:136)、[optionless](/Users/remix/Desktop/AionsHome-main/aion-chat/main_configuration.py:176)、[Diary](/Users/remix/Desktop/AionsHome-main/aion-chat/routes/diary.py:288)、[Theater](/Users/remix/Desktop/AionsHome-main/aion-chat/routes/theater.py:321)、[独立默认](/Users/remix/Desktop/AionsHome-main/aion-chat/independent_llm.py:19)、[Game指纹](/Users/remix/Desktop/AionsHome-main/aion-chat/game/binding.py:63)。
 
-**[已修正] PR1已对齐Main模型与readiness。** Mapper保留main_selection；configuration和readiness均按conv_id读取，Composer仅写main_selection并readback，目录membership不阻止literal。PR6.5-B只在当前已确认身份内暂存C02/C03；身份改变清空，默认字段省略，不写全局配置。只读模型目录仍不等于连接远端模型全集。
+**[已修正] PR1已对齐Main模型与readiness。** Mapper保留main_selection；configuration和readiness均按conv_id读取，Composer仅写main_selection并readback，目录membership不阻止literal。PR6.5 follow-up持久保存C02/C03；切会话保留，切协议读取该协议的温度，不复制旧草稿。普通send/regen不填前端默认，由后端解析。只读模型目录仍不等于连接远端模型全集。
 证据：[会话mapper](/Users/remix/Desktop/Penumbra/src/domain/conversation/conversation-mappers.ts:50)、[setup service](/Users/remix/Desktop/Penumbra/src/application/chat-setup/chat-setup-service.ts:25)、[readiness client](/Users/remix/Desktop/Penumbra/src/domain/runtime/runtime-client.ts:32)、[reason白名单](/Users/remix/Desktop/Penumbra/src/domain/runtime/runtime-mappers.ts:15)、[后端现契约](/Users/remix/Desktop/AionsHome-main/aion-chat/routes/chat_readiness.py:24)。
 
 ### 5.3 切换Chat模型是否影响别的功能
@@ -463,7 +463,7 @@ v2 Connection是凭据权威；服务器JSON保存secret，GET仅投影metadata�
 | 统一Settings：模型与任务 | B08–B16、Main新会话默认、各任务生命周期与覆盖来源 | Chat切当前会话；“设为新会话默认”为独立明确操作 |
 | 独立App/深层页 | Persona/Worldbook、MCP、Camera、Theater、Reading/Game | 有复杂业务/Runtime；Settings索引/摘要，不塞进总长表单 |
 | 保留业务App内 | Diary自动投喂/元数据、Memory置顶/锚点、Quick Note时段、Activity两个不同AI开关/Wi-Fi、Location静默/家、日程任务；心跳周期先补有效消费者契约 | 就近解释影响；Settings可提供索引，不造第二份权威 |
-| Chat轻量入口 | Composer本会话模型；Header仅temperature/context临时覆盖 | 统一Workspace owner；send/regen共用；无server保存；Thinking能力未明确，fast/语音/携带不在首版 |
+| Chat轻量入口 | Composer本会话模型；Header持久temperature/context | 同一领域client/controller；S保存，Main解析时捕获；全局字段也可就近操作。Thinking/浮现/语音/携带待下述契约 |
 | 功能与系统 | Web全局许可、语音/Embedding/Music集成；cache高级配置按风险/权限收纳 | 当前Web只有全局许可；每会话/单次tools授权是新能力，不能伪装已存在 |
 | 管理员/部署 | env、路径/卷、鉴权/Push、TZ、retention/算法、cutover/diagnostics、backup | 不进入普通UI；可提供无秘密健康摘要 |
 
@@ -474,9 +474,9 @@ v2 Connection是凭据权威；服务器JSON保存secret，GET仅投影metadata�
 | 优先级 | [现状/问题] 与影响 | [建议] |
 |---|---|---|
 | P0 | Worldbook PUT仅重建ai_persona/user_persona/ai_about/ai_name/user_name五字段，而Diary在同一W写diary_auto_feed；保存世界书会丢键并按false读取，隐式关闭无对应广播 | 先修字段保留/写入契约和回归覆盖；存储拆分可后续；本轮不修 |
-| 已解决（PR1） | Main selection/readiness按conv_id读取，Composer PUT+readback闭环；旧model保留兼容 | PR6.5-B复用已确认身份，不引入全局generation保存；详见§5.2 |
+| 已解决（PR1） | Main selection/readiness按conv_id读取，Composer PUT+readback闭环；旧model保留兼容 | PR6.5 follow-up新增独立Main默认参数，不写会话模型；详见§5.2 |
 | P1 | 最近Main会话被主动任务/速记复用；切模型更新updated_at，也可能改变“最近”目标 | 显式标注跟随最近Main；是否独立绑定是行为设计，不在UI迁移中偷改 |
-| P1 | Main请求默认与全局兼容温度/thinking不是统一继承；旧UI温度/float双写LS/S且safe GET未投影二者 | 定义effective值/来源；去前端双权威，保留兼容 |
+| P1 | Main持久默认与旧全局兼容温度/thinking分离；旧UI温度/float双写LS/S且旧safe GET未投影二者 | C02/C03已有effective/source与单字段CAS；C08/C11旧接口缺口保留，不混写 |
 | P1 | 壁纸/贴纸IDB可能唯一副本；换origin/清存储/设备迁移丢图 | Appearance+资产引用+显式无损导入，成功前保留Blob |
 | P1 | 上传无引用保护/归属/回收，毫秒命名及声明MIME验证有限；部署卷未证实 | 外观资源完整链路交付，落实权限、持久目录、备份/恢复 |
 | P1 | Embedding SF字段与Connection兼容映射重叠；TTS共用Key；旧active配置仍影响部分catalog独立路径 | 保持Connection单一权威，展示共享影响，不另建raw provider存储 |
@@ -498,7 +498,7 @@ v2 Connection是凭据权威；服务器JSON保存secret，GET仅投影metadata�
 
 | 顺序/边界 | 合并交付内容 | 依赖/验证 |
 |---|---|---|
-| 1. 配置权威与读取契约 | Worldbook字段保留仍待处理；Main selection/readiness已对齐，Chat两项临时覆盖已接入，其他scope/effective来源按域推进 | 保护Diary PR1.2.1；不改变模型调度、prompt、WS既有契约 |
+| 1. 配置权威与读取契约 | Worldbook字段保留仍待处理；Main selection/readiness已对齐，Chat两项持久默认已接入，其他scope/effective来源按域推进 | 保护Diary PR1.2.1；不改变模型调度、prompt、WS既有契约 |
 | 2. 连接与任务闭环 | Penumbra连接CRUD、secret操作、测试/发现、9种任务分配；共享选择器与Chat本会话切换 | 复用v2；disabled/missing/stale_ref/引用保护；会话/任务生命周期，Runtime冻结 |
 | 3. 外观资源闭环 | 资产、Appearance revision、上传/替换/删除/恢复、本地Blob导入、多设备消费 | 持久目录/权限/引用/备份恢复；避免“只上传未绑定”或“只改URL” |
 | 4. 业务与集成缺口 | Persona/MCP、语音/Embedding/Music；速记时段编辑、活动联动；Location心跳如确需先实现有效消费者再开放 | 依成熟领域合并；保留Diary/Location等现有就近入口，不静默改共享连接或日界 |
@@ -525,12 +525,14 @@ Main选择对齐已完成；1中其他缺口仍独立待处理，再推进2/3各
 
 完成核验：总表ID唯一、状态分类与计数一致；本地源码链接路径/行号有效；Markdown表格列数与文档空白检查通过。Penumbra仅新增docs/settings-inventory.md，tracked源码无diff；AionHome工作树无diff。未运行业务测试（无业务代码变更）。
 
-### PR6.5-B增量边界
+### PR6.5持久设置增量边界（取代PR6.5-B临时覆盖）
 
-C01已完成会话模型的安全读取、显式保存与运行时选择；C02/C03的前端入口和运行时请求消费已接通，读取仅来自Workspace本页临时快照，应用不调用配置API，**服务器保存能力不存在**。应用/恢复默认采用同步执行锁和作用域对象校验；旧弹框不能跨A→B→A复用。上游literal是否支持温度仍需真实模型验证。Thinking、连接管理及全局Feature默认编辑仍未接入。旧HEART/DRIFT按gate生效，未退役；TTS/本机Voice缺口只登记。当前状态与源码依据见[实施记录](./chat-pr6-5-config-implementation.md)及[审计](./chat-pr6-5-config-audit.md)。
+C01模型选择的读取/DB保存/执行身份不变。C02/C03现由现有S中的`main_chat_defaults`提供服务端事实来源；第一版Workspace临时覆盖已被取代，不读取旧LS或旧`/api/settings/temperature`。新设置接口有revision CAS，候选先原子落盘再发布RAM，失败不更新RAM；前端保留待重试编辑，旧响应和旧身份草稿不能回写新状态。Thinking、连接管理及全局Feature默认编辑仍未接入；HEART/DRIFT未退役，TTS/本机Voice缺口保持登记。详见[实施记录](./chat-pr6-5-config-implementation.md)。
 
-| 字段 | 前端入口 | 读取 | 保存/应用 | 运行时消费 | 生效范围 | 当前状态 |
+| 字段 | 前端入口 | 读取 | 保存 | 运行时消费 | 生效范围 | 当前状态 |
 |---|---|---|---|---|---|---|
-| C01 Connection/Protocol/Model | Composer快选/手动调整 | Main configuration/readiness按conv_id，安全DTO | PUT main_selection并readback，DB持久化 | resolve_main_request→frozen binding | 已有会话；可能影响跟随Main的后续后台任务 | 读取、保存与执行选择已接通；不是全局默认编辑 |
-| C02 temperature | Header快捷配置 | Workspace已应用快照；未覆盖时不从服务器读值 | 显式应用到内存；无服务器/LS保存 | send body / canonical regen query→resolver→provider payload | 当前确认会话+模型的后续手动请求；在途冻结 | 前端与请求消费已接通；上游literal支持性未验证 |
-| C03 context_limit | 同C02 | 同C02，默认数字仅契约提示 | 同C02；清空/恢复默认删除键 | 初始历史SQL LIMIT；regen目标前history选择 | 同C02；非最终消息/token总量上限 | 前端与消费者已接通；无持久设置 |
+| C01 Connection/Protocol/Model | Composer快选/手动调整 | Main configuration/readiness按conv_id | PUT main_selection并readback，DB | resolve_main_request→frozen binding | 当前会话；原后台跟随语义不变 | 读/存/执行已接通，非全局模型默认编辑 |
+| C02 temperature | 两端Header三点Popover滑条 | GET chat-defaults按已确认选择返回effective/source/default/min/max | PATCH单字段、expected_revision；S.main_chat_defaults.temperature_by_protocol，null清当前协议覆盖 | 显式请求值优先，否则Main解析保存值，再fallback 1.0→provider payload；temperature: null保留原1.0语义 | 服务实例按协议持久；跨会话刷新；只Main HTTP调用及其父请求后续链，在途冻结 | 入口/读取/保存/合成消费已验证；任意literal上游支持未验证 |
+| C03 context_limit | 同C02 | 同C02，服务端返回30或保存值 | PATCH单字段、CAS；S.main_chat_defaults.context_limit，null清覆盖 | 显式请求优先→Main持久默认→30；初始历史SQL LIMIT | 服务实例全局持久；后续Main请求，非最终消息/token上限 | 入口/读取/保存/合成消费已验证 |
+
+后续最小范围（本轮不实现，无占位开关）：C04需后端明确模型能力unknown/unsupported/supported、开关关闭与effort含义后再提供可靠GET/存储/解析；C11补safe GET投影与候选先落盘的单字段更新，并标明Chat/Diary共享浮现策略；C07先定义携带数量的服务器偏好，再接新会话首次send的source_conv_id/message_ids受限引用，保留DB归属/role/首次写入校验；C22/C23先定义播放/音色的持久偏好和当前客户端应用边界，再处理播放权限与tts_state握手。上述字段均可在Chat就近操作，不因全局作用域排除；Provider/Key等完整管理继续留Settings/独立能力页。

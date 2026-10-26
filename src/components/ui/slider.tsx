@@ -45,7 +45,7 @@ function Slider({
         <SliderPrimitive.Thumb
           data-slot="slider-thumb"
           getAriaLabel={() => ariaLabel}
-          getAriaValueText={(_formattedValue, value) => value.toFixed(1)}
+          getAriaValueText={(_formattedValue, value) => String(value)}
           className="size-4 rounded-full border-2 border-primary/80 bg-background shadow-sm outline-none transition-[box-shadow,transform] hover:scale-110 active:scale-105 [&:has(input:focus-visible)]:ring-2 [&:has(input:focus-visible)]:ring-ring/25"
         />
       </SliderPrimitive.Control>

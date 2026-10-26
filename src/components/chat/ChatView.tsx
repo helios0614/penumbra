@@ -49,7 +49,7 @@ import { MainModelSelection } from "./MainModelSelection";
 import type { MainSelection } from "@/domain/runtime";
 import { ConversationDialog, type ConversationAction } from "./ConversationActions";
 import { ChatRequestParametersMenu } from "./ChatRequestParametersMenu";
-import type { ChatRequestParameterDraft, ChatRequestParameterScope, ChatRequestParameterResult } from "@/components/chat-workspace/chat-request-parameters";
+import { useChatSettings, type ChatSettingsUi } from "@/components/chat-workspace/useChatSettings";
 import type { SenderDraft, SenderHandle } from "./composer-draft";
 import { useToast } from "@/components/ui/toast";
 import { useAttachmentDrafts } from "./useAttachmentDrafts";
@@ -65,7 +65,8 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
   const workspace = useChatWorkspace({}, () => executionGuard.current());
   const userName = useChatUserName(workspace.state.status === "ready");
   const send = useChatSend(workspace.reloadSelectedConversationHistory);
-  executionGuard.current = () => !send.isExecutionActive();
+  const chatSettings = useChatSettings(workspace, send);
+  executionGuard.current = () => !send.isExecutionActive() && !chatSettings.controller.isSaving();
   const realtime = useChatRealtime(workspace.state, send.state, {
     reconcileEvent: async event => {
       const current = send.getState();
@@ -97,15 +98,14 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       current.status !== "ready" ||
       current.workspace.selectedConversation === null ||
       (expectedOwner !== undefined && current.workspace.selectedConversation.id !== expectedOwner) ||
-      !getChatSenderAvailability(current, send.getState()).enabled
+      (!getChatSenderAvailability(current, send.getState()).enabled || chatSettings.controller.isSaving())
     ) {
       return Promise.resolve(false);
     }
-    const generation = { ...current.requestParameters?.overrides, ...(attachments.length ? { attachments } : {}) };
     return send.send({
       conversationId: current.workspace.selectedConversation.id,
       content,
-      ...(Object.keys(generation).length ? { generation } : {}),
+      ...(attachments.length ? { generation: { attachments } } : {}),
     });
   };
 
@@ -119,7 +119,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       send.getState(),
     );
     if (
-      !availability.enabled ||
+      !availability.enabled || chatSettings.controller.isSaving() ||
       availability.target === null ||
       availability.target.id !== messageId
     ) {
@@ -129,7 +129,6 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       conversationId: availability.target.conversationId,
       targetMessageId: availability.target.id,
       targetCreatedAt: availability.target.createdAt,
-      ...(Object.keys(current.requestParameters?.overrides ?? {}).length ? { generation: { ...current.requestParameters?.overrides } } : {}),
     });
   };
 
@@ -154,7 +153,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       onRetryConversationSwitch={workspace.retryConversationSwitch}
       onBack={onBack ? () => {
         const current = workspace.getState();
-        if (!send.isExecutionActive() && !(current.status === "ready" && current.conversationMutation)) onBack();
+        if (executionGuard.current() && !(current.status === "ready" && current.conversationMutation)) onBack();
       } : undefined}
       sendState={send.state}
       onSend={sendMessage}
@@ -162,7 +161,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       onRetryFinalization={recoverExecution}
       onReleaseAfterReview={send.releaseAfterReview}
       onSaveMainSelection={workspace.saveMainSelection}
-      onApplyRequestParameters={workspace.applyRequestParameters}
+      chatSettings={chatSettings}
       onRefreshState={refreshState}
       realtimeState={realtime}
       onCreateConversation={async () => {
@@ -199,7 +198,7 @@ export interface ChatWorkspaceViewProps {
   readonly onRetryFinalization?: () => void | Promise<void>;
   readonly onReleaseAfterReview?: () => void;
   readonly onSaveMainSelection?: (conversationId: string, selection: MainSelection) => Promise<void>;
-  readonly onApplyRequestParameters?: (scope: ChatRequestParameterScope, draft: ChatRequestParameterDraft) => ChatRequestParameterResult;
+  readonly chatSettings?: ChatSettingsUi;
   readonly onRefreshState?: () => Promise<void>;
   readonly realtimeState?: ChatRealtimeState;
   readonly onBack?: () => void;
@@ -224,7 +223,7 @@ export function ChatWorkspaceView({
   onRetryFinalization,
   onReleaseAfterReview,
   onSaveMainSelection,
-  onApplyRequestParameters,
+  chatSettings,
   onRefreshState,
   realtimeState = { kind: "idle" },
   onBack,
@@ -298,7 +297,7 @@ export function ChatWorkspaceView({
   const executionNoticeVisible = executionNoticeError(sendState) !== null;
   const regenerate = getChatRegenerateAvailability(state, sendState);
   const executionActive = isChatExecutionActive(sendState);
-  const navigationLocked = executionActive || !!state.conversationMutation;
+  const navigationLocked = executionActive || !!state.conversationMutation || !!chatSettings?.state.saving;
   const managementLocked = navigationLocked || pendingConversationId !== null || !!state.configurationPending || modelSelectionPending;
   const canManage = onRenameConversation !== undefined && onDeleteConversation !== undefined;
   const owner=workspace.selectedConversationId;
@@ -449,7 +448,7 @@ export function ChatWorkspaceView({
 
             <HeaderCopy title={selectedConversation?.title ?? "Penumbra"} />
             <Button ref={searchTrigger} variant="ghost" size="icon-lg" className={CHAT_HEADER_ACTION_CLASS} aria-label="搜索聊天历史" title="搜索聊天历史" disabled={!selectedConversation||pendingConversationId!==null} onClick={search.open?closeSearch:showSearch}><Search className="size-4.5" aria-hidden="true"/></Button>
-            <ChatRequestParametersMenu parameters={state.requestParameters} disabled={managementLocked} onApply={onApplyRequestParameters} />
+            <ChatRequestParametersMenu settings={chatSettings} disabled={executionActive || !!state.conversationMutation || pendingConversationId !== null || !!state.configurationPending || modelSelectionPending} />
             {pendingConversationId && (
               <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" role="status">
                 <LoaderCircle
@@ -500,7 +499,7 @@ export function ChatWorkspaceView({
           onDraftChange={draftOwner ? (draft) => { drafts.current.set(draftOwner, draft); } : undefined}
           apiRef={senderRef}
           disabled={!draftEditable}
-          submitDisabled={!sender.enabled || modelSelectionPending}
+          submitDisabled={!sender.enabled || modelSelectionPending || !!chatSettings?.state.saving}
           placeholder="输入消息…"
           statusMessage={executionActive || executionNoticeVisible ? undefined : modelSelectionPending ? "正在切换模型…" : sender.statusMessage ?? undefined}
           feedback={<><ChatExecutionNotice state={sendState} onRetryFinalization={onRetryFinalization} onReleaseAfterReview={onReleaseAfterReview} />

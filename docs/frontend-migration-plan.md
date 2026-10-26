@@ -1,6 +1,6 @@
 # Penumbra 前端迁移路线图
 
-> 最后更新：2026-10-26（Chat PR6.5-B相关章节）
+> 最后更新：2026-10-26（Chat PR6.5持久设置follow-up相关章节）
 
 导航：[架构原则](./penumbra-architecture.md) · [迁移路线图](./frontend-migration-plan.md) · [前端契约](./frontend-contracts.md)
 
@@ -32,7 +32,7 @@ Settings
 - Configuration Ownership & Flow Audit：已完成
 - C2A Model & Generation Contract：已完成（AionHome C2A1 + C2A2）
 - C2B / Main Conversation：模型显式选择已接通；无会话generation持久配置
-- Chat PR6.5-B：Header上下文消息数/Temperature临时请求覆盖已接入，等待人工验收
+- Chat PR6.5 follow-up：Header上下文消息数/Temperature服务端持久默认与轻量Popover已接入，等待人工验收
 - C2C Provider Admin Safe DTO：延后
 - C2D MCP Configuration Domain：延后
 - C2E Other Capabilities：延后
@@ -147,7 +147,7 @@ Memory 当前边界：列表永远显式请求分页 `GET /api/memories`；searc
 - Legacy `custom_*`、Gemini fallback 等只能隐藏或延后，退出条件由后端确认。
 - C1 的逐字段审计见：[Configuration Ownership & Flow Audit](./configuration-ownership-audit.md)。
 - C2A2 后 generation request 只接受 canonical allowlist，send/regenerate 的显式值由当前 execution 使用，缺失值由后端 defaults 决定；Penumbra 不从旧 Settings 或 localStorage 补齐请求。
-- Conversation持久化title与Main选择，旧model兼容保留；没有generation config。PR6.5-B两项仅在Workspace本页暂存，显式应用后进入send/regen，离开/刷新不恢复，切换已确认身份清空，不读写LS/全局Settings。
+- Conversation持久化title与Main选择，旧model兼容保留；无会话generation config。PR6.5 follow-up在既有S中保存独立Main默认：context全局，temperature按协议；Header真实GET/PATCH，不导入旧LS。
 - MCP server definition、secret、enablement、runtime status 和 tool cache 必须拆域后再接入 Penumbra 管理 UI。
 - Settings 页面只组合各领域安全 DTO，不成为配置事实来源。
 
@@ -155,8 +155,8 @@ Memory 当前边界：列表永远显式请求分页 `GET /api/memories`；searc
 
 1. 已完成安全的 session/models/readiness read contract、Penumbra read layer 与 C1 所有权审计。
 2. C2A 已用 contract tests 固定 model registry、unknown model、send allowlist 与 generation 参数语义。
-3. Main配置已对齐：会话main_selection为执行身份，generation持久配置不存在；PR6.5-B不引入新保存作用域。
-4. PR6.5-B默认保持最小envelope；仅显式应用context/temperature才传入send及canonical regen。Thinking缺少模型级可靠能力声明，fast/whisper等无UI字段继续省略。
+3. Main身份已对齐；PR6.5 follow-up新增安全GET/单字段CAS PATCH与Main默认解析，复用既有Settings持久化，不改会话模型。
+4. PR6.5 follow-up保持最小send/regen envelope，由Main HTTP边界补持久默认，显式请求仍优先。后台不继承。Thinking缺少模型级可靠能力声明，fast/whisper等无UI字段继续省略。
 5. C2C Provider Admin、C2D MCP、C2E 其他 capabilities 分别使用 secret-safe DTO 小步迁移。
 6. C2F 在所有调用方有替代后逐字段退役 legacy Settings，不一次性删除。
 
@@ -203,12 +203,12 @@ Memory 当前边界：列表永远显式请求分页 `GET /api/memories`；searc
 
 | 领域 | 旧前端来源 | Penumbra 当前状态 | 迁移方式 | 优先级 |
 |---|---|---|---|---|
-| Chat | `aion-chat/static/chat.html`、`aion-chat/routes/chat.py` | 真实 Workspace、selected-model readiness、send execution、SSE overlay、HTTP final reconciliation、WebSocket coordination 与 S6E1 canonical target regenerate 已接入；PR6.5-B Header上下文/温度临时覆盖已接send/regen；其他后续按专题推进 | 直接复用现有 Penumbra UI；domain client 重写；adapter/mapper 转换 | P0 |
+| Chat | `aion-chat/static/chat.html`、`aion-chat/routes/chat.py` | 真实 Workspace、selected-model readiness、send execution、SSE overlay、HTTP final reconciliation、WebSocket coordination 与 S6E1 canonical target regenerate 已接入；PR6.5 follow-up Header上下文/温度持久默认已由Main send/regen消费；其他后续按专题推进 | 直接复用现有 Penumbra UI；domain client 重写；adapter/mapper 转换 | P0 |
 | Conversation | `aion-chat/static/chat.html`、conversation API | 真实list、atomic selection和create/rename/delete已接入；管理统一桌面侧栏/手机抽屉，Header只保留搜索→快捷参数 | domain client 重写；adapter/mapper 转换 | P0 |
 | Message | `aion-chat/static/chat.html`、message API/DTO contract | Message Domain、initial History、presentation mapping 与只读 BubbleList 接入已完成；load older 与 capability rendering 延后 | 直接复用现有 Penumbra UI；adapter/mapper 转换 | P0 |
 | WebSocket | `aion-chat/static/common.js`、`aion-chat/static/chat.html`、`aion-chat/ws.py` | S4E1 transport/event projection、S4E2 Realtime Reconciliation 与 S6D Chat coordinator 已完成 | transport 负责单次连接和分发；reconciliation application 负责 HTTP authority；coordinator 负责 lifecycle、SSE correlation、dirty 合并与 reconnect | P0 |
 | Upload | `aion-chat/static/chat.html`、`aion-chat/routes/files.py` | 有附件按钮和 upload URL resolution，未上传 | domain client 重写；adapter/mapper 转换；延后 | P1 |
-| Settings/provider config | `aion-chat/static/settings.html`、`aion-chat/routes/settings.py` | 本地外观与 Session/models/readiness 安全概览已接入；Main模型选择及两项临时generation覆盖已接入；连接管理/全局默认绑定仍未接入 | Settings 只组合各领域安全 DTO；S6C 不读取旧 generation Settings；C2C+ 高级管理延后 | P1 |
+| Settings/provider config | `aion-chat/static/settings.html`、`aion-chat/routes/settings.py` | 本地外观与 Session/models/readiness 安全概览已接入；Main模型选择及两项持久Main generation默认已接入；连接管理/全局默认绑定仍未接入 | Settings 只组合各领域安全 DTO；S6C 不读取旧 generation Settings；C2C+ 高级管理延后 | P1 |
 | Schedule/Todo | `aion-chat/static/schedule.html`、schedule routes/runtime | Calendar UI 可复用；Todo 为静态数据，均未接后端 | 直接复用现有 Penumbra UI；domain client 重写；adapter/mapper 转换 | P1 |
 | Memory | `aion-chat/static/memory.html`、`aion-chat/routes/memories.py`、database schema | 已接真实分页 list、server search/filter、Create / Pin、route/navigation、read states 与写入后 GET 恢复；其余管理能力与 realtime 未接入 | domain client 重写；adapter/mapper 转换；UI 已重做 | P1 |
 | Activity | `aion-chat/static/activity-logs.html`、activity routes/runtime | 未接入 | domain client 重写；adapter/mapper 转换；UI 重做 | P2 |
@@ -254,6 +254,6 @@ Memory 当前边界：列表永远显式请求分页 `GET /api/memories`；searc
 - 单元测试或契约测试覆盖关键转换。
 - 不改变后端既有契约。
 
-### Chat PR6.5-B设置归属
+### Chat PR6.5持久设置归属
 
-Header只编辑context_limit/temperature，读取Workspace当前身份下的临时快照、显式应用、无服务器保存；字段消费与协议边界见[统一清单C01–C03](./settings-inventory.md)。全局温度/Thinking只在部分兼容/后台路径生效，不能拿全局PUT替代Main参数。HEART/DRIFT仍受真实gate控制；语音TTS后台状态同步和本机Voice链缺口保持登记，不在本轮修复。详见[实施记录](./chat-pr6-5-config-implementation.md)。
+Header三点Popover以滑条自动保存context_limit/temperature；GET返回有效值和来源，单字段PATCH写既有S中的main_chat_defaults。context全局，温度按已确认协议保存；Main请求缺失字段才继承，后台不继承，字段与协议边界见[统一清单C01–C03](./settings-inventory.md)。旧全局温度/Thinking仍只在部分兼容/后台路径生效，不混用旧全局PUT。HEART/DRIFT仍受真实gate控制；语音TTS后台状态同步和本机Voice链缺口保持登记，不在本轮修复。详见[实施记录](./chat-pr6-5-config-implementation.md)。

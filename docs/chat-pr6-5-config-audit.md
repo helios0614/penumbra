@@ -1,6 +1,6 @@
 # Chat PR6.5-A — 聊天快捷配置与 Settings 归属审计
 
-> 实施指引：本文件保留PR6.5-A审计快照；已确认的临时作用域与实施结果见[PR6.5-B记录](./chat-pr6-5-config-implementation.md)。长期覆盖状态只维护[settings-inventory.md](./settings-inventory.md)。
+> 现行状态指引：本文保留PR6.5-A历史审计（包括当时建议的临时作用域）。PR6.5 follow-up已用真实服务端Main持久默认取代第一版临时覆盖，并改为两端Popover滑条；配置契约、协议隔离和后续候选边界见[实施记录](./chat-pr6-5-config-implementation.md)。全局作用域不再作为排除Chat入口的理由。长期覆盖状态仅维护[settings-inventory.md](./settings-inventory.md)。
 
 审计日期：2026-10-26（Asia/Shanghai）。Penumbra `31d1087`；AionHome `e7134ae`。两仓库开始时工作树均干净。本轮只新增本文档，不修改业务代码、测试、配置、运行数据或其他文档，不 commit、push、部署。
 

@@ -99,6 +99,6 @@
 
 尚未验证：iOS Safari 原生键盘和自动缩放、地址栏伸缩、visualViewport 动画/pan、输入法候选栏与第三方键盘、Android Chrome/WebView 的 resize/pan、真机触屏及原生选区。桌面 Chromium 的窄视口和合成 viewport 测试不能代替这些真机行为；没有进行真实模型或后端联调。
 
-## PR6.5-B分工更新（2026-10-26）
+## PR6.5持久设置分工更新（2026-10-26）
 
-Composer继续是当前会话Connection/Protocol/Model的唯一编辑入口，沿用串行自动保存、PUT+readback及协议保留。Header新增的快捷参数只编辑上下文消息数/Temperature，由Workspace临时owner持有，不触发模型保存、Registry或全局Settings写入；已确认模型身份变化使参数草稿及覆盖失效。两端复用同一字段/校验，桌面Popover、手机Dialog，原Composer位置与自动保存行为不改。详情见[实施记录](./chat-pr6-5-config-implementation.md)与[统一设置清单](./settings-inventory.md)。
+Composer继续是当前会话Connection/Protocol/Model唯一编辑入口，沿用串行自动保存、PUT+readback及协议保留。Header三点“聊天设置”在桌面/手机均用轻量Popover，滑条分别自动保存上下文消息数/Temperature到服务端Main默认；不触发模型或Registry写入。context全局跨会话，temperature按已确认协议分别保存，切协议读取该协议值/默认，不裁剪。第一版PR6.5-B临时覆盖已被取代；前端仅保留编辑与服务器readback状态。保存中锁模型切换，身份改变关闭旧面板并拒绝旧草稿。详情见[实施记录](./chat-pr6-5-config-implementation.md)与[统一设置清单](./settings-inventory.md)。

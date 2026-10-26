@@ -1,6 +1,6 @@
 # Penumbra 前端契约摘要
 
-> 最后更新：2026-10-26（Main配置与PR6.5-B请求边界）
+> 最后更新：2026-10-26（Main配置与PR6.5持久设置边界）
 
 导航：[架构原则](./penumbra-architecture.md) · [迁移路线图](./frontend-migration-plan.md) · [前端契约](./frontend-contracts.md)
 
@@ -174,7 +174,7 @@ type RealtimeDirtyState = {
 
 ### Chat Canonical Target Regenerate（S6E1）
 
-S6E1 只使用 `POST /api/conversations/{conversationId}/messages/{messageId}/regenerate`。请求无 body；query 只来自显式 UI generation state 的 `temperature/context_limit/thinking_effort/fast_mode/whisper_mode`，不存在 UI state 时全部省略。模型只来自服务端 `Conversation.model`。production client 不调用 legacy `/api/conversations/{conversationId}/regenerate`，也不在 regenerate 前后 DELETE target。
+S6E1 只使用 `POST /api/conversations/{conversationId}/messages/{messageId}/regenerate`。请求无 body；query 只来自显式 UI generation state 的 `temperature/context_limit/thinking_effort/fast_mode/whisper_mode`，不存在 UI state 时全部省略。模型只来自服务端持久化Main selection。production client 不调用 legacy `/api/conversations/{conversationId}/regenerate`，也不在 regenerate 前后 DELETE target。
 
 - UI guard 只选择当前 selected conversation 中由 HTTP history 读取的、`roleKind=assistant`、`isCarryover=false` 的 latest tail assistant。Workspace/readiness 必须 available + ready，setup/readiness model 必须与 selected conversation 一致，且不能处于 switch 或任一 active execution。user/system/unknown/hidden-runtime、carryover、wrong-conversation、optimistic user 与 streaming assistant 都不是 target；后端仍是最终 eligibility authority。
 - send 与 regenerate 共用同一 active execution slot。send active 时 regenerate disabled；regenerate streaming/finalizing/finalization-uncertain 时 Sender、regenerate 与 conversation switching disabled。double click 不能打开第二个 execution，WS/reconnect 也不能重发 provider 请求。
@@ -338,20 +338,23 @@ type SendMessageRequestDto = {
 };
 ```
 
-后端 canonical defaults 为 `temperature=1.0`、`context_limit=30`、`thinking_effort=null`、`fast_mode=false`、`whisper_mode=false`。client 不为服务端行为复制这些默认值，只保留调用者显式提供的 `false/0/null`；attachment item 必须是 string。send 不接受 model override，模型只来自持久化Main selection；carryover/cache/provider/raw history 不在 C2A2 envelope 中。
+未保存Main默认覆盖时，后端 canonical defaults 为 `temperature=1.0`、`context_limit=30`、`thinking_effort=null`、`fast_mode=false`、`whisper_mode=false`。client 不为服务端行为复制这些默认值，只保留调用者显式提供的 `false/0/null`；attachment item 必须是 string。send 不接受 model override，模型只来自持久化Main selection；carryover/cache/provider/raw history 不在 C2A2 envelope 中。
 
 regenerate 使用 `POST /api/conversations/{encodedConversationId}/messages/{encodedMessageId}/regenerate`，没有 request body。可选 query 为 `context_limit`、`whisper_mode`、`fast_mode`、`temperature`、`thinking_effort`；未提供字段省略，显式 `false`、`0` 和空字符串保留，显式 null 省略。client 必须接收并 URL-encode target assistant ID，但不接收 model/provider override，不删除旧 assistant，也不编排 legacy delete-then-regenerate。
 
-### PR6.5-B 临时参数边界
+### PR6.5 持久聊天设置（取代PR6.5-B临时覆盖）
 
-- Header只编辑`contextLimit`/`temperature`。Workspace controller持有唯一已应用快照，初始空；输入字符串不直接成为请求，必须通过整数/finite/协议范围校验并显式应用。0保留，空值删除覆盖键；默认不传字段，不传null或写死默认数字。
-- 上下文为1–100严格整数；温度Anthropic 0–1、OpenAI/Gemini明确协议0–2。历史Profile未提供协议时不推断温度范围。30/1.0只作后端契约默认说明，非读取的已保存配置；实际literal支持性由上游判断。
-- 临时快照仅属于当前已确认conversation与Connection/Protocol/Model，切换后失效；scope对象身份阻止A→B→A旧表单回写。无配置GET/PUT、DB/Settings JSON/LS保存，不承诺刷新或离开恢复。
-- production ChatView在调用时从最新Workspace捕获同一已应用快照，分别交给send与canonical regenerate的既有mapper；合并附件、保留client_msg_id/正文。regenerate仍空body/query传参；请求发起后的UI修改不会改变已捕获值。
-- 同步owner guard检查执行、结果未知、模型保存、会话mutation/切换；校验失败不覆盖已应用值，取消只丢编辑。恢复默认立即清空覆盖并关闭面板。422/上游/网络错误沿原流程与SubmissionRecovery暂存保留，参数应用不自动清错误、重发或换路由。
-- 全局temperature/enable_thinking/thinking_effort属于部分optionless/后台兼容路径，Main不自动继承。Thinking缺少模型级能力声明，首版不开放；HEART/DRIFT与TTS/Voice不在本轮。
+- Header三点“聊天设置”，桌面/手机均为同一轻量Popover、两项滑条。打开真实GET，显示有效数值和默认来源；前端不将空快照/旧LS当服务器设置，不显示旧“应用/取消”按钮。
+- `GET /api/main/chat-defaults?conv_id=…`：authenticated/no-store，返回`revision`、实际`protocol`、`context_limit`及`temperature`（协议未知为null），每项有`value/source/default_value/min/max`；另回显安全`selection/conversation_id`供身份核对。缺失覆盖时有效值30/1.0。
+- `PATCH /api/main/chat-defaults`严格单字段：`{field: context_limit | temperature, value: number | null, protocol: string | null, expected_revision: number}`。null仅删除该字段覆盖。context严格整数1–100；temperature按服务器范围：Anthropic 0–1，OpenAI/Gemini 0–2。0保留，不以模型名猜能力或裁剪值。
+- 复用S与既有原子保存：`main_chat_defaults = {revision, context_limit?, temperature_by_protocol:{protocol: value}}`。context服务实例全局；temperature同实例按协议分别持久，跨会话/刷新/重启保留；无租户级偏好承诺。协议切换读取该协议的保存值或默认，不继承旧协议草稿，不改模型身份。
+- PATCH先校验/CAS，再保存候选，成功后发布RAM并回传安全投影。revision冲突409、参数422、保存失败503；失败不先改变RAM。此为现有单进程Settings写入边界，不是多worker/跨DB事务。GET无迁移写入，不返回凭据。
+- UI拖动只预览，pointer结束或一轮键盘keyup/blur后提交。单owner串行写、同字段合并最新待提交值、重复end去重；读取序号/revision与scope对象防止旧响应及A→B→A草稿回写。错误保留编辑+重试，不自动重复PATCH；可GET核对未知结果。执行/结果未知时禁用编辑；保存中暂锁发送、模型/会话变更，允许继续预览/排队更新同一身份的设置。
+- 普通send仍只发原正文/client_msg_id/附件；canonical regen仍空body、无默认参数query。服务端仅在Main HTTP共用`_resolve_chat_generation_request`处opt-in：**显式请求字段 → 新持久Main默认 → generation_options后端默认**。显式temperature:null保留原1.0语义，context:null仍422。既有显式请求mapper保持可用。
+- 参数与binding从同一settings snapshot解析一次；在途及MCP/工具后续链保持父请求冻结。不改变SSE/WS/幂等/回执/未知结果恢复，失败不自动重发或换路由。后台主动/辅助调用不opt-in，仍用各自策略；旧S.temperature/enable_thinking/thinking_effort不是新Main设置的隐藏来源。
+- Thinking暂无模型级可靠能力声明，未加占位开关；浮现、携带、TTS下一步契约见实施记录。全局作用域不阻止未来Chat就近入口。
 
-源码：[参数owner](/Users/remix/Desktop/Penumbra/src/components/chat-workspace/chat-request-parameters.ts:1)、[Workspace同步guard](/Users/remix/Desktop/Penumbra/src/components/chat-workspace/chat-workspace-controller.ts:1)、[Header表单](/Users/remix/Desktop/Penumbra/src/components/chat/ChatRequestParametersMenu.tsx:1)。覆盖状态统一维护于[settings-inventory.md](./settings-inventory.md)。
+源码：[client](/Users/remix/Desktop/Penumbra/src/domain/runtime/chat-defaults.ts:1)、[owner](/Users/remix/Desktop/Penumbra/src/components/chat-workspace/chat-settings-controller.ts:1)、[Header](/Users/remix/Desktop/Penumbra/src/components/chat/ChatRequestParametersMenu.tsx:1)、[服务端配置](/Users/remix/Desktop/AionsHome-main/aion-chat/chat_defaults.py:1)、[HTTP API](/Users/remix/Desktop/AionsHome-main/aion-chat/routes/main_configuration.py:1)、[Main opt-in](/Users/remix/Desktop/AionsHome-main/aion-chat/routes/chat.py:786)。覆盖状态只维护[settings-inventory.md](./settings-inventory.md)。
 
 ### Response contract
 
@@ -520,7 +523,7 @@ S7B 当前只接入 Create 与 Pin，不代表完整管理能力已迁移；其�
 - `ChatReadiness` 是后端对 bootstrap/current model 的事实投影；前端不重新计算 readiness。其 `modelKey` 即使不在 models 列表中也必须作为 unknown model 保留并展示。
 - `idle/loading/success/error`、retry、AbortController 和旧请求竞态保护属于 React/controller 层，不进入 Runtime Domain 或 `SettingsOverview` application model，也不持久缓存或轮询。
 - Settings Overview 不读取 Conversation 或 Message，不调用 Chat Execution，不消费 SSE，不连接 WebSocket，也不触发 Realtime Reconciliation。
-- Provider Administration、secret management和全局Feature默认仍未接入。安全概览不拥有各业务页已接的设置；PR6.5-B只新增Chat请求级两参数，不表示全局设置或语音能力已完成。
+- Provider Administration、secret management和全局Feature默认仍未接入。安全概览不拥有各业务页已接的设置；PR6.5 follow-up仅新增两项Main持久默认，不表示完整全局管理或语音能力已完成。
 
 **AionsHome 权威来源**：`aion-chat/main.py`、`aion-chat/auth.py`、部署配置和未来部署契约；Penumbra transport 事实见 `src/lib/runtime-config.ts` 与 `src/lib/api.ts`。
 

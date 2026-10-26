@@ -4,7 +4,6 @@ import { createChatWorkspaceController } from "./chat-workspace-controller";
 import { getChatSenderAvailability } from "./chat-sender-policy";
 import { updateConversation } from "@/domain/conversation";
 import { mainConfigurationWire, messageWire, messageWithoutDriftWire, OPENAI, readinessWire } from "@/test-fixtures/main-chat-wire";
-import type { ChatRequestParameters } from "./chat-request-parameters";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -129,50 +128,6 @@ describe("Main selection mutation and request ownership", () => {
     expect(getChatSenderAvailability(controller.getState(), { kind: "idle" }).enabled).toBe(true);
     expect(server.putBodies).toHaveLength(1);
     controller.dispose();
-  });
-});
-
-describe("Workspace temporary parameter ownership", () => {
-  it("applies without any HTTP write, retains on refresh and resets after confirmed model readback", async () => {
-    const server = syntheticServer(), controller = createChatWorkspaceController();
-    const parameters = () => (controller.getState() as { requestParameters: ChatRequestParameters }).requestParameters;
-    await controller.load(); const scope = parameters().scope!, before = [...server.paths];
-    expect(controller.applyRequestParameters(scope, { contextLimit: "100", temperature: "0" })).toBe("applied");
-    expect(parameters().overrides).toEqual({ contextLimit: 100, temperature: 0 }); expect(server.paths).toEqual(before);
-    await controller.refreshConversationList(); expect(parameters().scope).toBe(scope);
-    await controller.saveMainSelection("conv_a", { connectionId: "connection-a", protocol: OPENAI, model: "new-literal" });
-    expect(parameters().overrides).toEqual({}); expect(parameters().scope).not.toBe(scope);
-    expect(controller.applyRequestParameters(scope, { contextLimit: "1", temperature: "0" })).toBe("stale");
-    expect(server.putBodies).toEqual([{ main_selection: { connection_id: "connection-a", protocol: OPENAI, model: "new-literal" } }]);
-    controller.dispose();
-  });
-  it("guards execution synchronously and invalidates A → B → A or external identity changes", async () => {
-    const server = syntheticServer(); let available = true;
-    const controller = createChatWorkspaceController({}, { canNavigate: () => available });
-    const parameters = () => (controller.getState() as { requestParameters: ChatRequestParameters }).requestParameters;
-    await controller.load(); const oldScope = parameters().scope!;
-    controller.applyRequestParameters(oldScope, { contextLimit: "1", temperature: "0" });
-    available = false;
-    expect(controller.applyRequestParameters(oldScope, { contextLimit: "100", temperature: "1" })).toBe("locked");
-    expect(parameters().overrides).toEqual({ contextLimit: 1, temperature: 0 });
-    available = true; await controller.selectConversation("conv_b"); await controller.selectConversation("conv_a");
-    expect(parameters().overrides).toEqual({});
-    expect(controller.applyRequestParameters(oldScope, { contextLimit: "10", temperature: "1" })).toBe("stale");
-    const newScope = parameters().scope!;
-    controller.applyRequestParameters(newScope, { contextLimit: "10", temperature: "1" });
-    server.models.conv_a = "external-model"; await controller.refreshConversationList();
-    expect(parameters().overrides).toEqual({}); expect(parameters().scope?.model).toBe("external-model");
-    controller.dispose(); expect(controller.applyRequestParameters(parameters().scope!, { contextLimit: "20", temperature: "0" })).toBe("locked");
-  });
-  it("rejects edits during pending model writes even before a render and keeps values on invalid inputs", async () => {
-    const pending = deferred<Response>();
-    syntheticServer((_path, init) => init?.method === "PUT" ? pending.promise : null);
-    const controller = createChatWorkspaceController(); await controller.load();
-    const scope = (controller.getState() as { requestParameters: ChatRequestParameters }).requestParameters.scope!;
-    expect(controller.applyRequestParameters(scope, { contextLimit: "0", temperature: "1" })).toBe("invalid");
-    const saving = controller.saveMainSelection("conv_a", { connectionId: "connection-a", protocol: OPENAI, model: "new" });
-    expect(controller.applyRequestParameters(scope, { contextLimit: "1", temperature: "0" })).toBe("locked");
-    pending.resolve(json({}, 503)); await expect(saving).rejects.toThrow(); controller.dispose();
   });
 });
 

@@ -4,7 +4,6 @@ import type { ChatWorkspaceLoadInput } from "@/application/chat-workspace";
 import type { ChatHistoryReconciliationResult } from "@/application/chat-send";
 import type { RealtimeEvent } from "@/application/realtime";
 import type { MainSelection } from "@/domain/runtime";
-import type { ChatRequestParameterDraft, ChatRequestParameterScope, ChatRequestParameterResult } from "./chat-request-parameters";
 import {
   createChatWorkspaceController,
   INITIAL_CHAT_WORKSPACE_CONTROLLER_STATE,
@@ -30,7 +29,6 @@ export type UseChatWorkspaceResult = {
   ) => Promise<void>;
   readonly refreshConversationList: () => Promise<void>;
   readonly saveMainSelection: (conversationId: string, selection: MainSelection) => Promise<void>;
-  readonly applyRequestParameters: (scope: ChatRequestParameterScope, draft: ChatRequestParameterDraft) => ChatRequestParameterResult;
   readonly createConversation: () => Promise<void>;
   readonly renameConversation: (id: string, title: string) => Promise<void>;
   readonly deleteConversation: (id: string) => Promise<void>;
@@ -149,8 +147,6 @@ export function useChatWorkspace(
     await controllerRef.current.navigateHistory(conversationId, messageId);
   }, []);
   const getState = useCallback(() => controllerRef.current?.getState() ?? INITIAL_CHAT_WORKSPACE_CONTROLLER_STATE, []);
-  const applyRequestParameters = useCallback((scope: ChatRequestParameterScope, draft: ChatRequestParameterDraft) =>
-    controllerRef.current?.applyRequestParameters(scope, draft) ?? "locked", []);
 
   return {
     getState,
@@ -163,7 +159,6 @@ export function useChatWorkspace(
     reconcileSelectedConversationAfterReconnect,
     refreshConversationList,
     saveMainSelection,
-    applyRequestParameters,
     createConversation,
     renameConversation,
     deleteConversation,

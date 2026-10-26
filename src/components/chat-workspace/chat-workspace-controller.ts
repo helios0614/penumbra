@@ -38,10 +38,6 @@ import {
 import { loadChatSetupForConversation } from "@/application/chat-setup";
 import type { MainSelection } from "@/domain/runtime";
 import { ApiError, type ApiRequestOptions } from "@/lib/api";
-import {
-  createChatRequestParametersOwner, requestParameterScope,
-  type ChatRequestParameters, type ChatRequestParameterDraft, type ChatRequestParameterScope, type ChatRequestParameterResult,
-} from "./chat-request-parameters";
 
 export type ChatWorkspaceSafeUiErrorCode =
   | "authentication"
@@ -74,7 +70,6 @@ export type ChatWorkspaceControllerState =
       readonly newerHistoryError?: ChatWorkspaceSafeUiError | null;
       readonly historyNavigationPending?: boolean;
       readonly searchRevision?: number;
-      readonly requestParameters?: ChatRequestParameters;
     }
   | {
       readonly status: "error";
@@ -157,7 +152,6 @@ export interface ChatWorkspaceController {
   ): Promise<void>;
   refreshConversationList(): Promise<void>;
   saveMainSelection(conversationId: string, selection: MainSelection): Promise<void>;
-  applyRequestParameters(scope: ChatRequestParameterScope, draft: ChatRequestParameterDraft): ChatRequestParameterResult;
   subscribe(listener: (state: ChatWorkspaceControllerState) => void): () => void;
   dispose(): void;
 }
@@ -201,14 +195,11 @@ export function createChatWorkspaceController(
   let navigationDeletedIds = new Set<string>();
   let olderDeletedIds = new Set<string>();
   const listeners = new Set<(state: ChatWorkspaceControllerState) => void>();
-  const requestParameters = createChatRequestParametersOwner();
 
   const publish = (nextState: ChatWorkspaceControllerState) => {
     if (disposed) return;
-    const parameters = requestParameters.sync(nextState.status === "ready" ? requestParameterScope(nextState.workspace) : null);
-    state = nextState.status === "ready"
-      ? { ...nextState, ...(parameters.scope || nextState.requestParameters ? { requestParameters: parameters } : {}),
-          ...(mutation ? { conversationMutation: mutation } : {}) } : nextState;
+    state = nextState.status === "ready" && mutation
+      ? { ...nextState, conversationMutation: mutation } : nextState;
     listeners.forEach((listener) => listener(state));
   };
 
@@ -846,13 +837,6 @@ export function createChatWorkspaceController(
 
     refreshConversationList,
     saveMainSelection,
-    applyRequestParameters(scope, draft) {
-      if (disposed || mutation || dependencies.canNavigate?.() === false || state.status !== "ready" ||
-          state.pendingConversationId !== null || state.configurationPending) return "locked";
-      const result = requestParameters.apply(scope, draft);
-      if (result === "applied") publish({ ...state });
-      return result;
-    },
 
     async retryConversationSwitch() {
       if (

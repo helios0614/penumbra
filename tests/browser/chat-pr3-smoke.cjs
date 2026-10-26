@@ -209,7 +209,7 @@ async function run(browser, mobile) {
   await page.screenshot({ path: `${output}/${mobile ? 'mobile' : 'desktop'}.png` });
   await s.input().fill('结果未知保护'); await page.getByRole('button', { name: '发送消息', exact: true }).click();
   await page.getByRole('button', { name: '回复结果待确认，查看详情', exact: true }).waitFor();
-  assert.equal(await page.getByRole('button', { name: '聊天快捷配置', exact: true }).isDisabled(), true);
+  assert.equal(await page.getByRole('button', { name: '聊天设置', exact: true }).isDisabled(), true);
   assert.equal(await home().isDisabled(), true);
   await home().evaluate(el => el.click());
   assert.equal(await page.evaluate(() => window.__chatHomeReturns), 1);
