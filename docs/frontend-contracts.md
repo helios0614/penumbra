@@ -20,7 +20,7 @@
 | Method | Path | Request | Response |
 |---|---|---|---|
 | `GET` | `/api/conversations` | 无 | 按后端 `updated_at DESC` 顺序返回裸数组；列表项含 `id/title/model/main_selection/main_selection_diagnostic/created_at/updated_at/message_count` |
-| `POST` | `/api/conversations` | JSON object `{ title?: string, main_selection?: MainSelection, model?: string }`；新客户端创建发送`{}`，复制后端Main默认 | `id/title/model/created_at/updated_at`；不含 `message_count` |
+| `POST` | `/api/conversations` | JSON object `{ title?: string, main_selection?: MainSelection, model?: string, carryover_source_conv_id?: string }`；Penumbra只附当前来源ID，无来源时`{}`，Main仍复制服务端默认 | `id/title/model/created_at/updated_at`；不含 `message_count` |
 | `PUT` | `/api/conversations/{conv_id}` | `{ title?: string\|null, main_selection?: MainSelection, model?: string\|null }`；不混传新选择与旧model | `{ ok: true }` |
 | `DELETE` | `/api/conversations/{conv_id}` | 无 | `{ ok: true }` |
 
@@ -340,19 +340,19 @@ type SendMessageRequestDto = {
 
 未保存Main默认覆盖时，后端 canonical defaults 为 `temperature=1.0`、`context_limit=30`、`thinking_effort=null`、`fast_mode=false`、`whisper_mode=false`。client 不为服务端行为复制这些默认值，只保留调用者显式提供的 `false/0/null`；attachment item 必须是 string。send 不接受 model override，模型只来自持久化Main selection；carryover/cache/provider/raw history 不在 C2A2 envelope 中。
 
-regenerate 使用 `POST /api/conversations/{encodedConversationId}/messages/{encodedMessageId}/regenerate`，没有 request body。可选 query 为 `context_limit`、`whisper_mode`、`fast_mode`、`temperature`、`thinking_effort`；未提供字段省略，显式 `false`、`0` 和空字符串保留，显式 null 省略。client 必须接收并 URL-encode target assistant ID，但不接收 model/provider override，不删除旧 assistant，也不编排 legacy delete-then-regenerate。
+regenerate 使用 `POST /api/conversations/{encodedConversationId}/messages/{encodedMessageId}/regenerate`，没有 request body。可选 query 为 `context_limit`、`whisper_mode`、`fast_mode`、`temperature`、`thinking_effort`；未提供字段省略，显式 `false`、`0` 和空字符串保留。temperature:null仍按既有mapper省略；thinkingEffort:null序列化为thinking_effort=null，明确覆盖保存的Thinking默认。client 必须接收并 URL-encode target assistant ID，但不接收 model/provider override，不删除旧 assistant，也不编排 legacy delete-then-regenerate。
 
 ### PR6.5 持久聊天设置（取代PR6.5-B临时覆盖）
 
-- Header三点“聊天设置”，桌面/手机均为同一轻量Popover、两项滑条。打开真实GET，显示有效数值和默认来源；前端不将空快照/旧LS当服务器设置，不显示旧“应用/取消”按钮。
-- `GET /api/main/chat-defaults?conv_id=…`：authenticated/no-store，返回`revision`、实际`protocol`、`context_limit`及`temperature`（协议未知为null），每项有`value/source/default_value/min/max`；另回显安全`selection/conversation_id`供身份核对。缺失覆盖时有效值30/1.0。
-- `PATCH /api/main/chat-defaults`严格单字段：`{field: context_limit | temperature, value: number | null, protocol: string | null, expected_revision: number}`。null仅删除该字段覆盖。context严格整数1–100；temperature按服务器范围：Anthropic 0–1，OpenAI/Gemini 0–2。0保留，不以模型名猜能力或裁剪值。
-- 复用S与既有原子保存：`main_chat_defaults = {revision, context_limit?, temperature_by_protocol:{protocol: value}}`。context服务实例全局；temperature同实例按协议分别持久，跨会话/刷新/重启保留；无租户级偏好承诺。协议切换读取该协议的保存值或默认，不继承旧协议草稿，不改模型身份。
+- Header三点“聊天设置”，桌面/手机均为同一轻量Popover；数值滑条、Thinking开关与可换行五档。打开真实GET，显示有效数值和默认来源；前端不将空快照/旧LS当服务器设置，不显示旧“应用/取消”按钮。
+- `GET /api/main/chat-defaults?conv_id=…`：authenticated/no-store，返回`revision`、实际`protocol`、`context_limit`及`temperature`（协议未知为null），数值项有`value/source/default_value/min/max`；还返回thinking偏好及capability、float_interval和carryover_count；另回显安全`selection/conversation_id`供身份核对。缺失覆盖时有效值30/1.0。
+- `PATCH /api/main/chat-defaults`严格单字段：`{field: context_limit | temperature | thinking | float_interval | carryover_count, value: number | {enabled:boolean, effort:string} | null, protocol: string | null, expected_revision: number}`。null仅删除该字段覆盖。context严格整数1–100；temperature按服务器范围：Anthropic 0–1，OpenAI/Gemini 0–2。0保留，不以模型名猜能力或裁剪值。
+- 复用S与既有原子保存：`main_chat_defaults = {revision, context_limit?, temperature_by_protocol, thinking_by_protocol, carryover_count?}`；float_interval继续存在原SETTINGS根级。context服务实例全局；temperature同实例按协议分别持久，跨会话/刷新/重启保留；无租户级偏好承诺。协议切换读取该协议的保存值或默认，不继承旧协议草稿，不改模型身份。
 - PATCH先校验/CAS，再保存候选，成功后发布RAM并回传安全投影。revision冲突409、参数422、保存失败503；失败不先改变RAM。此为现有单进程Settings写入边界，不是多worker/跨DB事务。GET无迁移写入，不返回凭据。
 - UI拖动只预览，pointer结束或一轮键盘keyup/blur后提交。单owner串行写、同字段合并最新待提交值、重复end去重；读取序号/revision与scope对象防止旧响应及A→B→A草稿回写。错误保留编辑+重试，不自动重复PATCH；可GET核对未知结果。执行/结果未知时禁用编辑；保存中暂锁发送、模型/会话变更，允许继续预览/排队更新同一身份的设置。
 - 普通send仍只发原正文/client_msg_id/附件；canonical regen仍空body、无默认参数query。服务端仅在Main HTTP共用`_resolve_chat_generation_request`处opt-in：**显式请求字段 → 新持久Main默认 → generation_options后端默认**。显式temperature:null保留原1.0语义，context:null仍422。既有显式请求mapper保持可用。
 - 参数与binding从同一settings snapshot解析一次；在途及MCP/工具后续链保持父请求冻结。不改变SSE/WS/幂等/回执/未知结果恢复，失败不自动重发或换路由。后台主动/辅助调用不opt-in，仍用各自策略；旧S.temperature/enable_thinking/thinking_effort不是新Main设置的隐藏来源。
-- Thinking暂无模型级可靠能力声明，未加占位开关；浮现、携带、TTS下一步契约见实施记录。全局作用域不阻止未来Chat就近入口。
+- Thinking关闭不附参数；Anthropic literal能力unknown，明确允许手动尝试五档，其余协议禁用，不能用medium no-op冒充。float_interval复用原全局1–15字段，Chat/Diary共享；carryover_count为0–50条实际消息。旧全局Thinking兼容字段及PR7内容展示保持独立。
 
 源码：[client](/Users/remix/Desktop/Penumbra/src/domain/runtime/chat-defaults.ts:1)、[owner](/Users/remix/Desktop/Penumbra/src/components/chat-workspace/chat-settings-controller.ts:1)、[Header](/Users/remix/Desktop/Penumbra/src/components/chat/ChatRequestParametersMenu.tsx:1)、[服务端配置](/Users/remix/Desktop/AionsHome-main/aion-chat/chat_defaults.py:1)、[HTTP API](/Users/remix/Desktop/AionsHome-main/aion-chat/routes/main_configuration.py:1)、[Main opt-in](/Users/remix/Desktop/AionsHome-main/aion-chat/routes/chat.py:786)。覆盖状态只维护[settings-inventory.md](./settings-inventory.md)。
 
@@ -443,13 +443,11 @@ S4E2 服务一次只处理一个 plan，不拥有连接或并发控制。S6D coo
 
 ## 9. Carryover 和 prompt 顺序
 
-现行后端允许旧浏览器以`carryover:{source_conv_id,message_ids}`在新会话首次send请求受限引用；非空raw carryover_messages仍拒绝。Penumbra没有接入该输入，PR6.5-B不添加携带或改变prompt顺序。
+PR6.5-C已接通完整流程。新建POST保留当前来源ID`carryover_source_conv_id`，不传模型或消息正文。来源在目标conversation DB保存，离开/返回/刷新不会丢失或换成别的来源。全局数量来自main_chat_defaults.carryover_count，0–50条实际消息；不沿用旧UI标“条”却取count×2的算法。
 
-- 旧前端存在 carryover 筛选与 `localStorage` 行为，并在新 conversation 首次发送时提交 `carryover_messages`。
-- 这涉及 prompt 输入顺序、去重、持久化和上下文所有权。
-- 未确认后端当前职责前，不得原样迁移、删除或重新设计 carryover。
-- 相关改动必须先阅读 AionsHome runtime model 和 master plan。
-- 前端不得以“只影响本地历史”为由改变 carryover 筛选或注入时机。
+后端首次send按已保存数量从来源选最近的user/assistant且非carryover消息，组成原`CarryoverReference(source_conv_id,message_ids)`并走原可信DB归属/role/重复ID/资格校验；有显式legacy引用时保留原优先级。Penumbra send envelope不新增carryover或raw history。写事务先BEGIN IMMEDIATE再复核首次条件，携带行与user同事务落库并消费来源；0/无来源/不足或已空来源有确定行为。
+
+预检或回滚失败保留来源；已提交但响应未知时来源已消费，继续沿原未知结果锁与HTTP确认恢复，不重发。DB确认user未提交后才撤销client_msg_id去重登记，避免重试收到不存在消息的重复确认。后端并发首次写入至多一份携带行。Prompt拼装、内容解析、SSE/WS与工具副作用顺序保持原契约。
 
 **AionsHome 权威来源**：`docs/aionhome-runtime-model.md`、`docs/aionhome-refactor-master-plan.md`、`docs/chat-message-dto-contract.md`、`aion-chat/static/chat.html` 和 `aion-chat/routes/chat.py`。
 
@@ -552,7 +550,7 @@ S7B 当前只接入 Create 与 Pin，不代表完整管理能力已迁移；其�
 
 ## 15. 待确认事项的处理
 
-SSE/WS/HTTP 的三源权威边界、S6D 连接/并发协调与 S6E1 canonical target regenerate 已经实施。stop/cancel、carryover 所有权、production 部署、secret response 和其他未确认项，在后端给出实现或 contract test 前都保持“待确认”。后续任务应记录确认结果及其 AionsHome 来源，不得把临时前端行为升级为默认契约。
+SSE/WS/HTTP 的三源权威边界、S6D 连接/并发协调与 S6E1 canonical target regenerate 已经实施。stop/cancel、production 部署、secret response 和其他未确认项，在后端给出实现或 contract test 前都保持“待确认”。后续任务应记录确认结果及其 AionsHome 来源，不得把临时前端行为升级为默认契约。
 
 ## 16. 未决契约状态
 

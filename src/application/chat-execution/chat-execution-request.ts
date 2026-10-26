@@ -117,11 +117,12 @@ export function mapRegenerateQuery(
     }
 
     const thinkingEffort = optionalValue(input, "thinkingEffort");
-    if (thinkingEffort !== omitted && thinkingEffort !== null) {
-      if (typeof thinkingEffort !== "string") {
+    if (thinkingEffort !== omitted) {
+      if (thinkingEffort !== null && typeof thinkingEffort !== "string") {
         throw requestContractError("Regenerate thinking effort is invalid");
       }
-      params.set("thinking_effort", thinkingEffort);
+      // Explicit null suppresses a persisted Main Thinking preference.
+      params.set("thinking_effort", thinkingEffort === null ? "null" : thinkingEffort);
     }
 
     return params;

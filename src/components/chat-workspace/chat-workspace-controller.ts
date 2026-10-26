@@ -666,8 +666,10 @@ export function createChatWorkspaceController(
     let createdId: string | null = null;
     try {
       if (kind === "create") {
-        // An empty body intentionally uses the server's new-conversation default.
-        createdId = (await (dependencies.createConversation ?? createConversation)({}, { signal: controller.signal })).id;
+        // Only preserve the origin. Main selection and carryover quantity stay
+        // server-owned; the first send resolves restricted DB message references.
+        const sourceId = state.workspace.selectedConversationId;
+        createdId = (await (dependencies.createConversation ?? createConversation)(sourceId ? { carryoverSourceConversationId: sourceId } : {}, { signal: controller.signal })).id;
       } else if (kind === "rename") {
         await conversationUpdater(conversationId!, { title: normalizedTitle }, { signal: controller.signal });
       } else {

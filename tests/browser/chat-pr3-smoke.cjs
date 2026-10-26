@@ -33,7 +33,11 @@ async function fixture(browser, mobile) {
     const json = (data, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
     if (url.pathname === '/api/conversations' && method === 'GET') return json(state.list);
     if (url.pathname === '/api/conversations' && method === 'POST') {
-      state.counts.create++; assert.deepEqual(request.postDataJSON(), {}); await delay(180);
+      state.counts.create++;
+      const body = request.postDataJSON();
+      assert(Object.keys(body).every(key => key === 'carryover_source_conv_id'));
+      if (body.carryover_source_conv_id) assert(state.list.some(row => row.id === body.carryover_source_conv_id));
+      await delay(180);
       if (state.failCreate) return json({ detail: 'synthetic failure' }, 503);
       const id = `new-${state.counts.create}`, item = { ...state.list[0], id, title: '新对话', message_count: 0, updated_at: 100 };
       state.list = [item, ...state.list]; state.messages[id] = [];

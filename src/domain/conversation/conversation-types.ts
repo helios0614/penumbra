@@ -17,6 +17,7 @@ export type ConversationSummary = Conversation & {
 export type CreateConversationInput = {
   title?: string;
   modelKey?: string;
+  carryoverSourceConversationId?: string;
 };
 
 export type UpdateConversationInput = {

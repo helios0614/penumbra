@@ -12,7 +12,7 @@ const frame = value => `data: ${JSON.stringify(value)}\n\n`;
 async function fixture(browser, width) {
   const context = await browser.newContext({ viewport: { width, height: 844 }, isMobile: width < 768, hasTouch: width < 768 });
   const page = await context.newPage(); page.setDefaultTimeout(10000);
-  const state = { requests: [], selections: {}, messages: {}, list: [], sends: [], regenerates: [], error: null, clock: 10, defaults: { revision: 0, context: undefined, temperatures: {} }, saves: [], effective: [], failSave: false, saveDelay: 0 };
+  const state = { requests: [], selections: {}, messages: {}, list: [], sends: [], regenerates: [], error: null, clock: 10, defaults: { revision: 0, context: undefined, temperatures: {}, thinking: {}, float: undefined, carryover: undefined }, saves: [], effective: [], failSave: false, saveDelay: 0 };
   for (const id of ['a', 'b']) {
     state.selections[id] = { connection_id: 'connection-a', protocol: OPENAI, model: `literal-${id}` };
     state.list.push({ id, title: `会话 ${id.toUpperCase()}`, model: 'legacy', main_selection: state.selections[id], main_selection_diagnostic: null,
@@ -30,7 +30,11 @@ async function fixture(browser, width) {
     const conv = url.searchParams.get('conv_id') || 'a';
     const defaults = protocol => ({ revision: state.defaults.revision, protocol,
       context_limit: { value: state.defaults.context ?? 30, source: state.defaults.context === undefined ? 'backend_default' : 'saved', default_value: 30, min: 1, max: 100 },
-      temperature: { value: state.defaults.temperatures[protocol] ?? 1, source: protocol in state.defaults.temperatures ? 'saved' : 'backend_default', default_value: 1, min: 0, max: protocol === ANTHROPIC ? 1 : 2 } });
+      temperature: { value: state.defaults.temperatures[protocol] ?? 1, source: protocol in state.defaults.temperatures ? 'saved' : 'backend_default', default_value: 1, min: 0, max: protocol === ANTHROPIC ? 1 : 2 },
+      thinking: { value: state.defaults.thinking[protocol] ?? { enabled: false, effort: 'medium' }, source: protocol in state.defaults.thinking ? 'saved' : 'backend_default', default_value: { enabled: false, effort: 'medium' },
+        capability: { status: protocol === ANTHROPIC ? 'unknown' : 'unsupported', reason: protocol === ANTHROPIC ? 'model_capability_unknown' : 'protocol_unsupported', allowed_efforts: protocol === ANTHROPIC ? ['low', 'medium', 'high', 'xhigh', 'max'] : [] } },
+      float_interval: { value: state.defaults.float ?? 12, source: state.defaults.float === undefined ? 'backend_default' : 'saved', default_value: 12, min: 1, max: 15 },
+      carryover_count: { value: state.defaults.carryover ?? 0, source: state.defaults.carryover === undefined ? 'backend_default' : 'saved', default_value: 0, min: 0, max: 50 } });
     if (url.pathname === '/api/main/chat-defaults' && method === 'GET') return json({ ...defaults(state.selections[conv].protocol), selection: state.selections[conv], conversation_id: conv });
     if (url.pathname === '/api/main/chat-defaults' && method === 'PATCH') {
       const body = req.postDataJSON(); state.saves.push(body);
@@ -38,6 +42,9 @@ async function fixture(browser, width) {
       if (state.failSave) { state.failSave = false; return json({ detail: { code: 'persistence_failed' } }, 503); }
       if (body.expected_revision !== state.defaults.revision) return json({ detail: { code: 'chat_defaults_conflict' } }, 409);
       if (body.field === 'context_limit') state.defaults.context = body.value === null ? undefined : body.value;
+      else if (body.field === 'float_interval') state.defaults.float = body.value === null ? undefined : body.value;
+      else if (body.field === 'carryover_count') state.defaults.carryover = body.value === null ? undefined : body.value;
+      else if (body.field === 'thinking') { if (body.value === null) delete state.defaults.thinking[body.protocol]; else state.defaults.thinking[body.protocol] = body.value; }
       else if (body.value === null) delete state.defaults.temperatures[body.protocol];
       else state.defaults.temperatures[body.protocol] = body.value;
       state.defaults.revision++;
@@ -91,7 +98,10 @@ async function run(browser, width) {
   const idle = () => page.waitForFunction(() => !document.querySelector('[aria-label="聊天设置"]').disabled);
   const open = async () => { if (!(await panel().isVisible())) await quick().click(); await slider('上下文消息数').waitFor(); };
   const close = async () => { await page.keyboard.press('Escape'); await panel().waitFor({ state: 'hidden' }); };
-  const saveEnd = async () => { await page.waitForFunction(() => !document.querySelector('[data-slot="popover-content"]')?.textContent.includes('保存中')); };
+  const saveEnd = async () => {
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await page.waitForFunction(() => !document.querySelector('[data-slot="popover-content"]')?.textContent.includes('保存中'));
+  };
   const send = async text => { await page.getByRole('textbox', { name: '消息正文', exact: true }).fill(text); await page.getByRole('button', { name: '发送消息', exact: true }).click(); await idle(); };
   assert.equal(await page.locator('.chat-workspace-header').getByRole('button', { name: /^会话操作/ }).count(), 0);
   await page.getByRole('button', { name: '搜索聊天历史', exact: true }).click();
@@ -99,6 +109,9 @@ async function run(browser, width) {
   await open(); assert.equal(await page.locator('[data-slot="dialog-content"], [data-slot="dialog-overlay"]').count(), 0);
   assert.equal(await slider('上下文消息数').getAttribute('aria-valuenow'), '30');
   assert.equal(await slider('Temperature').getAttribute('aria-valuenow'), '1');
+  assert.equal(await page.getByRole('switch', { name: '扩展思考' }).isDisabled(), true);
+  assert.equal(await slider('记忆浮现间隔').getAttribute('aria-valuenow'), '12');
+  assert.equal(await slider('新会话携带历史数量').getAttribute('aria-valuenow'), '0');
   await close(); assert.equal(await page.getByRole('textbox', { name: '搜索当前会话', exact: true }).isVisible(), true);
   await page.getByRole('button', { name: '关闭搜索', exact: true }).click();
   await open(); await slider('上下文消息数').focus(); await page.keyboard.press('End');
@@ -148,9 +161,39 @@ async function run(browser, width) {
   assert.equal(await slider('上下文消息数').getAttribute('aria-valuenow'), '97'); assert.equal(await slider('Temperature').getAttribute('aria-valuenow'), '0');
   await close(); await page.getByRole('button', { name: '会话工具', exact: true }).click(); await page.getByText('手动调整', { exact: true }).click();
   await page.getByRole('combobox', { name: '接口格式', exact: true }).click(); await page.getByRole('option', { name: 'Anthropic 格式', exact: true }).click(); await idle();
-  await page.keyboard.press('Escape'); await open();
+  await page.keyboard.press('Escape'); await page.locator('[data-slot="popover-content"]').waitFor({ state: 'hidden' }); await open();
   assert.equal(await slider('Temperature').getAttribute('max'), '1'); assert.equal(await slider('Temperature').getAttribute('aria-valuenow'), '1');
   assert.equal(state.defaults.temperatures[OPENAI], 0); assert.equal(state.selections.b.protocol, ANTHROPIC);
+  await page.getByText('模型能力尚未验证；开启即手动尝试。', { exact: true }).waitFor();
+  await panel().evaluate(el => Promise.all(el.getAnimations({ subtree: true }).map(a => a.finished.catch(() => {}))));
+  await page.getByRole('switch', { name: '扩展思考' }).click(); await saveEnd();
+  for (const effort of ['low', 'medium', 'high', 'xhigh', 'max']) {
+    await page.getByRole('button', { name: effort, exact: true }).click(); await saveEnd();
+    assert.deepEqual(state.defaults.thinking[ANTHROPIC], { enabled: true, effort });
+    assert.equal(await page.getByRole('button', { name: effort, exact: true }).getAttribute('aria-pressed'), 'true');
+  }
+  await slider('记忆浮现间隔').focus(); await page.keyboard.press('Home'); await saveEnd();
+  await slider('新会话携带历史数量').focus(); await page.keyboard.press('End'); await saveEnd();
+  assert.equal(state.defaults.float, 1); assert.equal(state.defaults.carryover, 50);
+  await close(); await page.reload(); await page.locator('[data-message-id="a-initial"]').waitFor();
+  if (width < 768) await page.getByRole('button', { name: '打开会话列表', exact: true }).click();
+  await page.getByRole('button', { name: '打开会话会话 B', exact: true }).filter({ visible: true }).click();
+  await page.locator('[data-message-id="b-initial"]').waitFor(); await open();
+  assert.equal(await page.getByRole('switch', { name: '扩展思考' }).getAttribute('aria-checked'), 'true');
+  assert.equal(await page.getByRole('button', { name: 'max', exact: true }).getAttribute('aria-pressed'), 'true');
+  assert.equal(await slider('记忆浮现间隔').getAttribute('aria-valuenow'), '1');
+  assert.equal(await slider('新会话携带历史数量').getAttribute('aria-valuenow'), '50');
+  const effortGeometry = await page.getByRole('group', { name: '思考强度' }).evaluate(el => ({ scroll: el.scrollWidth, client: el.clientWidth,
+    children: [...el.children].map(button => ({ scroll: button.scrollWidth, client: button.clientWidth })) }));
+  assert(effortGeometry.scroll <= effortGeometry.client && effortGeometry.children.every(button => button.scroll <= button.client));
+  await panel().evaluate(el => Promise.all(el.getAnimations({ subtree: true }).map(a => a.finished.catch(() => {}))));
+  await page.screenshot({ path: `${output}/thinking-${width}.png` });
+  await page.setViewportSize({ width, height: 260 }); await page.waitForTimeout(250);
+  await slider('新会话携带历史数量').scrollIntoViewIfNeeded();
+  assert(await panel().evaluate(el => el.scrollHeight > el.clientHeight && el.scrollWidth <= el.clientWidth + 1));
+  await page.setViewportSize({ width, height: 844 });
+  await page.getByRole('switch', { name: '扩展思考' }).click(); await saveEnd();
+  assert.deepEqual(state.defaults.thinking[ANTHROPIC], { enabled: false, effort: 'max' });
   await page.mouse.click(12, 80); await panel().waitFor({ state: 'hidden' });
   assert.equal(state.requests.filter(r => /\/api\/settings/.test(r.path)).length, 0); assert.deepEqual(errors, []);
   await context.close(); console.log(`${width}px: real values, automatic commit/keyboard grouping, drag batching, failure/retry, refresh/conversation persistence, protocol isolation, default send/regen, short Popover/focus/search passed`);

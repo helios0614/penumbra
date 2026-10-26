@@ -134,7 +134,7 @@ describe("Chat execution request contracts", () => {
     );
     expect(
       mapRegenerateQuery({ temperature: null, thinkingEffort: null }).toString(),
-    ).toBe("");
+    ).toBe("thinking_effort=null");
 
     fetchMock.mockResolvedValue(sseResponse([]));
     const result = await openRegenerateExecution(

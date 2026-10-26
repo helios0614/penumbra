@@ -1,12 +1,14 @@
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ChatRequestParametersMenu, ChatSettingSlider } from "./ChatRequestParametersMenu";
+import { ChatRequestParametersMenu, ChatSettingSlider, ChatThinkingSetting } from "./ChatRequestParametersMenu";
 import { createChatSettingsController } from "@/components/chat-workspace/chat-settings-controller";
 import type { ChatDefaultsRead } from "@/domain/runtime/chat-defaults";
+import { addedChatDefaults } from "@/test-fixtures/chat-defaults";
 import { Popover } from "@/components/ui/popover";
 import { Dialog } from "@/components/ui/dialog";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { elements, find, hookSession } from "./test-utils/hook-session";
 vi.mock("react", async original => {
   const actual = await original<typeof React>();
@@ -15,7 +17,7 @@ vi.mock("react", async original => {
 afterEach(() => vi.restoreAllMocks());
 async function fixture() {
   const scope = { conversationId: "a", selection: { connectionId: "c", protocol: "openai_chat_completions", model: "literal" } };
-  const data: ChatDefaultsRead = { revision: 0, protocol: scope.selection.protocol, selection: scope.selection, conversationId: "a",
+  const data: ChatDefaultsRead = { ...addedChatDefaults(), revision: 0, protocol: scope.selection.protocol, selection: scope.selection, conversationId: "a",
     context_limit: { value: 30, source: "backend_default", defaultValue: 30, min: 1, max: 100 },
     temperature: { value: 1, source: "backend_default", defaultValue: 1, min: 0, max: 2 } };
   const load = vi.fn(async () => data), save = vi.fn(async () => data);
@@ -23,6 +25,18 @@ async function fixture() {
   return { controller, data, load, save, settings: () => ({ state: controller.getState(), controller }) };
 }
 describe("lightweight Chat settings", () => {
+  it("disables unsupported Thinking, labels unknown models and locks all five efforts during execution", async () => {
+    const s = await fixture();
+    expect(find(ChatThinkingSetting({ settings: s.settings(), disabled: false }), Switch).props.disabled).toBe(true);
+    const settings = { ...s.settings(), state: { ...s.settings().state, data: { ...s.data, ...addedChatDefaults(true),
+      thinking: { ...addedChatDefaults(true).thinking, value: { enabled: true, effort: "max" as const } } } } };
+    const tree = ChatThinkingSetting({ settings, disabled: true });
+    expect(JSON.stringify(tree)).toContain("模型能力尚未验证");
+    const efforts = elements(tree).filter(node => node.type === Button && "aria-pressed" in node.props);
+    expect(efforts.map(node => node.props.children)).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(efforts.every(node => node.props.disabled)).toBe(true);
+    expect(efforts.filter(node => node.props["aria-pressed"]).map(node => node.props.children)).toEqual(["max"]);
+  });
   it("uses a Popover on both surfaces, correct three-dot label and real read on open", async () => {
     const s = await fixture(), hooks = hookSession(() => ChatRequestParametersMenu({ settings: s.settings(), disabled: false }));
     const tree = hooks.render(); expect(elements(tree).some(node => node.type === Dialog)).toBe(false);

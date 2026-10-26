@@ -41,6 +41,7 @@ export async function createConversation(
   const body: CreateConversationRequestDto = {};
   if (input.title !== undefined) body.title = input.title;
   if (input.modelKey !== undefined) body.model = input.modelKey;
+  if (input.carryoverSourceConversationId !== undefined) body.carryover_source_conv_id = input.carryoverSourceConversationId;
 
   return mapConversation(
     await apiPost<unknown>(CONVERSATIONS_ENDPOINT, body, options),

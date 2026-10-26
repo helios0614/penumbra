@@ -17,6 +17,7 @@ export type ConversationListDto = ConversationListItemDto[];
 export type CreateConversationRequestDto = {
   title?: string;
   model?: string;
+  carryover_source_conv_id?: string;
 };
 
 // The backend accepts null, but treats it the same as an omitted field.

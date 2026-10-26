@@ -3,10 +3,11 @@ import { createChatSettingsController } from "./chat-settings-controller";
 import type { ChatSettingsScope } from "./chat-request-parameters";
 import { getChatDefaults, mapChatDefaults, patchChatDefault, type ChatDefaults, type ChatDefaultsRead } from "@/domain/runtime/chat-defaults";
 import { ApiError } from "@/lib/api";
+import { addedChatDefaults, addedChatDefaultsWire } from "@/test-fixtures/chat-defaults";
 
 const scope = (id = "a", protocol = "openai_chat_completions"): ChatSettingsScope => ({ conversationId: id, selection: { connectionId: "c", protocol, model: "literal" } });
 function projection(revision = 0): ChatDefaults {
-  return { revision, protocol: "openai_chat_completions", context_limit: { value: 30, source: "backend_default", defaultValue: 30, min: 1, max: 100 },
+  return { ...addedChatDefaults(), revision, protocol: "openai_chat_completions", context_limit: { value: 30, source: "backend_default", defaultValue: 30, min: 1, max: 100 },
     temperature: { value: 1, source: "backend_default", defaultValue: 1, min: 0, max: 2 } };
 }
 function fixture() {
@@ -14,7 +15,7 @@ function fixture() {
   const load = vi.fn(async (): Promise<ChatDefaultsRead> => ({ ...server, conversationId: selected.conversationId, selection: selected.selection }));
   const save = vi.fn<typeof patchChatDefault>(async (field, value, protocol, revision): Promise<ChatDefaults> => {
     expect(revision).toBe(server.revision);
-    server = { ...server, protocol, revision: revision + 1, [field]: { ...server[field as "context_limit"], value: value ?? 30, source: value === null ? "backend_default" : "saved" } };
+    server = { ...server, protocol, revision: revision + 1, [field]: { ...server[field]!, value: value ?? server[field]!.defaultValue, source: value === null ? "backend_default" : "saved" } };
     return server;
   });
   const controller = createChatSettingsController({ load, save, canEdit: () => editable });
@@ -28,6 +29,49 @@ function deferred<T>() { let resolve!: (value: T) => void; const promise = new P
 afterEach(() => vi.unstubAllGlobals());
 
 describe("server-backed Chat settings owner", () => {
+  it("persists all five efforts and off without importing legacy state, and rereads after refresh", async () => {
+    const s = fixture(); s.patchServer({ ...projection(), protocol: "anthropic_messages", ...addedChatDefaults(true) });
+    s.select(scope("a", "anthropic_messages")); await s.controller.open(); const lease = s.state().scope!;
+    for (const effort of ["low", "medium", "high", "xhigh", "max"] as const) {
+      s.controller.commit(lease, "thinking", { enabled: true, effort }); await flush();
+      expect(s.state().data?.thinking.value).toEqual({ enabled: true, effort }); expect(s.state().drafts).toEqual({});
+    }
+    s.controller.commit(lease, "thinking", { enabled: false, effort: "max" }); await flush();
+    const fresh = createChatSettingsController({ load: s.load, save: s.save, canEdit: () => true }); fresh.select(lease); await fresh.open();
+    expect(fresh.getState().data?.thinking.value).toEqual({ enabled: false, effort: "max" });
+    s.patchServer({ ...projection(8) }); s.select(scope("a")); await s.controller.open();
+    s.controller.commit(s.state().scope!, "thinking", { enabled: true, effort: "medium" });
+    expect(s.save).toHaveBeenCalledTimes(6);
+  });
+  it.each(["thinking", "float_interval", "carryover_count"] as const)("preserves %s failure drafts, CAS retry, execution locks and late-response isolation", async field => {
+    const s = fixture(); s.patchServer({ ...projection(), protocol: "anthropic_messages", ...addedChatDefaults(true) });
+    s.select(scope("a", "anthropic_messages")); await s.controller.open(); const lease = s.state().scope!;
+    const value = field === "thinking" ? { enabled: true, effort: "max" as const } : field === "float_interval" ? 3 : 50;
+    s.save.mockRejectedValueOnce(new ApiError("conflict", 409));
+    s.controller.commit(lease, field, value); await flush();
+    expect(s.state().drafts[field]).toEqual(value); expect(s.state().errors[field]).toContain("重试");
+    s.controller.commit(lease, field); await flush(); expect(s.state().data?.[field].value).toEqual(value);
+    expect(s.save.mock.calls[1][3]).toBe(0);
+    const pending = deferred<ChatDefaults>(); s.save.mockImplementationOnce(() => pending.promise);
+    s.controller.commit(lease, field, null);
+    s.select(scope("b", "anthropic_messages")); await s.controller.open();
+    pending.resolve({ ...s.server(), revision: 2 }); await flush(); await s.controller.open();
+    expect(s.state().data?.[field].value).toEqual(value); expect(s.state().drafts).toEqual({});
+    s.lock(); s.controller.commit(s.state().scope!, field, value); expect(s.save).toHaveBeenCalledTimes(3);
+  });
+  it("coalesces object preferences while a save is pending and rejects a mismatched confirmation", async () => {
+    const s = fixture(); s.patchServer({ ...projection(), protocol: "anthropic_messages", ...addedChatDefaults(true) });
+    s.select(scope("a", "anthropic_messages")); await s.controller.open(); const lease = s.state().scope!;
+    const pending = deferred<ChatDefaults>(); s.save.mockImplementationOnce(() => pending.promise);
+    s.controller.commit(lease, "thinking", { enabled: true, effort: "low" });
+    s.controller.commit(lease, "thinking", { enabled: true, effort: "max" });
+    s.controller.commit(lease, "thinking", { enabled: true, effort: "max" });
+    const confirmed = { ...s.server(), revision: 1, thinking: { ...s.server().thinking, value: { enabled: true, effort: "low" as const }, source: "saved" as const } };
+    s.patchServer(confirmed); pending.resolve(confirmed); await flush();
+    expect(s.save).toHaveBeenCalledTimes(2); expect(s.state().data?.thinking.value.effort).toBe("max");
+    s.save.mockResolvedValueOnce(s.server()); s.controller.commit(lease, "thinking", { enabled: false, effort: "max" }); await flush();
+    expect(s.state().errors.thinking).toBeTruthy(); expect(s.state().drafts.thinking).toEqual({ enabled: false, effort: "max" });
+  });
   it("reads effective defaults, previews without a write, commits one field and restores by null", async () => {
     const s = fixture(); expect(s.state().data).toBeNull(); await s.controller.open(); const lease = s.state().scope!;
     expect(s.state().data?.context_limit.value).toBe(30);
@@ -109,13 +153,17 @@ describe("server-backed Chat settings owner", () => {
 });
 
 describe("safe Chat defaults DTO/client", () => {
-  const wire = { revision: 0, protocol: "openai_chat_completions", context_limit: { value: 30, source: "backend_default", default_value: 30, min: 1, max: 100 },
+  const wire = { ...addedChatDefaultsWire(), revision: 0, protocol: "openai_chat_completions", context_limit: { value: 30, source: "backend_default", default_value: 30, min: 1, max: 100 },
     temperature: { value: 0, source: "saved", default_value: 1, min: 0, max: 2 } };
   it("maps effective/source metadata and rejects invalid values", () => {
     expect(mapChatDefaults(wire).temperature?.value).toBe(0);
     expect(() => mapChatDefaults({ ...wire, revision: -1 })).toThrow();
     expect(() => mapChatDefaults({ ...wire, context_limit: { ...wire.context_limit, value: 1.5 } })).toThrow();
     expect(() => mapChatDefaults({ ...wire, temperature: { ...wire.temperature, value: Infinity } })).toThrow();
+    expect(mapChatDefaults({ ...wire, ...addedChatDefaultsWire(true) }).thinking.capability.status).toBe("unknown");
+    expect(() => mapChatDefaults({ ...wire, thinking: { ...wire.thinking, value: { enabled: true, effort: "medium" } } })).toThrow();
+    expect(() => mapChatDefaults({ ...wire, float_interval: { ...wire.float_interval, value: 16 } })).toThrow();
+    expect(() => mapChatDefaults({ ...wire, carryover_count: { ...wire.carryover_count, value: 50.5 } })).toThrow();
   });
   it("uses authenticated no-store GET and single-field revision PATCH only", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(JSON.stringify({ ...wire, conversation_id: "a", selection: { connection_id: "c", protocol: wire.protocol, model: "literal" } }), { headers: { "content-type": "application/json" } })); vi.stubGlobal("fetch", fetch);

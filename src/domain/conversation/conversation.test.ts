@@ -134,6 +134,11 @@ describe("conversation client", () => {
 
     expect(requestBody(0)).toEqual({});
   });
+  it("preserves only the source conversation identity when creating with history carryover", async () => {
+    fetchMock.mockResolvedValue(json(conversation("created", "backend-default")));
+    await createConversation({ carryoverSourceConversationId: "source" }, { timeoutMs: 0 });
+    expect(requestBody(0)).toEqual({ carryover_source_conv_id: "source" });
+  });
 
   it("passes explicit title and unknown model keys unchanged", async () => {
     fetchMock.mockResolvedValue(json(conversation("created", "unknown/model")));

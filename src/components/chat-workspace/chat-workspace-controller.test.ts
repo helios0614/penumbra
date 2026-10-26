@@ -849,7 +849,7 @@ describe("PR3 real conversation management", () => {
     const first = controller.createConversation(), duplicate = controller.createConversation();
     await controller.selectConversation("conv_b");
     expect(controller.getState()).toMatchObject({ workspace: { selectedConversationId: "conv_a" }, conversationMutation: "create" });
-    expect(create).toHaveBeenCalledOnce(); expect(create.mock.calls[0]?.[0]).toEqual({});
+    expect(create).toHaveBeenCalledOnce(); expect(create.mock.calls[0]?.[0]).toEqual({ carryoverSourceConversationId: "conv_a" });
     post.resolve(created); await Promise.all([first, duplicate]);
     expect(controller.getState()).toMatchObject({ workspace: { selectedConversationId: "new", selectedConversation: { modelKey: "server-default" } }, conversationMutation: undefined });
   });
