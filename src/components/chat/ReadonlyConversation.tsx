@@ -6,6 +6,7 @@ import type { Message } from "@/domain/message/message-types";
 import { insertableBody } from "./insertable-body";
 import { contextTime } from "./conversation-context";
 import { cn } from "@/lib/utils";
+import { ReadonlyEvent } from "./ReadonlyEvent";
 
 type Node = { type: string; value?: string; depth?: number; ordered?: boolean;
   lang?: string | null; children?: Node[] };
@@ -33,9 +34,10 @@ function markdownNodes(node: Node, key: number, preview = true): ReactNode {
   return <Fragment key={key}>{children}</Fragment>;
 }
 
-export function ReadonlyPublicBody({ message }: { message: Message }) {
+export function ReadonlyPublicBody({ message, target = false }: { message: Message; target?: boolean }) {
   const segments = message.searchSegments ?? [];
   const body = segments.find(s => s.segmentKey === "body")?.text;
+  const eventSegments = segments.filter(s => /^(display\.|tool:|web:|url:)/.test(s.segmentKey));
   // Canonical content can contain hidden controls or unredacted secrets. Only
   // render its Markdown if all visible text agrees with the server whitelist.
   const markdown = body && comparable(insertableBody(message.content)) === comparable(body);
@@ -43,7 +45,8 @@ export function ReadonlyPublicBody({ message }: { message: Message }) {
     {body && (markdown
       ? <div className="context-markdown">{markdownNodes(parser.parse(message.content) as Node, 0)}</div>
       : <p className="whitespace-pre-wrap">{body}</p>)}
-    {segments.filter(s => s.segmentKey !== "body").map(s =>
+    {!!eventSegments.length && <ReadonlyEvent message={{ ...message, searchSegments: eventSegments }} target={target} showTime={false} />}
+    {segments.filter(s => s.segmentKey.startsWith("music:")).map(s =>
       <p key={s.segmentKey} className="whitespace-pre-wrap text-[13px] leading-6 text-muted-strong">{s.text}</p>)}
     {!segments.length && <p className="text-muted-foreground">此消息没有可显示的公开文字。</p>}
   </div>;
@@ -52,18 +55,20 @@ export function ReadonlyPublicBody({ message }: { message: Message }) {
 export function ReadonlyConversation({ messages, targetId }: {
   messages: readonly Message[]; targetId: string;
 }) {
-  return <ol className="space-y-3" aria-label="原文对话消息">
+  return <ol className="space-y-2" aria-label="原文对话消息">
     {messages.filter(m => ["user", "assistant", "system"].includes(m.roleKind)).map(message =>
       <li key={message.id} data-context-message={message.id} aria-current={message.id === targetId ? "true" : undefined}
-        className={cn("rounded-2xl px-4 py-3 text-sm leading-7 text-foreground",
-          message.roleKind === "user" ? "bg-primary/8" : message.roleKind === "assistant" ? "bg-ai/12" : "bg-background/35",
+        className={cn("context-message rounded-2xl px-3 py-2.5 text-sm leading-[1.65] text-foreground",
+          message.roleKind === "user" ? "ml-2 bg-primary/8" : message.roleKind === "assistant" ? "mr-2 bg-ai/12" : "rounded-xl bg-background/25 py-2",
           message.id === targetId && "context-target")}>
-        <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-muted-foreground">
+        {message.roleKind === "system" ? <ReadonlyEvent message={message} target={message.id === targetId} /> : <>
+        <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] leading-5 text-muted-foreground">
           <span className="font-medium text-muted-strong">{message.roleKind === "user" ? "你" : message.roleKind === "assistant" ? "知远" : "系统通知"}</span>
           <time dateTime={new Date(message.createdAt * 1000).toISOString()}>{contextTime(message.createdAt)}</time>
           {message.id === targetId && <span className="text-primary-ink">当前关注</span>}
         </div>
-        <ReadonlyPublicBody message={message} />
+        <ReadonlyPublicBody message={message} target={message.id === targetId} />
+        </>}
       </li>)}
   </ol>;
 }

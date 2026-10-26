@@ -61,7 +61,7 @@ export function ConversationsList({
 
       <GlobalChatSearch conversations={conversations} />
       <ScrollArea className="min-h-0 flex-1">
-        <div className="flex flex-col gap-0.5 p-2">
+        <div className="flex flex-col gap-0.5 px-2 pb-2">
           {conversations.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <MessageCircle className="mb-2 size-8 opacity-40" aria-hidden="true" />

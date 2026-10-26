@@ -24,7 +24,7 @@ async function main() {
       const search = page.getByRole("dialog", { name: "搜索全部聊天", exact: true });
       const input = search.getByRole("textbox", { name: "全部聊天关键词" });
       await input.fill("关键词");
-      await search.getByText("这一批未命中，当前时间段尚未查完。", { exact: true }).waitFor();
+      await search.getByText("尚未查完", { exact: true }).waitFor();
       await page.waitForTimeout(350);
       assert.equal(await page.evaluate(() => window.pr6c.calls.filter(p => p.includes("messages/search")).length), 1);
       await search.getByRole("button", { name: "继续查找当前时间段", exact: true }).click();
@@ -50,7 +50,7 @@ async function main() {
       const ranges = await page.evaluate(() => window.pr6c.calls.filter(p => p.includes("messages/search")).map(p => Object.fromEntries(new URL(p, location.href).searchParams)));
       assert.equal(Number(ranges[3].range_end), Number(ranges[0].range_start));
       assert.equal(Number(ranges[3].range_start), Number(ranges[0].range_start) - 2592000);
-      await search.getByText("已查完：", { exact: false }).waitFor();
+      await search.getByText("已找到 2 条", { exact: true }).waitFor();
       const calls = await page.evaluate(() => window.pr6c.calls);
       assert(calls.some(p => p.includes("before_limit=2&after_limit=2")));
       await page.waitForTimeout(1600);

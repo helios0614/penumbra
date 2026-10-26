@@ -61,7 +61,8 @@
     background: color-mix(in srgb, var(--color-ai) 18%, transparent);
   }
 }
-.chat-search-panel .chat-search-term {
+.chat-search-panel .chat-search-term,
+.global-chat-search .chat-search-term {
   background: color-mix(in srgb, var(--color-amber) 22%, transparent);
   box-shadow: none;
 }

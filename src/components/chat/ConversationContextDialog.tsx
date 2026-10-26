@@ -48,12 +48,12 @@ export function ConversationContextDialog({ anchor, onClose, read = readConversa
   const visible = state.key === key ? state : { key };
   const target = visible.data?.messages.find(m => m.id === anchor?.messageId);
   return <Dialog open={!!anchor} onOpenChange={open => { if (!open) onClose(); }}>
-    <DialogContent ref={contentRef} className="mist-paper max-w-2xl" initialFocus={contentRef}>
-      <DialogHeader>
+    <DialogContent ref={contentRef} className="mist-paper conversation-context-dialog max-w-2xl" initialFocus={contentRef}>
+      <DialogHeader className="px-4 pb-3 pt-4 sm:px-5 sm:pb-3 sm:pt-4">
         <DialogTitle>原文对话</DialogTitle>
         <DialogDescription>{visible.data?.conversationTitle ?? anchor?.conversationTitle ?? "来源会话"}{target && <> · {contextTime(target.createdAt)}</>}</DialogDescription>
       </DialogHeader>
-      <DialogBody className="min-h-32">
+      <DialogBody className="p-3 sm:p-4">
         {unavailable || visible.error === "unavailable"
           ? <p role="status">原文已不可用，可能已被删除或当前无法读取。</p>
           : visible.error ? <div role="alert"><p>原文读取失败，请稍后重试。</p><Button variant="ghost" className="mt-2" onClick={() => retry(n => n + 1)}>重新读取</Button></div>

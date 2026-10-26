@@ -1,5 +1,32 @@
-.global-chat-search { height: min(46rem, var(--dialog-available-height)); }
-.global-chat-results { min-height: 6rem; }
+.global-chat-search { height: auto; }
+.global-chat-search:has([data-has-results="true"]) { height: min(46rem, var(--dialog-available-height)); }
+.global-chat-results { min-height: 0; }
+.global-chat-search:has([data-has-results="true"]):not([data-compact-viewport]) > [data-global-search-controls] { padding-block: .625rem; }
+.global-chat-search:has([data-has-results="true"]) [data-global-search-controls] > [data-slot="input"] { margin-block-end: .375rem; }
+.global-chat-search:has([data-has-results="true"]) [data-global-search-summary] { line-height: 1.45; }
+.global-chat-search[data-compact-viewport] > [data-slot="dialog-header"] { padding-block: .75rem; }
+.global-chat-search[data-compact-viewport] [data-slot="dialog-description"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.global-chat-search[data-compact-viewport] > :is([data-global-search-controls], [data-global-search-actions]) { padding-block: .5rem; }
+/* Base UI keeps the nested roots and their focus/Back state. Hide only the
+   covered paper surface; portalled child dialogs are outside this DOM subtree.
+   Important opacity also overrides the entry animation's persistent fill. */
+.global-chat-search[data-nested-dialog-open] { opacity: 0 !important; pointer-events: none; }
+@media (max-width: 767px) {
+  .chat-conversations-drawer[data-nested-dialog-open] { opacity: 0 !important; pointer-events: none; }
+}
+.context-event-details .context-event-less { display: none; }
+.context-event-details[open] .context-event-more { display: none; }
+.context-event-details[open] .context-event-less { display: inline; }
+.context-event:has(> .context-event-details[open]) > .context-event-preview { display: block; -webkit-line-clamp: unset; overflow: visible; }
 .context-target {
   background: color-mix(in srgb, var(--color-ai) 22%, var(--color-background) 40%);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-ai) 18%, transparent);

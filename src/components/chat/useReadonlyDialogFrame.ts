@@ -10,8 +10,10 @@ export function useReadonlyDialogFrame(open: boolean, onClose: () => void, name:
     if (!open) return;
     const viewport = window.visualViewport;
     const resize = () => {
-      contentRef.current?.style.setProperty("--dialog-viewport-height", `${viewport?.height ?? window.innerHeight}px`);
+      const height = viewport?.height ?? window.innerHeight;
+      contentRef.current?.style.setProperty("--dialog-viewport-height", `${height}px`);
       contentRef.current?.style.setProperty("--dialog-viewport-top", `${viewport?.offsetTop ?? 0}px`);
+      contentRef.current?.toggleAttribute("data-compact-viewport", height < 500);
     };
     resize();
     viewport?.addEventListener("resize", resize);

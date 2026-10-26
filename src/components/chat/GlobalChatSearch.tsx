@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Search, Square } from "lucide-react";
+import { BookOpen, Search, Square } from "lucide-react";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ChatConversationItemViewModel } from "@/components/chat-workspace/presentation";
 import { globalResultKey, type GlobalMessageSearchResult } from "@/domain/message/global-message-search";
 import { useGlobalChatSearch } from "./useGlobalChatSearch";
+import { GlobalSearchSummary } from "./GlobalSearchSummary";
 import { highlightSearchText } from "./search-highlight";
 import { ConversationContextDialog } from "./ConversationContextDialog";
 import { contextTime, readPublicConversationTitle, type ConversationContextAnchor } from "./conversation-context";
@@ -17,7 +18,7 @@ export function GlobalChatSearch({ conversations }: { conversations: readonly Ch
   const input = useRef<HTMLInputElement>(null);
   const contentRef = useReadonlyDialogFrame(open, () => setOpen(false), "globalChatSearch");
   return <Dialog open={open} onOpenChange={setOpen}>
-    <DialogTrigger render={<Button variant="ghost" className="mx-2 my-2 min-h-11 shrink-0 justify-start gap-2 rounded-xl text-muted-strong" />}>
+    <DialogTrigger render={<Button variant="ghost" className="mx-2 my-1.5 min-h-11 shrink-0 justify-start gap-2 rounded-xl text-muted-strong" />}>
       <Search className="size-4" aria-hidden="true" />搜索全部聊天
     </DialogTrigger>
     <DialogContent ref={contentRef} initialFocus={input} className="mist-paper global-chat-search max-w-2xl">
@@ -67,31 +68,30 @@ function GlobalSearchContent({ conversations, inputRef }: {
   const action = state.status === "error" ? "重试本次查找" : state.status === "paused" ? "继续已停止的查找"
     : state.status === "complete" ? "继续查找更早 30 天" : "继续查找当前时间段";
   return <>
-    <div className="shrink-0 space-y-2 border-b border-border/60 px-5 py-3 sm:px-6">
+    <div data-global-search-controls className="shrink-0 space-y-2 border-b border-border/60 px-5 py-3 sm:px-6">
       <label className="sr-only" htmlFor="global-chat-query">全部聊天关键词</label>
       <Input ref={inputRef} id="global-chat-query" value={search.query} maxLength={200}
         surface="translucent" controlSize="comfortable" className="rounded-xl text-base md:text-base" placeholder="查找过去聊过的内容…"
         onChange={e => search.setQuery(e.target.value)} onCompositionStart={() => search.setComposing(true)} onCompositionEnd={() => search.setComposing(false)}
         onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing && !search.composing && !busy) { e.preventDefault(); void search.proceed(); } }} />
-      <div className="space-y-1 text-xs leading-5 text-muted-foreground" aria-live="polite">
-        {state.range && <p>当前时间段：{contextTime(state.range.start)} 至 {contextTime(state.range.end)}（不含结束时刻）</p>}
-        {state.completedStart !== null && state.latest !== null && <p>已查完：{contextTime(state.completedStart)} 至 {contextTime(state.latest)}</p>}
-        <p>{busy ? "正在查找这一批记录…" : state.status === "scan_pending" ? "这一批未命中，当前时间段尚未查完。"
-          : state.status === "complete" ? "当前时间段已查完，可继续查找更早记录。"
-          : state.status === "paused" ? "查找已停止，已有结果保留。" : items.length ? `已找到 ${items.length} 条公开消息` : "每次继续只查一批，找到后可以随时停止。"}</p>
-      </div>
+      <GlobalSearchSummary range={state.range} count={items.length} status={state.status} />
     </div>
-    <DialogBody className="global-chat-results p-0 sm:px-0" aria-busy={busy}>
+    <DialogBody className="global-chat-results p-0 sm:px-0" data-has-results={items.length > 0} aria-busy={busy}>
       {items.length > 0 && <ol className="divide-y divide-border/60">
         {items.map(item => <li key={globalResultKey(item)} className="min-w-0 px-5 py-4 sm:px-6">
           <p className="truncate text-sm font-medium text-muted-strong" title={title(item.conversationId, item.conversationTitle)}>{title(item.conversationId, item.conversationTitle)}</p>
-          <div className="mt-1 flex flex-wrap gap-x-2 text-xs leading-5 text-muted-foreground">
-            <span>{item.role === "user" ? "你" : item.role === "assistant" ? "知远" : "系统通知"}</span><time>{contextTime(item.createdAt)}</time>
+          <div data-global-result-meta className="mt-1 flex min-w-0 items-center justify-between gap-2 text-xs leading-5 text-muted-foreground">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
+              <span className="shrink-0">{item.role === "user" ? "你" : item.role === "assistant" ? "知远" : "系统通知"}</span>
+              <time className="min-w-0 [overflow-wrap:anywhere]">{contextTime(item.createdAt)}</time>
+            </div>
+            <Button type="button" variant="ghost" className="min-h-11 shrink-0 gap-1 whitespace-nowrap rounded-md px-1 text-xs text-primary-ink hover:bg-primary/8 hover:text-primary-ink active:bg-primary/12" onClick={() => openSource(item)}>
+              <BookOpen className="size-3" aria-hidden="true" />查看原文
+            </Button>
           </div>
-          <div className="mt-2 space-y-1 text-sm leading-7 text-foreground [overflow-wrap:anywhere]">
+          <div className="mt-1 space-y-1 text-sm leading-7 text-foreground [overflow-wrap:anywhere]">
             {item.snippets.map((snippet, index) => <p key={`${snippet.segmentKey}:${index}`}>{highlightSearchText(snippet.text, search.query)}</p>)}
           </div>
-          <Button type="button" variant="ghost" className="mt-1 min-h-11 px-0 text-xs text-primary-ink" onClick={() => openSource(item)}>查看原文</Button>
         </li>)}
       </ol>}
       {!items.length && !busy && <p role="status" className="px-5 py-8 text-sm leading-7 text-muted-foreground sm:px-6">
@@ -101,10 +101,10 @@ function GlobalSearchContent({ conversations, inputRef }: {
           : state.status === "error" ? "本批查找暂未完成，请重试。" : "输入关键词，寻找一段过去的对话。"}
       </p>}
     </DialogBody>
-    {search.query.trim() && <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border/60 px-5 py-3 sm:px-6">
+    {search.query.trim() && <div data-global-search-actions className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border/60 px-5 py-3 sm:px-6">
       {state.status === "error" && <p role="alert" className="w-full text-xs leading-5 text-muted-strong">本次查找未完成，已有结果已保留。若续查已失效，请重新从最近 30 天查找。</p>}
       {busy ? <Button variant="ghost" className="min-h-11" onClick={search.stop}><Square className="size-3" aria-hidden="true" />停止查找</Button>
-        : <Button variant="secondary" className="min-h-11 max-w-full whitespace-normal" disabled={search.composing || state.status === "idle"} onClick={() => void search.proceed()}>{action}</Button>}
+        : <Button variant="outline" className="min-h-11 max-w-full whitespace-normal" disabled={search.composing || state.status === "idle"} onClick={() => void search.proceed()}>{action}</Button>}
       {state.status === "error" && <Button variant="ghost" className="min-h-11" onClick={search.restart}>重新从最近 30 天查找</Button>}
     </div>}
     <ConversationContextDialog anchor={anchor && { ...anchor, conversationTitle: title(anchor.conversationId, anchor.conversationTitle) }}
