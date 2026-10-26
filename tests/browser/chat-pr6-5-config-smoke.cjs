@@ -111,7 +111,7 @@ async function run(browser, width) {
   assert.equal(await slider('Temperature').getAttribute('aria-valuenow'), '1');
   assert.equal(await page.getByRole('switch', { name: '扩展思考' }).isDisabled(), true);
   assert.equal(await slider('记忆浮现间隔').getAttribute('aria-valuenow'), '12');
-  assert.equal(await slider('新会话携带历史数量').getAttribute('aria-valuenow'), '0');
+  assert.equal(await slider('新会话携带历史').getAttribute('aria-valuenow'), '0');
   await close(); assert.equal(await page.getByRole('textbox', { name: '搜索当前会话', exact: true }).isVisible(), true);
   await page.getByRole('button', { name: '关闭搜索', exact: true }).click();
   await open(); await slider('上下文消息数').focus(); await page.keyboard.press('End');
@@ -164,7 +164,6 @@ async function run(browser, width) {
   await page.keyboard.press('Escape'); await page.locator('[data-slot="popover-content"]').waitFor({ state: 'hidden' }); await open();
   assert.equal(await slider('Temperature').getAttribute('max'), '1'); assert.equal(await slider('Temperature').getAttribute('aria-valuenow'), '1');
   assert.equal(state.defaults.temperatures[OPENAI], 0); assert.equal(state.selections.b.protocol, ANTHROPIC);
-  await page.getByText('模型能力尚未验证；开启即手动尝试。', { exact: true }).waitFor();
   await panel().evaluate(el => Promise.all(el.getAnimations({ subtree: true }).map(a => a.finished.catch(() => {}))));
   await page.getByRole('switch', { name: '扩展思考' }).click(); await saveEnd();
   for (const effort of ['low', 'medium', 'high', 'xhigh', 'max']) {
@@ -173,7 +172,7 @@ async function run(browser, width) {
     assert.equal(await page.getByRole('button', { name: effort, exact: true }).getAttribute('aria-pressed'), 'true');
   }
   await slider('记忆浮现间隔').focus(); await page.keyboard.press('Home'); await saveEnd();
-  await slider('新会话携带历史数量').focus(); await page.keyboard.press('End'); await saveEnd();
+  await slider('新会话携带历史').focus(); await page.keyboard.press('End'); await saveEnd();
   assert.equal(state.defaults.float, 1); assert.equal(state.defaults.carryover, 50);
   await close(); await page.reload(); await page.locator('[data-message-id="a-initial"]').waitFor();
   if (width < 768) await page.getByRole('button', { name: '打开会话列表', exact: true }).click();
@@ -182,14 +181,14 @@ async function run(browser, width) {
   assert.equal(await page.getByRole('switch', { name: '扩展思考' }).getAttribute('aria-checked'), 'true');
   assert.equal(await page.getByRole('button', { name: 'max', exact: true }).getAttribute('aria-pressed'), 'true');
   assert.equal(await slider('记忆浮现间隔').getAttribute('aria-valuenow'), '1');
-  assert.equal(await slider('新会话携带历史数量').getAttribute('aria-valuenow'), '50');
+  assert.equal(await slider('新会话携带历史').getAttribute('aria-valuenow'), '50');
   const effortGeometry = await page.getByRole('group', { name: '思考强度' }).evaluate(el => ({ scroll: el.scrollWidth, client: el.clientWidth,
     children: [...el.children].map(button => ({ scroll: button.scrollWidth, client: button.clientWidth })) }));
   assert(effortGeometry.scroll <= effortGeometry.client && effortGeometry.children.every(button => button.scroll <= button.client));
   await panel().evaluate(el => Promise.all(el.getAnimations({ subtree: true }).map(a => a.finished.catch(() => {}))));
   await page.screenshot({ path: `${output}/thinking-${width}.png` });
   await page.setViewportSize({ width, height: 260 }); await page.waitForTimeout(250);
-  await slider('新会话携带历史数量').scrollIntoViewIfNeeded();
+  await slider('新会话携带历史').scrollIntoViewIfNeeded();
   assert(await panel().evaluate(el => el.scrollHeight > el.clientHeight && el.scrollWidth <= el.clientWidth + 1));
   await page.setViewportSize({ width, height: 844 });
   await page.getByRole('switch', { name: '扩展思考' }).click(); await saveEnd();
@@ -198,7 +197,8 @@ async function run(browser, width) {
   assert.equal(state.requests.filter(r => /\/api\/settings/.test(r.path)).length, 0); assert.deepEqual(errors, []);
   await context.close(); console.log(`${width}px: real values, automatic commit/keyboard grouping, drag batching, failure/retry, refresh/conversation persistence, protocol isolation, default send/regen, short Popover/focus/search passed`);
 }
-(async () => {
+module.exports = { fixture };
+if (require.main === module) (async () => {
   fs.mkdirSync(output, { recursive: true });
   const browser = await chromium.launch({ headless: true, ...(process.argv[3] ? { executablePath: process.argv[3] } : {}) });
   try { for (const width of [320, 390, 1280]) await run(browser, width); }

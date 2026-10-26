@@ -4,11 +4,12 @@ import { ChatRequestParametersMenu, ChatSettingSlider, ChatThinkingSetting } fro
 import { createChatSettingsController } from "@/components/chat-workspace/chat-settings-controller";
 import type { ChatDefaultsRead } from "@/domain/runtime/chat-defaults";
 import { addedChatDefaults } from "@/test-fixtures/chat-defaults";
-import { Popover } from "@/components/ui/popover";
+import { Popover, PopoverTitle, PopoverDescription } from "@/components/ui/popover";
 import { Dialog } from "@/components/ui/dialog";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { SegmentedControlItem } from "@/components/ui/selection-control";
 import { elements, find, hookSession } from "./test-utils/hook-session";
 vi.mock("react", async original => {
   const actual = await original<typeof React>();
@@ -25,24 +26,44 @@ async function fixture() {
   return { controller, data, load, save, settings: () => ({ state: controller.getState(), controller }) };
 }
 describe("lightweight Chat settings", () => {
-  it("disables unsupported Thinking, labels unknown models and locks all five efforts during execution", async () => {
+  it("explains unsupported Thinking, keeps unknown models quiet and locks all five efforts during execution", async () => {
     const s = await fixture();
     expect(find(ChatThinkingSetting({ settings: s.settings(), disabled: false }), Switch).props.disabled).toBe(true);
     const settings = { ...s.settings(), state: { ...s.settings().state, data: { ...s.data, ...addedChatDefaults(true),
       thinking: { ...addedChatDefaults(true).thinking, value: { enabled: true, effort: "max" as const } } } } };
     const tree = ChatThinkingSetting({ settings, disabled: true });
-    expect(JSON.stringify(tree)).toContain("模型能力尚未验证");
-    const efforts = elements(tree).filter(node => node.type === Button && "aria-pressed" in node.props);
+    expect(JSON.stringify(tree)).not.toContain("模型能力未验证，可尝试");
+    const efforts = elements(tree).filter(node => node.type === SegmentedControlItem);
     expect(efforts.map(node => node.props.children)).toEqual(["low", "medium", "high", "xhigh", "max"]);
     expect(efforts.every(node => node.props.disabled)).toBe(true);
-    expect(efforts.filter(node => node.props["aria-pressed"]).map(node => node.props.children)).toEqual(["max"]);
+    expect(efforts.filter(node => node.props.selected).map(node => node.props.children)).toEqual(["max"]);
   });
   it("uses a Popover on both surfaces, correct three-dot label and real read on open", async () => {
     const s = await fixture(), hooks = hookSession(() => ChatRequestParametersMenu({ settings: s.settings(), disabled: false }));
     const tree = hooks.render(); expect(elements(tree).some(node => node.type === Dialog)).toBe(false);
     const trigger = elements(tree).find(node => node.type === Popover)!.props.children as React.ReactNode;
     expect(JSON.stringify(trigger)).toContain("聊天设置"); expect(JSON.stringify(tree)).not.toContain("应用到后续请求");
+    const title = find(tree, PopoverTitle);
+    expect(elements(tree).some(node => node.type === PopoverDescription)).toBe(false);
+    expect(title.props.children).toBe("聊天设置");
+    for (const text of ["自动保存", "生成参数", "上下文与记忆", "Chat 与 Diary 共用", "0 为不携带"]) {
+      expect(JSON.stringify(tree)).not.toContain(text);
+    }
     find(tree, Popover).props.onOpenChange?.(true, {} as never); await Promise.resolve(); expect(s.load).toHaveBeenCalledTimes(2);
+    hooks.dispose();
+  });
+  it.each(["temperature", "thinking"] as const)("retains %s failure feedback and its retry action in the compact layout", async field => {
+    const s = await fixture(), commit = vi.spyOn(s.controller, "commit");
+    const settings = { ...s.settings(), state: { ...s.settings().state,
+      data: { ...s.data, ...addedChatDefaults(true) }, drafts: { [field]: field === "thinking" ? { enabled: true, effort: "max" as const } : 0 },
+      errors: { [field]: "未确认保存，当前编辑已保留。" } } };
+    const hooks = hookSession(() => field === "thinking" ? ChatThinkingSetting({ settings, disabled: false }) :
+      ChatSettingSlider({ settings, field, label: "Temperature", metadata: s.data.temperature!, disabled: false }));
+    const tree = hooks.render();
+    expect(JSON.stringify(tree)).toContain("未确认保存，当前编辑已保留。");
+    const retry = find(tree, Button, props => props.children === "重试");
+    expect(retry.props.disabled).toBe(false); retry.props.onClick?.({} as never);
+    expect(commit).toHaveBeenCalledWith(settings.state.scope, field);
     hooks.dispose();
   });
   it("previews many drag changes without saving and commits only on pointer end", async () => {

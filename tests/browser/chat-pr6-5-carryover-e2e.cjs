@@ -39,7 +39,7 @@ const backend = process.env.CHAT_PR65_FIXTURE || 'http://127.0.0.1:45366';
     for (const count of [0, 4, 50]) {
       await selectSource();
       await page.getByRole('button', { name: '聊天设置', exact: true }).click();
-      const slider = page.getByRole('slider', { name: '新会话携带历史数量', exact: true });
+      const slider = page.getByRole('slider', { name: '新会话携带历史', exact: true });
       await slider.waitFor(); await slider.focus(); await page.keyboard.press('Home');
       if (count === 50) await page.keyboard.press('End');
       else for (let n = 0; n < count; n++) await page.keyboard.press('ArrowRight');

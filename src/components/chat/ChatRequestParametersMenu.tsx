@@ -5,7 +5,8 @@ import { isThinkingPreference, THINKING_EFFORTS, type NumericChatDefaultField, t
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { Popover, PopoverContent, PopoverTitle, PopoverDescription, PopoverTrigger } from "@/components/ui/popover";
+import { SegmentedControlItem } from "@/components/ui/selection-control";
+import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 
 const sliderKeys = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"]);
 
@@ -24,25 +25,22 @@ export function ChatRequestParametersMenu({ settings, disabled }: { readonly set
       <MoreHorizontal className="size-4.5" aria-hidden="true" />
     </PopoverTrigger>
     <PopoverContent align="end" sideOffset={8} initialFocus={type => type === "keyboard"}
-      className="scrollbar-none max-h-(--available-height) w-72 max-w-(--available-width) gap-3 overflow-y-auto overscroll-contain rounded-2xl p-4">
-      <PopoverTitle>聊天设置</PopoverTitle>
-      <PopoverDescription className="text-xs leading-5">修改后自动保存，对后续聊天生效。</PopoverDescription>
+      className="scrollbar-none max-h-(--available-height) w-72 max-w-(--available-width) gap-1.5 overflow-y-auto overscroll-contain rounded-2xl p-3">
+      <div className="border-b border-border/60 pb-2">
+        <PopoverTitle className="shrink-0 whitespace-nowrap">聊天设置</PopoverTitle>
+      </div>
       {(!ready && settings?.state.status !== "error") && <p className="py-3 text-xs text-muted-foreground" role="status">正在读取设置…</p>}
       {settings?.state.status === "error" && <div className="text-xs text-muted-strong" role="alert">暂时无法读取设置。
         <Button variant="link" size="compact" onClick={() => void settings.controller.open()}>重试读取</Button>
       </div>}
-      {settings && ready && <div className="space-y-2" aria-label="聊天参数">
-        <p className="text-xs text-muted-foreground">生成参数</p>
+      {settings && ready && <div aria-label="聊天参数">
         <ChatSettingSlider settings={settings} field="context_limit" label="上下文消息数" metadata={ready.context_limit} disabled={disabled} />
         {ready.temperature ? <ChatSettingSlider settings={settings} field="temperature" label="Temperature" metadata={ready.temperature} disabled={disabled} />
           : <p className="text-xs text-muted-foreground">当前接口暂不提供温度设置。</p>}
         <ChatThinkingSetting settings={settings} disabled={disabled} />
-        <div className="border-t border-border/60 pt-3 mt-3 space-y-2">
-          <p className="text-xs text-muted-foreground">上下文与记忆</p>
+        <div className="mt-1.5 border-t border-border/60 pt-1.5">
           <ChatSettingSlider settings={settings} field="float_interval" label="记忆浮现间隔" metadata={ready.float_interval} disabled={disabled} unit="轮" />
-          <p className="text-xs leading-5 text-muted-foreground">Chat 与 Diary 共享的低频记忆浮现策略。</p>
-          <ChatSettingSlider settings={settings} field="carryover_count" label="新会话携带历史数量" metadata={ready.carryover_count} disabled={disabled} unit="条" />
-          <p className="text-xs leading-5 text-muted-foreground">首次发送携带来源会话最近的实际消息；0 为不携带。</p>
+          <ChatSettingSlider settings={settings} field="carryover_count" label="新会话携带历史" metadata={ready.carryover_count} disabled={disabled} unit="条" />
         </div>
       </div>}
     </PopoverContent>
@@ -59,8 +57,10 @@ export function ChatSettingSlider({ settings, field, label, metadata, disabled, 
   const value = edited ? typeof draft === "number" ? draft : metadata.defaultValue : metadata.value;
   const error = state.errors[field];
   return <div className="min-w-0" data-chat-setting={field}>
-    <div className="flex min-h-8 items-center gap-2 text-sm">
-      <span className="min-w-0 flex-1" title={field === "context_limit" ? "控制初始历史消息行选择，非最终总量上限。" : field === "temperature" ? "温度按接口格式分别保存；具体模型支持性由上游决定。" : undefined}>{label}</span>
+    <div className="flex min-h-6 items-center gap-2 text-sm">
+      <span className="min-w-0 flex-1" title={field === "context_limit" ? "控制初始历史消息行选择，非最终总量上限。" : field === "temperature" ? "温度按接口格式分别保存；具体模型支持性由上游决定。" : undefined}>
+        <span className="block">{label}</span>
+      </span>
       <output className="shrink-0 tabular-nums text-foreground" aria-live="polite">{field === "temperature" && Number.isInteger(value) ? value.toFixed(1) : value}{unit}</output>
       {!edited && metadata.source === "backend_default" && <span className="text-xs text-muted-foreground">默认</span>}
       {metadata.source === "saved" && <Button type="button" variant="ghost" size="icon-xs" className="text-muted-foreground"
@@ -88,19 +88,19 @@ export function ChatThinkingSetting({ settings, disabled }: { readonly settings:
   const unsupported = metadata.capability.status === "unsupported";
   const error = state.errors.thinking;
   return <div data-chat-setting="thinking" className="min-w-0">
-    <div className="flex items-center justify-between gap-2 text-sm">
-      <span>扩展思考</span>
-      <Switch aria-label="扩展思考" aria-describedby="chat-thinking-status" checked={value.enabled} disabled={disabled || unsupported}
+    <div className="flex min-h-11 items-center justify-between gap-2 text-sm">
+      <div className="min-w-0 flex-1">
+        <span>扩展思考</span>
+        {unsupported && <p id="chat-thinking-status" className="text-xs leading-4 text-muted-foreground">当前接口不支持扩展思考。</p>}
+      </div>
+      <Switch aria-label="扩展思考" aria-describedby={unsupported ? "chat-thinking-status" : undefined} checked={value.enabled} disabled={disabled || unsupported}
         onCheckedChange={enabled => controller.commit(scope, "thinking", { ...value, enabled })} />
     </div>
-    <p id="chat-thinking-status" className="text-xs leading-5 text-muted-foreground">{unsupported ? "当前接口不支持扩展思考请求。" :
-      metadata.capability.status === "unknown" ? "模型能力尚未验证；开启即手动尝试。" : "当前模型支持扩展思考。"}</p>
-    {value.enabled && !unsupported && <div role="group" aria-label="思考强度" className="mt-2 grid grid-cols-3 gap-1.5 min-w-0">
-      {THINKING_EFFORTS.filter(effort => metadata.capability.allowedEfforts.includes(effort)).map(effort => <Button key={effort} type="button" size="compact"
-        variant={value.effort === effort ? "secondary" : "ghost"} aria-pressed={value.effort === effort} disabled={disabled}
-        className="min-w-0 text-xs" onClick={() => controller.commit(scope, "thinking", { ...value, effort })}>{effort}</Button>)}
+    {value.enabled && !unsupported && <div role="group" aria-label="思考强度" className="grid min-w-0 grid-cols-5 gap-0.5">
+      {THINKING_EFFORTS.filter(effort => metadata.capability.allowedEfforts.includes(effort)).map(effort => <SegmentedControlItem key={effort}
+        selected={value.effort === effort} disabled={disabled}
+        className="min-w-0 [&_[data-slot=selection-surface]]:px-0" onClick={() => controller.commit(scope, "thinking", { ...value, effort })}>{effort}</SegmentedControlItem>)}
     </div>}
-    {!unsupported && <p className="mt-1 text-xs leading-5 text-muted-foreground">关闭后不附加思考参数。</p>}
     {error ? <p role="alert" className="text-xs leading-5 text-muted-strong">{error}<Button variant="link" size="compact" disabled={disabled || state.saving}
       onClick={() => controller.commit(scope, "thinking")}>重试</Button></p> : state.saving && edited ? <p role="status" className="text-xs text-muted-foreground">保存中…</p> : null}
   </div>;
