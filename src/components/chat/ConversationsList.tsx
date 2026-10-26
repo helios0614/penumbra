@@ -7,6 +7,7 @@ import { ConversationMenu, type ConversationAction } from "./ConversationActions
 import type { ChatConversationItemViewModel } from "@/components/chat-workspace/presentation";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { GlobalChatSearch } from "./GlobalChatSearch";
 
 interface ConversationsListProps {
   readonly conversations: readonly ChatConversationItemViewModel[];
@@ -58,6 +59,7 @@ export function ConversationsList({
         )}
       </div>
 
+      <GlobalChatSearch conversations={conversations} />
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col gap-0.5 p-2">
           {conversations.length === 0 && (

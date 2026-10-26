@@ -1,0 +1,13 @@
+.global-chat-search { height: min(46rem, var(--dialog-available-height)); }
+.global-chat-results { min-height: 6rem; }
+.context-target {
+  background: color-mix(in srgb, var(--color-ai) 22%, var(--color-background) 40%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-ai) 18%, transparent);
+}
+.context-markdown > span { display: contents; }
+.context-markdown p + p { margin-top: .75rem; }
+.context-markdown :is(h1,h2,h3,h4,h5,h6) { font-size: 1em; font-weight: 600; margin-block: .75rem .25rem; }
+.context-markdown ul { list-style: disc; padding-inline-start: 1.25rem; }
+.context-markdown ol { list-style: decimal; padding-inline-start: 1.25rem; }
+.context-markdown blockquote { border-inline-start: 2px solid var(--color-border); padding-inline-start: .75rem; }
+.context-markdown td { border: 1px solid var(--color-border); padding: .25rem .5rem; }

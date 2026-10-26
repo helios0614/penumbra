@@ -170,41 +170,7 @@ export async function searchConversationMessages(
     !["ready", "scan_pending", "complete"].includes(text(r.page_status))
   )
     return fail();
-  const items = r.items.map((value) => {
-    const item = record(value);
-    if (
-      !["user", "assistant", "system"].includes(text(item.role)) ||
-      typeof item.created_at !== "number" ||
-      !Number.isFinite(item.created_at) ||
-      !Array.isArray(item.snippets)
-    )
-      return fail();
-    const snippets = item.snippets.map((value) => {
-      const s = record(value),
-        segment = mapSearchSegments([s])[0]!;
-      if (!Array.isArray(s.match_ranges)) return fail();
-      const matchRanges = s.match_ranges.map((value) => {
-        if (
-          !Array.isArray(value) ||
-          value.length !== 2 ||
-          !value.every(Number.isInteger) ||
-          value[0] < 0 ||
-          value[1] <= value[0] ||
-          value[1] > Array.from(segment.text).length
-        )
-          return fail();
-        return [value[0], value[1]] as const;
-      });
-      return { ...segment, matchRanges };
-    });
-    return {
-      messageId: text(item.message_id) || fail(),
-      createdAt: item.created_at,
-      role: item.role as MessageSearchResult["role"],
-      snippets,
-      publicRevision: text(item.public_revision),
-    };
-  });
+  const items = r.items.map(mapMessageSearchItem);
   const next = cursor(r.next_cursor),
     hasMore = bool(r.has_more);
   if (
@@ -219,5 +185,42 @@ export async function searchConversationMessages(
     nextCursor: next,
     hasMore,
     pageStatus: r.page_status as MessageSearchPage["pageStatus"],
+  };
+}
+
+/** Shared validation only; both search interfaces use the same public snippet contract. */
+export function mapMessageSearchItem(value: unknown): MessageSearchResult {
+  const item = record(value);
+  if (
+    !["user", "assistant", "system"].includes(text(item.role)) ||
+    typeof item.created_at !== "number" ||
+    !Number.isFinite(item.created_at) ||
+    !Array.isArray(item.snippets)
+  )
+    return fail();
+  const snippets = item.snippets.map((value) => {
+    const s = record(value),
+      segment = mapSearchSegments([s])[0]!;
+    if (!Array.isArray(s.match_ranges)) return fail();
+    const matchRanges = s.match_ranges.map((value) => {
+      if (
+        !Array.isArray(value) ||
+        value.length !== 2 ||
+        !value.every(Number.isInteger) ||
+        value[0] < 0 ||
+        value[1] <= value[0] ||
+        value[1] > Array.from(segment.text).length
+      )
+        return fail();
+      return [value[0], value[1]] as const;
+    });
+    return { ...segment, matchRanges };
+  });
+  return {
+    messageId: text(item.message_id) || fail(),
+    createdAt: item.created_at,
+    role: item.role as MessageSearchResult["role"],
+    snippets,
+    publicRevision: text(item.public_revision),
   };
 }
