@@ -74,6 +74,7 @@ export interface ChatSendController {
   getState(): ChatSendState;
   send(input: ChatSendInput): Promise<boolean>;
   regenerate(input: ChatRegenerateInput): Promise<boolean>;
+  reconcileUserPersistence(): Promise<void>;
   retryFinalization(): Promise<void>;
   resetError(): void;
   releaseAfterReview(): void;
@@ -94,8 +95,9 @@ type ActiveExecutionBase = {
 
 type ActiveSendExecution = ActiveExecutionBase & {
   readonly kind: "send";
-  readonly optimisticUser: OptimisticUserMessage;
+  optimisticUser: OptimisticUserMessage;
   duplicateUserMessageId: string | null;
+  receiptLookup: Promise<ChatSendResult | null> | null;
 };
 
 type ActiveRegenerateExecution = ActiveExecutionBase & {
@@ -150,6 +152,39 @@ export function createChatSendController(
         executionError: execution.executionError,
       };
 
+  const lookupReceipt = (execution: ActiveSendExecution): Promise<ChatSendResult | null> => {
+    if (!dependencies.lookupSendResult) return Promise.resolve(null);
+    if (execution.receiptLookup) return execution.receiptLookup;
+    execution.receiptLookup = (async () => {
+      const receipt = await dependencies.lookupSendResult!(execution.conversationId, execution.optimisticUser.clientMessageId);
+      if (!isCurrent(execution)) return null;
+      if (receipt.conversationId !== execution.conversationId || receipt.clientMessageId !== execution.optimisticUser.clientMessageId ||
+          !receipt.userMessageId ||
+          execution.duplicateUserMessageId !== null && receipt.userMessageId !== execution.duplicateUserMessageId ||
+          execution.optimisticUser.persistedMessageId !== undefined && receipt.userMessageId !== execution.optimisticUser.persistedMessageId) {
+        throw new ChatExecutionContractError("Send receipt identity mismatch");
+      }
+      if (execution.optimisticUser.persistedMessageId === undefined) {
+        execution.optimisticUser = { ...execution.optimisticUser, persistedMessageId: receipt.userMessageId };
+      }
+      return receipt;
+    })().finally(() => { execution.receiptLookup = null; });
+    return execution.receiptLookup;
+  };
+
+  const reconcileUserPersistence = async () => {
+    const execution = active;
+    if (disposed || execution?.kind !== "send" || execution.optimisticUser.persistedMessageId !== undefined) return;
+    try {
+      const receipt = await lookupReceipt(execution);
+      if (receipt && isCurrent(execution) && "executionId" in state && state.executionId === execution.executionId &&
+          "optimisticUser" in state && state.optimisticUser !== execution.optimisticUser) {
+        // User acceptance changes only its projection, never the assistant/unknown state.
+        publish({ ...state, optimisticUser: execution.optimisticUser });
+      }
+    } catch { /* Missing, stale or unavailable receipts cannot authorize a merge/retry. */ }
+  };
+
   const performFinalization = async (execution: ActiveExecution) => {
     if (!isCurrent(execution)) return;
     publish(activeAssistantState("finalizing", execution));
@@ -157,12 +192,8 @@ export function createChatSendController(
     try {
       if (execution.kind === "send" && execution.accumulator.message.assistantMessageId === null && dependencies.lookupSendResult) {
         try {
-          const receipt = await dependencies.lookupSendResult(execution.conversationId, execution.optimisticUser.clientMessageId);
-          if (!isCurrent(execution)) return;
-          if (receipt.conversationId !== execution.conversationId || receipt.clientMessageId !== execution.optimisticUser.clientMessageId ||
-              execution.duplicateUserMessageId !== null && receipt.userMessageId !== execution.duplicateUserMessageId) {
-            throw new ChatExecutionContractError("Send receipt identity mismatch");
-          }
+          const receipt = await lookupReceipt(execution);
+          if (!receipt || !isCurrent(execution)) return;
           execution.accumulator = { ...execution.accumulator, message: { ...execution.accumulator.message, assistantMessageId: receipt.assistantMessageId } };
         } catch { /* History still refreshes; missing identity remains unknown. */ }
       }
@@ -408,6 +439,7 @@ export function createChatSendController(
         terminalFailure: false,
         recoveryReadSucceeded: false,
         duplicateUserMessageId: null,
+        receiptLookup: null,
         abortController: new AbortController(),
         finalization: null,
       };
@@ -446,9 +478,11 @@ export function createChatSendController(
       if (!isCurrent(execution)) return false;
       if (result.kind === "duplicate") {
         execution.duplicateUserMessageId = result.userMessageId;
+        execution.optimisticUser = { ...execution.optimisticUser, persistedMessageId: result.userMessageId };
         void finalize(execution);
       } else {
         publish(activeAssistantState("streaming", execution));
+        void reconcileUserPersistence();
         void consume(execution, result.events);
       }
       return true;
@@ -522,6 +556,8 @@ export function createChatSendController(
       void consume(execution, result.events);
       return true;
     },
+
+    reconcileUserPersistence,
 
     async retryFinalization() {
       if (!disposed && active === null && state.kind === "error" && !state.conversationId) {

@@ -17,10 +17,11 @@ export function createChatExecutionSessions(dependencies: ChatSendControllerDepe
     },
     state(conversationId: string | null | undefined) { return conversationId ? controllers.get(conversationId)?.getState() ?? INITIAL_CHAT_SEND_STATE : INITIAL_CHAT_SEND_STATE; },
     active(conversationId: string) { return isChatExecutionActive(this.state(conversationId)); },
+    async reconcileUserPersistence(conversationId: string) { await controllers.get(conversationId)?.reconcileUserPersistence(); },
     async reconcilePending() {
       await Promise.all([...controllers.values()].map(controller => {
         const state = controller.getState();
-        return state.kind === "finalization-uncertain" || state.kind === "regenerate-finalization-uncertain" ? controller.retryFinalization() : Promise.resolve();
+        return state.kind === "finalization-uncertain" || state.kind === "regenerate-finalization-uncertain" ? controller.retryFinalization() : controller.reconcileUserPersistence();
       }));
     },
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },

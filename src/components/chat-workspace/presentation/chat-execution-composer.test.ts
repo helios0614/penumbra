@@ -92,7 +92,7 @@ describe("chat execution presentation composition", () => {
     expect(visible.map(({ id }) => id)).toEqual(["persisted-b"]);
   });
 
-  it("removes overlay only after reconciliation returns the idle state", () => {
+  it("keeps an unlinked user overlay until identity or completion evidence arrives", () => {
     const persistedUser = message("server-user", "user", "same text");
     const persistedAssistant = message("server-assistant", "assistant", "final");
     const before = composeVisibleChatMessages(
@@ -115,6 +115,22 @@ describe("chat execution presentation composition", () => {
       "server-user",
       "server-assistant",
     ]);
+  });
+
+  it.each(["sending-user", "streaming", "finalizing", "finalization-uncertain"] as const)("uses the authoritative exact user while retaining %s generation", kind => {
+    const state = kind === "sending-user" ? sendingState() : assistantState(kind);
+    const linked = { ...state, optimisticUser: { ...optimisticUser(), persistedMessageId: "server-user" } };
+    const visible = composeVisibleChatMessages([message("server-user", "user", "server authority")], linked, "conv-a");
+    expect(visible.filter(row => row.kind === "user")).toMatchObject([{ id: "server-user", content: "server authority" }]);
+    expect(visible.find(row => row.kind === "user")).not.toHaveProperty("executionStatus");
+    expect(visible.find(row => row.kind === "assistant")?.executionStatus).toBe(kind === "finalization-uncertain" ? "unconfirmed" : kind === "finalizing" ? "finalizing" : "streaming");
+  });
+
+  it("requires the linked row to be a user of this conversation", () => {
+    const state = { ...sendingState(), optimisticUser: { ...optimisticUser(), persistedMessageId: "server-user" } };
+    for (const row of [message("server-user", "assistant", "same text"), { ...message("server-user", "user", "same text"), conversationId: "other" }]) {
+      expect(composeVisibleChatMessages([row], state, "conv-a").some(row => row.id === "execution:1:user")).toBe(true);
+    }
   });
 
   it("allows reconciliation to contain only the persisted user", () => {

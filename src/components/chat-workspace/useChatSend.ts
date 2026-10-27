@@ -3,6 +3,7 @@ import { readChatSendResult } from "@/application/chat-send/chat-send-result";
 import { reconcileBackgroundChat } from "@/application/chat-send/chat-background-reconciliation";
 import { createChatExecutionSessions } from "@/application/chat-send/chat-execution-sessions";
 import { type ChatHistoryReconciler, type ChatRegenerateInput, type ChatSendInput, type ChatSendState } from "@/application/chat-send";
+import type { Message } from "@/domain/message";
 
 export type UseChatSendResult = {
   readonly getState: (conversationId?: string) => ChatSendState;
@@ -30,10 +31,14 @@ const sessions = createChatExecutionSessions({
 });
 export function pendingChatConversationId(): string | undefined { return lastVisited; }
 
-export function useChatSend(reconcileHistory: ChatHistoryReconciler, conversationId?: string | null): UseChatSendResult {
+export function useChatSend(reconcileHistory: ChatHistoryReconciler, conversationId?: string | null, history?: readonly Message[]): UseChatSendResult {
   const owner = useRef(conversationId); owner.current = conversationId;
   const snapshot = useCallback(() => sessions.state(conversationId), [conversationId]);
   const state = useSyncExternalStore(sessions.subscribe, snapshot, snapshot);
+  const executionId = "executionId" in state ? state.executionId : null;
+  useEffect(() => {
+    if (conversationId && history) void sessions.reconcileUserPersistence(conversationId);
+  }, [conversationId, history, executionId]);
   useEffect(() => {
     selectedOwner = conversationId ?? null;
     selectedReconciler = reconcileHistory;

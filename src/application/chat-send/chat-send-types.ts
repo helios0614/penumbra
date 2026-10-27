@@ -16,6 +16,8 @@ export type ChatExecutionKind = "send" | "regenerate";
 export type OptimisticUserMessage = {
   readonly overlayId: string;
   readonly clientMessageId: string;
+  /** Exact server identity from this submission's validated receipt/duplicate ACK. */
+  readonly persistedMessageId?: string;
   readonly content: string;
   readonly createdAt: number;
   readonly attachments?: readonly string[];

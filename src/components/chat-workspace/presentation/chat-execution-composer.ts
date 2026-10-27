@@ -81,7 +81,9 @@ export function composeVisibleChatMessages(
     return visible;
   }
 
-  visible.push({
+  const persistedUser = persistentMessages.some(message => message.conversationId === conversationId &&
+    message.roleKind === "user" && message.id === overlay.optimisticUser.persistedMessageId);
+  if (!persistedUser) visible.push({
     kind: "user",
     id: overlay.optimisticUser.overlayId,
     content: overlay.optimisticUser.content,
@@ -90,6 +92,12 @@ export function composeVisibleChatMessages(
     executionStatus: overlay.status === "unconfirmed"
       ? "unconfirmed"
       : "optimistic",
+  });
+
+  if (persistedUser && execution.kind === "sending-user") visible.push({
+    kind: "assistant", id: `${execution.executionId}:assistant`, content: "",
+    createdAt: overlay.optimisticUser.createdAt, thinking: null, simpleThink: null,
+    attachments: [], executionStatus: "streaming",
   });
 
   if (overlay.assistant !== null && (overlay.status !== "unconfirmed" || hasAssistantPresentation(overlay.assistant))) {

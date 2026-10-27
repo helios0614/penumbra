@@ -400,6 +400,24 @@ describe("ChatWorkspaceView ready states", () => {
   });
 });
 
+describe("ChatView accepted-user projection during an unfinished assistant", () => {
+  it.each(["sending-user", "streaming", "finalizing"] as const)("renders one authoritative User and keeps %s generation visible", kind => {
+    const selected = conversation("conv_a", "会话 A");
+    const optimisticUser = { overlayId: "execution:client:user", clientMessageId: "client", persistedMessageId: "saved-user", content: "synthetic", createdAt: 2 };
+    const sendState: ChatSendState = kind === "sending-user"
+      ? { kind, executionId: "execution:client", conversationId: "conv_a", optimisticUser }
+      : { kind, executionId: "execution:client", conversationId: "conv_a", optimisticUser, executionError: null,
+        assistant: { overlayId: "execution:client:assistant", assistantMessageId: null, content: "", thinking: null, simpleThink: null, usage: null, createdAt: 2 } };
+    const html = render(ready(snapshot([selected], selected, history("conv_a", [message("saved-user", "user", "user", "synthetic", 2)]))), vi.fn(), { sendState, onSend: async () => true });
+    expect(html.match(/class="[^"]*chat-user-meta/g)).toHaveLength(1);
+    expect(html).toContain('data-message-id="saved-user"');
+    expect(html).not.toContain('data-message-id="execution:client:user"');
+    expect(html).toContain('data-message-id="execution:client:assistant"');
+    expect(html).toContain('data-active="true"');
+    expect(html).not.toContain("正在发送");
+  });
+});
+
 function render(
   state: ChatWorkspaceControllerState,
   onBack?: () => void,

@@ -67,7 +67,9 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
   const toast = useToast("chat-conversations");
   const workspace = useChatWorkspace({ preferredConversationId: recoveryConversation.current });
   const userName = useChatUserName(workspace.state.status === "ready");
-  const send = useChatSend(workspace.reloadSelectedConversationHistory, workspace.state.status === "ready" ? workspace.state.workspace.selectedConversationId : null);
+  const send = useChatSend(workspace.reloadSelectedConversationHistory,
+    workspace.state.status === "ready" ? workspace.state.workspace.selectedConversationId : null,
+    workspace.state.status === "ready" ? workspace.state.workspace.history?.messages : undefined);
   useEffect(() => {
     if (workspace.state.status === "ready") void send.reconcilePending();
   }, [workspace.state.status, workspace.state.status === "ready" ? workspace.state.workspace.selectedConversationId : null, send.reconcilePending]);
