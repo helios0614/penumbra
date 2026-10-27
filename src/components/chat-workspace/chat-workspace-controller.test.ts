@@ -862,6 +862,44 @@ describe("PR3 real conversation management", () => {
     await controller.load(); await expect(controller.createConversation()).rejects.toThrow();
     expect(controller.getState()).toMatchObject({ workspace: original }); expect(select).not.toHaveBeenCalled();
   });
+  it("keeps the persisted creation-date title through creation, later refresh and manual rename", async () => {
+    let list = conversations();
+    const created = { ...list[0], id: "dated", title: "2026-10-27", createdAt: Date.parse("2026-10-26T16:00:00Z") / 1000 };
+    const create = vi.fn(async (_input?: unknown, _options?: unknown) => { list = [created, ...list]; return created; });
+    const update = vi.fn(async (id: string, input: { title?: string | null }) => {
+      list = list.map(item => item.id === id ? { ...item, title: input.title! } : item);
+      return { ok: true as const };
+    });
+    const controller = createChatWorkspaceController({}, {
+      loadWorkspace: async () => workspace(list[0].id, list), createConversation: create,
+      updateConversation: update, loadConversationList: async () => list, loadConversation: loader,
+    });
+    const expectTitle = (title: string) => {
+      const state = controller.getState();
+      expect(state.status).toBe("ready");
+      if (state.status !== "ready") throw new Error("Workspace unavailable");
+      expect(state.workspace.selectedConversation?.title).toBe(title);
+      expect(state.workspace.conversations.find(item => item.id === "dated")?.title).toBe(title);
+    };
+    try {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2030-01-01T00:00:00Z"));
+      await controller.load(); await controller.createConversation();
+      expect(create.mock.calls[0]?.[0]).toEqual({ carryoverSourceConversationId: "conv_a" });
+      expectTitle("2026-10-27");
+      vi.setSystemTime(new Date("2030-01-03T00:00:00Z"));
+      await controller.refreshConversationList(); await controller.retry();
+      expectTitle("2026-10-27");
+      await controller.renameConversation("dated", "我的项目");
+      await controller.refreshConversationList(); await controller.retry();
+      expectTitle("我的项目");
+      expect(update).toHaveBeenCalledOnce();
+      expect(update).toHaveBeenCalledWith("dated", { title: "我的项目" }, expect.anything());
+      expect(list.find(item => item.id === "conv_a")?.title).toBe("Conversation conv_a");
+    } finally {
+      controller.dispose(); vi.useRealTimers();
+    }
+  });
   it("does not pretend a successful POST failed when the list cannot be confirmed", async () => {
     const post = vi.fn(async () => conversations()[0]);
     const controller = createChatWorkspaceController({}, { loadWorkspace: async () => workspace("conv_b"), createConversation: post,

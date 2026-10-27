@@ -55,6 +55,21 @@ describe("ChatWorkspaceView bootstrap states", () => {
 });
 
 describe("ChatWorkspaceView ready states", () => {
+  it.each(["2026-10-27", "我的项目", "新对话"])("uses persisted title %s in both Header and sidebar after later messages and reloads", (title) => {
+    const selected = conversation("dated", title, {
+      createdAt: Date.parse("2026-10-26T16:00:00Z") / 1000,
+      updatedAt: Date.parse("2026-10-30T16:00:00Z") / 1000,
+    });
+    for (const messages of [[], [message("later", "user", "user", "不应变为标题的消息", 1)]]) {
+      const html = render(ready(snapshot([selected], selected, history("dated", messages))));
+      const header = html.match(/<header\b[\s\S]*?<\/header>/)?.[0];
+      expect(header).toContain(`>${title}</p>`);
+      expect(html).toContain(`aria-label="打开会话${title}"`);
+      expect(html).toContain(`>${title}</span>`);
+      if (title !== "新对话") expect(header).not.toContain("新对话");
+    }
+  });
+
   it("renders a true empty conversation workspace without creating a mock conversation", () => {
     const html = render(ready(snapshot([], null, null)));
 
