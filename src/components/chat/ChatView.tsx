@@ -19,6 +19,7 @@ import {
   presentChatConversations,
 } from "@/components/chat-workspace/presentation";
 import { useChatWorkspace } from "@/components/chat-workspace/useChatWorkspace";
+import { pendingChatConversationId } from "@/components/chat-workspace/useChatSend";
 import { useChatUserName } from "@/components/chat-workspace/useChatUserName";
 import { Button } from "@/components/ui/button";
 import {
@@ -61,10 +62,15 @@ const CHAT_HEADER_ACTION_CLASS =
 
 export function ChatView({ onBack }: { readonly onBack?: () => void }) {
   const executionGuard = useRef<() => boolean>(() => true);
+  const recoveryConversation = useRef(pendingChatConversationId());
   const toast = useToast("chat-conversations");
-  const workspace = useChatWorkspace({}, () => executionGuard.current());
+  const workspace = useChatWorkspace({ preferredConversationId: recoveryConversation.current }, () => executionGuard.current());
   const userName = useChatUserName(workspace.state.status === "ready");
   const send = useChatSend(workspace.reloadSelectedConversationHistory);
+  useEffect(() => {
+    const current = send.getState();
+    if (workspace.state.status === "ready" && (current.kind === "finalization-uncertain" || current.kind === "regenerate-finalization-uncertain")) void send.retryFinalization();
+  }, [workspace.state.status, send.getState, send.retryFinalization]);
   const chatSettings = useChatSettings(workspace, send);
   executionGuard.current = () => !send.isExecutionActive() && !chatSettings.controller.isSaving();
   const realtime = useChatRealtime(workspace.state, send.state, {
@@ -156,6 +162,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
         if (executionGuard.current() && !(current.status === "ready" && current.conversationMutation)) onBack();
       } : undefined}
       sendState={send.state}
+      getSendState={send.getState}
       onSend={sendMessage}
       onRegenerate={regenerateMessage}
       onRetryFinalization={recoverExecution}
@@ -193,6 +200,7 @@ export interface ChatWorkspaceViewProps {
   readonly onSelectConversation: (conversationId: string) => void;
   readonly onRetryConversationSwitch: () => void;
   readonly sendState?: ChatSendState;
+  readonly getSendState?: () => ChatSendState;
   readonly onSend?: (content: string, attachments?: readonly string[], expectedOwner?: string) => Promise<boolean>;
   readonly onRegenerate?: (messageId: string) => Promise<boolean>;
   readonly onRetryFinalization?: () => void | Promise<void>;
@@ -218,6 +226,7 @@ export function ChatWorkspaceView({
   onSelectConversation,
   onRetryConversationSwitch,
   sendState = INITIAL_CHAT_SEND_STATE,
+  getSendState,
   onSend,
   onRegenerate,
   onRetryFinalization,
@@ -244,6 +253,13 @@ export function ChatWorkspaceView({
   const ownerRef = useRef<string | null>(null);
   ownerRef.current = state.status === "ready" ? state.workspace.selectedConversationId : null;
   const media = useAttachmentDrafts(ownerRef.current);
+  useEffect(() => {
+    const confirmed = sendState.kind === "idle" ? sendState.confirmedSend : undefined;
+    if (!confirmed) return;
+    media.store.getRecoveries(confirmed.conversationId).forEach(item => {
+      if (item.clientMessageId === confirmed.clientMessageId) media.store.discardRecovery(confirmed.conversationId, item.id);
+    });
+  }, [sendState, media.recoveries, media.store]);
   const search = useChatSearch(state.status === "ready" && !state.pendingConversationId ? ownerRef.current : null, state.status === "ready" ? state.searchRevision : 0);
   const readingRef=useRef<ChatReadingHandle|null>(null);
   const bookmark=useRef<{owner:string;position:ReadingBookmark}|null>(null);
@@ -518,11 +534,20 @@ export function ChatWorkspaceView({
             if(workspace.history?.window&&!workspace.history.window.reachesLatest){try{await onNavigateHistory?.(draftOwner);search.dismiss();setSearchFollowing(true);setJump({token:++jumpSequence.current,following:true});}catch{return false;}}
             const snapshot = media.store.capture(draftOwner);
             if (!snapshot) return false;
+            const beforeSubmission = getSendState?.();
+            const previouslyConfirmed = beforeSubmission?.kind === "idle" ? beforeSubmission.confirmedSend?.clientMessageId : undefined;
+            const preserve = () => {
+              const current = getSendState?.();
+              const clientMessageId = current && "optimisticUser" in current && current.conversationId === draftOwner
+                ? current.optimisticUser?.clientMessageId : undefined;
+              if (current?.kind === "idle" && current.confirmedSend?.conversationId === draftOwner && current.confirmedSend.clientMessageId !== previouslyConfirmed) snapshot.accept();
+              else snapshot.preserve(content, clientMessageId);
+            };
             try {
               const accepted = await onSend(content, snapshot.urls, draftOwner);
               if (accepted) { snapshot.accept(); return true; }
-              snapshot.preserve(content); return "retained";
-            } catch { snapshot.preserve(content); return "retained"; }
+              preserve(); return "retained";
+            } catch { preserve(); return "retained"; }
             finally { snapshot.release(); }
           } : undefined}
           toolsLabel={`会话模型：${workspace.setup.configuration?.selection?.model ?? "尚未选择"}`}

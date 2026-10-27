@@ -513,7 +513,7 @@ describe("unified regenerate execution controller", () => {
     expect(controller.getState()).toMatchObject({
       error: { code: "provider-failure", providerFailure: marker },
     });
-    expect(JSON.stringify(controller.getState())).not.toContain("temporary partial");
+    expect(controller.getState()).toMatchObject({ regeneratePartial: { content: "temporary partial" } });
     expect(reconcileHistory).toHaveBeenCalledOnce();
   });
 

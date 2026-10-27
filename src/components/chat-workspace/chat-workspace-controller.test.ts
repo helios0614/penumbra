@@ -449,6 +449,7 @@ describe("chat workspace controller history reconciliation", () => {
     });
     expect(original.history?.messages[0]?.content).toBe("old history");
     expect(reconciliation).toEqual({
+      assistants: [],
       persistedMessageIds: ["message-conv_a"],
       regenerateTarget: {
         id: "message-conv_a",
@@ -479,6 +480,7 @@ describe("chat workspace controller history reconciliation", () => {
       },
     });
     expect(reconciliation).toEqual({
+      assistants: [],
       persistedMessageIds: ["message-conv_a"],
       regenerateTarget: null,
     });

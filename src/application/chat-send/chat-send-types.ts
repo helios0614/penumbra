@@ -86,7 +86,7 @@ type ActiveChatRegenerateState = {
 };
 
 export type ChatSendState =
-  | { readonly kind: "idle" }
+  | { readonly kind: "idle"; readonly confirmedSend?: { readonly conversationId: string; readonly clientMessageId: string } }
   | (ActiveChatSendState & { readonly kind: "sending-user" })
   | (AssistantChatSendState & { readonly kind: "streaming" })
   | (AssistantChatSendState & { readonly kind: "finalizing" })
@@ -104,6 +104,7 @@ export type ChatSendState =
       readonly confirmedFailure?: boolean;
       readonly failedMessageId?: string;
       readonly failedTargetContent?: string;
+      readonly regeneratePartial?: StreamingAssistantMessage;
     }
   | (ActiveChatRegenerateState & {
       readonly kind: "regenerate-streaming";

@@ -40,6 +40,8 @@ import {
   type SafeChatExecutionError,
 } from "@/application/chat-send/chat-send-types";
 import { ApiError } from "@/lib/api";
+import { assistantFailureCode, assistantFailureIndex, formatAssistantFailure } from "@/domain/message/assistant-failure";
+import type { ChatSendResult } from "./chat-send-result";
 
 export type ChatSendExecutionOpener = (
   conversationId: string,
@@ -63,6 +65,7 @@ export type ChatSendControllerDependencies = {
   readonly openExecution?: ChatSendExecutionOpener;
   readonly openRegenerateExecution?: ChatRegenerateExecutionOpener;
   readonly reconcileHistory: ChatHistoryReconciler;
+  readonly lookupSendResult?: (conversationId: string, clientMessageId: string) => Promise<ChatSendResult>;
   readonly createUuid?: () => string;
   readonly now?: () => number;
 };
@@ -86,6 +89,7 @@ type ActiveExecutionBase = {
   terminalFailure: boolean;
   recoveryReadSucceeded: boolean;
   abortController: AbortController;
+  finalization: Promise<void> | null;
 };
 
 type ActiveSendExecution = ActiveExecutionBase & {
@@ -146,11 +150,22 @@ export function createChatSendController(
         executionError: execution.executionError,
       };
 
-  const finalize = async (execution: ActiveExecution) => {
+  const performFinalization = async (execution: ActiveExecution) => {
     if (!isCurrent(execution)) return;
     publish(activeAssistantState("finalizing", execution));
 
     try {
+      if (execution.kind === "send" && execution.accumulator.message.assistantMessageId === null && dependencies.lookupSendResult) {
+        try {
+          const receipt = await dependencies.lookupSendResult(execution.conversationId, execution.optimisticUser.clientMessageId);
+          if (!isCurrent(execution)) return;
+          if (receipt.conversationId !== execution.conversationId || receipt.clientMessageId !== execution.optimisticUser.clientMessageId ||
+              execution.duplicateUserMessageId !== null && receipt.userMessageId !== execution.duplicateUserMessageId) {
+            throw new ChatExecutionContractError("Send receipt identity mismatch");
+          }
+          execution.accumulator = { ...execution.accumulator, message: { ...execution.accumulator.message, assistantMessageId: receipt.assistantMessageId } };
+        } catch { /* History still refreshes; missing identity remains unknown. */ }
+      }
       const reconciliation = execution.kind === "regenerate"
         ? await dependencies.reconcileHistory(
             execution.conversationId,
@@ -165,6 +180,10 @@ export function createChatSendController(
       ) {
         throw new Error("Regenerate persistence receipt contract failed");
       }
+      if (execution.kind === "regenerate" && execution.sawTargetStart && isRegeneratePersistenceConfirmed(execution, reconciliation)) {
+        execution.terminalFailure = false;
+        execution.executionError = null;
+      }
       if (!execution.terminalFailure || (execution.kind === "send" && execution.accumulator.message.assistantMessageId !== null)) {
         if (execution.kind === "regenerate") {
           if (!execution.sawTargetStart || !isRegeneratePersistenceConfirmed(execution, reconciliation)) {
@@ -173,13 +192,11 @@ export function createChatSendController(
             );
           }
         } else {
-          const expectedPersistedMessageId = execution.duplicateUserMessageId ??
-            execution.accumulator.message.assistantMessageId;
+          const expectedPersistedMessageId = execution.accumulator.message.assistantMessageId;
           if (
             expectedPersistedMessageId === null ||
-            !reconciliation.persistedMessageIds.includes(
-              expectedPersistedMessageId,
-            )
+            !(reconciliation.assistants ? reconciliation.assistants.some(row => row.id === expectedPersistedMessageId)
+              : reconciliation.persistedMessageIds.includes(expectedPersistedMessageId))
           ) {
             throw new Error(
               "Expected assistant is not yet present in HTTP history",
@@ -188,13 +205,33 @@ export function createChatSendController(
         }
       }
 
+      // A committed row is authoritative over the transport that carried it.
+      // Keep actual provider failure diagnostics from that row, not an old socket error.
+      if (execution.kind === "send") {
+        const saved = reconciliation.assistants?.find(row => row.id === execution.accumulator.message.assistantMessageId);
+        if (saved) {
+          const failureIndex = assistantFailureIndex(saved.content);
+          execution.terminalFailure = failureIndex >= 0;
+          const savedError = failureIndex < 0 ? null : formatAssistantFailure(saved.content.slice(failureIndex));
+          const prior = execution.executionError;
+          execution.executionError = savedError === null ? null : {
+            ...providerFailureError(assistantFailureCode(saved.content)),
+            message: prior?.code === "provider-failure" && prior.message.includes("\n") && !savedError.includes("\n") ? prior.message : savedError,
+          };
+        } else if (!execution.terminalFailure) execution.executionError = null;
+      } else if (!execution.terminalFailure) execution.executionError = null;
+
       active = null;
       publish(execution.executionError === null
-        ? INITIAL_CHAT_SEND_STATE
+        ? execution.kind === "send"
+          ? { kind: "idle", confirmedSend: { conversationId: execution.conversationId, clientMessageId: execution.optimisticUser.clientMessageId } }
+          : INITIAL_CHAT_SEND_STATE
         : { kind: "error", conversationId: execution.conversationId,
           confirmedFailure: execution.terminalFailure,
           failedMessageId: !execution.terminalFailure ? undefined : execution.kind === "regenerate" ? execution.targetMessageId : execution.accumulator.message.assistantMessageId ?? undefined,
-          failedTargetContent: execution.kind === "regenerate" ? reconciliation.regenerateTarget?.content : undefined,
+          failedTargetContent: execution.kind === "regenerate" ? reconciliation.regenerateTarget?.content
+            : reconciliation.assistants?.find(row => row.id === execution.accumulator.message.assistantMessageId)?.content,
+          ...(execution.kind === "regenerate" ? { regeneratePartial: execution.accumulator.message } : {}),
           ...(execution.kind === "send" && execution.accumulator.message.assistantMessageId === null
             ? { assistant: { ...execution.accumulator.message, error: execution.executionError.message } } : {}),
           error: execution.executionError });
@@ -224,6 +261,12 @@ export function createChatSendController(
     }
   };
 
+  const finalize = (execution: ActiveExecution): Promise<void> => {
+    if (execution.finalization) return execution.finalization;
+    execution.finalization = performFinalization(execution).finally(() => { execution.finalization = null; });
+    return execution.finalization;
+  };
+
   const consume = async (
     execution: ActiveExecution,
     events: AsyncIterable<ChatExecutionEvent>,
@@ -231,6 +274,10 @@ export function createChatSendController(
     try {
       for await (const event of events) {
         if (!isCurrent(execution)) return;
+        if (event.type === "start" && execution.accumulator.message.assistantMessageId !== null &&
+            event.assistantMessageId !== execution.accumulator.message.assistantMessageId) {
+          throw new ChatExecutionContractError("Conflicting assistant start identity");
+        }
         if (execution.kind === "send" &&
             (event.type === "failure" || (event.type === "debug-summary" && event.hasError)) &&
             execution.accumulator.message.assistantMessageId !== null &&
@@ -359,6 +406,7 @@ export function createChatSendController(
         recoveryReadSucceeded: false,
         duplicateUserMessageId: null,
         abortController: new AbortController(),
+        finalization: null,
       };
       active = execution;
       publish({
@@ -441,6 +489,7 @@ export function createChatSendController(
         recoveryReadSucceeded: false,
         sawTargetStart: false,
         abortController: new AbortController(),
+        finalization: null,
       };
       active = execution;
       publish(activeAssistantState("streaming", execution));
@@ -564,7 +613,10 @@ function defaultUuid(): string {
 }
 
 function isDefiniteRejection(error: unknown): boolean {
-  return error instanceof ApiError && error.status >= 400 && error.status < 500;
+  return error instanceof ApiError && (
+    error.status >= 400 && error.status < 500 && error.status !== 408 ||
+    error.status === 503 && toSafeChatExecutionError(error).code === "provider-not-configured"
+  );
 }
 
 function isRegeneratePersistenceConfirmed(

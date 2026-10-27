@@ -38,7 +38,7 @@ function setup(onSend: (content: string, attachments?: readonly string[], owner?
   vi.mocked(uploadMedia).mockReset().mockImplementation(async uploaded => ({ url: `/uploads/${1700000000000 + ++n}.png`, name: uploaded.name, type: "image/png" }));
   vi.spyOn(URL, "createObjectURL").mockImplementation(blob => `blob:${(blob as File).name}`);
   const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-  const hooks = hookSession(() => ChatWorkspaceView({ state, sendState, onSend, onRetry: vi.fn(), onSelectConversation: vi.fn(), onRetryConversationSwitch: vi.fn() }));
+  const hooks = hookSession(() => ChatWorkspaceView({ state, sendState, getSendState: () => sendState, onSend, onRetry: vi.fn(), onSelectConversation: vi.fn(), onRetryConversationSwitch: vi.fn() }));
   const shell = () => find(hooks.render(), ChatShell).props;
   const sender = () => find(shell().composer, Sender).props;
   const media = () => find(sender().attachments, AttachmentDrafts).props;
@@ -52,6 +52,28 @@ function setup(onSend: (content: string, attachments?: readonly string[], owner?
 }
 
 describe("Main Chat submission snapshots and next drafts", () => {
+  it("clears only the confirmed submission recovery and keeps unrelated recoveries and next attachments", async () => {
+    let finish!: (value: boolean) => void;
+    const s = setup(() => new Promise<boolean>(resolve => { finish = resolve; }));
+    const unrelated = s.media().store.capture("A")!;
+    unrelated.preserve("other execution", "other-client"); unrelated.release();
+    const sending = s.sender().onSend!("原提交");
+    s.execute(pending()); finish(false); await sending;
+    expect(s.recovery().items.map(item => item.clientMessageId)).toEqual(["other-client", "client:1"]);
+    s.sender().onFiles!([file("next.png")]); await Promise.resolve();
+    s.execute({ kind: "idle", confirmedSend: { conversationId: "A", clientMessageId: "client:1" } });
+    expect(s.recovery().items.map(item => item.clientMessageId)).toEqual(["other-client"]);
+    expect(s.media().items.map(item => item.file.name)).toEqual(["next.png"]);
+    s.dispose();
+  });
+
+  it("does not discard a new rejected submission because an older send was confirmed", async () => {
+    const s = setup(async () => false);
+    s.execute({ kind: "idle", confirmedSend: { conversationId: "A", clientMessageId: "previous-client" } });
+    await s.sender().onSend!("new unsent input"); s.render(); s.commit();
+    expect(s.recovery().items).toMatchObject([{ content: "new unsent input" }]);
+    s.dispose();
+  });
   it("detaches submitted attachments immediately, keeps optimistic URLs and new attachments, and releases only its own leases", async () => {
     let finish!: (value: boolean) => void;
     const send = vi.fn(() => new Promise<boolean>(resolve => { finish = resolve; })), s = setup(send);

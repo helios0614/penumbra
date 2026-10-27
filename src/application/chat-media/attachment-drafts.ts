@@ -9,6 +9,7 @@ export type DraftAttachment = {
 };
 export type AttachmentSubmissionRecovery = {
   readonly id: string; readonly owner: string; readonly content: string; readonly items: readonly DraftAttachment[];
+  readonly clientMessageId?: string;
 };
 type Entry = { item: DraftAttachment; refs: number; abort: AbortController | null };
 type Dependencies = {
@@ -94,11 +95,11 @@ export function createAttachmentDraftStore(overrides: Partial<Dependencies> = {}
       drafts.set(owner, EMPTY); ids.forEach(release); emit();
       return { urls: items.map(item => item.uploaded!.url),
         accept: () => { settled = true; },
-        preserve: (content: string) => {
+        preserve: (content: string, clientMessageId?: string) => {
           if (released || settled || !current()) return;
           settled = true;
           ids.forEach(id => { entries.get(id)!.refs++; });
-          recoveries.set(owner, [...getRecoveries(owner), { id, owner, content, items }]); emit();
+          recoveries.set(owner, [...getRecoveries(owner), { id, owner, content, items, clientMessageId }]); emit();
         },
         release: () => {
           if (released) return;

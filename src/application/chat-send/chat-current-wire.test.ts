@@ -182,8 +182,6 @@ describe("canonical failure and read-only recovery", () => {
     await waitFor(() => controller.getState().kind === "finalization-uncertain");
     committed = true;
     await controller.retryFinalization();
-    expect(controller.getState().kind).toBe("error");
-    await controller.retryFinalization();
     expect(controller.getState().kind).toBe("idle");
     expect(openExecution).toHaveBeenCalledOnce();
     controller.dispose();

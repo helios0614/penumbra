@@ -15,6 +15,8 @@ type RegeneratePersistenceSource = {
 export type ChatHistoryReconciliationResult = {
   readonly persistedMessageIds: readonly string[];
   readonly regenerateTarget: RegeneratePersistenceProjection | null;
+  /** Authoritative assistant rows only; user/tool rows cannot finish a send. */
+  readonly assistants?: readonly RegeneratePersistenceProjection[];
 };
 
 export function createRegeneratePersistenceProjection(

@@ -443,6 +443,7 @@ export function createChatWorkspaceController(
         null;
     return {
       persistedMessageIds: history.messages.map(({ id }) => id),
+      assistants: history.messages.filter(message => message.roleKind === "assistant").map(createRegeneratePersistenceProjection),
       regenerateTarget: regenerateTarget === null
         ? null
         : createRegeneratePersistenceProjection(regenerateTarget),

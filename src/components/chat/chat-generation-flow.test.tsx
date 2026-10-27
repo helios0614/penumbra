@@ -89,12 +89,13 @@ describe("Main wire → controller → UI generation states", () => {
     if (outcome === "failure") wire.emit({ type: "error", id: original.id, code: "provider_execution_failed" });
     wire.close();
     await waitFor(() => controller.getState().kind === (outcome === "success" ? "idle" : outcome === "failure" ? "error" : "regenerate-finalization-uncertain"));
-    expect(messages()).toHaveLength(1); expect(messages()[0].id).toBe(original.id);
+    expect(messages()).toHaveLength(outcome === "failure" ? 2 : 1); expect(messages()[0].id).toBe(original.id);
     expect(original.content).toBe("original persisted body");
     if (outcome === "success") {
       expect(messages()[0].content).toBe(committed.content); expect(html()).not.toContain("chat-generation");
     } else if (outcome === "failure") {
       expect(messages()[0].content).toBe(original.content); expect(html()).not.toContain("chat-generation");
+      expect(messages()[1]).toMatchObject({ content: "replacement body", executionStatus: "unconfirmed" });
     } else {
       expect(html()).toContain("结果待确认"); expect(messages()[0].content).toBe("replacement body");
       readable = true; await controller.retryFinalization();

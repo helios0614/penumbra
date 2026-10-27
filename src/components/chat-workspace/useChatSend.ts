@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { readChatSendResult } from "@/application/chat-send/chat-send-result";
 
 import {
   createChatSendController,
@@ -22,20 +23,38 @@ export type UseChatSendResult = {
   readonly isExecutionActive: () => boolean;
 };
 
+// One Main Chat execution per app session. A view unmount is not a server stop.
+// Keep only the controller in memory; no message text is written to browser storage.
+let sessionController: ChatSendController | null = null;
+let sessionReconciler: ChatHistoryReconciler | null = null;
+
+export function pendingChatConversationId(): string | undefined {
+  const state = sessionController?.getState();
+  return state && isChatExecutionActive(state) && "conversationId" in state ? state.conversationId : undefined;
+}
+
 export function useChatSend(
   reconcileHistory: ChatHistoryReconciler,
 ): UseChatSendResult {
-  const [state, setState] = useState<ChatSendState>(INITIAL_CHAT_SEND_STATE);
+  const [state, setState] = useState<ChatSendState>(() => sessionController?.getState() ?? INITIAL_CHAT_SEND_STATE);
   const controllerRef = useRef<ChatSendController | null>(null);
 
   useEffect(() => {
-    const controller = createChatSendController({ reconcileHistory });
+    sessionReconciler = reconcileHistory;
+    const controller = sessionController ??= createChatSendController({
+      reconcileHistory: (...args) => {
+        if (!sessionReconciler) return Promise.reject(new Error("Chat view is detached"));
+        return sessionReconciler(...args);
+      },
+      lookupSendResult: readChatSendResult,
+    });
     controllerRef.current = controller;
+    setState(controller.getState());
     const unsubscribe = controller.subscribe(setState);
 
     return () => {
       unsubscribe();
-      controller.dispose();
+      if (sessionReconciler === reconcileHistory) sessionReconciler = null;
       if (controllerRef.current === controller) {
         controllerRef.current = null;
       }

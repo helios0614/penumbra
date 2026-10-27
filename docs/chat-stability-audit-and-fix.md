@@ -93,7 +93,7 @@ Controller 的 `confirmedFailure + failedMessageId` 只开放已经明确失败�
 
 ## 7. 仍存在的契约限制
 
-1. 普通 send 没有持久执行身份和只读终态查询。响应头/start 丢失时，无法仅靠一次成功历史读取可靠关联本次请求；HTTP 524、浏览器 canceled、AbortController 都不证明服务端取消。继续保留人工核对与未知锁。
+1. **PR7-A 已补齐新 send 的持久身份关联和只读查询（见第 11 节）**。没有回执的旧请求、主回复未落盘、查询/历史不可用仍保持未知；HTTP 524、浏览器 canceled、AbortController 都不证明服务端取消。
 2. `append_reply_tasks` 是已有后台任务的计数/失败回执，并非普通 send/canonical 的统一执行身份或完整恢复接口。SSE 主回复结束后，还可能存在已调度的工具追加任务；历史出现第一条 assistant 不保证所有后续任务都结束。
 3. MCP/POI carrier 主要依靠会话内顺序恢复，没有 Web 那样的原 user 外键。本轮保证自己的 tool-result → failed assistant 顺序；不能对其他设备/后台并发写入虚构完整轮次身份。canonical snapshot conflict 保护仍在。
 4. canonical 失败按原不变量不覆盖目标；失败 attempt 的临时诊断刷新页面后可能消失，原已保存正文/错误仍在。receipt 丢失时即使后台提交成功，也可能保持未知，不能伪造成功回执。
@@ -157,3 +157,61 @@ AionHome：`aion-chat/ai_providers.py`、`append_reply_runtime.py`、`routes/cha
 新增对照回归：同为 **HTTP 403 + permission_error**，分别返回 `Adaptive thinking is disabled by this workspace policy.` 和 `This region is not enabled for the requested deployment.`。五种真实 Adapter（mock transport）的非 2xx、普通 SSE error 和 named error、普通生成/工具后追加/失败 canonical regenerate，以及 Penumbra 最终 Assistant 和浏览器 WS/HTTP 重读均保留各自原因；没有添加“鉴权失败/检查 API Key”的猜测。上游原本只有 `Request failed.` 的用例忠实保留这句话。另覆盖 JSON 字符串、无标签旧错误、实际 HTTPStatusError body、安全诊断 URL 与敏感凭据拒绝。
 
 补充前新用例复现了前端 5 项失败、后端 19 项失败（仅 Anthropic 既有普通 HTTP detail 用例通过）；最终结果见 §8。修复只改变错误信息的读取/投影和临时展示，不新增重发、轮询、恢复任务或工具重执行。
+
+
+## 11. PR7-A：生成状态与持久化结果对账（2026-10-27）
+
+本节更新上文的旧限制与临时结果生命周期。针对 Main send、canonical regenerate、SubmissionRecovery、SSE/WS 失效通知和历史窗口审计；没有全系统架构审计、生成链路重构、自动重发或日志 UI 迁移。两仓库均只留本地修改，未 commit、push 或部署。所有测试在合成 HTTP/SSE/WS、排除 `data/` 的后端源码副本、临时 SQLite 和 fake provider 中执行。
+
+### 11.1 实际根因与代码路径
+
+1. `chat-send-controller.finalize` 找到同 ID assistant 后仍把先前的 `executionError` 发布成 `error`；消息 overlay 虽已退出，composer 的“回复状态需要处理”仍残留。只有再次手动刷新才清除。现在同次持久结果完成对账即一次退出临时状态。
+2. HTTP 524 在响应头或 `start` 前发生时没有 assistant ID。后端原 `client_msg_id` 仅在进程内 `_recent_client_ids` 关联 user ID（注释称 500ms，但源码没有过期/持久化机制），历史和 WS 不带请求到主回复的可查询关联。不能靠相近时间、相同正文、最新 assistant 补造关系。
+3. duplicate ACK 只含 user ID；旧前端把该 user 出现在历史当作本轮生成成功。现在 ACK 只证明用户提交，仍须确认关联 assistant。
+4. `SubmissionRecovery` 原来只记 owner/content/attachments，没有执行 ID。524 后暂存提交即使已生成成功仍残留。现在保存本次 `clientMessageId`，只有明确成功的同 conversation/client ID 能清除对应恢复副本，其他恢复项及下一条草稿/附件保留；人工解除未知不产生成功标记。
+5. regenerate 在一次成功 HTTP 重读后无条件隐藏 SSE partial；明确失败时 controller 也直接丢掉 partial。现在旧 target 保持服务器内容，本次未保存正文另以既有“结果待确认”临时行保留；成功 receipt 对账后移除临时行。没有给临时行 target 的可操作身份。
+6. `useChatSend` 原来在 view 卸载时 dispose 并丢失执行。现在只保留一个应用会话内存 controller，脱离 view 时不把它当服务器 stop；重新进入优先恢复执行所属会话，绑定新的历史 owner，ready 后只读核对。不将正文写入浏览器存储，不恢复发送动作。整页刷新/进程退出仍不承诺保留仅内存 partial。
+
+前端主要路径：`application/chat-send/{chat-send-controller,chat-send-errors,chat-send-result,chat-send-types,chat-regenerate-persistence}.ts`、`application/chat-media/attachment-drafts.ts`、`components/chat-workspace/{useChatSend,chat-workspace-controller}.ts`、`presentation/chat-execution-composer.ts`、`components/chat/ChatView.tsx`。后端主要路径：`routes/chat.py::_persist_send_messages/send_message/get_send_result`、`database.init_db`、新增 `chat_send_receipts.py`。canonical endpoint、Provider、ReplyCommands 和结果 batch executor 未修改。
+
+### 11.2 最小后端补充与权威关系
+
+新增 `chat_send_receipts`，主键 `(conv_id, client_msg_id)`，只保存 user ID 和可空的主 assistant ID，不复制正文、Provider 状态或工具任务状态。user 与 receipt 同一事务提交；主 assistant 与其关联同一事务提交。并发相同 ID 的提交在 SQLite 写事务中去重；重复 ACK 形状不变，不开启第二次生成。幂等身份从进程缓存改为持久且按会话隔离；旧数据不回填猜测关联。
+
+新增只读 `GET /api/conversations/{conv_id}/send-results/{client_msg_id}`，沿用 Chat 路由认证边界，成功 `Cache-Control: no-store`。返回 `conv_id/client_msg_id/user_message_id/assistant_message_id`；SQL 同时核对会话、user/assistant role 和真实行存在。没有记录返回 `404 send_result_not_found`，不代表失败；只有 user 时 assistant 为 null。查询不是执行终态 API，也不代表工具追加任务全部完成。
+
+前端在缺少 `start` 身份或只有 duplicate ACK 时读取关联，再用当前受 owner/sequence 保护的 HTTP history window 核对该 assistant。正常已有 start 的 send 直接使用其 assistant ID。生产 reconciler 返回 assistant 投影，user/system/tool 不可充当完成证据。WS 仍只触发 HTTP 失效重读；不改事件 type/payload/timing，不以 WS payload 建消息或解除未知锁。并发只读恢复合并为一次 finalization，保留既有历史并发保护。
+
+| 证据 | 本次处理 |
+|---|---|
+| 请求关联的主 assistant 已在 HTTP history 中，正文无既有失败标记 | 服务器内容为权威，controller idle，移除本次错误/未知/partial 和关联 SubmissionRecovery；不需刷新页面 |
+| 同 assistant 已保存“部分正文 + Provider 失败” | 显示已保存正文与真实诊断，保持确定失败和原消息操作；不伪装成功 |
+| 明确 SSE Provider failure，但消息尚未落盘 | 保留安全失败事实及 partial，同时结果/持久化仍待确认，不能据此假定可重发 |
+| HTTP 4xx 明确拒绝（排除 408）、已知 503 provider_not_configured | 保持明确拒绝；不把全部上游失败改成 unknown |
+| 524、408、其他未证明拒绝的 5xx、timeout、Abort、网络断开或协议损坏 | 结果未知，先做只读核对；HTTP 状态本身不是后台失败证据 |
+| 只有 user、receipt/assistant 缺失、缺少回执的旧服务端、历史查询失败 | 继续未知及锁，不加超时升级，不更换模型/协议/Connection，不自动第二次生成 |
+| 无关 AI、工具追加回复或重复/乱序 WS | 可以触发只读核对，不能解除另一执行的错误或 unknown |
+
+普通 assistant 的成功不代表 MCP/搜索/其他后台续写全部结束；后端只关联当前 send 的主回复，不把追加回复改成主回复。已有工具结果、system carrier、parent message ID、命令副作用和消息顺序均沿用现状。
+
+### 11.3 partial、regenerate 与安全边界
+
+SSE partial 继续经过同一 accumulator，保留 Markdown、独立 Thinking/DRIFT 和内部命令过滤，不复制私有 command 到公开正文。send 的对应 HTTP assistant 一旦出现就替换本地 partial。regenerate 不能用相同 target ID 的旧内容假冒本次提交：必须满足同 target start、有效 `persisted` receipt、HTTP 同 ID/content/Thinking/DRIFT；receipt + HTTP 是提交证据，可以消除之前的连接错误及迟到的失败提示。
+
+receipt 丢失时，目标即使变化、甚至恰好与 partial 相同，也不能确认是哪次 attempt 的结果。保留原 HTTP target 和独立未确认 partial；不清普通 send 或其他 target 的错误。明确失败仍不覆盖原 target，失败 attempt 的 partial 暂留到新执行/人工处理。已有 receipt ID 错误和冲突约束不放宽。
+
+保留既有安全上游错误及 `providerFailure`；若历史只保存短错误标记，已收到的安全 SSE 详情仍附于同 ID、内容未变的目标，不因对账缩成通用提示。发现的既有投影缺口留给 PR7-B：HTTP `safeHttpErrorContent` 只识别固定标量字段，最多深度 4、数组前 8 项、文本 1536 字；仅有 type/code/request ID 而无可识别 body 时会回退通用提示；`upstream_message/upstream_status` 等非白名单字段不能完整保留。SSE `error_text` 只接受既有错误前缀，完整 debug/多层 Provider 对象不进入状态；没有新建完整错误对象或日志查看入口。
+
+### 11.4 回归与人工验收边界
+
+- `chat-result-reconciliation.test.ts`：12 条新回归，覆盖正常/未知到持久结果、524/408/502 无 start、只 user、错误角色、缺 history、无关 AI、保留 partial/Thinking、权威失败、短历史错误保留 SSE 详情、并发恢复、regenerate receipt 丢失与成功收尾。
+- `ChatView.drafts.test.tsx` 新增两条，验证精确清理恢复项、保留无关恢复/下一轮附件，以及旧成功状态不会误删新拒绝输入；更新旧的错误残留、duplicate-user 假成功和丢弃 regenerate partial 断言。
+- `chat-stability-smoke.cjs` 以真实 ChatView 验证桌面/移动端：当前页面清除临时气泡、composer 提示及对应恢复项；保留下一条草稿；无关/重复/乱序 WS、重复 start、正常 send、regenerate 断流+receipt、组件卸载重进均不额外 POST。夹具更新到现有 history window 和单工具直接详情结构。
+- 后端 `test_chat_send_receipts.py`：4 条新回归，真实 send 后断开 SSE、迟到持久化与只读查询；进程缓存丢失后的幂等；附件/消息顺序；跨会话隔离；并发相同 client ID/事务回滚；主回复关联不被工具追加回复取代；明确失败内容原样保存。
+- 相关现有后端 suite 共 148 条通过：canonical regenerate、Chat stability、send frozen binding、command runtime、Chat defaults、Thinking defaults 和新会话携带上下文。
+- 前端全量、build 和浏览器最终结果见本节末的验收记录。浏览器使用全新隔离 profile，后端仅临时 DB/config/fake provider。
+
+真实环境仍需人工验证 Cloudflare 524 的断开时点、反向代理/浏览器取消、后台进程重启、真实 Provider 无终态 EOF 和设备重连时序。没有 receipt 的旧请求及丢失 regenerate receipt 继续保守未知；部署顺序需先提供后端关联能力，旧后端前端仍安全降级未知。仅内存 partial 无法跨整页刷新或进程退出恢复。真实上游未接入本轮测试。
+
+
+最终验收记录（PR7-A）：`npm test` 162 个文件、2148 条通过；`npm run build` 通过。隔离后端上述 8 个 suite 合并执行 148 条通过。`chat-stability-smoke.cjs` 桌面与移动端均通过；`chat-pr6-5-config-smoke.cjs` 在 320/390/1280 宽度通过；`chat-pr6-5-carryover-e2e.cjs` 通过真实 Chat UI → 临时 FastAPI/SQLite 的 carryover=0/4/50、新建会话导航与刷新、首发持久化和第二次发送不重复携带。临时测试依赖、日志、截图位于 `/private/tmp/penumbra-pr7-*`，未运行私人数据库或真实 Provider。

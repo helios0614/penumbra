@@ -265,7 +265,7 @@ describe("chat send controller", () => {
 
     reload.resolve(reconciliation(["server-assistant"]));
     await waitFor(() => controller.getState().kind === "idle");
-    expect(controller.getState()).toEqual({ kind: "idle" });
+    expect(controller.getState()).toMatchObject({ kind: "idle" });
   });
 
   it("keeps send finalization unchanged when a persisted event is present", async () => {
@@ -356,7 +356,7 @@ describe("chat send controller", () => {
     });
 
     await controller.retryFinalization();
-    expect(controller.getState()).toEqual({ kind: "idle" });
+    expect(controller.getState()).toMatchObject({ kind: "idle" });
     expect(openExecution).toHaveBeenCalledOnce();
     expect(reconcileHistory).toHaveBeenCalledTimes(2);
     expect(openExecution.mock.calls[0]?.[1]).toMatchObject({
@@ -405,7 +405,7 @@ describe("chat send controller", () => {
     });
   });
 
-  it("reconciles duplicate acknowledgement without opening a second execution", async () => {
+  it("keeps duplicate user acknowledgement unknown without an assistant result", async () => {
     const reconcileHistory = vi.fn().mockResolvedValue(
       reconciliation(["persisted-user"]),
     );
@@ -421,7 +421,7 @@ describe("chat send controller", () => {
 
     await expect(controller.send({ conversationId: "conv-a", content: "hello" }))
       .resolves.toBe(true);
-    await waitFor(() => controller.getState().kind === "idle");
+    await waitFor(() => controller.getState().kind === "finalization-uncertain");
     expect(openExecution).toHaveBeenCalledOnce();
     expect(reconcileHistory).toHaveBeenCalledOnce();
   });

@@ -20,14 +20,30 @@ export function composeVisibleChatMessages(
   }
   if (execution.kind === "error" && execution.conversationId === conversationId && execution.failedMessageId) {
     const unchangedTarget = persistentMessages.some(message => message.id === execution.failedMessageId && message.content === execution.failedTargetContent);
-    return visible.map(message => unchangedTarget && message.kind === "assistant" && message.id === execution.failedMessageId
+    const result = visible.map(message => unchangedTarget && message.kind === "assistant" && message.id === execution.failedMessageId
       ? { ...message, error: execution.error.message } : message);
+    const partial = execution.regeneratePartial;
+    if (partial && (partial.content || partial.thinking || partial.simpleThink)) result.push({
+      kind: "assistant", id: partial.overlayId, content: partial.content, createdAt: partial.createdAt,
+      thinking: partial.thinking, simpleThink: partial.simpleThink, attachments: [], executionStatus: "unconfirmed",
+    });
+    return result;
   }
   if ((execution.kind === "streaming" || execution.kind === "finalizing" || execution.kind === "finalization-uncertain") &&
       execution.conversationId === conversationId && visible.some(message => message.id === execution.assistant.assistantMessageId)) return visible;
   const recovered = (execution.kind === "finalization-uncertain" || execution.kind === "regenerate-finalization-uncertain") && execution.recoveryReadSucceeded;
   if (recovered && execution.conversationId === conversationId) {
-    if (execution.kind === "regenerate-finalization-uncertain") return visible;
+    if (execution.kind === "regenerate-finalization-uncertain") {
+      // The old target remains authoritative. Keep this attempt's partial in
+      // a separate, explicitly temporary row until receipt + HTTP can agree.
+      if (hasAssistantPresentation(execution.assistant)) visible.push({
+        kind: "assistant", id: execution.assistant.overlayId,
+        content: execution.assistant.content, createdAt: execution.assistant.createdAt,
+        thinking: execution.assistant.thinking, simpleThink: execution.assistant.simpleThink,
+        error: execution.assistant.error, attachments: [], executionStatus: "unconfirmed",
+      });
+      return visible;
+    }
     if (visible.some(message => message.id === execution.assistant.assistantMessageId)) return visible;
     // HTTP authority replaces optimistic rows. Uncommitted SSE text/error may
     // still be shown explicitly as temporary, never as a saved Message.

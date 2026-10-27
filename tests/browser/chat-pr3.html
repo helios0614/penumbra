@@ -7,6 +7,10 @@ import { createRoot } from 'react-dom/client';
 import { ChatView } from '/src/components/chat/ChatView.tsx';
 import { ToastProvider } from '/src/components/ui/toast.tsx';
 import '/src/index.css';
-createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode, null,
+const root = createRoot(document.getElementById('root'));
+const mount = () => root.render(React.createElement(React.StrictMode, null,
   React.createElement(ToastProvider, null, React.createElement(ChatView, { onBack: () => { window.__chatHomeReturns = (window.__chatHomeReturns || 0) + 1; } }))));
+window.__chatUnmount = () => root.render(null);
+window.__chatMount = mount;
+mount();
 </script></body></html>
