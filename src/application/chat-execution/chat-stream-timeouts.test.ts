@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { openSendExecution, type ChatExecutionEvent } from "@/application/chat-execution";
+import { openSendExecution, openRegenerateExecution, type ChatExecutionEvent } from "@/application/chat-execution";
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
@@ -26,15 +26,42 @@ describe("Chat header and stream idle deadlines", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("still bounds response-header waiting, which cannot prove that user persistence failed", async () => {
+  it.each(["send", "regenerate"])("keeps %s header waiting alive beyond 30s without losing explicit caller cancellation", async operation => {
     vi.useFakeTimers();
+    const caller = new AbortController();
     vi.stubGlobal("fetch", vi.fn<typeof fetch>((_url, init) => new Promise((_resolve, reject) => {
       init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
     })));
-    const pending = openSendExecution("conv_a", { content: "synthetic" });
-    const assertion = expect(pending).rejects.toMatchObject({ code: "TIMEOUT" });
-    await vi.advanceTimersByTimeAsync(30_000);
+    const pending = operation === "send"
+      ? openSendExecution("conv_a", { content: "synthetic" }, { signal: caller.signal })
+      : openRegenerateExecution("conv_a", "synthetic-target", {}, { signal: caller.signal });
+    const assertion = expect(pending).rejects.toMatchObject({ code: "ABORTED" });
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(vi.getTimerCount()).toBe(0);
+    caller.abort();
     await assertion;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("starts the idle deadline after delayed headers and resets it on comment heartbeats", async () => {
+    vi.useFakeTimers();
+    let source!: ReadableStreamDefaultController<Uint8Array>, headers!: () => void;
+    const body = new ReadableStream<Uint8Array>({ start(controller) { source = controller; } });
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>(() => new Promise(resolve => {
+      headers = () => resolve(new Response(body, { headers: { "content-type": "text/event-stream" } }));
+    })));
+    const pending = openSendExecution("conv_a", { content: "synthetic" });
+    await vi.advanceTimersByTimeAsync(300_000); headers();
+    const result = await pending;
+    if (result.kind !== "stream") throw new Error("Expected stream");
+    const read = (async () => { for await (const _event of result.events) { /* heartbeats are not domain events */ } })();
+    for (let index = 0; index < 3; index++) {
+      await vi.advanceTimersByTimeAsync(119_000);
+      source.enqueue(new TextEncoder().encode(": synthetic heartbeat\n\n"));
+      await vi.advanceTimersByTimeAsync(0);
+    }
+    source.enqueue(new TextEncoder().encode('data: {"type":"start","id":"synthetic"}\n\n'));
+    source.close(); await read;
     expect(vi.getTimerCount()).toBe(0);
   });
 

@@ -28,6 +28,9 @@ export async function openSendExecution(
   const path = chatExecutionPath(conversationId, "send");
   const body = mapSendMessageRequest(input);
   const response = await openApiStream(path, {
+    // Main preparation (and proxies waiting for the first SSE byte) has no
+    // bounded header deadline. A client timeout cannot cancel persisted work.
+    timeoutMs: 0,
     streamIdleTimeoutMs: 120_000,
     ...options,
     method: "POST",
@@ -58,6 +61,7 @@ export async function openRegenerateExecution(
   const path = regenerateExecutionPath(conversationId, messageId);
   const query = mapRegenerateQuery(input);
   const response = await openApiStream(path, {
+    timeoutMs: 0,
     streamIdleTimeoutMs: 120_000,
     ...options,
     method: "POST",
