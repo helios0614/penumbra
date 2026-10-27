@@ -1,3 +1,4 @@
+import { SystemLogAccess } from "./SystemLogDialog";
 import { formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { LoaderCircle, MessageCircle, Plus } from "lucide-react";
@@ -148,6 +149,7 @@ export function ConversationsList({
           })}
         </div>
       </ScrollArea>
+      <SystemLogAccess />
     </div>
   );
 }

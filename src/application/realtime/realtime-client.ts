@@ -1,3 +1,4 @@
+import { observeDebugRealtime } from "@/application/chat-system-log/chat-system-log-client";
 import { mapRealtimeEvent } from "@/application/realtime/realtime-events";
 import {
   RealtimeDataError,
@@ -34,5 +35,6 @@ export function parseRealtimeMessageData(data: unknown): RealtimeEvent {
     );
   }
 
+  try { observeDebugRealtime(input); } catch { /* Diagnostics cannot break realtime delivery. */ }
   return mapRealtimeEvent(input);
 }

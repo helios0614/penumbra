@@ -1,0 +1,20 @@
+.system-log-dialog {
+  width: min(56rem, calc(100vw - 1.5rem));
+  max-width: 56rem;
+  max-height: min(88dvh, var(--dialog-viewport-height, 88dvh));
+}
+.system-log-body { min-height: 0; overflow-anchor: none; }
+.system-log-entry { padding-block: 1rem; border-bottom: 1px solid var(--color-border); min-width: 0; }
+.system-log-entry:first-child { padding-top: 0; }
+.system-log-entry:last-child { border-bottom: 0; }
+.system-log-entry .json-viewer { font-size: 12px; }
+@media (max-height: 500px) {
+  .system-log-dialog { max-height: calc(var(--dialog-viewport-height, 100dvh) - 1rem); }
+}
+.system-log-section { min-width: 0; margin-block: 0.75rem; }
+.system-log-section + .system-log-section { padding-top: 0.75rem; border-top: 1px solid var(--color-border); }
+.system-log-fields { display: grid; gap: 0.5rem 1rem; min-width: 0; }
+.system-log-text { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; min-width: 0; }
+@media (min-width: 640px) {
+  .system-log-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

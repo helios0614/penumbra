@@ -580,3 +580,14 @@ SSE/WS/HTTP 的三源权威边界、S6D 连接/并发协调与 S6E1 canonical ta
 | Production 部署方式 | `Pending backend confirmation` | 同源反代或跨域部署待确认。 |
 | Message DTO mapper | `Completed (S4B/S4C)` | HTTP history wire DTO、runtime validation、persistent Message mapper、read client 与 history state/pagination application 已实施；older pagination 尚未接入 Chat controller/UI。 |
 | WebSocket event type/payload/timing | `Do not change` | 迁移期间保持现有契约。 |
+
+
+## PR7-B：页面日志与私人请求快照
+
+系统日志是页面内观察状态，不进入 Message History，不改变执行结果对账。既有 SSE/WS 解析边界投影安全诊断，可选详情格式错误不能中断生成。send 仅以已确认 assistant ID 合并双通道；canonical regenerate 按独立 HTTP 调试执行区分，不能按复用 target ID 覆盖。WS 不提供足够身份时保持未关联，task 重放使用原时间和 task_id。缺失 usage/协议/recall 与真实零值区分。
+
+私人请求在五个 HTTP adapter 的 `freeze_wire_request` 后捕获最终 JSON 结构；认证 Header 不参与捕获，凭据/签名 URL/媒体在后端处理。它与普通摘要分开，允许授权调试的 Prompt/HEART/DRIFT；旧 debug_prompt 不迁移，普通 WS debug 的 Prompt 投影退役。只通过登录 Cookie + 每页随机身份隔离的破坏性 `POST /api/chat/debug/drain` 交接，既有全局 WS 不传私人请求。该接口无数据库、历史查询或生成副作用；单 worker/页面暂存、预算、过期及响应丢失边界见[实施报告](./chat-pr7-system-log-implementation.md)。
+
+前端仅内存：诊断最近 200 条；私人请求最近 20 次、payload 约 4 MiB。刷新清除，401 清除私密页面状态，Dialog 关闭仍收集当前页可观察事件。请求详情默认折叠，受限捕获与预算移除明确展示。raw SSE、未筛选 HTTP/error/config/binding 仍不得写入日志或 console。日志按钮只展开、复制、清空，不发起生成或解除未知锁。
+
+详情 UI：普通诊断使用已脱敏字段、实际召回/候选和日期时段速记，不重新读取正文。Provider metadata 继续使用共享 JsonViewer。私人请求按捕获字段顺序分组阅读，保留协议结构与角色/消息/工具顺序，不把 OpenAI system/developer 抽离重排；原始 JSON 和完整安全投影复制取捕获原文。大请求主动加载；新事件保留展开项与正文阅读锚点。缺少快照不等于确认后端未部署，登录/页面 scope、版本、同源或 CORS、进程与临时容量边界见实施报告。

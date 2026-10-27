@@ -31,6 +31,7 @@ import { JsonViewer } from "@/components/ui/json-viewer";
 - `copyText?: string`：可选完整安全复制原文；默认复制 rawText 或生成的原文，始终与当前节点展开情况无关。
 - `label?: string`、`className?: string`：无障碍名称与局部样式覆盖。
 - `showCopy?: boolean`：默认 true；已有字段复制工具栏的宿主可设 false。
+- `defaultMode?: "tree" | "raw"`：初始阅读方式，默认 `tree`；PR7-B 请求分组页切到原始 JSON 时使用 `raw`，既有使用者不变。
 - `onBeforeLayoutChange?: (element: HTMLElement) => void`：模式切换、加载结构和节点展开前的本地布局通知，便于宿主保护阅读锚点；不包含 Chat 身份或业务控制器。
 
 组件默认选择结构化阅读，通常只展开根节点。超过 200 个直接子项的根也先收起。根部以字段数、数组长度或原始类型给出轻量提示。解析失败或普通文本直接显示原文，不显示解析错误卡片或不可用的模式切换。不会从自然语言、Markdown 代码围栏或混合文本中截取 JSON 片段。

@@ -539,4 +539,4 @@ C01模型选择的读取/DB保存/执行身份不变。C02/C03现由现有S中�
 | C07 新会话携带 | Slider + 新建会话 | GET数量与source | main_chat_defaults.carryover_count；来源在目标conversation DB | 首次send后端组成受限引用并真实入库；写锁复核/消费来源 | 0–50条实际消息；刷新/导航保持来源；并发/未知结果不重复 | 真实UI→FastAPI→隔离DB端到端已验证 |
 | C11 低频浮现 | Slider，标注Chat/Diary共享 | 原float_interval有效值及source | 同revision/CAS；原全局字段，候选保存成功后发布，旧PUT共用 | 原Chat/send/regen及Diary force策略；不改float_rounds和读取时机 | 全局共享，非所有召回策略 | 已接通并验证真实消费者及失败不发布RAM |
 
-本轮三项均已实现；PR7只接Thinking内容解析/展示。后续TTS最小边界仍为C22/C23：定义播放/音色持久偏好、当前客户端应用范围，再处理播放权限与tts_state握手。全局字段可在Chat就近修改，同一字段仍只有一个服务端事实来源；Provider/Key管理留Settings/独立能力页。测试与人工验收见[实施记录](./chat-pr6-5-config-implementation.md)。
+本轮三项均已实现；PR7-B系统日志与实际请求查看已本地实现，未新增 Settings 项或捕获开关；Thinking内容解析/展示仍属PR7-C。后续TTS最小边界仍为C22/C23：定义播放/音色持久偏好、当前客户端应用范围，再处理播放权限与tts_state握手。全局字段可在Chat就近修改，同一字段仍只有一个服务端事实来源；Provider/Key管理留Settings/独立能力页。测试与人工验收见[实施记录](./chat-pr6-5-config-implementation.md)。

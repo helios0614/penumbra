@@ -204,6 +204,7 @@ Memory 当前边界：列表永远显式请求分页 `GET /api/memories`；searc
 | 领域 | 旧前端来源 | Penumbra 当前状态 | 迁移方式 | 优先级 |
 |---|---|---|---|---|
 | Chat | `aion-chat/static/chat.html`、`aion-chat/routes/chat.py` | 真实 Workspace、selected-model readiness、send execution、SSE overlay、HTTP final reconciliation、WebSocket coordination 与 S6E1 canonical target regenerate 已接入；PR6.5 follow-up Header上下文/温度持久默认已由Main send/regen消费；其他后续按专题推进 | 直接复用现有 Penumbra UI；domain client 重写；adapter/mapper 转换 | P0 |
+| System Log | `aion-chat/static/chat.html`、Provider HTTP adapter、现有 debug | PR7-B 已接侧栏/手机 Dialog、SSE/WS 安全诊断、临时请求快照与共享 JsonViewer；未部署，待人工验收 | 保留旧信息架构；真实请求仅在登录会话/页面隔离的私密交接中读取；无新日志库/历史查询；见 `chat-pr7-system-log-implementation.md` | P1 |
 | Conversation | `aion-chat/static/chat.html`、conversation API | 真实list、atomic selection和create/rename/delete已接入；管理统一桌面侧栏/手机抽屉，Header只保留搜索→快捷参数 | domain client 重写；adapter/mapper 转换 | P0 |
 | Message | `aion-chat/static/chat.html`、message API/DTO contract | Message Domain、initial History、presentation mapping 与只读 BubbleList 接入已完成；load older 与 capability rendering 延后 | 直接复用现有 Penumbra UI；adapter/mapper 转换 | P0 |
 | WebSocket | `aion-chat/static/common.js`、`aion-chat/static/chat.html`、`aion-chat/ws.py` | S4E1 transport/event projection、S4E2 Realtime Reconciliation 与 S6D Chat coordinator 已完成 | transport 负责单次连接和分发；reconciliation application 负责 HTTP authority；coordinator 负责 lifecycle、SSE correlation、dirty 合并与 reconnect | P0 |

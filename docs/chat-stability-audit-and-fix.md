@@ -266,3 +266,8 @@ receipt 丢失时，目标即使变化、甚至恰好与 partial 相同，也不
 
 
 Follow-up 最终验证：前端 `npm test` 163 个文件、2159 条通过；最后的 owner 回调补验 14 条通过；`npm run build`（含 TypeScript）通过。隔离后端上述 6 个 frozen-binding / regenerate-follow-up / defaults / Thinking / carryover / send-receipt suites 合计 100 条通过。新交互 smoke 在 1280/390 宽度通过；原稳定性桌面/手机、PR6.5 设置 320/390/1280、真实 UI → 临时 FastAPI/SQLite 的 carryover 0/4/50 均通过。日志保存在 `/private/tmp/pr7-followup-*`；AionHome 业务仓库无本轮改动。没有 commit、push 或部署。
+
+
+## PR7-B：日志迁移实施状态（2026-10-27）
+
+系统日志和受控的实际模型请求查看已本地实现，见[实施报告](./chat-pr7-system-log-implementation.md)。本轮只在传输边界观察诊断，未修改 PR7-A receipt、30 秒超时修复、User 去重、A/B sessions、导航、冻结 binding/options、canonical persisted/HTTP 对账或工具重试。普通 debug 不再广播旧 Prompt；真实请求另走有界、登录/页面隔离的临时交接。HTTP type/code/request ID 无 message 时及 upstream_message/upstream_status 的安全详情已补入日志投影；未放宽为任意错误对象。Thinking 展示仍留 PR7-C。

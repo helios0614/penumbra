@@ -17,6 +17,8 @@ export type JsonViewerProps = {
   label?: string;
   className?: string;
   showCopy?: boolean;
+  /** Initial reading mode; existing consumers keep the tree default. */
+  defaultMode?: "tree" | "raw";
   /** Called before local layout changes; the host may capture its reading anchor. */
   onBeforeLayoutChange?: (element: HTMLElement) => void;
 };
@@ -39,9 +41,9 @@ export const JsonViewer = memo(function JsonViewer(props: JsonViewerProps) {
   return <JsonReadingContent key={source} {...props} source={source} />;
 });
 
-function JsonReadingContent({ data, source, copyText, label = "JSON 内容", className, showCopy = true, onBeforeLayoutChange }: JsonViewerProps & { source: string }) {
+function JsonReadingContent({ data, source, copyText, label = "JSON 内容", className, showCopy = true, defaultMode = "tree", onBeforeLayoutChange }: JsonViewerProps & { source: string }) {
   const root = useRef<HTMLDivElement>(null);
-  const [mode, setMode] = useState<"tree" | "raw">("tree");
+  const [mode, setMode] = useState<"tree" | "raw">(defaultMode);
   const [requested, setRequested] = useState(false);
   const large = source.length > JSON_AUTO_TREE_CHARS && (data !== undefined || mightBeJson(source));
   const ready = !large || requested;

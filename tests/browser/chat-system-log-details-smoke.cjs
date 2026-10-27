@@ -1,0 +1,51 @@
+/* Focused DOM/layout assertions; synthetic data only, no screenshots or visual comparisons. */
+const { chromium } = require(process.argv[2] || 'playwright');
+const assert = require('node:assert/strict');
+const origin = process.env.CHAT_LOG_DETAILS_ORIGIN || 'http://127.0.0.1:45382';
+(async () => {
+  const browser = await chromium.launch({ headless:true, channel:'chrome' });
+  const results = [];
+  try {
+    for (const width of [390,1280]) {
+      const context = await browser.newContext({ viewport:{width,height:844} });
+      const page = await context.newPage(); page.setDefaultTimeout(5000);
+      const errors = []; const api = [];
+      page.on('pageerror', error => errors.push(error.message));
+      page.on('request', req => { if (new URL(req.url()).pathname.startsWith('/api/')) api.push(req.url()); });
+      await page.addInitScript(() => { window.__copies=[]; Object.defineProperty(navigator,'clipboard',{value:{writeText:async value=>window.__copies.push(value)}}); });
+      await page.goto(`${origin}/tests/browser/chat-system-log-details.html`);
+      const dialog = page.locator('[data-system-log-dialog]'); await dialog.waitFor();
+      await dialog.getByRole('button',{name:'详情',exact:true}).click();
+      await dialog.getByText('synthetic topic',{exact:true}).waitFor();
+      assert.equal(await dialog.locator('[data-log-diagnostics] .json-viewer').count(),0);
+      assert.equal(await dialog.getByRole('region',{name:'错误详情'}).count(),0);
+      const candidate = dialog.getByRole('region',{name:'RAG 候选评分'});
+      await candidate.getByRole('button',{name:/候选 01/}).click();
+      await candidate.locator('[data-diagnostic-field="vec_sim"]').waitFor();
+      assert.equal(await candidate.locator('[data-diagnostic-field="kw_score"]').count(),0);
+      assert.equal(await candidate.locator('[data-diagnostic-field="importance"] dd').textContent(),'0.4000');
+      const hidden = dialog.locator('[data-quick-note="0"]'); assert.equal(await hidden.getByRole('button').count(),0); assert(!await dialog.textContent().then(v=>v.includes('NEVER_SHOW')));
+      await dialog.locator('[data-quick-note="1"]').getByRole('button').click(); await dialog.getByText('synthetic safe note',{exact:true}).waitFor();
+      const anchor = candidate.locator('[data-log-reading-anchor]').first(); await anchor.scrollIntoViewIfNeeded(); const before = await anchor.boundingBox();
+      await page.evaluate(()=>window.__detailAppend()); await dialog.locator('.system-log-entry').nth(1).waitFor();
+      const after = await anchor.boundingBox(); assert(Math.abs(before.y-after.y)<5,`reader shifted ${after.y-before.y}`);
+      assert.equal(await candidate.getByRole('button',{name:/候选 01/}).getAttribute('aria-expanded'),'true');
+      const request = dialog.locator('[data-request-id="ui-request"]');
+      await dialog.getByRole('button',{name:'本次模型请求（1）',exact:true}).click(); await request.getByRole('button',{name:/synthetic-wire/}).click();
+      await request.getByRole('button',{name:/Messages · messages/}).click();
+      assert.deepEqual(await request.locator('[data-wire-message] > div > button').allTextContents(),['01 · user','02 · developer','03 · assistant']);
+      await request.getByRole('button',{name:'02 · developer',exact:true}).click(); await request.getByText('[HEART:ALLOWED_SYNTHETIC]',{exact:true}).waitFor();
+      await request.getByRole('button',{name:'复制安全请求投影',exact:true}).click(); assert.equal(await page.evaluate(()=>window.__copies.at(-1)),await page.evaluate(()=>window.__detailPayload));
+      await request.getByRole('button',{name:'原始 JSON',exact:true}).click(); assert.equal(await request.locator('pre').textContent(),await page.evaluate(()=>window.__detailPayload));
+      await dialog.getByRole('button',{name:'Provider 返回 metadata',exact:true}).click(); assert.equal(await dialog.locator('[aria-label="Provider 返回 metadata"] .json-viewer').count(),1);
+      assert.equal(await dialog.evaluate(el=>el.scrollWidth>el.clientWidth+1),false);
+      await page.setViewportSize({width,height:320}); await page.waitForTimeout(100);
+      const box = await dialog.boundingBox(); assert(box.y>=0 && box.y+box.height<=321);
+      assert.equal(await dialog.evaluate(el=>el.scrollWidth>el.clientWidth+1),false);
+      assert.equal(await dialog.locator('[data-slot="dialog-body"]').evaluate(el=>getComputedStyle(el).overflowY),'auto');
+      assert.deepEqual(api,[]); assert.deepEqual(errors,[]); results.push({width,shortHeight:320,pageerrors:errors.length,api:api.length});
+      await context.close();
+    }
+    console.log(JSON.stringify(results));
+  } finally { await browser.close(); }
+})().catch(error=>{console.error(error);process.exitCode=1;});
