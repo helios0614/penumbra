@@ -52,16 +52,17 @@ function setup(onSend: (content: string, attachments?: readonly string[], owner?
 }
 
 describe("Main Chat submission snapshots and next drafts", () => {
-  it("clears only the confirmed submission recovery and keeps unrelated recoveries and next attachments", async () => {
+  it.each(["success", "failure"])("clears only the accepted %s submission recovery and keeps unrelated recoveries and next attachments", async outcome => {
     let finish!: (value: boolean) => void;
     const s = setup(() => new Promise<boolean>(resolve => { finish = resolve; }));
     const unrelated = s.media().store.capture("A")!;
     unrelated.preserve("other execution", "other-client"); unrelated.release();
     const sending = s.sender().onSend!("原提交");
     s.execute(pending()); finish(false); await sending;
-    expect(s.recovery().items.map(item => item.clientMessageId)).toEqual(["other-client", "client:1"]);
+    expect(s.recovery().items.map(item => item.clientMessageId)).toEqual(["other-client"]);
+    expect(s.media().store.getRecoveries("A").map(item => item.clientMessageId)).toEqual(["other-client", "client:1"]);
     s.sender().onFiles!([file("next.png")]); await Promise.resolve();
-    s.execute({ kind: "idle", confirmedSend: { conversationId: "A", clientMessageId: "client:1" } });
+    s.execute(outcome === "success" ? { kind: "idle", confirmedSend: { conversationId: "A", clientMessageId: "client:1" } } : { kind: "error", conversationId: "A", acceptedSend: { conversationId: "A", clientMessageId: "client:1" }, confirmedFailure: true, failedMessageId: "failed", error: { code: "provider-failure", message: "failed", field: null, providerFailure: null } });
     expect(s.recovery().items.map(item => item.clientMessageId)).toEqual(["other-client"]);
     expect(s.media().items.map(item => item.file.name)).toEqual(["next.png"]);
     s.dispose();

@@ -6,6 +6,7 @@ import type {
 } from "@/application/chat-send/chat-send-types";
 import { ApiError } from "@/lib/api";
 import { safeHttpErrorContent } from "@/domain/message/assistant-failure";
+import { isDefiniteChatRejection } from "./chat-send-rejection";
 
 const GENERATION_FIELDS = new Set<ChatGenerationOptionField>([
   "attachments",
@@ -23,8 +24,11 @@ export function toSafeChatExecutionError(
 ): SafeChatExecutionError {
   const mapped = mapChatExecutionError(error, executionKind);
   const upstream = error instanceof ApiError && error.status > 0 ? safeHttpErrorContent(error.data) : null;
+  if (error instanceof ApiError && error.status >= 400 && !isDefiniteChatRejection(error, executionKind)) {
+    return { ...mapped, message: `连接返回 HTTP ${error.status}，生成结果尚未确认。请重新核对。${upstream ? `\n${upstream}` : ""}` };
+  }
   return upstream && error instanceof ApiError
-    ? { ...mapped, message: `${isUncertainHttpStatus(error.status) && mapped.code !== "provider-not-configured" ? `连接返回 HTTP ${error.status}，生成结果尚未确认。` : `请求失败（HTTP ${error.status}）`}\n${upstream}` } : mapped;
+    ? { ...mapped, message: `请求失败（HTTP ${error.status}）\n${upstream}` } : mapped;
 }
 
 function mapChatExecutionError(
@@ -133,9 +137,7 @@ function mapChatExecutionError(
       return safeError("network", "连接读取已取消，后台可能仍在执行，请重新读取状态。");
     }
     if (error.status >= 400 && error.status <= 599) {
-      return safeError("service", isUncertainHttpStatus(error.status)
-        ? `连接返回 HTTP ${error.status}，生成结果尚未确认。请重新读取状态。`
-        : `请求失败（HTTP ${error.status}）。`);
+      return safeError("service", `请求失败（HTTP ${error.status}）。`);
     }
     return safeError(
       "service",
@@ -170,9 +172,6 @@ function mapChatExecutionError(
   );
 }
 
-function isUncertainHttpStatus(status: number): boolean {
-  return status === 408 || status >= 500;
-}
 
 export function providerFailureError(
   failure: ChatProviderFailureCode | null,

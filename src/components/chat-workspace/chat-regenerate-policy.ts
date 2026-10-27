@@ -2,6 +2,7 @@ import { isChatExecutionActive, type ChatSendState } from "@/application/chat-se
 import type { Message } from "@/domain/message";
 
 import type { ChatWorkspaceControllerState } from "@/components/chat-workspace/chat-workspace-controller";
+import { scopedChatExecution } from "./chat-sender-policy";
 
 export type ChatRegenerateAvailability = {
   readonly target: Message | null;
@@ -13,6 +14,7 @@ export function getChatRegenerateAvailability(
   workspaceState: ChatWorkspaceControllerState,
   executionState: ChatSendState,
 ): ChatRegenerateAvailability {
+  if (workspaceState.status === "ready") executionState = scopedChatExecution(executionState, workspaceState.workspace.selectedConversationId);
   const target = latestTailAssistant(workspaceState);
   if (target === null) {
     return unavailable(null, "当前没有可重新生成的最新回复。");
@@ -27,7 +29,7 @@ export function getChatRegenerateAvailability(
     return unavailable(target, "正在切换会话。");
   }
   if (workspaceState.conversationMutation) return unavailable(target, "正在更新会话。");
-  if (workspaceState.configurationPending || (executionState.kind === "error" && (!executionState.confirmedFailure || executionState.failedMessageId !== target.id))) return unavailable(target, "请先重新读取当前状态。");
+  if (workspaceState.configurationPending || (executionState.kind === "error" && !executionState.rejectedSubmission && (!executionState.confirmedFailure || executionState.failedMessageId !== target.id))) return unavailable(target, "请先重新读取当前状态。");
 
   const selected = workspaceState.workspace.selectedConversation;
   const readiness = workspaceState.workspace.setup.readiness;

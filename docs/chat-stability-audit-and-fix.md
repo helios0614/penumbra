@@ -215,3 +215,54 @@ receipt 丢失时，目标即使变化、甚至恰好与 partial 相同，也不
 
 
 最终验收记录（PR7-A）：`npm test` 162 个文件、2148 条通过；`npm run build` 通过。隔离后端上述 8 个 suite 合并执行 148 条通过。`chat-stability-smoke.cjs` 桌面与移动端均通过；`chat-pr6-5-config-smoke.cjs` 在 320/390/1280 宽度通过；`chat-pr6-5-carryover-e2e.cjs` 通过真实 Chat UI → 临时 FastAPI/SQLite 的 carryover=0/4/50、新建会话导航与刷新、首发持久化和第二次发送不重复携带。临时测试依赖、日志、截图位于 `/private/tmp/penumbra-pr7-*`，未运行私人数据库或真实 Provider。
+
+
+## 12. PR7-A Follow-up：冻结请求，不冻结 UI（2026-10-27）
+
+本轮只调整 Main Chat 的执行所有权、导航/配置锁与恢复入口；AionHome 业务源码、消息事务、WS payload/timing、工具副作用、canonical target/receipt/HTTP 契约均未修改。前端原本把同一执行总锁重复用于 `ChatView.executionGuard/navigationLocked/managementLocked`、Workspace `canNavigate`、设置 hook `canEdit` 和 Composer error；其中返回首页、阅读其他会话、保存后续请求配置并不与已冻结请求冲突。
+
+### 12.1 原因、隔离与保留的局部锁
+
+不能只移除 disabled：PR7-A 的单个 session controller 绑定“当前选中 Workspace”的历史重读，切到 B 后 A 的 finalization 会失去 owner，并把 A 的活跃/未知状态带到 B。现在 `chat-execution-sessions.ts` 按 conversation ID 保存 controller；`useChatSend` 只投影当前会话，输入/回调也按提交时 owner 取状态。同一会话的 send/regenerate/unknown 继续互斥，A/B 由用户显式发起的请求可独立运行；导航、重入和对账不调用新的生成 POST。
+
+当前 owner 的历史核对沿用原 Workspace sequence/AbortSignal。非当前 owner 或已卸载 view 使用 `chat-background-reconciliation.ts` 的独立只读 window，结果不发布进 B 的 Workspace、不移动 B 的阅读窗口。canonical 按自己的 target 读取 anchor 并核对原 receipt，不能用目标内容变化猜测成功。会话切换/重连/WS 失效通知、重新进入、online/focus 会触发安全只读核对；没有无限轮询、超时升级失败或自动重发。未知仍只在服务器证据足够时解除。
+
+| 操作 | Follow-up 规则 |
+|---|---|
+| 返回桌面首页 | send、regenerate、工具追加、finalization、unknown、配置写入期间都允许；返回按钮始终表示回首页，搜索另有关闭入口；离开不 Abort SSE 或服务器生成 |
+| 切换会话、阅读、搜索、复制/放入下一条草稿 | 不再受生成/设置保存总锁限制，A 的 partial/error/unknown 不投影到 B；结构性会话 CRUD 提交期间仍按原 Workspace owner 完成后再切换 |
+| 更改后续请求的模型/协议/连接、保存五项 Chat Settings | 生成期间允许；模型写入原子 readback、失败后的 readiness 回退、字段版本、CAS 和旧 scope 响应隔离不变 |
+| 启动新 send/regenerate | 同一会话已有执行或 unknown 时禁止；配置/save/readback 尚未确认时，新的请求等本地提交边界完成，已有请求不受影响 |
+| 新建、重命名会话 | 不再因生成而禁用；沿用原 Workspace mutation 防重入 |
+| 删除会话 | 只禁止删除仍有该会话 Main 执行/unknown 的 owner，菜单和提交回调都校验；不能删除当前 target/恢复凭据。没有把别的会话一起锁住，也没有声称前端能枚举全部后台工具任务 |
+
+执行、会话原文草稿、上传附件及暂存提交保存在应用会话内存。`chat-draft-session.ts` / retained attachment store 保证返回首页再进入时下一条草稿与附件仍在，A/B 不混用；没有新增浏览器持久化或跨整页刷新恢复保证。
+
+### 12.2 后端快照核对
+
+已针对性核对 `routes/chat.py::send_message/regenerate_target_message`、`ReplyCommands.dispatch`、`_follow_up_generation_kwargs`、canonical 的 `commit_replacement`。Main 的 `ResolvedGenerationRequest` 在 preflight 捕获 binding/options，后续 stream 和工具结果续写传递同一父请求对象。前端模型写入仅更新 Main selection，不改 canonical 消息快照；保存 Temperature/Thinking 等不会热更新已经捕获的对象、不重新开始生成。模型持久化、readback 和设置 CAS 均保留。
+
+冻结边界是**后端 preflight 已捕获的请求**。Temperature、Thinking、context/fast/whisper 等生成 options 属于快照。首次携带数量按原 send 的早期捕获时机使用。`float_interval` 是全局运行策略，在 Main 上下文准备后段仍读取当时 SETTINGS；本轮没有提前冻结它，也没有改变后台主动任务/辅助模型的原策略。设置失败只保留该字段编辑及错误，不改变本次生成的 accumulator、receipt 或结果。
+
+### 12.3 三类恢复与点击次数
+
+- **已提交 User + 明确失败 Assistant**：安全错误和持久正文留在原消息，显示一个可见的“重新生成”主按钮；一次点击直接 canonical regenerate，无需恢复输入或人工核对。失败后可再次点击；成功按原 ID/receipt/HTTP 替换。旧的悬浮重复 regenerate 图标和 Composer“回复状态需要处理”不再叠加。非最新/不合格或配置未就绪时说明真实原因，不展示永远禁用的主按钮。`acceptedSend` 证据会清理同 client ID 的暂存提交，明确失败不会被误当作未提交输入。
+- **有应用层未接受证据的拒绝**：`rejectedSubmission` 保留原输入/附件身份，直接回到可编辑 Composer；原上传 URL 恢复，下一条独立草稿/附件沿用原分离逻辑。没有新建临时 AI 错误气泡或要求“恢复提交”。修正配置/文字后，点击原发送按钮一次，才发起新的显式请求；不会自动重试。
+- **结果未知**：一条“回复结果待确认”及一个直接的“重新核对”入口（一次点击、只读）。原请求对应的 SubmissionRecovery 保存在底层但不再与状态提示并排显示，不暴露“已核对历史，返回编辑”来绕过未知执行。通常 WS/重连/重新进入会自行完成核对，用户无需点击。其他不相关的暂存提交仍可独立处理。
+
+已有 user 但 assistant 仍未确认时，现有 send 回执/幂等只能防重复提交，不能安全启动已接受请求的第二次生成；canonical 也需要合格的持久 assistant。缺少“按原执行身份原子判断停止/接续、且不重放工具副作用”的恢复契约，因此本轮不提供再次生成按钮。丢失 canonical receipt 同样不能凭内容变化解锁。
+
+### 12.4 HTTP 4xx 接受证据
+
+删除“所有非 408 的 4xx 都明确失败”的推断。`chat-send-rejection.ts` 只接受已核对源码的应用 preflight 响应：认证中间件 401 的 `error=未登录`、send 的明确会话不存在、已知参数/配置错误码，以及 canonical 对应的目标拒绝码；HTTP status 与 endpoint kind 必须匹配。499 即使携带相同错误码也不在白名单。裸 400/401/403/422/429、408、499、代理 HTML、普通 Provider HTTP 错误对象均保守未知；安全上游细节继续保留，HTTP 失败不等于生成失败。新/未识别格式也只读核对，不猜测未提交。
+
+### 12.5 回归记录与剩余验收
+
+新增 `chat-execution-sessions.test.ts` 覆盖 A/B 独立 stream/finalization、防重复提交、499/裸 4xx、已证明拒绝及原输入身份。更新旧的“生成时不能导航”和“未知状态必须手动恢复”断言；暂存提交成功/明确失败两种接受证据都测试精确清理。
+
+`chat-pr7-interaction-smoke.cjs` 使用真实 ChatView、合成 HTTP/SSE/WS 和隔离 Chrome，在 1280/390 宽度验证：生成时回首页/卸载重进，独立草稿和上传附件保留；A 生成时阅读搜索 B 并显式发送 B，A 的迟到结果不覆盖 B；流中修改模型/协议及全部五项设置、保存失败不重新 POST；确定失败一次点击 canonical，连续失败后成功；拒绝后原文/附件直接编辑；499/524 未知离开重进、B 阅读后按精确回执自动恢复，无额外 POST。浏览器捕获后续请求配置，后端 frozen-binding/follow-up suites 验证真实冻结契约，两者不混淆。
+
+仍需真实环境验收反向代理 499/524/断网时序、真实 Provider 长流、跨设备并发和延迟工具追加；同一会话未知无法安全再生成、canonical receipt 丢失、跨整页刷新内存 partial/草稿不恢复的边界仍在。本轮未改 PR7-B 日志或 PR7-C Thinking 内容展示，未重构 Settings。没有读取私人生产数据，未 commit、push 或部署。
+
+
+Follow-up 最终验证：前端 `npm test` 163 个文件、2159 条通过；最后的 owner 回调补验 14 条通过；`npm run build`（含 TypeScript）通过。隔离后端上述 6 个 frozen-binding / regenerate-follow-up / defaults / Thinking / carryover / send-receipt suites 合计 100 条通过。新交互 smoke 在 1280/390 宽度通过；原稳定性桌面/手机、PR6.5 设置 320/390/1280、真实 UI → 临时 FastAPI/SQLite 的 carryover 0/4/50 均通过。日志保存在 `/private/tmp/pr7-followup-*`；AionHome 业务仓库无本轮改动。没有 commit、push 或部署。

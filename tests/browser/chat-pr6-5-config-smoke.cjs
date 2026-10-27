@@ -20,7 +20,7 @@ async function fixture(browser, width) {
     state.messages[id] = [message(`${id}-initial`, id, 'assistant', `合成回复 ${id}`, ++state.clock)];
   }
   const errors = []; page.on('pageerror', error => errors.push(error.message));
-  await page.routeWebSocket(url => url.pathname === '/ws', () => {});
+  await page.routeWebSocket(url => url.pathname === '/ws', ws => { state.ws = ws; });
   await page.route('**/api/**', async route => {
     const req = route.request(), url = new URL(req.url()), method = req.method();
     state.requests.push({ method, path: url.pathname + url.search, body: req.postData() });

@@ -1,4 +1,4 @@
-import type { ChatSendState } from "@/application/chat-send";
+import { INITIAL_CHAT_SEND_STATE, type ChatSendState } from "@/application/chat-send";
 import type { ChatSetupStatus } from "@/application/chat-setup";
 import type { ChatWorkspaceControllerState } from "@/components/chat-workspace/chat-workspace-controller";
 
@@ -8,10 +8,15 @@ export type ChatSenderAvailability = {
   readonly statusMessage: string | null;
 };
 
+export function scopedChatExecution(state: ChatSendState, conversationId: string | null): ChatSendState {
+  return "conversationId" in state && state.conversationId && state.conversationId !== conversationId ? INITIAL_CHAT_SEND_STATE : state;
+}
+
 export function getChatSenderAvailability(
   workspaceState: ChatWorkspaceControllerState,
   sendState: ChatSendState,
 ): ChatSenderAvailability {
+  if (workspaceState.status === "ready") sendState = scopedChatExecution(sendState, workspaceState.workspace.selectedConversationId);
   if (sendState.kind === "sending-user") {
     return unavailable("正在发送消息。");
   }
@@ -37,7 +42,7 @@ export function getChatSenderAvailability(
   if (sendState.kind === "regenerate-finalization-uncertain") {
     return unavailable(sendState.error.message);
   }
-  if (sendState.kind === "error") {
+  if (sendState.kind === "error" && !sendState.confirmedFailure && !sendState.rejectedSubmission) {
     return unavailable(sendState.error.message);
   }
 

@@ -105,6 +105,8 @@ export type ChatSendState =
       readonly failedMessageId?: string;
       readonly failedTargetContent?: string;
       readonly regeneratePartial?: StreamingAssistantMessage;
+      readonly rejectedSubmission?: OptimisticUserMessage;
+      readonly acceptedSend?: { readonly conversationId: string; readonly clientMessageId: string };
     }
   | (ActiveChatRegenerateState & {
       readonly kind: "regenerate-streaming";

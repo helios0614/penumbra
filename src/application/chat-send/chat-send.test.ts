@@ -148,8 +148,8 @@ describe("streaming assistant accumulator", () => {
 
 describe("safe chat execution errors", () => {
   it.each([
-    [new ApiError("private", 401), "authentication", "请求失败（HTTP 401）。"],
-    [new ApiError("private", 403), "authentication", "请求失败（HTTP 403）。"],
+    [new ApiError("private", 401), "authentication", "连接返回 HTTP 401，生成结果尚未确认。请重新核对。"],
+    [new ApiError("private", 403), "authentication", "连接返回 HTTP 403，生成结果尚未确认。请重新核对。"],
     [httpError(409, "unknown_model"), "unknown-model", "当前会话使用的模型已不可用。"],
     [httpError(422, "invalid_generation_options", "temperature"), "invalid-generation-options", "当前生成参数无效。"],
     [httpError(422, "unsupported_generation_option", "fast_mode"), "unsupported-generation-option", "当前模型不支持所选生成参数。"],

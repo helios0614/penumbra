@@ -94,7 +94,7 @@ async function run(browser, mobile) {
   // causes an authoritative HTTP reread. No automatic mutation is issued.
   await send('断流合成问题'); await emit({ type: 'start', id: 'late' }); await emit({ type: 'chunk', content: '临时正文' });
   await page.evaluate(() => window.__streams.at(-1).error(new TypeError('Synthetic network canceled')));
-  await page.getByRole('button', { name: '回复结果待确认，查看详情', exact: true }).waitFor();
+  await page.locator('[data-chat-execution-feedback]').getByText('回复结果待确认', { exact: true }).waitFor();
   assert.equal(await regen('tool-failed').isDisabled(), true);
   assert.equal(await page.getByRole('button', { name: '发送消息', exact: true }).isDisabled(), true);
   state.a.push(msg('u2', 'user', '断流合成问题', 7), msg('late', 'assistant', 'HTTP 已保存的正文', 8)); ws('late');
@@ -102,10 +102,10 @@ async function run(browser, mobile) {
   assert(!(await page.locator('.chat-message-scroll').textContent()).includes('临时正文'));
   assert.equal((await page.evaluate(() => window.__posts)).length, 2);
   await page.getByRole('button', { name: '回复状态需要处理，查看详情', exact: true }).waitFor({ state: 'hidden' });
-  await page.getByRole('button', { name: '回复结果待确认，查看详情', exact: true }).waitFor({ state: 'hidden' });
+  await page.locator('[data-chat-execution-feedback]').getByText('回复结果待确认', { exact: true }).waitFor({ state: 'hidden' });
 
   await page.evaluate(() => window.__mode = '524'); await send('直接524');
-  await page.getByRole('button', { name: '回复结果待确认，查看详情', exact: true }).waitFor();
+  await page.locator('[data-chat-execution-feedback]').getByText('回复结果待确认', { exact: true }).waitFor();
   assert((await page.locator('.chat-message-scroll').textContent()).includes('HTTP 524'));
   assert(!(await page.locator('.chat-message-scroll').textContent()).includes('synthetic-secret'));
   assert.equal(await regen('late').isDisabled(), true);
@@ -118,13 +118,13 @@ async function run(browser, mobile) {
   ws('unrelated'); ws('late');
   await bubble('unrelated').waitFor();
   assert.equal(await page.getByRole('button', { name: '发送消息', exact: true }).isDisabled(), true);
-  await page.getByText('未完成或未确认的提交已暂存（1）', { exact: true }).waitFor();
+  assert.equal(await page.getByText('未完成或未确认的提交已暂存（1）', { exact: true }).count(), 0);
   await page.getByRole('textbox', { name: '消息正文', exact: true }).fill('下一条草稿');
   state.a.push(msg('late524', 'assistant', '524 后持久化成功', 11));
   state.receipts[client].assistant_message_id = 'late524';
   ws('late524'); ws('unrelated'); ws('late524');
   await bubble('late524').waitFor();
-  await page.getByRole('button', { name: '回复结果待确认，查看详情', exact: true }).waitFor({ state: 'hidden' });
+  await page.locator('[data-chat-execution-feedback]').getByText('回复结果待确认', { exact: true }).waitFor({ state: 'hidden' });
   await page.getByText('未完成或未确认的提交已暂存（1）', { exact: true }).waitFor({ state: 'hidden' });
   assert.equal(await page.locator('[data-chat-execution-feedback]').count(), 0);
   assert(!(await page.locator('.chat-message-scroll').textContent()).includes('连接返回 HTTP 524'));
@@ -145,12 +145,12 @@ async function run(browser, mobile) {
   await emit({ type: 'start', id: 'normal' }); await emit({ type: 'chunk', content: '重新生成部分正文' });
   await emit({ id: 'normal', content: '重新生成完整正文', thinking: null, drift: null }, 'persisted');
   await page.evaluate(() => window.__streams.at(-1).error(new TypeError('Synthetic regenerate disconnect')));
-  await page.getByRole('button', { name: '回复结果待确认，查看详情', exact: true }).waitFor();
+  await page.locator('[data-chat-execution-feedback]').getByText('回复结果待确认', { exact: true }).waitFor();
   assert((await bubble('normal').textContent()).includes('正常回复'));
   assert((await page.locator('.chat-message-scroll').textContent()).includes('重新生成部分正文'));
   state.a.at(-1).content = '重新生成完整正文';
   state.ws.send(JSON.stringify({ type: 'msg_updated', data: { id: 'normal', conv_id: 'a' } }));
-  await page.getByRole('button', { name: '回复结果待确认，查看详情', exact: true }).waitFor({ state: 'hidden' });
+  await page.locator('[data-chat-execution-feedback]').getByText('回复结果待确认', { exact: true }).waitFor({ state: 'hidden' });
   assert((await bubble('normal').textContent()).includes('重新生成完整正文'));
   assert(!(await page.locator('.chat-message-scroll').textContent()).includes('重新生成部分正文'));
   assert.equal(await bubble('normal').count(), 1);
@@ -164,11 +164,11 @@ async function run(browser, mobile) {
   await page.locator('.chat-shell').waitFor({ state: 'hidden' });
   await close();
   await page.evaluate(() => window.__chatMount());
-  await page.getByRole('button', { name: '回复结果待确认，查看详情', exact: true }).waitFor();
+  await page.locator('[data-chat-execution-feedback]').getByText('回复结果待确认', { exact: true }).waitFor();
   assert((await page.locator('.chat-message-scroll').textContent()).includes('卸载前部分正文'));
   state.a.push(msg('umount', 'user', '卸载期间生成', 14), msg('remount', 'assistant', '重新进入后权威正文', 15)); ws('remount');
   await bubble('remount').waitFor();
-  await page.getByRole('button', { name: '回复结果待确认，查看详情', exact: true }).waitFor({ state: 'hidden' });
+  await page.locator('[data-chat-execution-feedback]').getByText('回复结果待确认', { exact: true }).waitFor({ state: 'hidden' });
   assert(!(await page.locator('.chat-message-scroll').textContent()).includes('卸载前部分正文'));
   assert.equal((await page.evaluate(() => window.__posts)).length, 6);
   await page.screenshot({ path: `${process.env.CHAT_STABILITY_OUTPUT || '.tmp'}/chat-stability-${mobile ? 'mobile' : 'desktop'}.png` });

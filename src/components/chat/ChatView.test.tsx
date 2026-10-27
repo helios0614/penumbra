@@ -272,7 +272,7 @@ describe("ChatWorkspaceView ready states", () => {
     expect(html).toContain("最新回复");
   });
 
-  it("allows next-draft editing but disables submission and conversation switching while regenerate owns execution", () => {
+  it("allows next-draft editing and conversation navigation while regenerate owns its submission lock", () => {
     const selected = conversation("conv_a", "会话 A");
     const sendState: ChatSendState = {
       kind: "regenerate-streaming",
@@ -308,9 +308,8 @@ describe("ChatWorkspaceView ready states", () => {
     expect(html).not.toContain("chat-generation");
     expect(html).not.toMatch(/<textarea[^>]*disabled/);
     expect(html).toMatch(/aria-label="发送消息"[^>]*disabled|disabled=""[^>]*aria-label="发送消息"/);
-    expect(html).toMatch(
-      /<button[^>]*disabled[^>]*aria-label="当前无法切换到会话 A"|<button[^>]*aria-label="当前无法切换到会话 A"[^>]*disabled/,
-    );
+    expect(html).toContain('aria-label="打开会话会话 A"');
+    expect(html).not.toContain('aria-label="当前无法切换到会话 A"');
   });
 
   it("shows finalization uncertainty once instead of repeating it in sender footer", () => {
@@ -349,7 +348,7 @@ describe("ChatWorkspaceView ready states", () => {
       sendState,
     });
 
-    expect(html).not.toContain(messageText);
+    expect(html).toContain(`title="${messageText}"`);
     expect(html).toContain("回复结果待确认");
     expect(html).not.toContain("已核对历史，返回编辑");
     expect(html.indexOf("data-chat-execution-feedback")).toBeGreaterThan(html.indexOf("</header>"));

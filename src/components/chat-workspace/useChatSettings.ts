@@ -8,8 +8,8 @@ export function useChatSettings(workspace: UseChatWorkspaceResult, send: UseChat
   const latest = useRef({ workspace, send }); latest.current = { workspace, send };
   const [state, setState] = useState(INITIAL_CHAT_SETTINGS);
   const [controller] = useState(() => createChatSettingsController({ canEdit: scope => {
-    const { workspace: current, send: execution } = latest.current, now = current.getState();
-    return !execution.isExecutionActive() && now.status === "ready" && !now.pendingConversationId && !now.configurationPending &&
+    const { workspace: current } = latest.current, now = current.getState();
+    return now.status === "ready" && !now.pendingConversationId && !now.configurationPending &&
       !now.conversationMutation && chatSettingsScopeKey(chatSettingsScope(now.workspace)) === chatSettingsScopeKey(scope);
   } }));
   useEffect(() => controller.subscribe(setState), [controller]);

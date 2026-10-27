@@ -118,21 +118,21 @@ describe("Chat home and conversation navigation are independent", () => {
     expect(select).toHaveBeenCalledWith("b"); expect(sheet().open).toBe(false); expect(home).toHaveBeenCalledOnce();
     hooks.dispose();
   });
-  it("keeps the return button disabled during the existing conversation mutation lock", () => {
+  it("allows home navigation while a conversation mutation remains owned by its workspace", () => {
     const state = { ...ready(), conversationMutation: "create" as const };
     const hooks = hookSession(() => ChatWorkspaceView({ state, onBack: vi.fn(), onRetry: vi.fn(), onSelectConversation: vi.fn(), onRetryConversationSwitch: vi.fn() }));
     const header = find(hooks.render(), ChatShell).props.header;
-    expect(find(header, Button, props => props["aria-label"] === "返回桌面").props.disabled).toBe(true);
+    expect(find(header, Button, props => props["aria-label"] === "返回桌面").props.disabled).toBe(false);
     expect((find(header, SheetTrigger).props.render as React.ReactElement<React.ComponentProps<typeof Button>>).props.disabled).not.toBe(true);
     hooks.dispose();
   });
-  it("rechecks live execution and mutation ownership even when a previously enabled return callback is invoked", () => {
+  it("does not turn navigation into execution cancellation or a mutation lock", () => {
     const home = vi.fn(), hooks = hookSession(() => ChatView({ onBack: home }));
     const view = hooks.render() as React.ReactElement<ChatWorkspaceViewProps>;
     const back = view.props.onBack!;
-    live.active = true; back(); expect(home).not.toHaveBeenCalled();
-    live.active = false; live.state = { ...ready(), conversationMutation: "delete" }; back(); expect(home).not.toHaveBeenCalled();
-    live.state = ready(); back(); expect(home).toHaveBeenCalledOnce();
+    live.active = true; back(); expect(home).toHaveBeenCalledTimes(1);
+    live.active = false; live.state = { ...ready(), conversationMutation: "delete" }; back(); expect(home).toHaveBeenCalledTimes(2);
+    live.state = ready(); back(); expect(home).toHaveBeenCalledTimes(3);
     hooks.dispose();
   });
 });

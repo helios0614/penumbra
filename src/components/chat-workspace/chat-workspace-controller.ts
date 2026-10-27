@@ -637,8 +637,8 @@ export function createChatWorkspaceController(
     }
   };
 
-  // These writes share the Workspace owner and a synchronous lock. In particular,
-  // a click before React rerenders cannot bypass an active send or duplicate POST.
+  // Conversation writes share a Workspace owner and synchronous mutation lock.
+  // Execution-specific protection (e.g. deleting an active target) belongs to its owner.
   const mutateConversation = async (
     kind: "create" | "rename" | "delete",
     conversationId?: string,

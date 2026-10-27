@@ -56,23 +56,22 @@ import { useToast } from "@/components/ui/toast";
 import { useAttachmentDrafts } from "./useAttachmentDrafts";
 import { AttachmentDrafts, AttachmentDrop, AttachmentPicker } from "./AttachmentDrafts";
 import { SubmissionRecovery } from "./SubmissionRecovery";
+import { mainChatDraftSession, type ChatDraftSession } from "./chat-draft-session";
+import { scopedChatExecution } from "@/components/chat-workspace/chat-sender-policy";
 
 const CHAT_HEADER_ACTION_CLASS =
   "shrink-0 text-muted-foreground";
 
 export function ChatView({ onBack }: { readonly onBack?: () => void }) {
-  const executionGuard = useRef<() => boolean>(() => true);
   const recoveryConversation = useRef(pendingChatConversationId());
   const toast = useToast("chat-conversations");
-  const workspace = useChatWorkspace({ preferredConversationId: recoveryConversation.current }, () => executionGuard.current());
+  const workspace = useChatWorkspace({ preferredConversationId: recoveryConversation.current });
   const userName = useChatUserName(workspace.state.status === "ready");
-  const send = useChatSend(workspace.reloadSelectedConversationHistory);
+  const send = useChatSend(workspace.reloadSelectedConversationHistory, workspace.state.status === "ready" ? workspace.state.workspace.selectedConversationId : null);
   useEffect(() => {
-    const current = send.getState();
-    if (workspace.state.status === "ready" && (current.kind === "finalization-uncertain" || current.kind === "regenerate-finalization-uncertain")) void send.retryFinalization();
-  }, [workspace.state.status, send.getState, send.retryFinalization]);
+    if (workspace.state.status === "ready") void send.reconcilePending();
+  }, [workspace.state.status, workspace.state.status === "ready" ? workspace.state.workspace.selectedConversationId : null, send.reconcilePending]);
   const chatSettings = useChatSettings(workspace, send);
-  executionGuard.current = () => !send.isExecutionActive() && !chatSettings.controller.isSaving();
   const realtime = useChatRealtime(workspace.state, send.state, {
     reconcileEvent: async event => {
       const current = send.getState();
@@ -85,12 +84,10 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       if (current.kind === "finalization-uncertain" || current.kind === "regenerate-finalization-uncertain") await send.retryFinalization();
       else await workspace.reconcileSelectedConversationAfterReconnect(conversationId);
     },
-    refreshConversationList: workspace.refreshConversationList,
+    refreshConversationList: async () => { await send.reconcilePending(); await workspace.refreshConversationList(); },
   });
 
   const selectConversation = (conversationId: string) => {
-    if (send.isExecutionActive()) return;
-    send.resetError();
     workspace.selectConversation(conversationId);
   };
 
@@ -104,7 +101,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       current.status !== "ready" ||
       current.workspace.selectedConversation === null ||
       (expectedOwner !== undefined && current.workspace.selectedConversation.id !== expectedOwner) ||
-      (!getChatSenderAvailability(current, send.getState()).enabled || chatSettings.controller.isSaving())
+      (!getChatSenderAvailability(current, send.getState(current.workspace.selectedConversationId ?? undefined)).enabled || chatSettings.controller.isSaving())
     ) {
       return Promise.resolve(false);
     }
@@ -122,7 +119,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
     }
     const availability = getChatRegenerateAvailability(
       current,
-      send.getState(),
+      send.getState(current.workspace.selectedConversationId ?? undefined),
     );
     if (
       !availability.enabled || chatSettings.controller.isSaving() ||
@@ -157,10 +154,9 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       onRetry={workspace.retry}
       onSelectConversation={selectConversation}
       onRetryConversationSwitch={workspace.retryConversationSwitch}
-      onBack={onBack ? () => {
-        const current = workspace.getState();
-        if (executionGuard.current() && !(current.status === "ready" && current.conversationMutation)) onBack();
-      } : undefined}
+      onBack={onBack}
+      draftSession={mainChatDraftSession}
+      isConversationExecuting={send.isExecutionActive}
       sendState={send.state}
       getSendState={send.getState}
       onSend={sendMessage}
@@ -172,17 +168,14 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       onRefreshState={refreshState}
       realtimeState={realtime}
       onCreateConversation={async () => {
-        const before = workspace.getState();
         await workspace.createConversation();
         const current = workspace.getState();
-        if (current.status === "ready" && before.status === "ready" && current.workspace.selectedConversationId !== before.workspace.selectedConversationId) send.resetError();
         if (current.status === "ready" && !current.conversationMutation) toast.show({ type: "success", text: "会话已创建" });
       }}
       onRenameConversation={async (id, title) => { await workspace.renameConversation(id, title); toast.show({ type: "success", text: "会话已重命名" }); }}
       onDeleteConversation={async (id) => {
-        const before = workspace.getState();
+        if (send.isExecutionActive(id)) throw new Error("该会话的请求尚未结束，暂不能删除。");
         await workspace.deleteConversation(id);
-        if (before.status === "ready" && before.workspace.selectedConversationId === id) send.resetError();
         toast.show({ type: "success", text: "会话已删除" });
       }}
       onLoadOlderHistory={workspace.loadOlderHistory}
@@ -200,7 +193,9 @@ export interface ChatWorkspaceViewProps {
   readonly onSelectConversation: (conversationId: string) => void;
   readonly onRetryConversationSwitch: () => void;
   readonly sendState?: ChatSendState;
-  readonly getSendState?: () => ChatSendState;
+  readonly draftSession?: ChatDraftSession;
+  readonly isConversationExecuting?: (id: string) => boolean;
+  readonly getSendState?: (conversationId?: string) => ChatSendState;
   readonly onSend?: (content: string, attachments?: readonly string[], expectedOwner?: string) => Promise<boolean>;
   readonly onRegenerate?: (messageId: string) => Promise<boolean>;
   readonly onRetryFinalization?: () => void | Promise<void>;
@@ -225,7 +220,9 @@ export function ChatWorkspaceView({
   onRetry,
   onSelectConversation,
   onRetryConversationSwitch,
-  sendState = INITIAL_CHAT_SEND_STATE,
+  sendState: suppliedSendState = INITIAL_CHAT_SEND_STATE,
+  draftSession,
+  isConversationExecuting,
   getSendState,
   onSend,
   onRegenerate,
@@ -244,17 +241,18 @@ export function ChatWorkspaceView({
   onNavigateHistory,
   onRefreshConversationList,
 }: ChatWorkspaceViewProps) {
+  const sendState = scopedChatExecution(suppliedSendState, state.status === "ready" ? state.workspace.selectedConversationId : null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [modelSelectionPending, setModelSelectionPending] = useState(false);
   const [conversationAction, setConversationAction] = useState<ConversationAction | null>(null);
   const [managementError, setManagementError] = useState<string | null>(null);
-  const drafts = useRef(new Map<string, SenderDraft>());
+  const drafts = useRef(draftSession?.texts ?? new Map<string, SenderDraft>());
   const senderRef = useRef<SenderHandle | null>(null);
   const ownerRef = useRef<string | null>(null);
   ownerRef.current = state.status === "ready" ? state.workspace.selectedConversationId : null;
-  const media = useAttachmentDrafts(ownerRef.current);
+  const media = useAttachmentDrafts(ownerRef.current, draftSession?.attachments);
   useEffect(() => {
-    const confirmed = sendState.kind === "idle" ? sendState.confirmedSend : undefined;
+    const confirmed = sendState.kind === "idle" ? sendState.confirmedSend : sendState.kind === "error" ? sendState.acceptedSend : undefined;
     if (!confirmed) return;
     media.store.getRecoveries(confirmed.conversationId).forEach(item => {
       if (item.clientMessageId === confirmed.clientMessageId) media.store.discardRecovery(confirmed.conversationId, item.id);
@@ -313,7 +311,7 @@ export function ChatWorkspaceView({
   const executionNoticeVisible = executionNoticeError(sendState) !== null;
   const regenerate = getChatRegenerateAvailability(state, sendState);
   const executionActive = isChatExecutionActive(sendState);
-  const navigationLocked = executionActive || !!state.conversationMutation || !!chatSettings?.state.saving;
+  const navigationLocked = !!state.conversationMutation;
   const managementLocked = navigationLocked || pendingConversationId !== null || !!state.configurationPending || modelSelectionPending;
   const canManage = onRenameConversation !== undefined && onDeleteConversation !== undefined;
   const owner=workspace.selectedConversationId;
@@ -386,12 +384,14 @@ export function ChatWorkspaceView({
   const listManagement = {
     onCreate: onCreateConversation ? () => { void create(); } : undefined,
     onAction: canManage ? (action: ConversationAction) => {
+      if (action.kind === "delete" && (isConversationExecuting?.(action.id) ?? (action.id === draftOwner && executionActive))) return;
       const target = workspace.conversations.find(({ id }) => id === action.id);
       if (!target) return;
       setSheetOpen(false);
       setConversationAction({ ...action, title: target.title });
     } : undefined,
     managementDisabled: managementLocked,
+    deleteDisabled: (id: string) => isConversationExecuting?.(id) ?? (id === draftOwner && executionActive),
     creating: state.conversationMutation === "create",
   };
   const forceFollowKey = sendState.kind === "sending-user" ||
@@ -423,8 +423,8 @@ export function ChatWorkspaceView({
                 variant="ghost"
                 size="icon-lg"
                 className={CHAT_HEADER_ACTION_CLASS}
-                onClick={search.open?closeSearch:onBack}
-                disabled={!search.open&&navigationLocked}
+                onClick={onBack}
+                disabled={false}
                 aria-label="返回桌面"
                 title="返回桌面"
               >
@@ -464,7 +464,7 @@ export function ChatWorkspaceView({
 
             <HeaderCopy title={selectedConversation?.title ?? "Penumbra"} />
             <Button ref={searchTrigger} variant="ghost" size="icon-lg" className={CHAT_HEADER_ACTION_CLASS} aria-label="搜索聊天历史" title="搜索聊天历史" disabled={!selectedConversation||pendingConversationId!==null} onClick={search.open?closeSearch:showSearch}><Search className="size-4.5" aria-hidden="true"/></Button>
-            <ChatRequestParametersMenu settings={chatSettings} disabled={executionActive || !!state.conversationMutation || pendingConversationId !== null || !!state.configurationPending || modelSelectionPending} />
+            <ChatRequestParametersMenu settings={chatSettings} disabled={!!state.conversationMutation || pendingConversationId !== null || !!state.configurationPending || modelSelectionPending} />
             {pendingConversationId && (
               <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" role="status">
                 <LoaderCircle
@@ -482,9 +482,7 @@ export function ChatWorkspaceView({
           {!search.open&&bookmark.current&&jumped.current&&<div className="pointer-events-auto flex justify-end gap-3 px-4 text-xs text-muted-foreground"><button className="min-h-9" onClick={()=>void returnReading()}>返回搜索前位置</button><button className="min-h-9" onClick={()=>void latest()}>回到最新</button></div>}
         </>}
         notices={<>
-          {(executionActive || state.conversationMutation) && <p className="border-b border-border px-4 py-1.5 text-xs text-muted-foreground" role="status">
-            {executionActive ? "当前请求尚未结束或结果待确认，处理完成后可切换、新建或删除会话。" : "正在更新会话，请稍候。"}
-          </p>}
+          {state.conversationMutation && <p className="border-b border-border px-4 py-1.5 text-xs text-muted-foreground" role="status">正在更新会话，请稍候。</p>}
           {(managementError || state.conversationListError) && <div className="flex items-center gap-2 border-b border-border px-4 py-2 text-xs" role="alert">
             <span className="flex-1">{managementError ?? state.conversationListError?.message}</span>
             <Button variant="ghost" size="sm" disabled={managementLocked} onClick={() => void refreshList()}>刷新列表</Button>
@@ -519,7 +517,7 @@ export function ChatWorkspaceView({
           placeholder="输入消息…"
           statusMessage={executionActive || executionNoticeVisible ? undefined : modelSelectionPending ? "正在切换模型…" : sender.statusMessage ?? undefined}
           feedback={<><ChatExecutionNotice state={sendState} onRetryFinalization={onRetryFinalization} onReleaseAfterReview={onReleaseAfterReview} />
-            <SubmissionRecovery items={media.recoveries} locked={!draftEditable || executionActive} onRestore={item => {
+            <SubmissionRecovery items={media.recoveries.filter(item => !(executionActive && "optimisticUser" in sendState && item.clientMessageId === sendState.optimisticUser?.clientMessageId))} locked={!draftEditable || executionActive} onRestore={item => {
               if (!draftOwner || ownerRef.current !== draftOwner || executionActive || !draftEditable) return;
               if (!media.store.getRecoveries(draftOwner).some(current => current.id === item.id)) return;
               if (item.content && !senderRef.current?.append(item.content)) return;
@@ -534,10 +532,12 @@ export function ChatWorkspaceView({
             if(workspace.history?.window&&!workspace.history.window.reachesLatest){try{await onNavigateHistory?.(draftOwner);search.dismiss();setSearchFollowing(true);setJump({token:++jumpSequence.current,following:true});}catch{return false;}}
             const snapshot = media.store.capture(draftOwner);
             if (!snapshot) return false;
-            const beforeSubmission = getSendState?.();
+            const beforeSubmission = getSendState?.(draftOwner);
             const previouslyConfirmed = beforeSubmission?.kind === "idle" ? beforeSubmission.confirmedSend?.clientMessageId : undefined;
+            const previousClientMessageId = beforeSubmission && "optimisticUser" in beforeSubmission ? beforeSubmission.optimisticUser?.clientMessageId
+              : beforeSubmission?.kind === "error" ? beforeSubmission.rejectedSubmission?.clientMessageId ?? beforeSubmission.acceptedSend?.clientMessageId : previouslyConfirmed;
             const preserve = () => {
-              const current = getSendState?.();
+              const current = getSendState?.(draftOwner);
               const clientMessageId = current && "optimisticUser" in current && current.conversationId === draftOwner
                 ? current.optimisticUser?.clientMessageId : undefined;
               if (current?.kind === "idle" && current.confirmedSend?.conversationId === draftOwner && current.confirmedSend.clientMessageId !== previouslyConfirmed) snapshot.accept();
@@ -546,6 +546,8 @@ export function ChatWorkspaceView({
             try {
               const accepted = await onSend(content, snapshot.urls, draftOwner);
               if (accepted) { snapshot.accept(); return true; }
+              const result = getSendState?.(draftOwner);
+              if (result?.kind === "error" && result.rejectedSubmission && result.rejectedSubmission.clientMessageId !== previousClientMessageId && result.conversationId === draftOwner) return false;
               preserve(); return "retained";
             } catch { preserve(); return "retained"; }
             finally { snapshot.release(); }
@@ -585,7 +587,7 @@ export function ChatWorkspaceView({
               timelineKey={workspace.selectedConversation.id}
               messages={messages}
               userName={userName}
-              onInsert={sender.enabled && !managementLocked && !modelSelectionPending ? (text) => {
+              onInsert={draftEditable && !managementLocked && !modelSelectionPending ? (text) => {
                 if (ownerRef.current === draftOwner) senderRef.current?.append(text);
               } : undefined}
               onLoadOlder={onLoadOlderHistory ? () => { void onLoadOlderHistory(); } : undefined}
@@ -594,6 +596,7 @@ export function ChatWorkspaceView({
               olderError={state.olderHistoryError?.message}
               forceFollowKey={forceFollowKey}
               regenerateTargetId={regenerate.target?.id ?? null}
+              regenerateUnavailableReason={regenerate.reason ?? "仅最新的普通回复可重新生成。"}
               regenerateEnabled={regenerate.enabled && !modelSelectionPending && onRegenerate !== undefined}
               onRegenerate={onRegenerate === undefined
                 ? undefined
@@ -637,24 +640,26 @@ function ChatRealtimeNotice({
   );
 }
 
-function ChatExecutionNotice({ state, onRetryFinalization, onReleaseAfterReview }: {
+function ChatExecutionNotice({ state, onRetryFinalization }: {
   readonly state: ChatSendState;
   readonly onRetryFinalization?: () => void | Promise<void>;
   readonly onReleaseAfterReview?: () => void;
 }) {
   const error = executionNoticeError(state);
   if (error === null) return null;
+  if (state.kind === "error" && state.confirmedFailure && state.failedMessageId) return null;
+  if (state.kind === "error" && state.rejectedSubmission) return <p data-chat-execution-feedback role="alert" className="mx-auto mb-2 max-w-[720px] text-xs text-muted-strong">{error.message}</p>;
   const uncertain = state.kind === "finalization-uncertain" || state.kind === "regenerate-finalization-uncertain";
-  return <ChatExecutionFeedback
-    summary={uncertain ? "回复结果待确认" : "回复状态需要处理"}
-    detail={state.kind === "error" && state.confirmedFailure && state.failedMessageId
-      ? "错误已显示在回复中，可使用该消息的重新生成按钮。" : error.message}
-    uncertain={uncertain}
-    reviewReady={uncertain && !!state.recoveryReadSucceeded}
-    onRefresh={state.kind === "error" || uncertain ? onRetryFinalization : undefined}
-    onReturnToEdit={onReleaseAfterReview}
-  />;
+  const checking = state.kind === "finalizing" || state.kind === "regenerate-finalizing";
+  if (uncertain || checking) return <div data-chat-execution-feedback className="mx-auto mb-2 flex max-w-[720px] items-center gap-2 text-xs text-muted-strong">
+    <span role="status" title={error.message}>回复结果待确认</span>
+    {onRetryFinalization && <Button variant="ghost" size="compact" disabled={checking} onClick={() => void onRetryFinalization()}>重新核对</Button>}
+  </div>;
+  // Streamed provider errors are already displayed next to their partial body.
+  if (state.kind !== "error") return null;
+  return <ChatExecutionFeedback summary="暂时无法发送" detail={error.message} uncertain={false} reviewReady={false} onRefresh={onRetryFinalization} />;
 }
+
 function executionNoticeError(state: ChatSendState) {
   switch (state.kind) {
     case "error":

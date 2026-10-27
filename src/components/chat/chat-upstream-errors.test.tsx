@@ -59,7 +59,7 @@ it("keeps different safe HTTP error bodies in their unconfirmed Assistant withou
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: { type: "permission_error", message: reason } }), { status: 403, headers: { "content-type": "application/json" } })));
     const controller = createChatSendController({ createUuid: () => "http-error", reconcileHistory: async () => ({ persistedMessageIds: [], regenerateTarget: null }) });
     await controller.send({ conversationId: "conv_a", content: "问题" });
-    await vi.waitFor(() => expect(controller.getState().kind).toBe("error"));
+    await vi.waitFor(() => expect(controller.getState().kind).toBe("finalization-uncertain"));
     expect(render([], controller.getState())).toContain(reason);
     expect(JSON.stringify(controller.getState())).not.toContain("重新登录");
     controller.dispose();

@@ -91,6 +91,7 @@ interface BubbleListProps {
   readonly forceFollowKey?: string | null;
   readonly regenerateTargetId?: string | null;
   readonly regenerateEnabled?: boolean;
+  readonly regenerateUnavailableReason?: string | null;
   readonly onRegenerate?: (messageId: string) => void;
   readonly onInsert?: (text: string) => void;
   readonly onLoadOlder?: () => void;
@@ -109,6 +110,7 @@ function BubbleListInner({
   forceFollowKey = null,
   regenerateTargetId = null,
   regenerateEnabled = false,
+  regenerateUnavailableReason,
   onRegenerate,
   onInsert,
   onLoadOlder,
@@ -234,6 +236,7 @@ function BubbleListInner({
                           : undefined
                       }
                       regenerateDisabled={!regenerateEnabled}
+                      regenerateUnavailableReason={message.id === regenerateTargetId ? regenerateUnavailableReason : "仅最新的普通回复可重新生成。"}
                       onInsert={onInsert}
                     />
                     {message.id===activeMessageId&&activeResult&&<div className="chat-search-match mt-2 rounded-lg px-3 py-2 text-xs text-muted-strong" aria-label="当前消息匹配内容">

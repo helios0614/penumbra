@@ -7,9 +7,10 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, Dia
 
 export type ConversationAction = { readonly kind: "rename" | "delete"; readonly id: string; readonly title: string };
 
-export function ConversationMenu({ id, title, disabled, onAction }: {
+export function ConversationMenu({ id, title, disabled, deleteDisabled, onAction }: {
   readonly id: string; readonly title: string; readonly disabled?: boolean;
   readonly onAction: (action: ConversationAction) => void;
+  readonly deleteDisabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   return <Popover open={open} onOpenChange={setOpen}>
@@ -30,7 +31,7 @@ export function ConversationMenu({ id, title, disabled, onAction }: {
       <Button variant="ghost" role="menuitem" disabled={disabled} className="justify-start" onClick={() => { setOpen(false); onAction({ kind: "rename", id, title }); }}>
         <Pencil className="size-4" aria-hidden="true" />重命名
       </Button>
-      <Button variant="ghost" role="menuitem" disabled={disabled} className="justify-start text-destructive" onClick={() => { setOpen(false); onAction({ kind: "delete", id, title }); }}>
+      <Button variant="ghost" role="menuitem" disabled={disabled || deleteDisabled} title={deleteDisabled ? "该会话的请求尚未结束，暂不能删除。" : undefined} className="justify-start text-destructive" onClick={() => { setOpen(false); onAction({ kind: "delete", id, title }); }}>
         <Trash2 className="size-4" aria-hidden="true" />删除会话
       </Button>
     </PopoverContent>

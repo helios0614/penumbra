@@ -1,82 +1,58 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { readChatSendResult } from "@/application/chat-send/chat-send-result";
-
-import {
-  createChatSendController,
-  INITIAL_CHAT_SEND_STATE,
-  isChatExecutionActive,
-  type ChatHistoryReconciler,
-  type ChatRegenerateInput,
-  type ChatSendController,
-  type ChatSendInput,
-  type ChatSendState,
-} from "@/application/chat-send";
+import { reconcileBackgroundChat } from "@/application/chat-send/chat-background-reconciliation";
+import { createChatExecutionSessions } from "@/application/chat-send/chat-execution-sessions";
+import { type ChatHistoryReconciler, type ChatRegenerateInput, type ChatSendInput, type ChatSendState } from "@/application/chat-send";
 
 export type UseChatSendResult = {
-  readonly getState: () => ChatSendState;
+  readonly getState: (conversationId?: string) => ChatSendState;
   readonly state: ChatSendState;
   readonly send: (input: ChatSendInput) => Promise<boolean>;
   readonly regenerate: (input: ChatRegenerateInput) => Promise<boolean>;
   readonly retryFinalization: () => Promise<void>;
+  readonly reconcilePending: () => Promise<void>;
   readonly resetError: () => void;
   readonly releaseAfterReview: () => void;
-  readonly isExecutionActive: () => boolean;
+  readonly isExecutionActive: (conversationId?: string) => boolean;
 };
+let selectedOwner: string | null = null;
+let lastVisited: string | undefined;
+let selectedReconciler: ChatHistoryReconciler | null = null;
+const sessions = createChatExecutionSessions({
+  lookupSendResult: readChatSendResult,
+  reconcileHistory: async (owner, target) => {
+    if (owner === selectedOwner && selectedReconciler) {
+      try { return await selectedReconciler(owner, target); }
+      catch { /* A switched/disposed Workspace cannot own this execution's read. */ }
+    }
+    return reconcileBackgroundChat(owner, target);
+  },
+});
+export function pendingChatConversationId(): string | undefined { return lastVisited; }
 
-// One Main Chat execution per app session. A view unmount is not a server stop.
-// Keep only the controller in memory; no message text is written to browser storage.
-let sessionController: ChatSendController | null = null;
-let sessionReconciler: ChatHistoryReconciler | null = null;
-
-export function pendingChatConversationId(): string | undefined {
-  const state = sessionController?.getState();
-  return state && isChatExecutionActive(state) && "conversationId" in state ? state.conversationId : undefined;
-}
-
-export function useChatSend(
-  reconcileHistory: ChatHistoryReconciler,
-): UseChatSendResult {
-  const [state, setState] = useState<ChatSendState>(() => sessionController?.getState() ?? INITIAL_CHAT_SEND_STATE);
-  const controllerRef = useRef<ChatSendController | null>(null);
-
+export function useChatSend(reconcileHistory: ChatHistoryReconciler, conversationId?: string | null): UseChatSendResult {
+  const owner = useRef(conversationId); owner.current = conversationId;
+  const snapshot = useCallback(() => sessions.state(conversationId), [conversationId]);
+  const state = useSyncExternalStore(sessions.subscribe, snapshot, snapshot);
   useEffect(() => {
-    sessionReconciler = reconcileHistory;
-    const controller = sessionController ??= createChatSendController({
-      reconcileHistory: (...args) => {
-        if (!sessionReconciler) return Promise.reject(new Error("Chat view is detached"));
-        return sessionReconciler(...args);
-      },
-      lookupSendResult: readChatSendResult,
-    });
-    controllerRef.current = controller;
-    setState(controller.getState());
-    const unsubscribe = controller.subscribe(setState);
-
-    return () => {
-      unsubscribe();
-      if (sessionReconciler === reconcileHistory) sessionReconciler = null;
-      if (controllerRef.current === controller) {
-        controllerRef.current = null;
-      }
-    };
-  }, [reconcileHistory]);
-
-  const send = useCallback(async (input: ChatSendInput) =>
-    controllerRef.current?.send(input) ?? false, []);
-
-  const regenerate = useCallback(async (input: ChatRegenerateInput) =>
-    controllerRef.current?.regenerate(input) ?? false, []);
-
-  const retryFinalization = useCallback(async () => {
-    await controllerRef.current?.retryFinalization();
+    selectedOwner = conversationId ?? null;
+    selectedReconciler = reconcileHistory;
+    if (conversationId) lastVisited = conversationId;
+    return () => { if (selectedReconciler === reconcileHistory) { selectedOwner = null; selectedReconciler = null; } };
+  }, [conversationId, reconcileHistory]);
+  useEffect(() => {
+    const reconcile = () => { void sessions.reconcilePending(); };
+    window.addEventListener("online", reconcile);
+    window.addEventListener("focus", reconcile);
+    return () => { window.removeEventListener("online", reconcile); window.removeEventListener("focus", reconcile); };
   }, []);
-
-  const resetError = useCallback(() => {
-    controllerRef.current?.resetError();
-  }, []);
-
-  const releaseAfterReview = useCallback(() => { controllerRef.current?.releaseAfterReview(); }, []);
-  const isExecutionActive = useCallback(() => isChatExecutionActive(controllerRef.current?.getState() ?? INITIAL_CHAT_SEND_STATE), []);
-  const getState = useCallback(() => controllerRef.current?.getState() ?? INITIAL_CHAT_SEND_STATE, []);
-  return { state, send, regenerate, retryFinalization, resetError, releaseAfterReview, isExecutionActive, getState };
+  const getState = useCallback((id?: string) => sessions.state(id ?? owner.current), []);
+  const send = useCallback((input: ChatSendInput) => sessions.get(input.conversationId).send(input), []);
+  const regenerate = useCallback((input: ChatRegenerateInput) => sessions.get(input.conversationId).regenerate(input), []);
+  const retryFinalization = useCallback(async () => { if (owner.current) await sessions.get(owner.current).retryFinalization(); }, []);
+  const reconcilePending = useCallback(() => sessions.reconcilePending(), []);
+  const resetError = useCallback(() => { if (owner.current) sessions.get(owner.current).resetError(); }, []);
+  const releaseAfterReview = useCallback(() => { if (owner.current) sessions.get(owner.current).releaseAfterReview(); }, []);
+  const isExecutionActive = useCallback((id?: string) => { const current = id ?? owner.current; return !!current && sessions.active(current); }, []);
+  return { state, getState, send, regenerate, retryFinalization, reconcilePending, resetError, releaseAfterReview, isExecutionActive };
 }

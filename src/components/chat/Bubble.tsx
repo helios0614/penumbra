@@ -10,6 +10,7 @@ import userAvatarPlaceholder from "@/assets/chat/avatar-user-placeholder.png";
 import type { ChatMessageViewModel } from "./chat-ui-types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 import { SearchableBubbleSegments } from "./BubbleSegment";
 import { MessageActions } from "./MessageActions";
@@ -128,6 +129,7 @@ interface BubbleProps {
   readonly userName?: string;
   readonly onRegenerate?: () => void;
   readonly regenerateDisabled?: boolean;
+  readonly regenerateUnavailableReason?: string | null;
   readonly onInsert?: (text: string) => void;
 }
 
@@ -136,6 +138,7 @@ function BubbleInner({
   userName = "你",
   onRegenerate,
   regenerateDisabled = false,
+  regenerateUnavailableReason,
   onInsert,
 }: BubbleProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -199,7 +202,7 @@ function BubbleInner({
             <MessageActions
               role={message.kind}
               content={message.content}
-              onRegenerate={onRegenerate}
+              onRegenerate={message.kind === "assistant" && message.error ? undefined : onRegenerate}
               regenerateDisabled={regenerateDisabled}
               onInsert={insertText ? onInsert : undefined}
               insertContent={insertText}
@@ -232,7 +235,11 @@ function BubbleInner({
         >
           <SearchableBubbleSegments identity={message.id} chunks={(generationLabel || message.attachments.length > 0 || (message.kind === "assistant" && message.error)) && !hasBody ? [] : chunks}
             kind={message.kind} reaction={message.kind==="user"?message.capabilities?.reaction:null}/>
-          {message.kind === "assistant" && message.error && <div className={cn(BUBBLE_SURFACE, AI_BUBBLE_SURFACE, "whitespace-pre-wrap text-sm break-words")} role="alert">{message.error}</div>}
+          {message.kind === "assistant" && message.error && <div className={cn(BUBBLE_SURFACE, AI_BUBBLE_SURFACE, "whitespace-pre-wrap text-sm break-words")} role="alert">{message.error}
+            {message.executionStatus === undefined && (onRegenerate && !regenerateDisabled
+              ? <div className="mt-2"><Button size="sm" variant="outline" onClick={onRegenerate} aria-label="重新生成回复">重新生成</Button></div>
+              : regenerateUnavailableReason ? <p className="mt-2 text-xs text-muted-foreground">{regenerateUnavailableReason}</p> : null)}
+          </div>}
           {generationLabel && !hasBody && !(message.kind === "assistant" && message.error) && <GenerationIndicator label={generationLabel}
             rotating={message.executionStatus === "streaming"}
             active={message.executionStatus === "streaming" || message.executionStatus === "finalizing"} />}

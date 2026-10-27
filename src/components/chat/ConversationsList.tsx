@@ -19,6 +19,7 @@ interface ConversationsListProps {
   readonly onAction?: (action: ConversationAction) => void;
   readonly managementDisabled?: boolean;
   readonly creating?: boolean;
+  readonly deleteDisabled?: (id: string) => boolean;
 }
 
 export function ConversationsList({
@@ -31,6 +32,7 @@ export function ConversationsList({
   onAction,
   managementDisabled,
   creating,
+  deleteDisabled,
 }: ConversationsListProps) {
   return (
     <div
@@ -140,7 +142,7 @@ export function ConversationsList({
                   )}
                 </span>
               </button>
-              {onAction && <ConversationMenu id={conversation.id} title={conversation.title} disabled={disabled || managementDisabled} onAction={onAction} />}
+              {onAction && <ConversationMenu id={conversation.id} title={conversation.title} disabled={disabled || managementDisabled} deleteDisabled={deleteDisabled?.(conversation.id)} onAction={onAction} />}
               </div>
             );
           })}

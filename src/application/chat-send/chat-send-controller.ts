@@ -39,9 +39,9 @@ import {
   type OptimisticUserMessage,
   type SafeChatExecutionError,
 } from "@/application/chat-send/chat-send-types";
-import { ApiError } from "@/lib/api";
 import { assistantFailureCode, assistantFailureIndex, formatAssistantFailure } from "@/domain/message/assistant-failure";
 import type { ChatSendResult } from "./chat-send-result";
+import { isDefiniteChatRejection } from "./chat-send-rejection";
 
 export type ChatSendExecutionOpener = (
   conversationId: string,
@@ -227,6 +227,9 @@ export function createChatSendController(
           ? { kind: "idle", confirmedSend: { conversationId: execution.conversationId, clientMessageId: execution.optimisticUser.clientMessageId } }
           : INITIAL_CHAT_SEND_STATE
         : { kind: "error", conversationId: execution.conversationId,
+          ...(execution.kind === "send" && execution.accumulator.message.assistantMessageId !== null ? {
+            acceptedSend: { conversationId: execution.conversationId, clientMessageId: execution.optimisticUser.clientMessageId },
+          } : {}),
           confirmedFailure: execution.terminalFailure,
           failedMessageId: !execution.terminalFailure ? undefined : execution.kind === "regenerate" ? execution.targetMessageId : execution.accumulator.message.assistantMessageId ?? undefined,
           failedTargetContent: execution.kind === "regenerate" ? reconciliation.regenerateTarget?.content
@@ -430,7 +433,12 @@ export function createChatSendController(
       } catch (error) {
         if (!isCurrent(execution)) return false;
         execution.executionError = toSafeChatExecutionError(error);
-        execution.terminalFailure = isDefiniteRejection(error);
+        execution.terminalFailure = isDefiniteChatRejection(error, "send");
+        if (execution.terminalFailure) {
+          active = null;
+          publish({ kind: "error", conversationId: execution.conversationId, error: execution.executionError, rejectedSubmission: execution.optimisticUser });
+          return false;
+        }
         void finalize(execution);
         return false;
       }
@@ -505,7 +513,7 @@ export function createChatSendController(
       } catch (error) {
         if (!isCurrent(execution)) return false;
         execution.executionError = toSafeChatExecutionError(error, "regenerate");
-        execution.terminalFailure = isDefiniteRejection(error);
+        execution.terminalFailure = isDefiniteChatRejection(error, "regenerate");
         void finalize(execution);
         return false;
       }
@@ -610,13 +618,6 @@ function defaultUuid(): string {
     throw new Error("Secure UUID generation is unavailable");
   }
   return globalThis.crypto.randomUUID();
-}
-
-function isDefiniteRejection(error: unknown): boolean {
-  return error instanceof ApiError && (
-    error.status >= 400 && error.status < 500 && error.status !== 408 ||
-    error.status === 503 && toSafeChatExecutionError(error).code === "provider-not-configured"
-  );
 }
 
 function isRegeneratePersistenceConfirmed(
