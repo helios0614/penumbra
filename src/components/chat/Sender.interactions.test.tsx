@@ -1,11 +1,15 @@
 import * as React from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Sender } from "./Sender";
 import { Button } from "@/components/ui/button";
 import { ComposerToolsMenu } from "./ComposerToolsMenu";
 import { elements, find, hookSession } from "./test-utils/hook-session";
 import { createChatSendController } from "@/application/chat-send";
 import { readFileSync } from "node:fs";
+import { useSendShortcut } from "./send-shortcut-preference";
+
+vi.mock("./send-shortcut-preference", async original => ({ ...await original<object>(), useSendShortcut: vi.fn(() => "enter") }));
+beforeEach(() => { vi.mocked(useSendShortcut).mockReturnValue("enter"); });
 
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof React>();
@@ -39,6 +43,31 @@ function mountMeasurements(s: ReturnType<typeof session>, compactHeight = 24, co
 }
 
 describe("floating Sender interactions", () => {
+  it.each(["none", "enter", "shift-enter"] as const)("keeps button submission and raw text in %s mode", async mode => {
+    vi.mocked(useSendShortcut).mockReturnValue(mode);
+    const onSend = vi.fn(() => true), s = session(onSend);
+    const raw = "\n  第一行 \n\n第二行\n ";
+    s.change(raw); s.submit();
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(raw);
+    await Promise.resolve(); s.dispose();
+  });
+
+  it("applies preference changes to the existing textarea and guards whitespace, uploads and send lock", async () => {
+    const onSend = vi.fn(() => true), s = session(onSend);
+    const enter = (shiftKey = false) => s.textarea().onKeyDown?.({ key: "Enter", shiftKey, nativeEvent: {}, preventDefault: vi.fn() } as never);
+    vi.mocked(useSendShortcut).mockReturnValue("none");
+    s.change("原文"); enter(); enter(true); expect(onSend).not.toHaveBeenCalled();
+    vi.mocked(useSendShortcut).mockReturnValue("shift-enter");
+    enter(); expect(onSend).not.toHaveBeenCalled(); enter(true); expect(onSend).toHaveBeenCalledExactlyOnceWith("原文");
+    await Promise.resolve(); s.change(" \n "); enter(true); expect(onSend).toHaveBeenCalledOnce();
+    s.setSubmitDisabled(true); s.change("下一条"); enter(true); expect(onSend).toHaveBeenCalledOnce(); s.dispose();
+    let ready = false;
+    const h = hookSession(() => Sender({ onSend, hasAttachments: true, attachmentsReady: ready }));
+    const send = () => find(h.render(), Button, p => p["aria-label"] === "发送消息").props.onClick?.({} as never);
+    send(); expect(onSend).toHaveBeenCalledOnce(); ready = true; send(); expect(onSend).toHaveBeenLastCalledWith("");
+    await Promise.resolve(); h.dispose();
+  });
+
   it("edits the next draft throughout header wait and generation, but Enter and clicks cannot submit until unlocked", async () => {
     let accept!: (accepted: boolean) => void;
     const onSend = vi.fn(() => new Promise<boolean>(resolve => { accept = resolve; }));
@@ -81,7 +110,7 @@ describe("floating Sender interactions", () => {
     let accept!: (accepted: boolean) => void;
     const onSend = vi.fn(() => new Promise<boolean>((resolve) => { accept = resolve; }));
     const s = session(onSend); s.change("  第一份草稿  "); s.submit(); s.submit();
-    expect(onSend).toHaveBeenCalledOnce(); expect(onSend).toHaveBeenCalledWith("第一份草稿");
+    expect(onSend).toHaveBeenCalledOnce(); expect(onSend).toHaveBeenCalledWith("  第一份草稿  ");
     expect(s.textarea().value).toBe(""); expect(s.textarea().placeholder).toBe("输入消息…");
     s.change("后来编辑的草稿"); accept(true); await Promise.resolve();
     expect(s.textarea().value).toBe("后来编辑的草稿");

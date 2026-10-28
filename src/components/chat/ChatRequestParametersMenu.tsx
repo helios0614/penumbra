@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { SegmentedControlItem } from "@/components/ui/selection-control";
+import { AppSelect } from "@/components/ui/app-select";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
+import { setSendShortcut, useSendShortcut, type SendShortcut } from "./send-shortcut-preference";
 
 const sliderKeys = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"]);
 
@@ -29,6 +31,7 @@ export function ChatRequestParametersMenu({ settings, disabled }: { readonly set
       <div className="border-b border-border/60 pb-2">
         <PopoverTitle className="shrink-0 whitespace-nowrap">聊天设置</PopoverTitle>
       </div>
+      <ChatSendShortcutSetting />
       {(!ready && settings?.state.status !== "error") && <p className="py-3 text-xs text-muted-foreground" role="status">正在读取设置…</p>}
       {settings?.state.status === "error" && <div className="text-xs text-muted-strong" role="alert">暂时无法读取设置。
         <Button variant="link" size="compact" onClick={() => void settings.controller.open()}>重试读取</Button>
@@ -45,6 +48,21 @@ export function ChatRequestParametersMenu({ settings, disabled }: { readonly set
       </div>}
     </PopoverContent>
   </Popover>;
+}
+
+export function ChatSendShortcutSetting() {
+  const shortcut = useSendShortcut();
+  const options: readonly { value: SendShortcut; label: string }[] = [
+    { value: "none", label: "无快捷键" },
+    { value: "enter", label: "Enter 发送" },
+    { value: "shift-enter", label: "Shift + Enter 发送" },
+  ];
+  return <div className="flex min-h-11 min-w-0 items-center justify-between gap-2 border-b border-border/60 pb-1.5 text-sm" data-chat-setting="send-shortcut">
+    <span className="shrink-0">发送快捷键</span>
+    <AppSelect value={shortcut} options={options} onValueChange={setSendShortcut} ariaLabel="发送快捷键"
+      surface="translucent" controlSize="compact" className="w-auto max-w-full flex-1 text-sm font-normal"
+      contentClassName="min-w-44 text-sm" />
+  </div>;
 }
 
 export function ChatSettingSlider({ settings, field, label, metadata, disabled, unit = "" }: {

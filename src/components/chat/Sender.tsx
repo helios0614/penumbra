@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { ComposerToolsMenu } from "./ComposerToolsMenu";
 import "./chat.css";
 import { appendComposerText, type SenderDraft, type SenderHandle } from "./composer-draft";
+import { useSendShortcut, type SendShortcut } from "./send-shortcut-preference";
 
 interface SenderProps {
   // "retained" means the parent owns the unconfirmed submission, separately from the next draft.
@@ -43,8 +44,24 @@ export function shouldSubmitSenderKey(input: {
   readonly shiftKey: boolean;
   readonly isComposing: boolean;
   readonly keyCode?: number;
+  readonly ctrlKey?: boolean;
+  readonly metaKey?: boolean;
+  readonly altKey?: boolean;
+  readonly repeat?: boolean;
+  readonly mobile?: boolean;
+  readonly shortcut?: SendShortcut;
 }): boolean {
-  return input.key === "Enter" && !input.shiftKey && !input.isComposing && input.keyCode !== 229;
+  return input.key === "Enter" && !input.isComposing && input.keyCode !== 229 &&
+    !input.ctrlKey && !input.metaKey && !input.altKey && !input.repeat && !input.mobile &&
+    (input.shortcut === "enter" && !input.shiftKey || input.shortcut === "shift-enter" && input.shiftKey);
+}
+
+/** Conservatively keep Enter native on touch/mobile devices, including iPad desktop UA. */
+export function isMobileSenderKeyboard(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent) ||
+    navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1 ||
+    navigator.maxTouchPoints > 0 && typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches === true;
 }
 
 export function clearAcceptedSenderDraft(
@@ -72,6 +89,7 @@ export function Sender({
   attachmentsReady = true,
   onFiles,
 }: SenderProps) {
+  const sendShortcut = useSendShortcut();
   const [value, setValue] = useState(initialDraft?.value ?? "");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const statusId = useId();
@@ -170,7 +188,7 @@ export function Sender({
       }
     };
     try {
-      const accepted = await onSend(trimmed);
+      const accepted = await onSend(submittedDraft);
       if (accepted === false) retainUnacceptedDraft();
     } catch {
       // The parent owns safe error presentation; retain the current draft.
@@ -188,12 +206,18 @@ export function Sender({
         shiftKey: e.shiftKey,
         isComposing: e.nativeEvent.isComposing || composingRef.current,
         keyCode: e.nativeEvent.keyCode,
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+        altKey: e.altKey,
+        repeat: e.repeat,
+        mobile: isMobileSenderKeyboard(),
+        shortcut: sendShortcut,
       })) {
         e.preventDefault();
         void handleSubmit();
       }
     },
-    [handleSubmit],
+    [handleSubmit, sendShortcut],
   );
 
   const handleChange = useCallback(

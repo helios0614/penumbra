@@ -178,7 +178,7 @@ describe("safe chat execution errors", () => {
 describe("chat send controller", () => {
   it("publishes optimistic user immediately, uses one UUID, and blocks double submit", async () => {
     const opened = deferred<SendExecutionResult>();
-    const openExecution = vi.fn(() => opened.promise);
+    const openExecution = vi.fn<ChatSendExecutionOpener>(() => opened.promise);
     const createUuid = vi.fn(() => "uuid-client-1");
     const persistentHistory = Object.freeze(["persisted-message"]);
     const controller = createChatSendController({
@@ -188,7 +188,8 @@ describe("chat send controller", () => {
       now: () => 12,
     });
 
-    const first = controller.send({ conversationId: "conv-a", content: "  hello  " });
+    const raw = "\n  hello \n\n world  \n";
+    const first = controller.send({ conversationId: "conv-a", content: raw });
     expect(controller.getState()).toEqual({
       kind: "sending-user",
       executionId: "execution:uuid-client-1",
@@ -196,13 +197,16 @@ describe("chat send controller", () => {
       optimisticUser: {
         overlayId: "execution:uuid-client-1:user",
         clientMessageId: "uuid-client-1",
-        content: "hello",
+        content: raw,
         createdAt: 12,
       },
     });
     await expect(controller.send({ conversationId: "conv-a", content: "again" }))
       .resolves.toBe(false);
     expect(createUuid).toHaveBeenCalledOnce();
+    expect(openExecution).toHaveBeenCalledOnce();
+    expect(openExecution.mock.calls[0][0]).toBe("conv-a");
+    expect(openExecution.mock.calls[0][1]).toMatchObject({ content: raw, clientMessageId: "uuid-client-1" });
     expect(persistentHistory).toEqual(["persisted-message"]);
 
     opened.reject(httpError(409, "unknown_model"));

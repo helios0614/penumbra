@@ -418,8 +418,8 @@ export function createChatSendController(
         return false;
       }
 
-      const content = input.content.trim();
-      if ((!content && !input.generation?.attachments?.length) || !input.conversationId) {
+      const content = input.content;
+      if ((!content.trim() && !input.generation?.attachments?.length) || !input.conversationId) {
         return false;
       }
 

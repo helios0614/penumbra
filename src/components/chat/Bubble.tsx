@@ -5,6 +5,7 @@ import { ChatAttachments } from "@/components/media/ChatAttachments";
 import { memo, useRef } from "react";
 import { readMessageSelection } from "./message-selection";
 import { insertableBody } from "./insertable-body";
+import { splitAssistantBubbles, splitUserBubbles } from "./bubble-chunks";
 
 import aiAvatarPlaceholder from "@/assets/chat/avatar-ai-placeholder.png";
 import userAvatarPlaceholder from "@/assets/chat/avatar-user-placeholder.png";
@@ -28,47 +29,6 @@ const temporaryAvatarImages = {
   assistant: aiAvatarPlaceholder,
   user: userAvatarPlaceholder,
 } as const;
-
-function splitIntoChunks(content: string): string[] {
-  // TODO(markdown-chunking): 当前逻辑只跟踪 ``` fence，并在 Markdown 解析前按空行拆分。
-  // 改进时需同时保留“一段一个气泡”的 UI；本轮仅记录技术债，不调整现有分块行为。
-  if (!content) return [""];
-
-  const parts: string[] = [];
-  let current = "";
-  let fenceOpen = false;
-
-  for (const line of content.split("\n")) {
-    if (/^```/.test(line)) {
-      fenceOpen = !fenceOpen;
-    }
-
-    if (line === "" && !fenceOpen) {
-      if (current) {
-        parts.push(current);
-        current = "";
-      }
-      continue;
-    }
-
-    current += (current ? "\n" : "") + line;
-  }
-
-  if (current) parts.push(current);
-
-  // 过滤掉只会渲染为空的内容（如单独的 ---）
-  // 这些内容在 MarkdownRenderer 中会被渲染为空，但外层 BubbleSegment 仍会占据空间
-  const filteredParts = parts.filter(chunk => {
-    const trimmed = chunk.trim();
-    // 单独的 thematic break 或只包含空格的 chunk
-    if (trimmed === "---" || trimmed === "***" || trimmed === "___" || trimmed === "") {
-      return false;
-    }
-    return true;
-  });
-
-  return filteredParts.length > 0 ? filteredParts : [""];
-}
 
 function MessageAvatar({ kind }: { kind: "user" | "assistant" }) {
   const isUser = kind === "user";
@@ -154,9 +114,9 @@ function BubbleInner({
   }
 
   const isUser = message.kind === "user";
-  const hasBody = message.content.trim().length > 0;
+  const chunks = isUser ? splitUserBubbles(message.content) : splitAssistantBubbles(message.content);
+  const hasBody = chunks.length > 0;
   const insertText = message.kind === "assistant" && message.insertable !== false && onInsert ? insertableBody(message.content) : "";
-  const chunks = splitIntoChunks(message.content);
   const time = format(new Date(message.createdAt * 1000), "HH:mm");
   const executionLabel = message.executionStatus === undefined
     ? null
@@ -235,7 +195,7 @@ function BubbleInner({
             isUser ? "items-end" : "items-start gap-0.5",
           )}
         >
-          <SearchableBubbleSegments identity={message.id} chunks={(generationLabel || message.attachments.length > 0 || (message.kind === "assistant" && message.error)) && !hasBody ? [] : chunks}
+          <SearchableBubbleSegments identity={message.id} chunks={chunks}
             kind={message.kind} reaction={message.kind==="user"?message.capabilities?.reaction:null}/>
           {message.kind === "assistant" && message.error && <div className={cn(BUBBLE_SURFACE, AI_BUBBLE_SURFACE, "whitespace-pre-wrap text-sm break-words")} role="alert">{message.error}
             {message.executionStatus === undefined && (onRegenerate && !regenerateDisabled
