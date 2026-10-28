@@ -1,5 +1,5 @@
 import { chatTraceIdentity, traceChat, type TimelineIdentity } from "@/lib/chat-timeline";
-import { debugExecution, observeDebugStream, observeDebugHttpError, streamErrorObserver, drainRequestSnapshots } from "@/application/chat-system-log/chat-system-log-client";
+import { debugExecution, observeDebugStream, observeDebugHttpError, streamErrorObserver } from "@/application/chat-system-log/chat-system-log-client";
 import { projectDiagnostic, record } from "@/application/chat-system-log/chat-system-log-projection";
 import type { LogContext } from "@/application/chat-system-log/chat-system-log-types";
 import {
@@ -49,10 +49,11 @@ export async function openSendExecution(
     const mediaType = normalizeMediaType(response.contentType);
 
     if (mediaType === "text/event-stream") {
-      return streamResult(response.body, debug.context, chatTraceIdentity(options?.signal));
+      return streamResult(response.body, debug.context, debug.finish, chatTraceIdentity(options?.signal));
     }
     if (mediaType === "application/json") {
       const acknowledgement = await readLimitedJsonBody(response.body);
+      debug.finish();
       return mapDuplicateSendAcknowledgement(acknowledgement);
     }
 
@@ -60,7 +61,7 @@ export async function openSendExecution(
     throw new ChatExecutionContractError(
       "Chat send response has a missing or unsupported media type",
     );
-  } catch (error) { observeDebugHttpError(error, debug.context); throw error; }
+  } catch (error) { observeDebugHttpError(error, debug.context); debug.finish(); throw error; }
 }
 
 export async function openRegenerateExecution(
@@ -87,14 +88,14 @@ export async function openRegenerateExecution(
 
     traceChat("http.headers", chatTraceIdentity(options?.signal));
     if (normalizeMediaType(response.contentType) === "text/event-stream") {
-      return streamResult(response.body, debug.context, chatTraceIdentity(options?.signal));
+      return streamResult(response.body, debug.context, debug.finish, chatTraceIdentity(options?.signal));
     }
 
     await cancelUnreadBody(response.body);
     throw new ChatExecutionContractError(
       "Chat regenerate response has a missing or unsupported media type",
     );
-  } catch (error) { observeDebugHttpError(error, debug.context); throw error; }
+  } catch (error) { observeDebugHttpError(error, debug.context); debug.finish(); throw error; }
 }
 
 function chatExecutionPath(
@@ -132,16 +133,17 @@ function regenerateExecutionPath(
     `/messages/${encodeURIComponent(messageId)}/regenerate`;
 }
 
-function streamResult(body: ReadableStream<Uint8Array>, context: LogContext, trace?: TimelineIdentity): ChatExecutionStream {
+function streamResult(body: ReadableStream<Uint8Array>, context: LogContext, finish: () => void, trace?: TimelineIdentity): ChatExecutionStream {
   return {
     kind: "stream",
-    events: mapChatExecutionStream(body, context, trace),
+    events: mapChatExecutionStream(body, context, finish, trace),
   };
 }
 
 async function* mapChatExecutionStream(
   body: ReadableStream<Uint8Array>,
   context: LogContext,
+  finish: () => void,
   trace?: TimelineIdentity,
 ): AsyncGenerator<ChatExecutionEvent, void, void> {
   const errorSuffix = streamErrorObserver(context);
@@ -167,7 +169,7 @@ async function* mapChatExecutionStream(
       }
     }
   } catch (error) { observeDebugHttpError(error, context); throw error; }
-  finally { traceChat("sse.end", trace); void drainRequestSnapshots(); }
+  finally { traceChat("sse.end", trace); finish(); }
 }
 
 function normalizeMediaType(contentType: string | null): string | null {

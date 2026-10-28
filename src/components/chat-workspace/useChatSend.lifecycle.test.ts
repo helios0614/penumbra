@@ -8,6 +8,10 @@ vi.mock("react", async original => {
   const actual = await original<typeof React>();
   return { ...actual, ...Object.fromEntries(["useState", "useRef", "useCallback", "useId", "useEffect", "useLayoutEffect", "useSyncExternalStore"].map(key => [key, vi.fn(actual[key as keyof typeof actual] as never)])) };
 });
+// Keep transport timer/abort assertions scoped to Chat; mailbox ownership is tested separately.
+vi.mock("@/application/chat-system-log/request-snapshot-drain", () => ({
+  createRequestSnapshotDrain: () => ({ start: () => () => {}, request: () => {}, drain: async () => {}, resume: () => {}, hasDemand: () => false }),
+}));
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 it("keeps the send caller and fetch alive across history/list refresh, rerenders, A/B, and cleanup/remount", async () => {

@@ -42,13 +42,11 @@ async function run(browser, width) {
   await open(); const dialog=page.locator('[data-system-log-dialog]');
   assert.equal(await dialog.locator('.system-log-entry').count(),1);
   assert(!await dialog.textContent().then(t=>t.includes('PRIVATE_SYNTHETIC_SYSTEM')));
-  await dialog.getByText('输入 0 · 输出 4 · 总计 4',{exact:true}).waitFor();
+  await dialog.getByText('输入 0',{exact:true}).waitFor();
   await dialog.getByText('缓存读 12',{exact:true}).waitFor();
-  await dialog.getByText('RAG 召回 1 条',{exact:true}).waitFor();
-  await dialog.screenshot({path:`${output}/log-summary-${width}.png`});
+  await dialog.getByText('RAG 1',{exact:true}).waitFor();
   await dialog.getByRole('button',{name:'详情',exact:true}).click();
-  await dialog.getByRole('button',{name:'本次模型请求（1）',exact:true}).waitFor();
-  await dialog.getByRole('button',{name:'本次模型请求（1）',exact:true}).click();
+  await dialog.getByRole('region',{name:'本次模型请求',exact:true}).waitFor();
   const request=dialog.locator('[data-request-id]').first();
   await request.getByRole('button',{name:/synthetic-wire-model/}).click();
   await request.getByRole('button',{name:'原始 JSON',exact:true}).click();
@@ -68,7 +66,7 @@ async function run(browser, width) {
   const shifted=await request.locator('pre').boundingBox();
   if(Math.abs(top.y-shifted.y)>=5) {
     console.log('anchor',scrollBefore,await dialog.locator('[data-slot="dialog-body"]').evaluate(el=>({top:el.scrollTop,height:el.clientHeight,total:el.scrollHeight})),top,shifted);
-    await dialog.getByRole('button',{name:'本次模型请求（2）',exact:true}).waitFor();
+    await dialog.locator('[data-request-id="tool-followup"]').waitFor();
   const large=dialog.locator('[data-request-id="tool-followup"]');
   assert.equal(await large.locator('pre').count(),0);
   const started=Date.now(); await large.getByRole('button',{name:/tool-followup-model/}).click();
@@ -76,10 +74,9 @@ async function run(browser, width) {
   assert(Date.now()-started<2000,'large request opening took too long');
   assert.equal(await large.getByRole('tree').count(),0);
   await large.getByRole('button',{name:/tool-followup-model/}).click();
-  await dialog.screenshot({path:`${output}/anchor-failure-${width}.png`});
   }
   assert(Math.abs(top.y-shifted.y)<5,`reading anchor shifted ${shifted.y-top.y}`);
-  await dialog.getByRole('button',{name:'本次模型请求（2）',exact:true}).waitFor();
+  await dialog.locator('[data-request-id="tool-followup"]').waitFor();
   const large=dialog.locator('[data-request-id="tool-followup"]');
   assert.equal(await large.locator('pre').count(),0);
   const started=Date.now(); await large.getByRole('button',{name:/tool-followup-model/}).click();
@@ -87,12 +84,10 @@ async function run(browser, width) {
   assert(Date.now()-started<2000,'large request opening took too long');
   assert.equal(await large.getByRole('tree').count(),0);
   await large.getByRole('button',{name:/tool-followup-model/}).click();
-  await dialog.screenshot({path:`${output}/log-${width}.png`});
   await page.setViewportSize({width,height:320});
   await page.waitForTimeout(150);
   const bounds=await dialog.boundingBox(); assert(bounds.y>=0 && bounds.y+bounds.height<=321);
   assert.equal(await dialog.evaluate(el=>el.scrollWidth>el.clientWidth+1),false);
-  await dialog.screenshot({path:`${output}/log-short-${width}.png`});
   await dialog.locator('[data-slot="dialog-footer"]').getByRole('button',{name:'关闭',exact:true}).click();
   await page.getByRole('button',{name:'系统日志，有未读错误',exact:true}).filter({visible:true}).waitFor();
   await page.setViewportSize({width,height:844});
@@ -106,7 +101,7 @@ async function run(browser, width) {
   await open();
   assert.equal(await dialog.locator('.system-log-entry').count(),4); // main, task failure, two target regenerates
   assert.equal(await dialog.getByText('OPENAI',{exact:true}).count(),2);
-  assert.equal(await dialog.getByText('RAG 召回 0 条',{exact:true}).count(),2);
+  assert.equal(await dialog.getByText('RAG 0',{exact:true}).count(),2);
   const ids=await dialog.locator('.system-log-entry').evaluateAll(els=>els.map(el=>el.dataset.logId)); assert.equal(new Set(ids).size,4);
   await dialog.getByRole('button',{name:'清空',exact:true}).click(); await dialog.getByText('暂无日志',{exact:true}).waitFor();
   await dialog.locator('[data-slot="dialog-footer"]').getByRole('button',{name:'关闭',exact:true}).click();

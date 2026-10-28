@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openSendExecution, openRegenerateExecution, type ChatExecutionEvent } from "@/application/chat-execution";
 
+// Keep transport timer/abort assertions scoped to Chat; mailbox ownership is tested separately.
+vi.mock("@/application/chat-system-log/request-snapshot-drain", () => ({
+  createRequestSnapshotDrain: () => ({ start: () => () => {}, request: () => {}, drain: async () => {}, resume: () => {}, hasDemand: () => false }),
+}));
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe("Chat header and stream idle deadlines", () => {

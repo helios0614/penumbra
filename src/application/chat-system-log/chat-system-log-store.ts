@@ -27,6 +27,7 @@ export function createSystemLogStore() {
   };
   return {
     getState: () => state,
+    ownsMessage: (messageId: string) => messageOwners.has(messageId),
     beforeChange(listener: () => void) { beforeChange.add(listener); return () => { beforeChange.delete(listener); }; },
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     begin(context: LogContext) {

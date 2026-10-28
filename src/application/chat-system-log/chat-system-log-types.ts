@@ -7,7 +7,7 @@ export type RequestSnapshot = {
 };
 export type SystemLogEntry = {
   id: string; time: number; source: "sse" | "ws" | "request" | "http";
-  executionId?: string; conversationId?: string; messageId?: string; kind?: "send" | "regenerate";
+  executionId?: string; conversationId?: string; messageId?: string; targetId?: string; kind?: "send" | "regenerate";
   model?: string; protocol?: string; hasError: boolean; connectionUnknown?: boolean;
   error?: string; usage?: Readonly<Record<string, number>>; recallCount?: number;
   details?: JsonValue; requests: readonly RequestSnapshot[]; requestsRemoved?: boolean;

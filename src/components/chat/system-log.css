@@ -2,19 +2,45 @@
   width: min(56rem, calc(100vw - 1.5rem));
   max-width: 56rem;
   max-height: min(88dvh, var(--dialog-viewport-height, 88dvh));
+  border-radius: 20px;
 }
-.system-log-body { min-height: 0; overflow-anchor: none; }
-.system-log-entry { padding-block: 1rem; border-bottom: 1px solid var(--color-border); min-width: 0; }
+.system-log-dialog [data-slot="dialog-header"] { padding: 0.75rem 3.25rem 0.75rem 1rem; }
+.system-log-dialog [data-slot="dialog-title"] { font-size: 15px; line-height: 1.5; margin: 0; }
+.system-log-dialog [data-slot="dialog-close-button"] { top: 0.375rem; right: 0.5rem; width: 2rem; height: 2rem; border-radius: 0.5rem; }
+.system-log-dialog [data-slot="dialog-footer"] { padding: 0.5rem 1rem; }
+.system-log-body { min-height: 0; overflow-anchor: none; padding: 0.75rem 1rem; }
+.system-log-entry { padding-block: 0.625rem; border-bottom: 1px solid var(--color-border); min-width: 0; }
 .system-log-entry:first-child { padding-top: 0; }
-.system-log-entry:last-child { border-bottom: 0; }
+.system-log-entry:last-child { border-bottom: 0; padding-bottom: 0; }
 .system-log-entry .json-viewer { font-size: 12px; }
+.system-log-summary { display: grid; gap: 0.25rem; line-height: 1.5; }
+.system-log-identity, .system-log-metrics { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.125rem 0.625rem; min-width: 0; }
+.system-log-protocol { font-size: 10px; letter-spacing: 0.025em; }
+.system-log-model { overflow-wrap: anywhere; min-width: 0; }
+.system-log-metrics { font-size: 11px; gap: 0.125rem 0.375rem; }
+.system-log-metrics > span { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; padding: 0.0625rem 0.375rem; border-radius: 4px; background: color-mix(in srgb, var(--color-muted) 50%, transparent); }
+.system-log-metrics b { font-weight: 500; }
+.system-log-section { min-width: 0; margin-block: 0.375rem; }
+.system-log-section + .system-log-section { padding-top: 0.375rem; border-top: 1px solid var(--color-border); }
+.system-log-section-title { font-size: 12px; font-weight: 500; margin-bottom: 0.125rem; }
+.system-log-fields { display: grid; gap: 0.375rem 0.75rem; min-width: 0; }
+.system-log-text { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; min-width: 0; }
+.system-log-toggle { min-height: 1.75rem; height: auto; padding: 0.25rem 0.375rem; line-height: 1.5; border-radius: 5px; }
+.system-log-disclosure-body { padding-block: 0.25rem; }
+.system-log-request + .system-log-request { border-top: 1px dashed var(--color-border); margin-top: 0.25rem; padding-top: 0.25rem; }
+.system-log-parameters { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.375rem 1rem; min-width: 0; margin-block: 0.375rem; }
+.system-log-parameters > [data-wire-field] { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.125rem 0.375rem; max-width: 100%; min-width: 0; }
+.system-log-parameters > [data-wire-field] > :first-child { margin: 0; }
+@media (min-width: 640px) {
+  .system-log-summary { grid-template-columns: auto minmax(0, 1fr); gap: 0.25rem 0.75rem; }
+  .system-log-metrics { grid-column: 1 / -1; }
+  .system-log-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 400px) {
+  .system-log-dialog { width: calc(100vw - 1rem); border-radius: 16px; }
+  .system-log-body { padding: 0.625rem 0.75rem; }
+  .system-log-toggle { font-size: 11px; }
+}
 @media (max-height: 500px) {
   .system-log-dialog { max-height: calc(var(--dialog-viewport-height, 100dvh) - 1rem); }
-}
-.system-log-section { min-width: 0; margin-block: 0.75rem; }
-.system-log-section + .system-log-section { padding-top: 0.75rem; border-top: 1px solid var(--color-border); }
-.system-log-fields { display: grid; gap: 0.5rem 1rem; min-width: 0; }
-.system-log-text { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; min-width: 0; }
-@media (min-width: 640px) {
-  .system-log-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

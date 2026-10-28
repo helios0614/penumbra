@@ -1,5 +1,7 @@
 import type { JsonValue } from "@/domain/message";
 import { JsonViewer } from "@/components/ui/json-viewer";
+import { Button } from "@/components/ui/button";
+import { useCopyFeedback } from "@/components/ui/copy-feedback";
 import { LogDisclosure } from "./LogDisclosure";
 import { objectValue } from "./system-log-presentation";
 const leaf = (value: JsonValue) => value === null ? "null" : typeof value !== "object" ? String(value) : undefined;
@@ -22,8 +24,15 @@ export function WireField({ name, value }: { name: string; value: JsonValue }) {
   </div>;
   return <JsonField name={name} value={value} />;
 }
+function CopyText({ name, value }: { name: string; value: string }) {
+  const copy = useCopyFeedback(value);
+  return <div data-wire-field={name}>
+    <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground"><span>{name}</span><Button size="xs" variant="ghost" onClick={copy} aria-label={`复制 ${name}`}>复制</Button></div>
+    <pre className="system-log-text font-sans text-xs leading-relaxed" data-log-reading-anchor>{value}</pre>
+  </div>;
+}
 function Content({ name, value }: { name: string; value: JsonValue }) {
-  if (typeof value === "string") return <div data-wire-field={name}><div className="mb-1 text-[11px] text-muted-foreground">{name}</div><pre className="system-log-text font-sans text-xs leading-relaxed" data-log-reading-anchor>{value}</pre></div>;
+  if (typeof value === "string") return <CopyText name={name} value={value} />;
   if (!Array.isArray(value) || value.length > 100) return <WireField name={name} value={value} />;
   return <div data-wire-field={name} className="space-y-2">{value.map((block, index) => {
     const row = objectValue(block);

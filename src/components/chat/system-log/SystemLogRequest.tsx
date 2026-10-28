@@ -22,7 +22,7 @@ export function SystemLogRequestBody({ request }: { request: RequestSnapshot }) 
     {mode === "json" ? <JsonViewer rawText={request.payloadJson} label="安全请求投影" showCopy={false} defaultMode="raw" />
       : view?.kind === "deferred" ? <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span>请求较大，按需加载分组。</span><Button size="xs" variant="outline" onClick={() => setAllowLarge(true)}>加载分组</Button></div>
       : view?.kind === "raw" ? <div><p className="mb-2 text-xs text-muted-foreground">此请求结构使用原始 JSON 查看。</p><JsonViewer rawText={request.payloadJson} label="安全请求投影" showCopy={false} defaultMode="raw" /></div>
-      : view?.sections.map((section, index) => section.kind === "parameters" ? <div role="group" key={index} className="system-log-fields my-3" aria-label="生成参数" data-wire-section="parameters">
+      : view?.sections.map((section, index) => section.kind === "parameters" ? <div role="group" key={index} className="system-log-parameters" aria-label="生成参数" data-wire-section="parameters">
         {section.entries.map(([name, value]) => <WireField key={name} name={name} value={value} />)}
       </div> : section.entries.map(([name, value]) => <div key={name} className="system-log-section" data-wire-section={name}>
         <LogDisclosure title={`${section.kind === "system" ? "System" : section.kind === "messages" ? "Messages" : "Tools"} · ${name}${Array.isArray(value) ? `（${value.length}）` : ""}`}>
@@ -31,13 +31,12 @@ export function SystemLogRequestBody({ request }: { request: RequestSnapshot }) 
       </div>))}
   </div>;
 }
-export function SystemLogRequest({ request }: { request: RequestSnapshot }) {
+export function SystemLogRequest({ request, ordinal }: { request: RequestSnapshot; ordinal: number }) {
   const stamp = new Date(request.time).toLocaleTimeString("zh-CN", { hour12: false });
-  return <div data-request-id={request.id}><LogDisclosure title={`${stamp} · ${request.source === "provider" ? "模型请求" : request.source} · ${request.model || "模型未提供"}`}>
-    <div className="mb-2 space-y-1 text-[11px] text-muted-foreground">
+  return <div className="system-log-request" data-request-id={request.id}><LogDisclosure title={`${String(ordinal).padStart(2, "0")} · ${stamp} · ${request.source === "provider" ? "模型请求" : request.source} · ${request.model || "模型未提供"}`}>
+    <div className="mb-1 space-y-0.5 text-[11px] text-muted-foreground">
       <p>{request.protocol.toUpperCase()} · {request.stage === "http_json_before_send" ? "HTTP JSON 提交前" : request.stage}</p>
       {request.endpoint && <p className="break-all">{request.endpoint}</p>}
-      <p>私人调试内容，仅当前页面；凭据已隐藏，媒体使用占位。</p>
       {!request.complete && <p role="status" className="text-warning">未完整捕获：{request.limitations.join("、") || "内容受限"}</p>}
     </div>
     <SystemLogRequestBody request={request} />

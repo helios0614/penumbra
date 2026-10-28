@@ -4,6 +4,10 @@ import { readChatSendResult } from "./chat-send-result";
 import { createChatExecutionSessions } from "./chat-execution-sessions";
 import { createChatSendController } from "./chat-send-controller";
 
+// Keep transport timer/abort assertions scoped to Chat; mailbox ownership is tested separately.
+vi.mock("@/application/chat-system-log/request-snapshot-drain", () => ({
+  createRequestSnapshotDrain: () => ({ start: () => () => {}, request: () => {}, drain: async () => {}, resume: () => {}, hasDemand: () => false }),
+}));
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 // Test-only trace: identities, owner, reason and ordering; never request bodies/headers.
