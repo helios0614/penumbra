@@ -165,7 +165,7 @@ describe("unified regenerate execution controller", () => {
         assistantMessageId: "assistant-a",
         content: "new  answer ",
         thinking: "reasoning",
-        simpleThink: "brief",
+        simpleThink: null,
       },
     });
     expect(openRegenerateExecution).toHaveBeenCalledWith(
@@ -573,7 +573,7 @@ describe("unified regenerate execution controller", () => {
       .mockResolvedValueOnce(reconciliation(expected));
     const openRegenerateExecution = vi.fn<ChatRegenerateExecutionOpener>(
       async () => stream([
-        { type: "start", assistantMessageId: "assistant-a" },
+        { type: "start", assistantMessageId: "assistant-a", driftEnabled: true },
         {
           type: "chunk",
           content: "new answer[THINKING_START]new thought[THINKING_END]" +

@@ -48,6 +48,7 @@ export function mapChatExecutionEvent(
         return {
           type: "start",
           assistantMessageId: nonEmptyString(input, "id", rawType),
+          ...(typeof input.drift_enabled === "boolean" ? { driftEnabled: input.drift_enabled } : {}),
         };
       case "chunk":
         return {

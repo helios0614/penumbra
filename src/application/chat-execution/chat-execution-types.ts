@@ -55,6 +55,8 @@ export type ChatExecutionEvent =
   | {
       readonly type: "start";
       readonly assistantMessageId: string;
+      /** Backend DRIFT feature permission, independent of history echo. */
+      readonly driftEnabled?: boolean;
     }
   | {
       readonly type: "chunk";

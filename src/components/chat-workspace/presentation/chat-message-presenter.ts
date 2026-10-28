@@ -1,7 +1,7 @@
 import type { Message } from "@/domain/message";
 import { mapMediaAttachments } from "@/domain/media/media-mappers";
 import { assistantFailureIndex, formatAssistantFailure } from "@/domain/message/assistant-failure";
-import { appendAssistantChunk, createStreamingAssistantAccumulator, flushAssistantAccumulator } from "@/application/chat-send/chat-send-accumulator";
+import { appendAssistantChunk, createStreamingAssistantAccumulator, flushAssistantAccumulator, filterThinkingDisplay } from "@/application/chat-send/chat-send-accumulator";
 
 import type {
   ChatMessageViewModel,
@@ -47,7 +47,7 @@ export function presentChatMessage(
         ...base,
         ...presentAssistantContent(message.content),
         kind: "assistant",
-        thinking: message.thinking,
+        thinking: filterThinkingDisplay(message.thinking),
         simpleThink: message.simpleThink,
         attachments: mapMediaAttachments(message.attachments, "assistant"),
       });

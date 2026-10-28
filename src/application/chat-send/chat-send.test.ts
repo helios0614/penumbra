@@ -70,8 +70,9 @@ describe("chat send request composition", () => {
 });
 
 describe("streaming assistant accumulator", () => {
-  it("accumulates content, thinking, and simple thinking across chunk boundaries", () => {
-    let accumulator = createStreamingAssistantAccumulator("execution-1", 10);
+  it("accumulates content, thinking, and backend-enabled complete drift across chunk boundaries", () => {
+    let accumulator = reduceChatExecutionEvent(createStreamingAssistantAccumulator("execution-1", 10),
+      { type: "start", assistantMessageId: "a", driftEnabled: true }).accumulator;
     for (const chunk of [
       "Hello [THINK",
       "ING_START]private reas",

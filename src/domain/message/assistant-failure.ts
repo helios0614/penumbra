@@ -71,5 +71,5 @@ function safeDiagnosticLine(line: string): boolean {
       return !!url.username || !!url.password || [...url.searchParams.keys()].some(key => /^(?:key)$|api[_-]?key|authorization|token|secret|password|credential|cookie/i.test(key));
     } catch { return true; }
   })) return false;
-  return !/(?:\b(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|api[_-]?key|[\w-]*token|secret)\b["']?\s*[:=]|\bBearer\s+(?!<redacted>)\S+|\bsk-[A-Za-z0-9_-]{8,}|\[THINKING|\[HEART:|\[MCP:|<meta>|[\x00-\x1f\x7f])/i.test(checked);
+  return !/(?:\b(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|api[_-]?key|[\w-]*token|secret)\b["']?\s*[:=]|\bBearer\s+(?!<redacted>)\S+|\bsk-[A-Za-z0-9_-]{8,}|\[THINKING|\[HEART:|\[DRIFT:|\[SIMPLETHINK:|\[MCP:|<meta>|[\x00-\x1f\x7f])/i.test(checked);
 }

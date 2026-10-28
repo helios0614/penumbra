@@ -9,18 +9,19 @@ const THINKING_START = "[THINKING_START]";
 const THINKING_END = "[THINKING_END]";
 const SIMPLE_THINK_START = "[SIMPLETHINK:";
 const DRIFT_START = "[DRIFT:";
+const THINKING_FAMILY = "[THINKING_";
 // Display filtering only. Commands remain exclusively owned/executed by AionHome.
 const HIDDEN_MARKERS = [THINKING_END, "[HEART:", "[MCP:", "[MUSIC:", "[TOY:", "[CAM_CHECK]", "[查看动态:",
   "[POI_SEARCH:", "[WEBSEARCH:", "[ROUTE_PLAN:", "[Location]", "[REACTION:", "[ALARM:",
   "[REMINDER:", "[Monitor:", "[SCHEDULE_DEL:", "[SCHEDULE_LIST]", "[TODO:", "[TODO_DONE:",
   "[MEMORY_WRITE:", "[请求出错:", "<meta>"];
-const CONTENT_MARKERS = [THINKING_START, SIMPLE_THINK_START, DRIFT_START, ...HIDDEN_MARKERS];
+const CONTENT_MARKERS = [THINKING_START, SIMPLE_THINK_START, DRIFT_START, ...HIDDEN_MARKERS, THINKING_FAMILY];
 const PROVIDER_FAILURE_MARKERS = [
   ...ASSISTANT_FAILURE_PREFIXES,
   "provider_request_failed", "provider_execution_failed",
 ] as const;
 
-type AccumulatorMode = "content" | "thinking" | "simple-think" | "hidden" | "meta";
+type AccumulatorMode = "content" | "thinking" | "hidden" | "meta";
 
 export type StreamingAssistantAccumulator = {
   readonly message: StreamingAssistantMessage;
@@ -31,6 +32,15 @@ export type StreamingAssistantAccumulator = {
   readonly hiddenDepth: number;
   readonly hiddenQuote: boolean;
   readonly hiddenEscape: boolean;
+  readonly hiddenReturnMode: "content" | "thinking";
+  readonly metaDepth: number;
+  readonly thinkingDepth: number;
+  readonly thinkingMalformed: boolean;
+  readonly completedThinking: string;
+  readonly currentThinking: string;
+  readonly driftEnabled: boolean;
+  readonly driftSeen: boolean;
+  readonly currentDrift: string | null;
 };
 
 export type ChatExecutionReduction = {
@@ -59,6 +69,15 @@ export function createStreamingAssistantAccumulator(
     hiddenDepth: 0,
     hiddenQuote: false,
     hiddenEscape: false,
+    hiddenReturnMode: "content",
+    metaDepth: 0,
+    thinkingDepth: 0,
+    thinkingMalformed: false,
+    completedThinking: "",
+    currentThinking: "",
+    driftEnabled: false,
+    driftSeen: false,
+    currentDrift: null,
   };
 }
 
@@ -75,6 +94,8 @@ export function reduceChatExecutionEvent(
     case "start":
       return unchanged({
         ...accumulator,
+        // This is the backend feature gate, never the AI history echo setting.
+        driftEnabled: event.driftEnabled === true,
         message: {
           ...accumulator.message,
           assistantMessageId: event.assistantMessageId,
@@ -132,87 +153,105 @@ export function appendAssistantChunk(
   chunk: string,
 ): StreamingAssistantAccumulator {
   let input = accumulator.pending + chunk;
-  let mode = accumulator.mode;
-  let content = accumulator.message.content;
-  let thinking = accumulator.message.thinking ?? "";
-  let simpleThink = accumulator.message.simpleThink ?? "";
-  let hiddenDepth = accumulator.hiddenDepth;
-  let hiddenQuote = accumulator.hiddenQuote;
-  let hiddenEscape = accumulator.hiddenEscape;
+  let { mode, hiddenDepth, hiddenQuote, hiddenEscape, hiddenReturnMode, metaDepth,
+    thinkingDepth, thinkingMalformed, completedThinking, currentThinking, driftSeen, currentDrift } = accumulator;
+  let { content, simpleThink } = accumulator.message;
+  const emit = (text: string) => {
+    if (mode === "content") content += text;
+    else if (mode === "thinking" && !thinkingMalformed) currentThinking += text;
+  };
 
   while (input.length > 0) {
-    if (mode === "content") {
-      const marker = firstMarker(input, CONTENT_MARKERS);
-      if (marker !== null) {
-        content += input.slice(0, marker.index);
-        input = input.slice(marker.index + marker.value.length);
-        mode = marker.value === THINKING_START ? "thinking"
-          : marker.value === DRIFT_START || marker.value === SIMPLE_THINK_START ? "simple-think"
-          : marker.value === "<meta>" ? "meta"
-          : marker.value.endsWith("]") ? "content" : "hidden";
-        hiddenDepth = mode === "hidden" ? 1 : 0;
-        hiddenQuote = false; hiddenEscape = false;
-        continue;
-      }
-
-      const retained = retainedMarkerPrefix(input, CONTENT_MARKERS);
-      content += input.slice(0, input.length - retained.length);
-      input = retained;
-      break;
-    }
-
     if (mode === "hidden") {
       let index = 0;
       for (; index < input.length; index += 1) {
         const character = input[index];
+        // Only a complete, flat DRIFT can be previewed. Nested/quoted brackets
+        // remain isolated and await the existing authoritative HTTP projection.
+        if (character === "[" || (character === "]" && (hiddenQuote || hiddenDepth > 1))) currentDrift = null;
         if (hiddenEscape) { hiddenEscape = false; continue; }
         if (hiddenQuote && character === "\\") { hiddenEscape = true; continue; }
-        if (character === '"') { hiddenQuote = !hiddenQuote; continue; }
-        if (hiddenQuote) continue;
-        if (input[index] === "[") hiddenDepth += 1;
-        if (input[index] === "]" && --hiddenDepth === 0) { index += 1; mode = "content"; break; }
+        if (character === '"') hiddenQuote = !hiddenQuote;
+        if (!hiddenQuote) {
+          if (character === "[") hiddenDepth += 1;
+          if (character === "]" && --hiddenDepth === 0) {
+            if (currentDrift && accumulator.driftEnabled) simpleThink = currentDrift;
+            currentDrift = null;
+            index += 1;
+            mode = hiddenReturnMode;
+            break;
+          }
+        }
+        if (currentDrift !== null) currentDrift += character;
       }
       input = input.slice(index);
       continue;
     }
-    const endMarker = mode === "thinking" ? THINKING_END : mode === "meta" ? "</meta>" : "]";
-    const endIndex = input.indexOf(endMarker);
-    if (endIndex >= 0) {
-      if (mode === "thinking") {
-        thinking += input.slice(0, endIndex);
-      } else if (mode === "simple-think") {
-        simpleThink += input.slice(0, endIndex);
-      }
-      input = input.slice(endIndex + endMarker.length);
-      mode = "content";
+    if (mode === "meta") {
+      const marker = firstMarker(input, ["<meta>", "</meta>"]);
+      if (marker === null) { input = retainedMarkerPrefix(input, ["<meta>", "</meta>"]); break; }
+      metaDepth += marker.value === "<meta>" ? 1 : -1;
+      input = input.slice(marker.index + marker.value.length);
+      if (metaDepth === 0) mode = hiddenReturnMode;
       continue;
     }
 
-    const retained = retainedMarkerPrefix(input, [endMarker]);
-    const emitted = input.slice(0, input.length - retained.length);
-    if (mode === "thinking") {
-      thinking += emitted;
-    } else if (mode === "simple-think") {
-      simpleThink += emitted;
+    const marker = firstMarker(input, CONTENT_MARKERS);
+    if (marker === null) {
+      const retained = retainedMarkerPrefix(input, CONTENT_MARKERS);
+      emit(input.slice(0, input.length - retained.length));
+      input = retained;
+      break;
     }
-    input = retained;
-    break;
+    emit(input.slice(0, marker.index));
+    input = input.slice(marker.index);
+    // Wait for a split START/END before classifying a known but malformed tag.
+    if (marker.value === THINKING_FAMILY && [THINKING_START, THINKING_END].some(value => value.startsWith(input))) break;
+    const malformedStart = input.startsWith("[THINKING_START");
+    input = input.slice(marker.value.length);
+    if (marker.value === THINKING_START || marker.value === THINKING_FAMILY) {
+      if (mode === "content") {
+        thinkingDepth = 1;
+        currentThinking = "";
+        thinkingMalformed = marker.value === THINKING_FAMILY;
+      } else {
+        if (marker.value === THINKING_START || malformedStart) thinkingDepth += 1;
+        thinkingMalformed = true;
+        currentThinking = "";
+      }
+      mode = "thinking";
+    } else if (marker.value === THINKING_END) {
+      if (mode === "thinking" && --thinkingDepth === 0) {
+        if (!thinkingMalformed && currentThinking.trim()) {
+          completedThinking = joinThinking(completedThinking, currentThinking.trim());
+        }
+        currentThinking = "";
+        thinkingMalformed = false;
+        mode = "content";
+      }
+    } else {
+      hiddenReturnMode = mode;
+      if (marker.value === "<meta>") {
+        mode = "meta";
+        metaDepth = 1;
+      } else if (!marker.value.endsWith("]")) {
+        const drift = marker.value === DRIFT_START || marker.value === SIMPLE_THINK_START;
+        currentDrift = drift && mode === "content" && !driftSeen ? "" : null;
+        if (drift && mode === "content") driftSeen = true;
+        mode = "hidden";
+        hiddenDepth = 1;
+        hiddenQuote = false;
+        hiddenEscape = false;
+      }
+    }
   }
 
   return {
-    message: {
-      ...accumulator.message,
-      content,
-      thinking: thinking.length > 0 ? thinking : null,
-      simpleThink: simpleThink.length > 0 ? simpleThink : null,
-    },
-    mode,
-    pending: input,
-    providerPending: accumulator.providerPending,
-    failureText: accumulator.failureText,
-    hiddenDepth,
-    hiddenQuote,
-    hiddenEscape,
+    ...accumulator,
+    message: { ...accumulator.message, content, simpleThink,
+      thinking: joinThinking(completedThinking, thinkingMalformed ? "" : currentThinking.trim()) || null },
+    mode, pending: input, hiddenDepth, hiddenQuote, hiddenEscape, hiddenReturnMode, metaDepth,
+    thinkingDepth, thinkingMalformed, completedThinking, currentThinking, driftSeen, currentDrift,
   };
 }
 
@@ -220,30 +259,22 @@ export function flushAssistantAccumulator(
   accumulator: StreamingAssistantAccumulator,
 ): StreamingAssistantAccumulator {
   if (accumulator.providerPending.length > 0) {
-    return flushAssistantAccumulator(appendAssistantChunk(
-      { ...accumulator, providerPending: "" },
-      accumulator.providerPending,
-    ));
+    accumulator = appendAssistantChunk({ ...accumulator, providerPending: "" }, accumulator.providerPending);
   }
-  if (accumulator.pending.length === 0) return accumulator;
+  // Keep legitimate open Thinking as temporary output for PR7-A recovery, but
+  // never synthesize a closing tag or flush an incomplete control prefix.
+  return { ...accumulator, pending: "", providerPending: "" };
+}
 
-  // An incomplete control prefix must never flash into the body at EOF.
-  const pending = accumulator.mode === "content" ? "" : accumulator.pending;
-  const message = accumulator.message;
-  return {
-    message: accumulator.mode === "content"
-      ? { ...message, content: message.content + pending }
-      : accumulator.mode === "thinking"
-        ? { ...message, thinking: (message.thinking ?? "") + pending }
-        : accumulator.mode === "simple-think" ? { ...message, simpleThink: (message.simpleThink ?? "") + pending } : message,
-    mode: accumulator.mode,
-    pending: "",
-    providerPending: "",
-    hiddenDepth: accumulator.hiddenDepth,
-    hiddenQuote: accumulator.hiddenQuote,
-    hiddenEscape: accumulator.hiddenEscape,
-    failureText: accumulator.failureText,
-  };
+/** Filter persisted Thinking at presentation only; receipt values stay intact. */
+export function filterThinkingDisplay(content: string | null): string | null {
+  if (!content) return content;
+  const initial = createStreamingAssistantAccumulator("display-thinking", 0);
+  return appendAssistantChunk({ ...initial, mode: "thinking", thinkingDepth: 1 }, content).message.thinking;
+}
+
+function joinThinking(complete: string, current: string): string {
+  return complete && current ? complete + "\n\n" + current : complete || current;
 }
 
 function firstMarker(

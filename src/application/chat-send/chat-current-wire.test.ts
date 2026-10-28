@@ -93,7 +93,7 @@ describe("stream display control boundaries", () => {
       accumulator = appendAssistantChunk(accumulator, character);
       expect(accumulator.message.content).not.toMatch(/DRIFT|SIMPLETHINK|随想|思考|兼容/);
     }
-    expect(flushAssistantAccumulator(accumulator).message).toMatchObject({ content: "bodyend", thinking: "思考", simpleThink: "随想兼容" });
+    expect(flushAssistantAccumulator(accumulator).message).toMatchObject({ content: "bodyend", thinking: "思考", simpleThink: null });
   });
   it.each(["[DR", "[HEART:private", "[MCP:private", "<meta>private"])("never flushes truncated control content into the body: %s", (suffix) => {
     const accumulator = appendAssistantChunk(createStreamingAssistantAccumulator("synthetic", 0), `body${suffix}`);

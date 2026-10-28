@@ -15,6 +15,8 @@ async function listen(server: Server) {
 async function fixture(run: (origin: string, received: string[]) => Promise<void>, flushHeaders = false) {
   const received: string[] = [], timers: ReturnType<typeof setTimeout>[] = [];
   const upstream = createHttpServer((req, res) => {
+    // Model the independent PR7-B observer without counting it as Chat traffic.
+    if (req.url === "/api/chat/debug/drain") { req.resume(); res.writeHead(403); res.end(); return; }
     received.push(`${req.method} ${req.url}`); req.resume();
     res.setHeader("content-type", "text/event-stream");
     if (flushHeaders) res.flushHeaders();
