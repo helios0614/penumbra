@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { projectDiagnostic } from "@/application/chat-system-log/chat-system-log-projection";
-import { diagnosticPresentation, requestPresentation, displayBody } from "./system-log-presentation";
+import { diagnosticPresentation, requestPresentation, requestParameters, cacheSummary, displayBody } from "./system-log-presentation";
 
 describe("system log detail presentation", () => {
   it("keeps zero/false and omits absent fields without inventing data", () => {
@@ -12,8 +12,15 @@ describe("system log detail presentation", () => {
   it("keeps candidate scores distinct from actual recall, including genuine zero", () => {
     const d = diagnosticPresentation({ "RAG 实际召回": [], "RAG 候选评分": [{ content: "candidate only", score: 0, vec_sim: .572, importance: .4, kw_score: null }] });
     expect(d.actual?.count).toBe(0); expect(d.candidates?.count).toBe(1);
-    expect(d.candidates?.items[0].scores).toEqual([{ key: "score", label: "score", text: "0.0000" }, { key: "vec_sim", label: "vec_sim", text: "0.5720" }, { key: "importance", label: "importance", text: "0.4000" }]);
+    expect(d.candidates?.items[0].scores).toEqual([{ key: "score", label: "score", text: "0.0000" }, { key: "vec_sim", label: "vec_sim", text: "0.572" }, { key: "importance", label: "importance", text: "0.4" }]);
     expect(d.candidates?.items[0].body).toEqual({ kind: "text", text: "candidate only" });
+  });
+  it("formats only UI scores, preserving sub-score precision and the original copy values", () => {
+    const details = { "RAG 实际召回": [{ score: .4, vec_sim: 0, kw_score: .123456789, importance: .4 }] };
+    const before = JSON.stringify(details);
+    const fields = diagnosticPresentation(details).actual!.items[0].scores;
+    expect(fields.map(field => field.text)).toEqual(["0.4000", "0", "0.123456789", "0.4"]);
+    expect(JSON.stringify(details)).toBe(before);
   });
   it("uses only the safe note body and preserves date/period order", () => {
     const details = projectDiagnostic({ quick_notes: [
@@ -63,5 +70,56 @@ describe("system log detail presentation", () => {
     for (const raw of ["not json", "null", "[]", '"text"']) expect(requestPresentation(raw).kind).toBe("raw");
     const many = JSON.stringify(Object.fromEntries(Array.from({ length: 81 }, (_, i) => [String(i), i])));
     expect(requestPresentation(many).kind).toBe("raw");
+  });
+});
+
+describe("captured request semantic parameters", () => {
+  it("groups Anthropic Thinking leaves together without mutating or dropping unknown nested fields", () => {
+    const payload = { model: "captured", temperature: 0, max_tokens: 16384, stream: false,
+      thinking: { type: "adaptive", display: "summarized", future: { enabled: true } }, output_config: { effort: "max", format: { type: "json" } }, metadata: { user_id: "safe" }, custom: null };
+    const source = JSON.stringify(payload);
+    const view = requestParameters(Object.entries(payload), "anthropic");
+    expect(view.groups.flatMap(group => group.fields.map(field => [field.path, field.value]))).toEqual([
+      ["model", "captured"], ["temperature", 0], ["max_tokens", 16384], ["stream", false], ["thinking.type", "adaptive"], ["output_config.effort", "max"], ["thinking.display", "summarized"],
+    ]);
+    expect(Object.fromEntries(view.other)).toEqual({ thinking: { future: { enabled: true } }, output_config: { format: { type: "json" } }, metadata: payload.metadata, custom: null });
+    expect(JSON.stringify(payload)).toBe(source);
+    expect(view.groups.find(group => group.label === "Thinking · Anthropic")?.fields).toHaveLength(3);
+  });
+  it("keeps OpenAI reasoning and completion limits distinct from Anthropic Thinking", () => {
+    const payload = { max_completion_tokens: 0, reasoning_effort: "high", thinking: { type: "adaptive" }, output_config: { effort: "max" }, prompt_cache_retention: "24h", metadata: { future: true } };
+    const view = requestParameters(Object.entries(payload), "openai");
+    expect(view.groups.flatMap(group => group.fields.map(field => field.path))).toEqual(["max_completion_tokens", "reasoning_effort", "prompt_cache_retention"]);
+    expect(Object.fromEntries(view.other)).toEqual({ thinking: payload.thinking, output_config: payload.output_config, metadata: payload.metadata });
+    expect(requestParameters(Object.entries(payload), "future-protocol").other).toEqual(Object.entries(payload));
+  });
+  it("uses actual Gemini config names and preserves false, zero, null and unknown fields", () => {
+    const payload = { generationConfig: { temperature: 0, maxOutputTokens: 0, thinkingConfig: { thinkingBudget: 0, includeThoughts: false, thinkingLevel: null, extension: 7 }, responseMimeType: "application/json" }, cachedContent: "captured-cache" };
+    const view = requestParameters(Object.entries(payload), "gemini");
+    expect(view.groups.flatMap(group => group.fields.map(field => field.value))).toEqual([0, 0, 0, null, false, "captured-cache"]);
+    expect(Object.fromEntries(view.other)).toEqual({ generationConfig: { thinkingConfig: { extension: 7 }, responseMimeType: "application/json" } });
+    expect(requestParameters([["generation_config", { thinking_config: { thinking_budget: -1 } }]], "gemini").groups[0].fields[0]).toMatchObject({ path: "generation_config.thinking_config.thinking_budget", value: -1 });
+    const aliases = requestParameters([["generationConfig", { temperature: 0 }], ["generation_config", { temperature: 1 }]], "gemini");
+    expect(aliases.groups).toHaveLength(1);
+    expect(aliases.groups[0].fields.map(field => field.path)).toEqual(["generationConfig.temperature", "generation_config.temperature"]);
+  });
+  it("leaves objects in known scalar slots accessible without inventing a readable value", () => {
+    const payload = { temperature: { future: 2 }, thinking: { type: ["future"] } };
+    expect(requestParameters(Object.entries(payload), "anthropic")).toEqual({ groups: [], other: Object.entries(payload) });
+  });
+});
+
+describe("cache summary only", () => {
+  it.each([
+    [{ cache_read_input_tokens: 2 }, { read: 2, write: undefined }],
+    [{ cache_creation_input_tokens: 3 }, { read: undefined, write: 3 }],
+    [{ cache_read_input_tokens: 2, cache_write_tokens: 4 }, { read: 2, write: 4 }],
+    [{ cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, { read: undefined, write: undefined }],
+    [{}, { read: undefined, write: undefined }],
+    [{ cache_read_input_tokens: null, cache_creation_input_tokens: null }, { read: undefined, write: undefined }],
+  ])("shows only positive captured counts: %j", (usage, expected) => {
+    const before = JSON.stringify(usage);
+    expect(cacheSummary(usage)).toEqual(expected);
+    expect(JSON.stringify(usage)).toBe(before);
   });
 });

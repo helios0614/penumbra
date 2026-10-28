@@ -46,9 +46,9 @@ async function run(browser, width) {
   await dialog.getByText('缓存读 12',{exact:true}).waitFor();
   await dialog.getByText('RAG 1',{exact:true}).waitFor();
   await dialog.getByRole('button',{name:'详情',exact:true}).click();
+  await dialog.getByRole('button',{name:'模型请求',exact:true}).click();
   await dialog.getByRole('region',{name:'本次模型请求',exact:true}).waitFor();
   const request=dialog.locator('[data-request-id]').first();
-  await request.getByRole('button',{name:/synthetic-wire-model/}).click();
   await request.getByRole('button',{name:'原始 JSON',exact:true}).click();
   const source=await request.locator('pre').textContent(); assert.equal(source,privatePayload);
   await request.getByRole('button',{name:'复制安全请求投影',exact:true}).click();
@@ -59,31 +59,19 @@ async function run(browser, width) {
   // A new, unrelated error must preserve this disclosure and reading anchor.
   await request.locator('pre').scrollIntoViewIfNeeded();
   const top=await request.locator('pre').boundingBox();
-  const scrollBefore=await dialog.locator('[data-slot="dialog-body"]').evaluate(el=>({top:el.scrollTop,height:el.clientHeight,total:el.scrollHeight}));
   state.ws.send(JSON.stringify({type:'debug',data:{task_id:'task-failure',conv_id:'a',created_at:Date.now()/1000,source:'web',status:'failed',has_error:true,error_text:'工具成功，最终续写失败',usage:null}}));
   await dialog.locator('.system-log-entry').nth(1).waitFor();
-  assert.equal(await request.getByRole('button',{name:/synthetic-wire-model/}).getAttribute('aria-expanded'),'true');
+  assert.equal(await request.getByRole('button',{name:'原始 JSON',exact:true}).getAttribute('aria-pressed'),'true');
   const shifted=await request.locator('pre').boundingBox();
-  if(Math.abs(top.y-shifted.y)>=5) {
-    console.log('anchor',scrollBefore,await dialog.locator('[data-slot="dialog-body"]').evaluate(el=>({top:el.scrollTop,height:el.clientHeight,total:el.scrollHeight})),top,shifted);
-    await dialog.locator('[data-request-id="tool-followup"]').waitFor();
+  assert(Math.abs(top.y-shifted.y)<5,`width ${width}: reading anchor shifted ${shifted.y-top.y}`);
+  await dialog.getByRole('button',{name:/02 .*tool-followup-model/}).waitFor();
+  const started=Date.now(); await dialog.getByRole('button',{name:/02 .*tool-followup-model/}).click();
   const large=dialog.locator('[data-request-id="tool-followup"]');
   assert.equal(await large.locator('pre').count(),0);
-  const started=Date.now(); await large.getByRole('button',{name:/tool-followup-model/}).click();
   await large.getByText('请求较大，按需加载分组。',{exact:true}).waitFor();
   assert(Date.now()-started<2000,'large request opening took too long');
   assert.equal(await large.getByRole('tree').count(),0);
-  await large.getByRole('button',{name:/tool-followup-model/}).click();
-  }
-  assert(Math.abs(top.y-shifted.y)<5,`reading anchor shifted ${shifted.y-top.y}`);
-  await dialog.locator('[data-request-id="tool-followup"]').waitFor();
-  const large=dialog.locator('[data-request-id="tool-followup"]');
-  assert.equal(await large.locator('pre').count(),0);
-  const started=Date.now(); await large.getByRole('button',{name:/tool-followup-model/}).click();
-  await large.getByText('请求较大，按需加载分组。',{exact:true}).waitFor();
-  assert(Date.now()-started<2000,'large request opening took too long');
-  assert.equal(await large.getByRole('tree').count(),0);
-  await large.getByRole('button',{name:/tool-followup-model/}).click();
+  await dialog.getByRole('button',{name:/01 .*synthetic-wire-model/}).click();
   await page.setViewportSize({width,height:320});
   await page.waitForTimeout(150);
   const bounds=await dialog.boundingBox(); assert(bounds.y>=0 && bounds.y+bounds.height<=321);

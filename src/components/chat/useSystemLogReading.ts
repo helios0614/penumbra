@@ -18,7 +18,22 @@ export function useSystemLogReading(open: boolean, version: object) {
   }, [open]);
   useLayoutEffect(() => {
     const saved = anchor.current, root = body.current; anchor.current = null;
-    if (open && saved?.element.isConnected && root?.contains(saved.element)) root.scrollTop += saved.element.getBoundingClientRect().top - saved.top;
+    if (!root) return;
+    // Remove the previous reserve first; growing content can now provide its own range.
+    root.style.removeProperty("--system-log-reading-room");
+    if (open && saved?.element.isConnected && root.contains(saved.element)) {
+      const target = Math.max(0, root.scrollTop + saved.element.getBoundingClientRect().top - saved.top);
+      // scrollHeight is at least clientHeight even when the real content is
+      // shorter. Measure that content end so the reserve includes unused space.
+      const end = root.lastElementChild?.getBoundingClientRect().bottom;
+      const naturalRange = end === undefined ? root.scrollHeight - root.clientHeight
+        : end - root.getBoundingClientRect().top + root.scrollTop + parseFloat(getComputedStyle(root).paddingBottom) - root.clientHeight;
+      const missing = target - naturalRange;
+      // Short panels otherwise have no scroll range to compensate a prepend.
+      // This reserve is below the content and disappears on clear/next update.
+      if (missing > 0) root.style.setProperty("--system-log-reading-room", `${Math.ceil(missing)}px`);
+      root.scrollTop = target;
+    }
   }, [version, open]);
   return body;
 }

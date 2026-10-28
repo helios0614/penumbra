@@ -41,7 +41,7 @@ function memoryList(value: JsonValue | undefined) {
   return { count: value.length, items: value.flatMap((item, index): MemoryItem[] => {
     const row = objectValue(item); if (!row) return [];
     return [{ index, type: text(row.type), body: displayBody(row.content), scores: ["score", "vec_sim", "kw_score", "importance"].flatMap(key => {
-      const number = row[key]; return typeof number === "number" && Number.isFinite(number) ? [{ key, label: key, text: number.toFixed(4) }] : [];
+      const number = row[key]; return typeof number === "number" && Number.isFinite(number) ? [{ key, label: key, text: key === "score" ? number.toFixed(4) : String(number) }] : [];
     }) }];
   }) };
 }
@@ -86,4 +86,75 @@ export function requestPresentation(source: string, allowLarge = false): Request
     }
     return { kind: "grouped", sections };
   } catch { return { kind: "raw" }; }
+}
+
+export type ParameterField = { path: string; label: string; value: JsonValue };
+export type ParameterGroup = { label: string; fields: ParameterField[] };
+/** Protocol-specific labels over captured scalar leaves; unrecognized leaves stay in `other`. */
+export function requestParameters(entries: readonly [string, JsonValue][], protocol: string) {
+  const other: Record<string, JsonValue> = Object.fromEntries(entries);
+  const groups: ParameterGroup[] = [];
+  function group(label: string, paths: readonly (readonly [string, string])[]) {
+    const fields: ParameterField[] = [];
+    for (const [path, name] of paths) {
+      const keys = path.split(".");
+      let parent = other;
+      const parents: [Record<string, JsonValue>, string][] = [];
+      for (const key of keys.slice(0, -1)) {
+        const child = objectValue(parent[key]);
+        if (!child) { parent = {}; break; }
+        parent[key] = { ...child }; parents.push([parent, key]); parent = parent[key] as Record<string, JsonValue>;
+      }
+      const key = keys[keys.length - 1], value = parent[key];
+      if (value === undefined || scalar(value) === undefined) continue;
+      fields.push({ path, label: name, value }); delete parent[key];
+      for (const [owner, name] of parents.reverse()) if (Object.keys(owner[name] as object).length === 0) delete owner[name];
+    }
+    if (fields.length) {
+      const existing = groups.find(group => group.label === label);
+      if (existing) existing.fields.push(...fields);
+      else groups.push({ label, fields });
+    }
+  }
+  group("生成参数", [["model", "Model"]]);
+  if (protocol === "anthropic") {
+    group("采样与输出", [["temperature", "Temperature"], ["max_tokens", "Max tokens"], ["stream", "Stream"], ["top_p", "Top p"], ["top_k", "Top k"]]);
+    group("Thinking · Anthropic", [["thinking.type", "类型"], ["thinking.budget_tokens", "Budget tokens"], ["output_config.effort", "Effort"], ["thinking.display", "输出模式"]]);
+    group("缓存 · Anthropic", [["cache_control.type", "类型"], ["cache_control.ttl", "TTL"]]);
+  } else if (protocol === "openai") {
+    group("采样与输出", [["temperature", "Temperature"], ["max_tokens", "Max tokens"], ["max_completion_tokens", "Max completion tokens"], ["stream", "Stream"], ["top_p", "Top p"]]);
+    group("Reasoning · OpenAI", [["reasoning_effort", "Reasoning effort"], ["reasoning.effort", "Effort"], ["reasoning.summary", "Summary"]]);
+    group("缓存 · OpenAI", [["prompt_cache_key", "Prompt cache key"], ["prompt_cache_retention", "Retention"]]);
+  } else if (protocol === "gemini") {
+    for (const [config, thinking, max, budget, level, thoughts] of [
+      ["generationConfig", "thinkingConfig", "maxOutputTokens", "thinkingBudget", "thinkingLevel", "includeThoughts"],
+      ["generation_config", "thinking_config", "max_output_tokens", "thinking_budget", "thinking_level", "include_thoughts"],
+    ]) {
+      group("生成配置 · Gemini", [[`${config}.temperature`, "Temperature"], [`${config}.${max}`, "Max output tokens"]]);
+      group("Thinking · Gemini", [[`${config}.${thinking}.${budget}`, "Thinking budget"], [`${config}.${thinking}.${level}`, "Thinking level"], [`${config}.${thinking}.${thoughts}`, "Include thoughts"]]);
+    }
+    group("缓存 · Gemini", [["cachedContent", "Cached content"], ["cached_content", "Cached content"]]);
+    group("传输", [["stream", "Stream"]]);
+  }
+  return { groups, other: Object.entries(other) };
+}
+
+/** Summaries never traverse arbitrary nested data or decode media placeholders. */
+export function wireStructure(value: JsonValue): string {
+  if (typeof value === "string") return value.slice(0, 180);
+  if (value === null) return "null";
+  if (Array.isArray(value)) return value.slice(0, 8).map(wireStructure).join(" · ") + (value.length > 8 ? ` · 共 ${value.length} 块` : "");
+  const row = objectValue(value);
+  if (!row) return String(value);
+  if (typeof row.text === "string") return row.text.slice(0, 180);
+  if (Array.isArray(row.parts)) return wireStructure(row.parts);
+  const kind = typeof row.type === "string" ? row.type : Object.keys(row).join(" / ");
+  const names = ["tool_use_id", "id", "name", "mime_type", "mimeType"].flatMap(key => typeof row[key] === "string" ? [`${key}: ${row[key]}`] : []);
+  return [kind, ...names].join(" · ");
+}
+
+export function cacheSummary(usage?: Readonly<Record<string, number | null>>) {
+  const read = usage?.cache_read_input_tokens;
+  const write = usage?.cache_creation_input_tokens ?? usage?.cache_write_tokens;
+  return { read: typeof read === "number" && Number.isFinite(read) && read > 0 ? read : undefined, write: typeof write === "number" && Number.isFinite(write) && write > 0 ? write : undefined };
 }
