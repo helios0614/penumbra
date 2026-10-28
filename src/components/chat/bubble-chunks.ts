@@ -1,4 +1,4 @@
-import { hasMarkdownOutput, hasVisibleText, parseBubbleMarkdown, protectedMarkdownLines } from "./markdown-boundaries";
+import { hasMarkdownOutput, hasVisibleText, isDefinitionOnly, parseBubbleMarkdown, protectedMarkdownLines } from "./markdown-boundaries";
 
 export function splitUserBubbles(content: string): string[] {
   return content.split(/\r\n?|\n/).filter(hasVisibleText);
@@ -29,7 +29,10 @@ export function splitAssistantBubbles(content: string): string[] {
 
   // Each bubble is still parsed independently (reference sharing is MD-03).
   // Inspect its own syntax, not full-message definitions or raw punctuation.
-  return parts.filter(chunk => hasVisibleText(chunk) && hasMarkdownOutput(
+  const visible = parts.filter(chunk => hasVisibleText(chunk) && hasMarkdownOutput(
     chunk === normalized ? tree : parseBubbleMarkdown(chunk),
   ));
+  // Message-wide fallback only. Definitions accompanying normal body stay hidden;
+  // this does not share definitions across independently parsed bubbles (MD-03).
+  return visible.length === 0 && isDefinitionOnly(tree) ? [normalized] : visible;
 }

@@ -50,7 +50,7 @@ export default function ChatMarkdownDevPage() {
       <header className="mx-auto max-w-4xl space-y-2 px-4">
         <h1 className="text-xl font-semibold">Chat Markdown 开发验收</h1>
         <p>仅合成数据 · 真实 Bubble / MarkdownRenderer · 无聊天 API 或登录依赖</p>
-        <p className="text-muted-foreground">宽度档位模拟预览容器，不代表移动真机验收。气泡数仅统计正文，不包含生成等待提示。</p>
+        <p className="text-muted-foreground">宽度档位模拟预览容器，不代表移动真机验收。分段数包含正文气泡、独立代码和分割线，不包含生成等待或空内容提示。</p>
       </header>
       <section className="mx-auto my-4 max-w-4xl space-y-3 px-4" aria-label="验收控制">
         <label className="flex flex-wrap items-center gap-2">测试案例
@@ -61,7 +61,7 @@ export default function ChatMarkdownDevPage() {
             </optgroup>)}
           </select>
         </label>
-        <p data-case-expectation>{preset.expected} 默认完整正文：{preset.bubbles} 泡（编辑后以实际结果为准）。</p>
+        <p data-case-expectation>{preset.expected} 默认完整正文：{preset.bubbles} 个视觉段（编辑后以实际结果为准）。</p>
         {preset.limitation && <p role="note" className="rounded border border-border p-2" data-known-limitation>{preset.limitation}</p>}
         <fieldset className="flex flex-wrap gap-3"><legend>预览容器宽度</legend>
           {[[320, '320px'], [390, '390px'], [768, '桌面 768px']].map(([value, label]) => <label key={value} className="flex items-center gap-1">
@@ -79,7 +79,7 @@ export default function ChatMarkdownDevPage() {
           </>}
           <Button variant="outline" onClick={() => edit(preset.content)}>恢复默认文本</Button>
         </div>
-        <p>当前正文视觉气泡：<output data-bubble-count>{count}</output>；预览容器目标宽度：{width}px。</p>
+        <p>当前正文视觉分段：<output data-bubble-count>{count}</output>；预览容器目标宽度：{width}px。</p>
         <p className="text-muted-foreground">表格 / 代码可直接横向滑动。流式每 40ms 追加最多 8 个 UTF-16 字符，可暂停后检查当前前缀。</p>
       </section>
       <section aria-label="真实聊天气泡预览" className="w-full overflow-x-auto border-y border-border py-4">

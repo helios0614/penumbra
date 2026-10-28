@@ -1,7 +1,8 @@
 import type { MessageReaction } from "@/domain/message/capability-types";
 import { cn } from "@/lib/utils";
 import { AI_BUBBLE_SURFACE, BUBBLE_SURFACE } from "./bubble-surface";
-import { MarkdownRenderer } from "./MarkdownRenderer";
+import { MarkdownDefinitionLinks, MarkdownRenderer } from "./MarkdownRenderer";
+import { markdownSurface } from "./markdown-presentation";
 import {
   SearchText,
   SearchHighlightContext,
@@ -79,24 +80,29 @@ export function BubbleSegment({
 }) {
   const user = kind === "user";
   const sticker = user ? reaction : null;
+  const surface = user ? "body" : markdownSurface(content);
   return (
     <div
       className={cn("relative min-w-0 max-w-full", sticker && "mb-5")}
       data-reaction-anchor={sticker ? reaction?.targetMessageId : undefined}
+      data-markdown-segment={user ? undefined : surface}
     >
       <div
         data-user-bubble={user ? "" : undefined}
         className={cn(
-          BUBBLE_SURFACE,
-          user
-            ? "border-primary/20 bg-primary/10 text-primary shadow-sm backdrop-blur-md"
-            : AI_BUBBLE_SURFACE,
+          surface === "code" ? "chat-code-segment min-w-0 max-w-full"
+            : surface === "rule" ? "chat-rule-segment"
+            : cn(BUBBLE_SURFACE, user
+              ? "border-primary/20 bg-primary/10 text-primary shadow-sm backdrop-blur-md"
+              : AI_BUBBLE_SURFACE),
         )}
       >
         {user ? (
           <span className="whitespace-pre-wrap">
             <SearchText text={content} />
           </span>
+        ) : surface === "definitions" ? (
+          <MarkdownDefinitionLinks content={content} />
         ) : (
           <MarkdownRenderer content={content} />
         )}

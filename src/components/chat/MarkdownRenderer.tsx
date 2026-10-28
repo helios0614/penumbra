@@ -15,6 +15,8 @@ import { useCopyFeedback } from "./copy-feedback";
 import { markdownImageResource } from "@/domain/media/media-resources";
 import { MediaImage } from "@/components/media/MediaImage";
 import { SearchHighlightContext, rehypeSearchHighlight } from "./search-highlight";
+import { definitionLinks } from "./markdown-presentation";
+import "./markdown.css";
 
 // ─── 辅助函数 ───
 
@@ -83,47 +85,23 @@ function CodeBlock({
   // Markdown code block - render nested Markdown preview (仅在允许递归时)
   const shouldPreviewMarkdown = (language === "markdown" || language === "md") && previewMarkdownCode;
 
-  if (shouldPreviewMarkdown) {
-    return (
-      <div className="scrollbar-none ai-code-block group relative my-2 overflow-hidden rounded-lg border border-ai-foreground/15 bg-ai font-mono shadow-sm">
-        <div data-chat-non-body className="flex items-center justify-between border-b border-ai-foreground/15 bg-ai-active px-4 py-2 text-xs text-ai-foreground/70">
-          <span>{displayLanguage}</span>
-          <button
-            type="button"
-            onClick={() => void handleCopy()}
-            className="flex items-center gap-1 rounded-sm px-1 py-0.5 text-ai-foreground/70 transition-colors hover:bg-ai-foreground/10 hover:text-ai-foreground"
-            aria-label="复制代码"
-          >
-            <Copy className="size-3" aria-hidden="true" /><span>复制</span>
-          </button>
-        </div>
-        <div className="bg-ai p-4 text-sm text-ai-foreground">
-          <div className="markdown-preview">
-            <MarkdownRenderer content={rawCode} previewMarkdownCode={false} />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="scrollbar-none ai-code-block group relative my-2 overflow-hidden rounded-lg border border-ai-foreground/15 bg-ai font-mono shadow-sm">
-      <div data-chat-non-body className="flex items-center justify-between border-b border-ai-foreground/15 bg-ai-active px-4 py-2 text-xs text-ai-foreground/70">
+    <div className="ai-code-block">
+      <div data-chat-non-body className="ai-code-toolbar">
         <span>{displayLanguage}</span>
-        <button
-          type="button"
-          onClick={() => void handleCopy()}
-          className="flex items-center gap-1 rounded-sm px-1 py-0.5 text-ai-foreground/70 transition-colors hover:bg-ai-foreground/10 hover:text-ai-foreground"
-          aria-label="复制代码"
-        >
+        <button type="button" onClick={() => void handleCopy()} className="ai-code-copy" aria-label="复制代码">
           <Copy className="size-3" aria-hidden="true" /><span>复制</span>
         </button>
       </div>
-      <pre className="scrollbar-none m-0 max-w-full overflow-x-auto whitespace-pre bg-ai p-4 text-sm leading-relaxed text-ai-foreground">
-        <code className={className} {...props}>
-          {children}
-        </code>
-      </pre>
+      {shouldPreviewMarkdown ? (
+        <div className="ai-code-preview"><div className="markdown-preview">
+          <MarkdownRenderer content={rawCode} previewMarkdownCode={false} />
+        </div></div>
+      ) : (
+        <pre className="markdown-scroll m-0 max-w-full overflow-x-auto whitespace-pre font-mono text-sm leading-relaxed">
+          <code className={className} {...props}>{children}</code>
+        </pre>
+      )}
     </div>
   );
 }
@@ -171,7 +149,7 @@ function MarkdownRendererInner({ content, className, previewMarkdownCode = true 
   const components: Components = {
     table: ({ children, node: _node, ...props }) => (
       <div data-markdown-table-scroll tabIndex={0} role="region" aria-label="表格，可横向滚动"
-        className="max-w-full overflow-x-auto overscroll-x-contain">
+        className="markdown-scroll max-w-full overflow-x-auto overscroll-x-contain">
         <table {...props}>{children}</table>
       </div>
     ),
@@ -185,14 +163,14 @@ function MarkdownRendererInner({ content, className, previewMarkdownCode = true 
     pre: (props) => (
       <MarkdownPre {...props} previewMarkdownCode={previewMarkdownCode} />
     ),
-    hr: () => null, // 不渲染 <hr>，避免空白块
+    hr: () => <hr />,
   };
 
   return (
     <div
       className={cn(
         // 基础排版
-        "text-[14px] leading-[1.6]",
+        "chat-markdown text-[14px] leading-[1.6]",
         // 标题
         "[&_h1]:text-xl [&_h1]:font-semibold [&_h1]:m-0",
         "[&_h2]:text-lg [&_h2]:font-semibold [&_h2]:m-0",
@@ -231,3 +209,16 @@ function MarkdownRendererInner({ content, className, previewMarkdownCode = true 
 }
 
 export const MarkdownRenderer = memo(MarkdownRendererInner);
+
+/** Only Bubble's whole-message definition fallback opts into this view.
+ * Mixed Markdown continues to use normal (hidden) definition semantics. */
+export function MarkdownDefinitionLinks({ content }: { content: string }) {
+  return <div className="chat-definition-links">
+    {definitionLinks(content).map(({ label, href }, index) => <div key={index}>
+      {href ? <a className="chat-definition-link" href={href}>
+        <span className="chat-definition-label">{label}</span>
+        <span className="chat-definition-url">{href}</span>
+      </a> : <span className="chat-definition-unavailable">{label} · 链接不可用</span>}
+    </div>)}
+  </div>;
+}

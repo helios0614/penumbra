@@ -14,7 +14,7 @@ const countBubbles = (html: string) => (html.match(/class="relative min-w-0 max-
 const present = (content: string, role = "assistant") => presentChatMessage(mapMessage(messageWire({ content, role })))!;
 
 describe("display-only bubble boundaries", () => {
-  it.each(["", "\n\n", " \t\r\n\u200b\u0000\u2060\uFE0F", "---\n\n***\n\n___"])("renders no assistant surface for invisible body %j", content => {
+  it.each(["", "\n\n", " \t\r\n\u200b\u0000\u2060\uFE0F"])("renders no assistant surface for invisible body %j", content => {
     expect(splitAssistantBubbles(content)).toEqual([]);
     expect(countBubbles(render(present(content)))).toBe(0);
   });

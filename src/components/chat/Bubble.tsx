@@ -132,6 +132,9 @@ function BubbleInner({
       ? (hasBody ? null : "思考中")
       : message.executionStatus === "finalizing" ? "正在确认保存"
       : message.executionStatus === "unconfirmed" ? "结果待确认" : "正在发送";
+  const showEmptyFallback = message.kind === "assistant" && !hasBody && !generationLabel &&
+    !message.thinking && !message.simpleThink && !message.error && !message.toolPending &&
+    !message.attachments.length && !message.capabilities?.hasHeart && !message.capabilities?.results.length;
 
   return (
     <div
@@ -197,6 +200,7 @@ function BubbleInner({
         >
           <SearchableBubbleSegments identity={message.id} chunks={chunks}
             kind={message.kind} reaction={message.kind==="user"?message.capabilities?.reaction:null}/>
+          {showEmptyFallback && <p data-message-empty data-chat-non-body className="px-1 py-1 text-xs text-muted-foreground">暂无可显示内容</p>}
           {message.kind === "assistant" && message.error && <div className={cn(BUBBLE_SURFACE, AI_BUBBLE_SURFACE, "whitespace-pre-wrap text-sm break-words")} role="alert">{message.error}
             {message.executionStatus === undefined && (onRegenerate && !regenerateDisabled
               ? <div className="mt-2"><Button size="sm" variant="outline" onClick={onRegenerate} aria-label="重新生成回复">重新生成</Button></div>

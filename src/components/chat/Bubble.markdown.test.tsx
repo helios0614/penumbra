@@ -58,7 +58,7 @@ describe("Markdown PR1 boundaries and actual Bubble output", () => {
     expect(splitAssistantBubbles(preset('separate-quotes'))).toHaveLength(2);
   });
 
-  it.each(['----', '* * *', '- - -', '_ _ _', '___\n***', '[doc]: https://example.org', '#', '>\n> ---'])("does not leave a surface for hidden-only syntax %j", source => {
+  it.each(['#', '>'])("does not leave a surface for hidden-only syntax %j", source => {
     expect(splitAssistantBubbles(source)).toEqual([]);
     expect(surfaces(html(source))).toBe(0);
   });
@@ -125,6 +125,6 @@ describe("filtered SSE prefixes and HTTP restore", () => {
     }
     expect(splitAssistantBubbles(flushAssistantAccumulator(state).message.content)).toEqual(splitAssistantBubbles(present(raw).content));
     expect(splitAssistantBubbles(present(raw).content)).toHaveLength(3); // Empty code toolbar is intentional.
-    expect(splitAssistantBubbles(present(preset('filtered')).content)).toEqual([]);
+    expect(splitAssistantBubbles(present(preset('filtered')).content)).toEqual(['----']);
   });
 });

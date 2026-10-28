@@ -15,21 +15,39 @@ async function run(browser, width) {
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/api/**', route => { api.push(route.request().url()); return route.abort(); });
   await page.route('https://example.invalid/**', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="600"><rect width="2400" height="600" fill="#80a0b0"/></svg>' }));
+  await page.route('https://example.org/**', route => route.fulfill({ contentType: 'text/html', body: 'Synthetic link destination' }));
   await page.goto(`${origin}/dev/chat-markdown`);
   await page.getByRole('heading', { name: 'Chat Markdown 开发验收', exact: true }).waitFor();
   const fixtures = await page.evaluate(async () => (await import('/src/components/dev/chat-markdown-cases.ts')).markdownCases);
   for (const item of fixtures) {
     await selectCase(page, item.id);
     assert.equal(await count(page), item.bubbles, item.id);
-    assert.equal(await body(page).locator('.min-h-9').count(), item.bubbles, `actual surfaces ${item.id}`);
+    assert.equal(await body(page).locator('[data-markdown-segment]').count(), item.bubbles, `actual surfaces ${item.id}`);
     assert.equal(await page.getByRole('textbox', { name: 'Markdown 原文', exact: true }).inputValue(), item.content);
     assert.equal(await page.locator('[data-known-limitation]').count(), item.limitation ? 1 : 0);
   }
+  await selectCase(page, 'breaks');
+  assert.equal(await body(page).locator('hr').count(), 6);
+  assert.equal(await body(page).locator('.min-h-9').count(), 0);
+  assert(await body(page).locator('[data-markdown-segment="rule"]').evaluateAll(nodes => nodes.every(el => el.getBoundingClientRect().height < 32)));
+  await selectCase(page, 'standalone-code');
+  assert.equal(await body(page).locator('.min-h-9').count(), 0);
+  assert.equal(await body(page).locator('.ai-code-block').count(), 1);
+  assert.equal(await body(page).locator('pre').evaluate(el => getComputedStyle(el).scrollbarWidth), 'thin');
+  await selectCase(page, 'mixed-code');
+  assert.equal(await body(page).locator('.min-h-9').count(), 1);
+  assert.equal(await body(page).locator('.ai-code-block').count(), 1);
+  await selectCase(page, 'definition-with-body');
+  assert.equal(await body(page).locator('a').count(), 0);
+  await selectCase(page, 'definition-unsafe');
+  assert.equal(await body(page).locator('a').count(), 0);
+  assert((await body(page).innerText()).includes('链接不可用'));
   for (const target of [320, 390, 768]) {
     await page.getByRole('radio', { name: target === 768 ? '桌面 768px' : `${target}px`, exact: true }).check();
     assert.equal(await page.locator('[data-markdown-preview]').evaluate(el => el.getBoundingClientRect().width), target);
     await selectCase(page, 'wide-table');
     const region = page.locator('[data-markdown-table-scroll]');
+    assert.equal(await region.evaluate(el => getComputedStyle(el).scrollbarWidth), 'thin');
     const dimensions = await region.evaluate(el => {
       el.scrollLeft = el.scrollWidth;
       return { client: el.clientWidth, scroll: el.scrollWidth, left: el.scrollLeft,
@@ -52,7 +70,7 @@ async function run(browser, width) {
   await page.getByRole('button', { name: '复制代码', exact: true }).click();
   assert.deepEqual(await page.evaluate(() => window.__markdownCopies), [raw, 'const a = 1;\n\nconst b = 2;']);
   const editor = page.getByRole('textbox', { name: 'Markdown 原文', exact: true });
-  await editor.fill('edited\n\nparagraph\n\n----'); assert.equal(await count(page), 2);
+  await editor.fill('edited\n\nparagraph\n\n----'); assert.equal(await count(page), 3);
   await page.getByRole('button', { name: '恢复默认文本', exact: true }).click();
   assert.equal(await editor.inputValue(), raw); assert.equal(await count(page), 1);
 
@@ -71,8 +89,14 @@ async function run(browser, width) {
   await page.waitForFunction(() => { const [a,b] = document.querySelector('[data-stream-progress]').textContent.match(/\d+/g).map(Number); return a === b; });
   assert.equal(await body(page).innerText(), fullText); assert.equal(await count(page), 3);
   await page.getByRole('combobox', { name: '显示模式', exact: true }).selectOption('full');
-  await selectCase(page, 'filtered'); assert.equal(await count(page), 0);
+  await selectCase(page, 'filtered'); assert.equal(await count(page), 1);
   assert(!await page.locator('[data-markdown-preview]').innerText().then(text => /SYNTHETIC|HEART:|TODO:/.test(text)));
+  await selectCase(page, 'definition');
+  const definitionSource = await editor.inputValue();
+  await page.getByRole('button', { name: '复制消息', exact: true }).click({ force: true });
+  assert.equal(await page.evaluate(() => window.__markdownCopies.at(-1)), definitionSource);
+  await body(page).getByRole('link').click();
+  await page.waitForURL('https://example.org/guide');
   assert.deepEqual(api, []); assert.deepEqual(errors, []);
   await context.close();
   console.log(`${width}px: ${fixtures.length} presets, 320/390/768 preview widths, real table scroll/wheel, copy, edit/reset, stream pause/reset/final parity and API isolation passed`);

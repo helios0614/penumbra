@@ -1,0 +1,118 @@
+/* Chat Markdown only: no global surfaces or scrollbar rules. */
+.chat-markdown hr {
+  height: 0;
+  margin: 12px 0;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--color-ai) 27%, transparent);
+}
+.chat-rule-segment { width: 240px; max-width: 100%; padding-block: 9px; }
+.chat-rule-segment > .chat-markdown hr { margin: 0; }
+.chat-rule-segment > .chat-markdown hr + hr { margin-top: 10px; }
+
+.chat-markdown .ai-code-block {
+  --markdown-code-ink: color-mix(in srgb, var(--color-foreground) 83%, var(--color-ai));
+  min-width: 0;
+  max-width: 100%;
+  margin-block: 10px;
+  overflow: hidden;
+  border: 0;
+  border-left: 2px solid color-mix(in srgb, var(--color-ai) 18%, transparent);
+  border-radius: 0;
+  background: transparent;
+  color: var(--markdown-code-ink);
+  white-space: normal;
+}
+.chat-code-segment > .chat-markdown > .ai-code-block {
+  margin: 0;
+  border: 1px solid var(--chat-ai-border);
+  border-radius: 6px;
+  background: var(--chat-ai-surface);
+  backdrop-filter: blur(2px);
+}
+.chat-markdown .ai-code-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 32px;
+  padding: 6px 13px 5px;
+  color: color-mix(in srgb, var(--markdown-code-ink) 62%, transparent);
+  font-size: 11px;
+  line-height: 18px;
+}
+.chat-markdown .ai-code-toolbar > span { font-family: var(--font-mono); letter-spacing: .02em; }
+.chat-markdown .ai-code-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 3px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 150ms ease, background 150ms ease;
+}
+.chat-markdown .ai-code-copy:hover {
+  color: var(--markdown-code-ink);
+  background: color-mix(in srgb, var(--color-ai) 9%, transparent);
+}
+.chat-markdown .ai-code-copy:focus-visible {
+  outline: 1px solid var(--color-ai);
+  outline-offset: 3px;
+}
+.chat-markdown .ai-code-block pre { padding: 4px 14px 13px; }
+.chat-markdown .ai-code-preview { padding: 2px 14px 13px; }
+.chat-markdown .markdown-preview .ai-code-block {
+  margin-block: 10px;
+  border: 0;
+  border-left: 2px solid color-mix(in srgb, var(--color-ai) 23%, transparent);
+  border-radius: 0;
+  background: transparent;
+  white-space: normal;
+  overflow: hidden;
+}
+.chat-markdown .markdown-preview .ai-code-toolbar { padding-left: 11px; }
+.chat-markdown .markdown-preview .ai-code-block pre { padding-left: 12px; }
+.chat-markdown blockquote .ai-code-block { border-left: 0; }
+.chat-markdown .ai-code-block .hljs-comment,
+.chat-markdown .ai-code-block .hljs-quote {
+  color: color-mix(in srgb, var(--markdown-code-ink) 54%, transparent);
+}
+.chat-markdown .ai-code-block .hljs-keyword,
+.chat-markdown .ai-code-block .hljs-selector-tag,
+.chat-markdown .ai-code-block .hljs-literal,
+.chat-markdown .ai-code-block .hljs-title,
+.chat-markdown .ai-code-block .hljs-section {
+  color: color-mix(in srgb, var(--color-ai) 54%, var(--color-foreground));
+  font-weight: 600;
+}
+.chat-markdown .ai-code-block .hljs-string,
+.chat-markdown .ai-code-block .hljs-number,
+.chat-markdown .ai-code-block .hljs-attr,
+.chat-markdown .ai-code-block .hljs-variable,
+.chat-markdown .ai-code-block .hljs-template-variable {
+  color: color-mix(in srgb, var(--color-ai) 38%, var(--color-foreground));
+}
+
+.chat-markdown .markdown-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-ai) 28%, transparent) transparent;
+}
+.chat-markdown .markdown-scroll:hover {
+  scrollbar-color: color-mix(in srgb, var(--color-ai) 48%, transparent) transparent;
+}
+.chat-markdown .markdown-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.chat-markdown .markdown-scroll::-webkit-scrollbar-track { background: transparent; }
+.chat-markdown .markdown-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-ai) 28%, transparent);
+}
+.chat-markdown .markdown-scroll:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-ai) 48%, transparent);
+}
+
+.chat-definition-links { display: grid; gap: 10px; }
+.chat-definition-link { display: grid; gap: 2px; overflow-wrap: anywhere; }
+.chat-definition-label { color: var(--color-muted-foreground); font-size: 11px; line-height: 16px; }
+.chat-definition-url { color: var(--color-primary); text-decoration: underline; text-underline-offset: 3px; }
+.chat-definition-link:hover .chat-definition-url { color: var(--color-primary-hover); }
+.chat-definition-link:focus-visible { outline: 1px solid var(--color-ai); outline-offset: 4px; border-radius: 2px; }
+.chat-definition-unavailable { font-size: 12px; color: var(--color-muted-foreground); overflow-wrap: anywhere; }

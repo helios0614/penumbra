@@ -21,13 +21,18 @@ export function protectedMarkdownLines(tree: Root): readonly (readonly [number, 
     ? [[node.position.start.line, node.position.end.line] as const] : []);
 }
 
-/** Match the current renderer: hr/definitions are hidden, code has a toolbar,
+export function isDefinitionOnly(tree: Root): boolean {
+  return tree.children.length > 0 && tree.children.every(node => node.type === "definition");
+}
+
+/** Match the current renderer: definitions are hidden, hr is visible, code has a toolbar,
  * images have media or fallback UI, and lists/tables have visible decorations.
  * This deliberately does not use DOM textContent (media need not contain text).
  */
 export function hasMarkdownOutput(tree: Root): boolean {
   const visible = (node: Nodes): boolean => {
-    if (node.type === "definition" || node.type === "thematicBreak") return false;
+    if (node.type === "definition") return false;
+    if (node.type === "thematicBreak") return true;
     if (["code", "inlineCode", "image", "imageReference", "list", "table", "break"].includes(node.type)) return true;
     if ("value" in node) return hasVisibleText(node.value);
     if ("children" in node) return node.children.some(visible);
