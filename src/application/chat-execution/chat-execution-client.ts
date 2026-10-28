@@ -1,3 +1,4 @@
+import { chatTraceIdentity, traceChat, type TimelineIdentity } from "@/lib/chat-timeline";
 import { debugExecution, observeDebugStream, observeDebugHttpError, streamErrorObserver, drainRequestSnapshots } from "@/application/chat-system-log/chat-system-log-client";
 import { projectDiagnostic, record } from "@/application/chat-system-log/chat-system-log-projection";
 import type { LogContext } from "@/application/chat-system-log/chat-system-log-types";
@@ -44,10 +45,11 @@ export async function openSendExecution(
       body,
       headers,
     });
+    traceChat("http.headers", chatTraceIdentity(options?.signal));
     const mediaType = normalizeMediaType(response.contentType);
 
     if (mediaType === "text/event-stream") {
-      return streamResult(response.body, debug.context);
+      return streamResult(response.body, debug.context, chatTraceIdentity(options?.signal));
     }
     if (mediaType === "application/json") {
       const acknowledgement = await readLimitedJsonBody(response.body);
@@ -83,8 +85,9 @@ export async function openRegenerateExecution(
       headers,
     });
 
+    traceChat("http.headers", chatTraceIdentity(options?.signal));
     if (normalizeMediaType(response.contentType) === "text/event-stream") {
-      return streamResult(response.body, debug.context);
+      return streamResult(response.body, debug.context, chatTraceIdentity(options?.signal));
     }
 
     await cancelUnreadBody(response.body);
@@ -129,32 +132,42 @@ function regenerateExecutionPath(
     `/messages/${encodeURIComponent(messageId)}/regenerate`;
 }
 
-function streamResult(body: ReadableStream<Uint8Array>, context: LogContext): ChatExecutionStream {
+function streamResult(body: ReadableStream<Uint8Array>, context: LogContext, trace?: TimelineIdentity): ChatExecutionStream {
   return {
     kind: "stream",
-    events: mapChatExecutionStream(body, context),
+    events: mapChatExecutionStream(body, context, trace),
   };
 }
 
 async function* mapChatExecutionStream(
   body: ReadableStream<Uint8Array>,
   context: LogContext,
+  trace?: TimelineIdentity,
 ): AsyncGenerator<ChatExecutionEvent, void, void> {
   const errorSuffix = streamErrorObserver(context);
   try {
     for await (const frame of parseSseStream(body)) {
+      traceChat("sse.frame", trace, { size: frame.data.length });
       const input = parseSseJsonData(frame);
+      traceChat("sse.json", trace);
       try { observeDebugStream(input, context); errorSuffix(input); } catch { /* Observation is optional. */ }
+      traceChat("sse.observed", trace);
       const row = record(input);
       if (row?.type === "debug") {
         if (typeof row.msg_id !== "string" || !row.msg_id.trim()) { yield { type: "unknown", rawType: "debug" }; continue; }
         let usage = null;
         try { usage = projectDiagnostic(row)?.usage ?? null; } catch { /* Optional detail failure is isolated. */ }
-        yield mapChatExecutionEvent({ ...row, model: typeof row.model === "string" ? row.model : "", has_error: row.has_error === true, usage }, frame.event);
-      } else yield mapChatExecutionEvent(input, frame.event);
+        const event = mapChatExecutionEvent({ ...row, model: typeof row.model === "string" ? row.model : "", has_error: row.has_error === true, usage }, frame.event);
+        traceChat("sse.mapped", trace, { event: event.type });
+        yield event;
+      } else {
+        const event = mapChatExecutionEvent(input, frame.event);
+        traceChat("sse.mapped", trace, { event: event.type });
+        yield event;
+      }
     }
   } catch (error) { observeDebugHttpError(error, context); throw error; }
-  finally { void drainRequestSnapshots(); }
+  finally { traceChat("sse.end", trace); void drainRequestSnapshots(); }
 }
 
 function normalizeMediaType(contentType: string | null): string | null {

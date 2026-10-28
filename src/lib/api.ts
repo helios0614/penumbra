@@ -1,3 +1,4 @@
+import { chatTraceIdentity, traceChat } from "@/lib/chat-timeline";
 /**
  * Minimal API client for the AionsHome backend.
  *
@@ -134,7 +135,7 @@ export async function openApiStream(
 
     return Object.freeze({
       contentType: request.response.headers.get("content-type") ?? "",
-      body: createManagedApiBody(request.response.body, request, options.streamIdleTimeoutMs),
+      body: createManagedApiBody(request.response.body, request, options.streamIdleTimeoutMs, options.signal),
     });
   } catch (error) {
     request.cleanup();
@@ -291,6 +292,7 @@ function createManagedApiBody(
   source: ReadableStream<Uint8Array>,
   request: ApiResponseRequest,
   idleTimeoutMs?: number,
+  callerSignal?: AbortSignal,
 ): ReadableStream<Uint8Array> {
   const reader = source.getReader();
   let streamController: ReadableStreamDefaultController<Uint8Array> | null =
@@ -343,6 +345,7 @@ function createManagedApiBody(
           return;
         }
 
+        traceChat("http.bytes", chatTraceIdentity(callerSignal), { size: result.value.byteLength });
         controller.enqueue(result.value);
         if (idleTimeoutMs !== undefined) request.resetTimeout(idleTimeoutMs);
       } catch (error) {

@@ -1,3 +1,4 @@
+import { aliasChatTrace, bindChatTrace, traceChat } from "@/lib/chat-timeline";
 import {
   ChatExecutionContractError,
   openRegenerateExecution,
@@ -125,6 +126,13 @@ export function createChatSendController(
 
   const publish = (nextState: ChatSendState) => {
     if (disposed) return;
+    if ("executionId" in nextState) {
+      const assistant = "assistant" in nextState ? nextState.assistant : undefined;
+      aliasChatTrace(`${nextState.executionId}:assistant`, nextState);
+      if (assistant?.assistantMessageId) aliasChatTrace(assistant.assistantMessageId, nextState);
+      if ("targetMessageId" in nextState) aliasChatTrace(nextState.targetMessageId, nextState);
+      traceChat("session.publish", nextState, { phase: nextState.kind, size: assistant?.content.length ?? 0 });
+    } else if (active) traceChat("session.publish", active, { phase: nextState.kind });
     state = nextState;
     listeners.forEach((listener) => listener(state));
   };
@@ -167,6 +175,8 @@ export function createChatSendController(
       if (execution.optimisticUser.persistedMessageId === undefined) {
         execution.optimisticUser = { ...execution.optimisticUser, persistedMessageId: receipt.userMessageId };
       }
+      if (receipt.assistantMessageId) aliasChatTrace(receipt.assistantMessageId, execution);
+      traceChat("receipt.read", execution, { phase: receipt.assistantMessageId ? "assistant" : "user" });
       return receipt;
     })().finally(() => { execution.receiptLookup = null; });
     return execution.receiptLookup;
@@ -197,6 +207,7 @@ export function createChatSendController(
           execution.accumulator = { ...execution.accumulator, message: { ...execution.accumulator.message, assistantMessageId: receipt.assistantMessageId } };
         } catch { /* History still refreshes; missing identity remains unknown. */ }
       }
+      traceChat("history.begin", execution);
       const reconciliation = execution.kind === "regenerate"
         ? await dependencies.reconcileHistory(
             execution.conversationId,
@@ -204,6 +215,7 @@ export function createChatSendController(
           )
         : await dependencies.reconcileHistory(execution.conversationId);
       if (!isCurrent(execution)) return;
+      traceChat("history.end", execution, { size: reconciliation.persistedMessageIds.length });
       execution.recoveryReadSucceeded = true;
       if (
         execution.kind === "regenerate" &&
@@ -252,6 +264,7 @@ export function createChatSendController(
         } else if (!execution.terminalFailure) execution.executionError = null;
       } else if (!execution.terminalFailure) execution.executionError = null;
 
+      traceChat("execution.reconciled", execution);
       active = null;
       publish(execution.executionError === null
         ? execution.kind === "send"
@@ -308,6 +321,7 @@ export function createChatSendController(
     try {
       for await (const event of events) {
         if (!isCurrent(execution)) return;
+        traceChat("controller.event", execution, { event: event.type });
         if (event.type === "start" && execution.accumulator.message.assistantMessageId !== null &&
             event.assistantMessageId !== execution.accumulator.message.assistantMessageId) {
           throw new ChatExecutionContractError("Conflicting assistant start identity");
@@ -444,6 +458,8 @@ export function createChatSendController(
         finalization: null,
       };
       active = execution;
+      bindChatTrace(execution.abortController.signal, execution);
+      traceChat("execution.begin", execution, { phase: execution.kind });
       publish({
         kind: "sending-user",
         executionId,
@@ -534,6 +550,8 @@ export function createChatSendController(
         finalization: null,
       };
       active = execution;
+      bindChatTrace(execution.abortController.signal, execution);
+      traceChat("execution.begin", execution, { phase: execution.kind });
       publish(activeAssistantState("streaming", execution));
 
       let result: ChatExecutionStream;

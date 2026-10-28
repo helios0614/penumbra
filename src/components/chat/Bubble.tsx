@@ -1,3 +1,4 @@
+import { useChatRenderTrace } from "./useChatRenderTrace";
 import { format } from "date-fns";
 import { Bot, CircleHelp, User } from "lucide-react";
 import { ChatAttachments } from "@/components/media/ChatAttachments";
@@ -142,6 +143,7 @@ function BubbleInner({
   onInsert,
 }: BubbleProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
+  useChatRenderTrace(message);
   if (message.kind === "system") {
     return <div data-message-id={message.id} tabIndex={-1} className="min-w-0 w-full outline-none">
       <CapabilityMessage record={message.capabilities?.display} identity={message.id} />
@@ -240,7 +242,7 @@ function BubbleInner({
               ? <div className="mt-2"><Button size="sm" variant="outline" onClick={onRegenerate} aria-label="重新生成回复">重新生成</Button></div>
               : regenerateUnavailableReason ? <p className="mt-2 text-xs text-muted-foreground">{regenerateUnavailableReason}</p> : null)}
           </div>}
-          {generationLabel && !hasBody && !(message.kind === "assistant" && message.error) && <GenerationIndicator label={generationLabel}
+          {generationLabel && !hasBody && !(message.kind === "assistant" && message.error) && <GenerationIndicator label={generationLabel} messageId={message.id}
             rotating={message.executionStatus === "streaming"}
             active={message.executionStatus === "streaming" || message.executionStatus === "finalizing"} />}
         </div>

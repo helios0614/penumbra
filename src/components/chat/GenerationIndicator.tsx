@@ -1,8 +1,10 @@
+import { traceChatMessage } from "@/lib/chat-timeline";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { AI_BUBBLE_SURFACE, BUBBLE_SURFACE } from "./bubble-surface";
 
-export function GenerationIndicator({ label, active, rotating = false }: {
+export function GenerationIndicator({ label, active, rotating = false, messageId = "" }: {
+  readonly messageId?: string;
   readonly label: string;
   readonly active: boolean;
   readonly rotating?: boolean;
@@ -14,9 +16,14 @@ export function GenerationIndicator({ label, active, rotating = false }: {
       return;
     }
     // Match AionHome's decorative waiting text; this does not infer execution stages.
-    const timer = setInterval(() => setTyping(value => !value), 2500);
-    return () => clearInterval(timer);
-  }, [active, rotating]);
+    traceChatMessage("loading.start", messageId);
+    const timer = setInterval(() => {
+      traceChatMessage("loading.tick", messageId);
+      setTyping(value => !value);
+    }, 2500);
+    return () => { clearInterval(timer); traceChatMessage("loading.stop", messageId); };
+  }, [active, rotating, messageId]);
+  useEffect(() => { traceChatMessage("loading.commit", messageId, { phase: active && rotating ? (typing ? "typing" : "thinking") : "static" }); }, [active, rotating, typing, messageId]);
   const text = active && rotating ? (typing ? "正在输入" : "思考中") : label;
 
   return <div className={cn(BUBBLE_SURFACE, AI_BUBBLE_SURFACE, "chat-generation")} data-active={active} role="status" aria-live="polite">

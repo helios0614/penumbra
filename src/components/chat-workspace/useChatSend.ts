@@ -1,3 +1,4 @@
+import { traceChat } from "@/lib/chat-timeline";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { readChatSendResult } from "@/application/chat-send/chat-send-result";
 import { reconcileBackgroundChat } from "@/application/chat-send/chat-background-reconciliation";
@@ -36,6 +37,9 @@ export function useChatSend(reconcileHistory: ChatHistoryReconciler, conversatio
   const snapshot = useCallback(() => sessions.state(conversationId), [conversationId]);
   const state = useSyncExternalStore(sessions.subscribe, snapshot, snapshot);
   const executionId = "executionId" in state ? state.executionId : null;
+  useEffect(() => {
+    if (executionId && conversationId) traceChat("react.session", { executionId, conversationId }, { phase: state.kind });
+  }, [state, executionId, conversationId]);
   useEffect(() => {
     if (conversationId && history) void sessions.reconcileUserPersistence(conversationId);
   }, [conversationId, history, executionId]);

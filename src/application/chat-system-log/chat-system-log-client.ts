@@ -1,4 +1,5 @@
 import { ApiError, apiPost } from "@/lib/api";
+import { traceChatPage } from "@/lib/chat-timeline";
 import { assistantFailureIndex, safeHttpErrorContent } from "@/domain/message/assistant-failure";
 import { isDefiniteChatRejection } from "@/application/chat-send/chat-send-rejection";
 import { publicText, publicHttpMetadata, record } from "./chat-system-log-projection";
@@ -27,13 +28,17 @@ export async function drainRequestSnapshots() {
   inFlight = true;
   const epoch = systemLog.getState().clearedAt;
   try {
+    traceChatPage("log.drain.begin");
     const response = await apiPost<unknown>("/api/chat/debug/drain", undefined, { headers: { "X-Penumbra-Debug-Page": page }, timeoutMs: 5000, cache: "no-store" });
+    traceChatPage("log.drain.received");
     const result = record(response);
+    traceChatPage("log.snapshots.begin", { size: Array.isArray(result?.records) ? result.records.length : 0 });
     if (epoch === systemLog.getState().clearedAt && Array.isArray(result?.records)) systemLog.snapshots(result.records, typeof result.dropped === "number" ? result.dropped : 0);
+    traceChatPage("log.snapshots.end");
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) { systemLog.clear(); page = null; }
     if (error instanceof ApiError && [403, 404, 405].includes(error.status)) unavailable = true;
-  } finally { inFlight = false; }
+  } finally { inFlight = false; traceChatPage("log.drain.end"); }
 }
 export function observeDebugStream(input: unknown, context: LogContext) {
   const row = record(input); if (!row) return;
