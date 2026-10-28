@@ -169,6 +169,12 @@ interface MarkdownRendererProps {
 function MarkdownRendererInner({ content, className, previewMarkdownCode = true }: MarkdownRendererProps) {
   const search=useContext(SearchHighlightContext);
   const components: Components = {
+    table: ({ children, node: _node, ...props }) => (
+      <div data-markdown-table-scroll tabIndex={0} role="region" aria-label="表格，可横向滚动"
+        className="max-w-full overflow-x-auto overscroll-x-contain">
+        <table {...props}>{children}</table>
+      </div>
+    ),
     img: ({ src, alt }) => {
       const url = markdownImageResource(src);
       return url ? <MediaImage image={{ url, label: alt || "正文图片" }} /> : <span className="text-xs text-muted-strong">[图片引用不可用]</span>;

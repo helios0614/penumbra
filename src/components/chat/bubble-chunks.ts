@@ -1,30 +1,35 @@
-/** Visibility check only: never rewrite the message or the text inside a bubble. */
-function hasVisibleText(content: string): boolean {
-  return content.replace(/[\p{Cc}\p{Default_Ignorable_Code_Point}]/gu, "").trim().length > 0;
-}
+import { hasMarkdownOutput, hasVisibleText, parseBubbleMarkdown, protectedMarkdownLines } from "./markdown-boundaries";
 
 export function splitUserBubbles(content: string): string[] {
   return content.split(/\r\n?|\n/).filter(hasVisibleText);
 }
 
 export function splitAssistantBubbles(content: string): string[] {
-  // Keep the existing ``` fence exception. Markdown-aware segmentation is a separate task.
+  const normalized = content.replace(/\r\n?/g, "\n");
+  if (!hasVisibleText(normalized)) return [];
+  const tree = parseBubbleMarkdown(normalized);
+  const ranges = protectedMarkdownLines(tree);
   const parts: string[] = [];
-  let current = "";
-  let fenceOpen = false;
+  let current: string[] = [];
+  let rangeIndex = 0;
 
-  for (const line of content.replace(/\r\n?/g, "\n").split("\n")) {
-    if (/^```/.test(line)) fenceOpen = !fenceOpen;
-    if (!hasVisibleText(line) && !fenceOpen) {
-      if (current) parts.push(current);
-      current = "";
+  for (const [index, line] of normalized.split("\n").entries()) {
+    const lineNumber = index + 1;
+    while (ranges[rangeIndex] && ranges[rangeIndex][1] < lineNumber) rangeIndex++;
+    const range = ranges[rangeIndex];
+    const protectedLine = range && range[0] <= lineNumber && lineNumber <= range[1];
+    if (!hasVisibleText(line) && !protectedLine) {
+      if (current.length) parts.push(current.join("\n"));
+      current = [];
       continue;
     }
-    current += (current ? "\n" : "") + line;
+    current.push(line);
   }
-  if (current) parts.push(current);
+  if (current.length) parts.push(current.join("\n"));
 
-  // MarkdownRenderer hides these standalone breaks. Empty output must stay [],
-  // including while the upstream display filter holds a partial SSE control marker.
-  return parts.filter(chunk => hasVisibleText(chunk) && !["---", "***", "___"].includes(chunk.trim()));
+  // Each bubble is still parsed independently (reference sharing is MD-03).
+  // Inspect its own syntax, not full-message definitions or raw punctuation.
+  return parts.filter(chunk => hasVisibleText(chunk) && hasMarkdownOutput(
+    chunk === normalized ? tree : parseBubbleMarkdown(chunk),
+  ));
 }
