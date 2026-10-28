@@ -1,5 +1,5 @@
 import { ArrowLeft, LoaderCircle, Menu, RefreshCw, Search } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   getChatSenderAvailability,
@@ -58,6 +58,7 @@ import { AttachmentDrafts, AttachmentDrop, AttachmentPicker } from "./Attachment
 import { SubmissionRecovery } from "./SubmissionRecovery";
 import { mainChatDraftSession, type ChatDraftSession } from "./chat-draft-session";
 import { scopedChatExecution } from "@/components/chat-workspace/chat-sender-policy";
+import { useDesktopChatImagePaste } from "./useDesktopChatImagePaste";
 
 const CHAT_HEADER_ACTION_CLASS =
   "shrink-0 text-muted-foreground";
@@ -253,6 +254,14 @@ export function ChatWorkspaceView({
   const ownerRef = useRef<string | null>(null);
   ownerRef.current = state.status === "ready" ? state.workspace.selectedConversationId : null;
   const media = useAttachmentDrafts(ownerRef.current, draftSession?.attachments);
+  const pasteScopeRef = useRef<HTMLDivElement>(null);
+  const draftOwner = ownerRef.current;
+  // Workspace readiness gates editing; execution ownership only gates submission.
+  const draftEditable = getChatSenderAvailability(state, INITIAL_CHAT_SEND_STATE).enabled && !modelSelectionPending && onSend !== undefined;
+  const receiveFiles = useCallback((files: readonly File[]) => {
+    if (draftOwner && ownerRef.current === draftOwner) media.store.add(draftOwner, files);
+  }, [draftOwner, media.store]);
+  useDesktopChatImagePaste(pasteScopeRef, draftEditable ? receiveFiles : undefined);
   useEffect(() => {
     const confirmed = sendState.kind === "idle" ? sendState.confirmedSend : sendState.kind === "error" ? sendState.acceptedSend : undefined;
     if (!confirmed) return;
@@ -308,8 +317,6 @@ export function ChatWorkspaceView({
     workspace.selectedConversationId ?? "",
   );
   const sender = getChatSenderAvailability(state, sendState);
-  // Workspace readiness still gates editing; execution ownership only gates submission.
-  const draftEditable = getChatSenderAvailability(state, INITIAL_CHAT_SEND_STATE).enabled && !modelSelectionPending && onSend !== undefined;
   const executionNoticeVisible = executionNoticeError(sendState) !== null;
   const regenerate = getChatRegenerateAvailability(state, sendState);
   const executionActive = isChatExecutionActive(sendState);
@@ -371,7 +378,6 @@ export function ChatWorkspaceView({
     messageId:selectedMessage.id,createdAt:selectedMessage.createdAt,role:selectedMessage.roleKind as MessageSearchResult["role"],
     publicRevision:selectedResult?.publicRevision??"current-window",snippets:liveSnippets,
   }:null;
-  const draftOwner = workspace.selectedConversationId;
   const create = async () => {
     if (managementLocked || !onCreateConversation) return;
     setManagementError(null);
@@ -411,7 +417,7 @@ export function ChatWorkspaceView({
 
   return (
     <TooltipProvider delay={300}>
-      <ChatShell sidebar={<ConversationsList
+      <ChatShell rootRef={pasteScopeRef} sidebar={<ConversationsList
           conversations={conversations}
           onSelect={selectConversation}
           disabled={navigationLocked}
@@ -509,7 +515,7 @@ export function ChatWorkspaceView({
 
           <ChatRealtimeNotice state={realtimeState} />
         </>}
-        composer={<AttachmentDrop disabled={!draftEditable} onFiles={files => { if (draftOwner && ownerRef.current === draftOwner) media.store.add(draftOwner, files); }}><Sender
+        composer={<AttachmentDrop disabled={!draftEditable} onFiles={receiveFiles}><Sender
           key={draftOwner ?? "unselected"}
           initialDraft={draftOwner ? drafts.current.get(draftOwner) : undefined}
           onDraftChange={draftOwner ? (draft) => { drafts.current.set(draftOwner, draft); } : undefined}
@@ -527,7 +533,7 @@ export function ChatWorkspaceView({
             }} onDiscard={id => { if (draftOwner && ownerRef.current === draftOwner && !executionActive && draftEditable) media.store.discardRecovery(draftOwner, id); }} /></>}
           hasAttachments={media.items.length > 0}
           attachmentsReady={media.ready}
-          onFiles={files => { if (draftOwner && ownerRef.current === draftOwner) media.store.add(draftOwner, files); }}
+          onFiles={receiveFiles}
           attachments={draftOwner ? <AttachmentDrafts owner={draftOwner} store={media.store} items={media.items} disabled={!draftEditable} /> : undefined}
           onSend={onSend ? async content => {
             if (!draftOwner || ownerRef.current !== draftOwner) return false;
@@ -555,7 +561,7 @@ export function ChatWorkspaceView({
             finally { snapshot.release(); }
           } : undefined}
           toolsLabel={`会话模型：${workspace.setup.configuration?.selection?.model ?? "尚未选择"}`}
-          tools={<><AttachmentPicker disabled={!draftEditable} onFiles={files => { if (draftOwner && ownerRef.current === draftOwner) media.store.add(draftOwner, files); }} /><MainModelSelection
+          tools={<><AttachmentPicker disabled={!draftEditable} onFiles={receiveFiles} /><MainModelSelection
             key={workspace.selectedConversationId}
             setup={workspace.setup}
             disabled={navigationLocked || pendingConversationId !== null}

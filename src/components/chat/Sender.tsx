@@ -18,6 +18,7 @@ import { ComposerToolsMenu } from "./ComposerToolsMenu";
 import "./chat.css";
 import { appendComposerText, type SenderDraft, type SenderHandle } from "./composer-draft";
 import { useSendShortcut, type SendShortcut } from "./send-shortcut-preference";
+import { receiveClipboardImages } from "./image-paste";
 
 interface SenderProps {
   // "retained" means the parent owns the unconfirmed submission, separately from the next draft.
@@ -266,9 +267,7 @@ export function Sender({
             onChange={handleChange}
             onPaste={event => {
               if (disabled || !onFiles) return;
-              const files = Array.from(event.clipboardData.items).filter(item => item.kind === "file" && item.type.startsWith("image/"))
-                .map(item => item.getAsFile()).filter((file): file is File => file !== null);
-              if (files.length) { event.preventDefault(); onFiles(files); }
+              receiveClipboardImages(event, onFiles);
             }}
             onFocus={() => setFocused(true)}
             onKeyDown={handleKeyDown}

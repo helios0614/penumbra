@@ -1,9 +1,10 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { trackChatViewport } from "./chat-viewport";
 import "./chat.css";
 
 /** Geometry only; the caller supplies all business state and actions. */
-export function ChatShell({ sidebar, header, notices, overlay, children, composer }: {
+export function ChatShell({ sidebar, header, notices, overlay, children, composer, rootRef: suppliedRootRef }: {
+  readonly rootRef?: RefObject<HTMLDivElement | null>;
   readonly sidebar?: ReactNode;
   readonly header: ReactNode;
   readonly notices?: ReactNode;
@@ -11,10 +12,11 @@ export function ChatShell({ sidebar, header, notices, overlay, children, compose
   readonly children: ReactNode;
   readonly composer: ReactNode;
 }) {
-  const rootRef = useRef<HTMLDivElement>(null);
+  const localRootRef = useRef<HTMLDivElement>(null);
+  const rootRef = suppliedRootRef ?? localRootRef;
   useEffect(() => {
     if (rootRef.current) return trackChatViewport(rootRef.current, window.visualViewport);
-  }, []);
+  }, [rootRef]);
 
   return <div ref={rootRef} className="chat-shell flex min-h-0 w-full flex-1 overflow-hidden">
     {sidebar}
