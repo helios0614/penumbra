@@ -2,7 +2,7 @@ import { useChatRenderTrace } from "./useChatRenderTrace";
 import { format } from "date-fns";
 import { Bot, CircleHelp, User } from "lucide-react";
 import { ChatAttachments } from "@/components/media/ChatAttachments";
-import { memo, useRef } from "react";
+import { memo, useMemo, useRef } from "react";
 import { readMessageSelection } from "./message-selection";
 import { insertableBody } from "./insertable-body";
 import { splitAssistantBubbles, splitUserBubbles } from "./bubble-chunks";
@@ -108,6 +108,10 @@ function BubbleInner({
 }: BubbleProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
   useChatRenderTrace(message);
+  const chunks = useMemo(() => message.kind === "user" ? splitUserBubbles(message.content)
+    : message.kind === "assistant" ? splitAssistantBubbles(message.content) : [], [message.kind, message.content]);
+  const canInsert = message.kind === "assistant" && message.insertable !== false && message.executionStatus === undefined && !!onInsert;
+  const insertText = useMemo(() => canInsert ? insertableBody(message.content) : "", [canInsert, message.content]);
   if (message.kind === "system") {
     return <div data-message-id={message.id} tabIndex={-1} className="min-w-0 w-full outline-none">
       <CapabilityMessage record={message.capabilities?.display} identity={message.id} />
@@ -118,9 +122,7 @@ function BubbleInner({
   }
 
   const isUser = message.kind === "user";
-  const chunks = isUser ? splitUserBubbles(message.content) : splitAssistantBubbles(message.content);
   const hasBody = chunks.length > 0;
-  const insertText = message.kind === "assistant" && message.insertable !== false && onInsert ? insertableBody(message.content) : "";
   const time = format(new Date(message.createdAt * 1000), "HH:mm");
   const executionLabel = message.executionStatus === undefined
     ? null

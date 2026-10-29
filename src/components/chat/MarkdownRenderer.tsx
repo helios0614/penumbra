@@ -1,6 +1,7 @@
 import {
   isValidElement,
   useContext,
+  useMemo,
   memo,
   type ComponentProps,
   type ReactNode,
@@ -146,7 +147,7 @@ interface MarkdownRendererProps {
 
 function MarkdownRendererInner({ content, className, previewMarkdownCode = true }: MarkdownRendererProps) {
   const search=useContext(SearchHighlightContext);
-  const components: Components = {
+  const components = useMemo<Components>(() => ({
     table: ({ children, node: _node, ...props }) => (
       <div data-markdown-table-scroll tabIndex={0} role="region" aria-label="表格，可横向滚动"
         className="markdown-scroll max-w-full overflow-x-auto overscroll-x-contain">
@@ -164,7 +165,7 @@ function MarkdownRendererInner({ content, className, previewMarkdownCode = true 
       <MarkdownPre {...props} previewMarkdownCode={previewMarkdownCode} />
     ),
     hr: () => <hr />,
-  };
+  }), [previewMarkdownCode]);
 
   return (
     <div

@@ -62,6 +62,7 @@ import { SubmissionRecovery } from "./SubmissionRecovery";
 import { mainChatDraftSession, type ChatDraftSession } from "./chat-draft-session";
 import { scopedChatExecution } from "@/components/chat-workspace/chat-sender-policy";
 import { useDesktopChatImagePaste } from "./useDesktopChatImagePaste";
+import { createChatMessageProjector } from "@/components/chat-workspace/presentation/chat-message-presenter";
 
 const CHAT_HEADER_ACTION_CLASS =
   "shrink-0 text-muted-foreground";
@@ -277,6 +278,8 @@ export function ChatWorkspaceView({
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [managementError, setManagementError] = useState<string | null>(null);
   const drafts = useRef(draftSession?.texts ?? new Map<string, SenderDraft>());
+  const historyProjector = useRef<ReturnType<typeof createChatMessageProjector> | null>(null);
+  if (historyProjector.current === null) historyProjector.current = createChatMessageProjector();
   const senderRef = useRef<SenderHandle | null>(null);
   const ownerRef = useRef<string | null>(null);
   ownerRef.current = state.status === "ready" ? state.workspace.selectedConversationId : null;
@@ -343,6 +346,7 @@ export function ChatWorkspaceView({
     workspace.history?.messages ?? [],
     search.open || workspace.history?.window && !workspace.history.window.reachesLatest ? INITIAL_CHAT_SEND_STATE : sendState,
     workspace.selectedConversationId ?? "",
+    historyProjector.current,
   );
   const sender = getChatSenderAvailability(state, sendState);
   const executionNoticeVisible = executionNoticeError(sendState) !== null;

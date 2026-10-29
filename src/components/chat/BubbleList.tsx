@@ -1,6 +1,6 @@
 import { format, isToday, isYesterday } from "date-fns";
 import { zhCN } from "date-fns/locale";
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, type MutableRefObject } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, type MutableRefObject } from "react";
 
 import type { ChatMessageViewModel } from "./chat-ui-types";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -102,6 +102,36 @@ interface BubbleListProps {
   readonly olderError?: string | null;
 }
 
+interface MessageRowProps {
+  readonly message: ChatMessageViewModel;
+  readonly userName?: string;
+  readonly query: string;
+  readonly active: boolean;
+  readonly result?: MessageSearchResult | null;
+  readonly onRegenerate?: (id: string) => void;
+  readonly regenerateDisabled: boolean;
+  readonly regenerateUnavailableReason?: string | null;
+  readonly onInsert?: (text: string) => void;
+  readonly onEdit?: (id: string) => void;
+  readonly editUnavailableReason?: string | null;
+}
+
+// Per-row handlers and search values stay stable when another message streams.
+const MessageRow = memo(function MessageRow({ message, userName, query, active, result,
+  onRegenerate, regenerateDisabled, regenerateUnavailableReason, onInsert, onEdit, editUnavailableReason }: MessageRowProps) {
+  const regenerate = useCallback(() => onRegenerate?.(message.id), [onRegenerate, message.id]);
+  const edit = useCallback(() => onEdit?.(message.id), [onEdit, message.id]);
+  const search = useMemo(() => ({ query, active, segments: result?.snippets.map(s => s.segmentKey) }), [query, active, result]);
+  return <SearchHighlightContext value={search}>
+    <Bubble message={message} userName={userName} onRegenerate={onRegenerate ? regenerate : undefined}
+      regenerateDisabled={regenerateDisabled} regenerateUnavailableReason={regenerateUnavailableReason}
+      onInsert={onInsert} onEdit={onEdit ? edit : undefined} editUnavailableReason={editUnavailableReason} />
+    {active && result && <div className="chat-search-match mt-2 rounded-lg px-3 py-2 text-xs text-muted-strong" aria-label="当前消息匹配内容">
+      {result.snippets.map((s, i) => <p key={i} className="break-words leading-6 [overflow-wrap:anywhere]">{highlightSearchText(s.text, query)}</p>)}
+    </div>}
+  </SearchHighlightContext>;
+});
+
 function BubbleListInner({
   readingRef, jump, readingMode=false, query="", activeResult, activeMessageId, onUserRead,
   onLoadNewer, hasNewer=false, newerPending=false, newerError, onLatest,
@@ -123,6 +153,13 @@ function BubbleListInner({
   olderError,
 }: BubbleListProps) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const actions = useRef({ onEdit, onInsert, onRegenerate });
+  useLayoutEffect(() => { actions.current = { onEdit, onInsert, onRegenerate }; }, [onEdit, onInsert, onRegenerate]);
+  const rowActions = useMemo(() => ({
+    edit: (id: string) => actions.current.onEdit?.(id),
+    insert: (text: string) => actions.current.onInsert?.(text),
+    regenerate: (id: string) => actions.current.onRegenerate?.(id),
+  }), []);
   const shouldFollowRef = useRef(true);
   const previousTimelineRef = useRef<string | null>(null);
   const previousForceKeyRef = useRef<string | null>(null);
@@ -231,23 +268,19 @@ function BubbleListInner({
                     key={message.id}
                     className={cn(isRoleSwitch ? "my-3" : "mt-1")}
                   >
-                    <SearchHighlightContext value={{query,active:message.id===activeMessageId&&!!query,segments:activeResult?.snippets.map(s=>s.segmentKey)}}><Bubble
+                    <MessageRow
                       message={message}
                       userName={userName}
-                      onRegenerate={
-                        message.id === regenerateTargetId && onRegenerate
-                          ? () => onRegenerate(message.id)
-                          : undefined
-                      }
+                      query={query}
+                      active={message.id === activeMessageId && !!query}
+                      result={message.id === activeMessageId ? activeResult : undefined}
+                      onRegenerate={message.id === regenerateTargetId && onRegenerate ? rowActions.regenerate : undefined}
                       regenerateDisabled={!regenerateEnabled}
                       regenerateUnavailableReason={message.id === regenerateTargetId ? regenerateUnavailableReason : "仅最新的普通回复可重新生成。"}
-                      onInsert={onInsert}
-                      onEdit={onEdit ? () => onEdit(message.id) : undefined}
+                      onInsert={onInsert ? rowActions.insert : undefined}
+                      onEdit={onEdit ? rowActions.edit : undefined}
                       editUnavailableReason={editUnavailableReason?.(message.id)}
                     />
-                    {message.id===activeMessageId&&activeResult&&<div className="chat-search-match mt-2 rounded-lg px-3 py-2 text-xs text-muted-strong" aria-label="当前消息匹配内容">
-                      {activeResult.snippets.map((s,i)=><p key={i} className="break-words leading-6 [overflow-wrap:anywhere]">{highlightSearchText(s.text,query)}</p>)}
-                    </div>}</SearchHighlightContext>
                   </div>
                 );
               })}

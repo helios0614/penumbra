@@ -9,7 +9,7 @@ const message = (id, conv, role, content, created) => ({ id, conv_id: conv, role
   drift: null, thinking: null, attachments: [], is_carryover: 0, mcp_tool_calls: [], cache_region: null });
 const frame = value => `data: ${JSON.stringify(value)}\n\n`;
 
-async function fixture(browser, width) {
+async function fixture(browser, width, prepare) {
   const context = await browser.newContext({ viewport: { width, height: 844 }, isMobile: width < 768, hasTouch: width < 768 });
   const page = await context.newPage(); page.setDefaultTimeout(10000);
   const state = { requests: [], selections: {}, messages: {}, list: [], sends: [], regenerates: [], error: null, clock: 10, defaults: { revision: 0, context: undefined, temperatures: {}, thinking: {}, float: undefined, carryover: undefined }, saves: [], effective: [], failSave: false, saveDelay: 0 };
@@ -85,6 +85,7 @@ async function fixture(browser, width) {
     }
     return json({ detail: 'Synthetic fixture: unsupported route' }, 404);
   });
+  if (prepare) await prepare(page, state);
   await page.goto(`${origin}/tests/browser/chat-pr3.html`);
   await page.locator('[data-message-id="a-initial"]').waitFor();
   return { page, state, errors, context };

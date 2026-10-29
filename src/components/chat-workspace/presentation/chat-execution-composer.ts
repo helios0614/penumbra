@@ -2,15 +2,16 @@ import type { ChatSendState } from "@/application/chat-send";
 import type { Message } from "@/domain/message";
 import { mapMediaAttachments } from "@/domain/media/media-mappers";
 
-import { presentChatMessages } from "@/components/chat-workspace/presentation/chat-message-presenter";
+import { presentChatMessages, type ChatMessageProjector } from "@/components/chat-workspace/presentation/chat-message-presenter";
 import type { ChatMessageViewModel } from "@/components/chat-workspace/presentation/chat-presentation-types";
 
 export function composeVisibleChatMessages(
   persistentMessages: readonly Message[],
   execution: ChatSendState,
   conversationId: string,
+  projectMessages: ChatMessageProjector = presentChatMessages,
 ): readonly ChatMessageViewModel[] {
-  const visible = [...presentChatMessages(persistentMessages)];
+  const visible = [...projectMessages(persistentMessages)];
   if (execution.kind === "error" && execution.conversationId === conversationId && execution.assistant && !execution.optimisticUser && !execution.failedMessageId) {
     visible.push({ kind: "assistant", id: execution.assistant.overlayId, content: execution.assistant.content,
       createdAt: execution.assistant.createdAt, thinking: execution.assistant.thinking, simpleThink: execution.assistant.simpleThink,

@@ -10,6 +10,30 @@ import type {
 const SAFE_UNKNOWN_ROLE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,47}$/;
 const SENSITIVE_UNKNOWN_ROLE = /(?:api[-_]?key|authorization|bearer|cookie|secret|token|https?[:/])/i;
 
+export type ChatMessageProjector = (messages: readonly Message[]) => readonly ChatMessageViewModel[];
+
+/** Owned by one mounted view. Retains only the current history snapshot, never
+ * a growing cache of conversations. Message inputs are immutable domain values. */
+export function createChatMessageProjector(): ChatMessageProjector {
+  let previous: readonly Message[] | undefined;
+  let visible: readonly ChatMessageViewModel[] = [];
+  let rows = new Map<Message, ChatMessageViewModel | null>();
+  return messages => {
+    if (messages === previous) return visible;
+    const nextRows = new Map<Message, ChatMessageViewModel | null>();
+    const nextVisible: ChatMessageViewModel[] = [];
+    for (const message of messages) {
+      const projected = rows.has(message) ? rows.get(message)! : presentChatMessage(message);
+      nextRows.set(message, projected);
+      if (projected !== null) nextVisible.push(projected);
+    }
+    previous = messages;
+    rows = nextRows;
+    visible = nextVisible;
+    return visible;
+  };
+}
+
 export function presentChatMessages(
   messages: readonly Message[],
 ): readonly ChatMessageViewModel[] {

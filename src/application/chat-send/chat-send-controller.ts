@@ -39,6 +39,7 @@ import {
   type ChatSendState,
   type OptimisticUserMessage,
   type SafeChatExecutionError,
+  type StreamingAssistantMessage,
 } from "@/application/chat-send/chat-send-types";
 import { assistantFailureCode, assistantFailureIndex, formatAssistantFailure } from "@/domain/message/assistant-failure";
 import type { ChatSendResult } from "./chat-send-result";
@@ -375,7 +376,10 @@ export function createChatSendController(
         if (execution.accumulator.message.error && execution.executionError?.code === "provider-failure") {
           execution.executionError = { ...execution.executionError, message: execution.accumulator.message.error };
         }
-        publish(activeAssistantState("streaming", execution));
+        // Always reduce every event above: marker buffers and persistence receipts
+        // can change without changing the subscribed presentation snapshot.
+        const nextState = activeAssistantState("streaming", execution);
+        if (!sameStreamingPresentation(state, nextState)) publish(nextState);
       }
     } catch (error) {
       if (!isCurrent(execution)) return;
@@ -632,6 +636,26 @@ export function createChatSendController(
       active = null;
     },
   };
+}
+
+function sameStreamingPresentation(left: ChatSendState, right: ChatSendState): boolean {
+  if ((left.kind !== "streaming" && left.kind !== "regenerate-streaming") ||
+      (right.kind !== "streaming" && right.kind !== "regenerate-streaming") || left.kind !== right.kind) return false;
+  const sameOwner = left.kind === "streaming" && right.kind === "streaming"
+    ? left.optimisticUser === right.optimisticUser
+    : left.kind === "regenerate-streaming" && right.kind === "regenerate-streaming" && left.targetMessageId === right.targetMessageId;
+  const a = left.executionError, b = right.executionError;
+  return sameOwner && left.executionId === right.executionId && left.conversationId === right.conversationId &&
+    sameAssistantPresentation(left.assistant, right.assistant) &&
+    (a === b || a !== null && b !== null && a.code === b.code && a.message === b.message && a.field === b.field && a.providerFailure === b.providerFailure);
+}
+
+function sameAssistantPresentation(a: StreamingAssistantMessage, b: StreamingAssistantMessage): boolean {
+  const x = a.usage, y = b.usage;
+  return a === b || a.overlayId === b.overlayId && a.assistantMessageId === b.assistantMessageId &&
+    a.content === b.content && a.thinking === b.thinking && a.simpleThink === b.simpleThink &&
+    a.createdAt === b.createdAt && a.error === b.error && a.toolPending === b.toolPending &&
+    (x === y || x !== null && y !== null && x.promptTokens === y.promptTokens && x.completionTokens === y.completionTokens && x.totalTokens === y.totalTokens);
 }
 
 export function isChatSendActive(state: ChatSendState): boolean {

@@ -8,7 +8,8 @@ import {
   SearchHighlightContext,
   searchTextRanges,
 } from "./search-highlight";
-import { useContext, useMemo } from "react";
+import { memo, useContext, useMemo } from "react";
+import type { SearchHighlight } from "./search-highlight";
 import { insertableBody } from "./insertable-body";
 
 /** Map full-message phrase ranges into the existing paragraph bubbles. */
@@ -53,23 +54,24 @@ export function SearchableBubbleSegments({
   return (
     <>
       {chunks.map((content, index) => (
-        <SearchHighlightContext
+        <SearchableSegment
           key={`${identity}:${index}`}
-          value={{ ...search, bodyQueries: queries?.[index] }}
-        >
-          <BubbleSegment
-            kind={kind}
-            content={content}
-            reaction={index === chunks.length - 1 ? reaction : null}
-          />
-        </SearchHighlightContext>
+          search={search} bodyQueries={queries?.[index]} kind={kind} content={content}
+          reaction={index === chunks.length - 1 ? reaction : null} />
       ))}
     </>
   );
 }
 
+const SearchableSegment = memo(function SearchableSegment({ search, bodyQueries, ...props }: {
+  search: SearchHighlight; bodyQueries?: readonly string[]; kind: "user" | "assistant"; content: string; reaction?: MessageReaction | null;
+}) {
+  const value = useMemo(() => ({ ...search, bodyQueries }), [search, bodyQueries]);
+  return <SearchHighlightContext value={value}><BubbleSegment {...props} /></SearchHighlightContext>;
+});
+
 /** Position the decoration against the final user bubble, outside its clipping surface. */
-export function BubbleSegment({
+function BubbleSegmentInner({
   kind,
   content,
   reaction,
@@ -121,3 +123,5 @@ export function BubbleSegment({
     </div>
   );
 }
+
+export const BubbleSegment = memo(BubbleSegmentInner);
