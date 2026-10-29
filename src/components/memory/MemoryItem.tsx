@@ -1,18 +1,19 @@
 import { useState } from "react";
-import { Pin } from "lucide-react";
+import { Pin, ScrollText } from "lucide-react";
 import { MemoryActions } from "./MemoryActions";
 import type { MemoryAction, MemorySourceRead } from "@/application/memory-management";
 
 import { presentMemoryItem } from "@/components/memory/memory-presentation";
-import type { Memory } from "@/domain/memory";
+import { allowsMemorySourceActions, type Memory } from "@/domain/memory";
 import { cn } from "@/lib/utils";
 
 export function MemoryItem({
   memory,
   pending,
   onSetUnresolved,
-  onAction, onCheckSource, source,
+  onAction, onCheckSource, source, onViewSource,
 }: {
+  readonly onViewSource?: (id: string) => void;
   readonly onAction?: (action: MemoryAction) => void;
   readonly onCheckSource?: (id: string) => void;
   readonly source?: MemorySourceRead;
@@ -22,12 +23,13 @@ export function MemoryItem({
 }) {
   const [expanded, setExpanded] = useState(false);
   const presentation = presentMemoryItem(memory);
+  const showSource = !!onViewSource && allowsMemorySourceActions(memory);
   const canExpand = memory.content.length > 260 || memory.content.split("\n").length > 4;
 
   return (
     <article className="relative px-4 py-3.5 sm:px-6" data-memory-item data-memory-id={memory.id} aria-busy={pending || undefined}>
       <div
-        className={cn("min-w-0", onAction ? "pr-24" : "pr-14")}
+        className={cn("min-w-0", showSource ? "pr-36" : onAction ? "pr-24" : "pr-14")}
         data-memory-item-header="true"
       >
         <div
@@ -64,6 +66,11 @@ export function MemoryItem({
           className="absolute right-2 top-0 flex items-center gap-1 sm:right-4"
           data-memory-item-actions="true"
         >
+          {showSource && <button type="button" aria-label="查看原文" title="查看原文" onClick={() => onViewSource?.(memory.id)}
+            className="grid size-11 shrink-0 place-items-center rounded-xl text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            data-memory-source={memory.id}>
+            <ScrollText className="size-3.5" strokeWidth={1.8} aria-hidden="true" />
+          </button>}
           <MemoryPinAction
             memoryId={memory.id}
             isPinned={memory.isPinned}

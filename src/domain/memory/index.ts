@@ -5,3 +5,5 @@ export * from "@/domain/memory/memory-types";
 export * from "./memory-management-types";
 export * from "./memory-management-client";
 export * from "./memory-management-mappers";
+export * from "./memory-source";
+export * from "./memory-action-policy";

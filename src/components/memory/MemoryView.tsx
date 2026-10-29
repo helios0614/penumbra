@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { Plus, X, ScanText, RefreshCw, LoaderCircle } from "lucide-react";
+import { Plus, X, BrainCircuit, RefreshCw, LoaderCircle } from "lucide-react";
 
 import type {
   SafeMemoryListError,
@@ -23,6 +23,7 @@ import { MemoryPagination } from "./MemoryPagination";
 import { MemoryEditDialog } from "./MemoryEditDialog";
 import { MemoryConfirmDialog } from "./MemoryConfirmDialog";
 import { MemoryManagementFeedback } from "./MemoryManagementFeedback";
+import { MemorySourceDialog } from "./MemorySourceDialog";
 
 export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
   const {
@@ -40,6 +41,7 @@ export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
     retry,
   } = useMemoryList();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [sourceMemoryId, setSourceMemoryId] = useState<string | null>(null);
   const isLoading = state.status === "idle" || state.status === "loading";
   const data = state.data;
   const filters = state.request.filters;
@@ -64,7 +66,7 @@ export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
         actions={
           <>
             <PageHeaderAction aria-label="总结新记忆" title="总结新记忆与已入队的历史来源" disabled={managementState.digestPending || state.isCreating || state.pendingMemoryIds.length > 0} onClick={digestMemories} aria-busy={managementState.digestPending}>
-              {managementState.digestPending ? <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <ScanText aria-hidden="true" />}
+              {managementState.digestPending ? <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <BrainCircuit aria-hidden="true" />}
             </PageHeaderAction>
             <PageHeaderAction aria-label="刷新记忆库" disabled={isLoading} onClick={retry}><RefreshCw aria-hidden="true" /></PageHeaderAction>
             <PageHeaderAction
@@ -119,8 +121,10 @@ export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
         onPageChange={setPage}
         onSetUnresolved={setMemoryUnresolved}
         managementState={managementState} onAction={openMemoryAction} onCheckSource={checkMemorySource} onRefreshTask={refreshMemoryTask}
+        onViewSource={setSourceMemoryId}
       />
 
+      {sourceMemoryId && <MemorySourceDialog key={sourceMemoryId} memoryId={sourceMemoryId} onClose={() => setSourceMemoryId(null)} />}
       {managementState.action && (managementState.action.kind === "edit"
         ? <MemoryEditDialog key={managementState.action.memory.id} memory={managementState.action.memory} pending={managementState.actionPending} error={managementState.actionError} onSubmit={submitMemoryAction} onClose={closeMemoryAction} finalFocus={listScrollRef} />
         : <MemoryConfirmDialog action={managementState.action} pending={managementState.actionPending} error={managementState.actionError} source={managementState.sources[managementState.action.memory.id]} onSubmit={() => { void submitMemoryAction(); }} onClose={closeMemoryAction} onCheckSource={() => checkMemorySource(managementState.action!.memory.id)} finalFocus={listScrollRef} />)}
@@ -147,8 +151,9 @@ export function MemoryReadingPanel({
   onRetry,
   onPageChange,
   onSetUnresolved,
-  managementState, onAction, onCheckSource, onRefreshTask,
+  managementState, onAction, onCheckSource, onRefreshTask, onViewSource,
 }: {
+  readonly onViewSource?: (id: string) => void;
   readonly managementState?: MemoryManagementState;
   readonly onAction?: (action: MemoryAction) => void;
   readonly onCheckSource?: (id: string) => void;
@@ -224,6 +229,7 @@ export function MemoryReadingPanel({
                     pending={pendingMemoryIds.includes(memory.id) || !!managementState?.digestPending}
                     onSetUnresolved={onSetUnresolved}
                     onAction={onAction} onCheckSource={onCheckSource} source={managementState?.sources[memory.id] as MemorySourceRead | undefined}
+                    onViewSource={onViewSource}
                   />
                 ))}
               </div>

@@ -12,7 +12,11 @@ async function run(browser,width) {
   const context=await browser.newContext({viewport:{width,height:844},isMobile:width<768,hasTouch:width<768});
   const page=await context.newPage();page.setDefaultTimeout(10000);
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
-  const state={rows:Array.from({length:31},(_,i)=>({id:`m${i+1}`,content:i===30 ? '长篇记忆\n'+('合成材料中的一行正文。\n'.repeat(14)) : `合成记忆 ${i+1}`,type:'digest',created_at:Date.now()/1000+i,source_conv:null,keywords:JSON.stringify(Array.from({length:i===30?40:2},(_,n)=>`tag-${n}`)),importance:i===30?0.456:0.5,unresolved:0,source_start_ts:1,source_end_ts:10})),requests:[],tasks:{},mode:'success',failEdit:false,failResummary:false,failCombo:false,holdTask:null,holdDigest:null};
+  const diagnostics=[];page.on('console',message=>{if(message.type()==='error')diagnostics.push(message.text());});
+  page.on('requestfailed',request=>diagnostics.push(`${request.url()}: ${request.failure()?.errorText}`));
+  const state={rows:Array.from({length:31},(_,i)=>({id:`m${i+1}`,content:i===30 ? '长篇记忆\n'+('合成材料中的一行正文。\n'.repeat(14)) : `合成记忆 ${i+1}`,type:'digest',created_at:Date.now()/1000+i,source_conv:i===30?'synthetic-conversation':null,keywords:JSON.stringify(Array.from({length:i===30?40:2},(_,n)=>`tag-${n}`)),importance:i===30?0.456:0.5,unresolved:0,source_start_ts:1,source_end_ts:10})),requests:[],tasks:{},mode:'success',failEdit:false,failResummary:false,failCombo:false,holdTask:null,holdDigest:null};
+  const aiSummaryType=`${width===320?'新名字':width===390?'旧名字':'AI'}总结`;
+  Object.assign(state.rows.find(r=>r.id==='m28'),{type:aiSummaryType,source_conv:'synthetic-conversation',source_start_ts:null,source_end_ts:null});
   // Refuse every external request, including fonts; the API handler below serves synthetic data.
   await context.route('**/*',route=>new URL(route.request().url()).origin===origin ? route.continue() : route.abort('blockedbyclient'));
   await page.route('**/api/**',async route=>{
@@ -41,8 +45,18 @@ async function run(browser,width) {
     }
     const taskRead=path.match(/^\/api\/memories\/requeue\/tasks\/(.+)$/);
     if(taskRead){if(state.holdTask)await state.holdTask;return json(state.tasks[taskRead[1]]);}
+    const original=path.match(/^\/api\/memories\/(.+)\/source$/);
+    if(original){
+      if(state.sourceMode==='failure')return json({detail:'private synthetic failure'},503);
+      if(state.sourceMode==='missing')return json({ok:false,message:'该记忆没有可追溯的原文'});
+      return json({ok:true,messages:state.sourceMode==='empty'?[]:[
+        {role:'user',name:'合成用户',content:'原始聊天材料\n保持换行，不推断消息锚点。',created_at:1},
+        {role:'system',name:'系统事件',content:'合成事件记录：<script>不可执行</script>',created_at:2},
+        {role:'assistant',name:'合成助手',content:'原始回复\n'+('长原文阅读内容。'.repeat(80)),created_at:3},
+      ]});
+    }
     const source=path.match(/^\/api\/memories\/(.+)\/requeue-source$/);
-    if(source)return json(source[1]==='m30'?{supported:false,reason:'source_untracked'}:{supported:true,source_count:10});
+    if(source)return json(source[1]==='m30'?{supported:false,reason:'source_untracked'}:state.sourceReasons?.[source[1]]?{supported:false,reason:state.sourceReasons[source[1]]}:{supported:true,source_count:10});
     const combo=path.match(/^\/api\/memories\/(.+)\/delete-and-requeue$/);
     if(combo){
       if(state.failCombo){state.failCombo=false;return json({detail:{code:'source_changed'}},409);}
@@ -79,8 +93,30 @@ async function run(browser,width) {
     assert((await page.getByLabel('记忆分页').innerText()).includes('第 1 / 2 页'));
     const listReads=state.requests.filter(r=>r.path==='/api/memories');assert(listReads.every(r=>r.query.page_size==='30'&&!r.query.created_from&&!r.query.pin_first));
     await geometry('main');assert(await row('m31').getByRole('button',{name:'记忆操作',exact:true}).isVisible());
+    assert.equal(await row('m28').getByRole('button',{name:'查看原文',exact:true}).count(),0);
+    await menu('m28');assert.equal(await activeMenu().getByRole('menuitem').count(),2);
+    assert.equal(await activeMenu().getByRole('menuitem',{name:/重新总结/}).count(),0);
+    assert(await activeMenu().getByRole('menuitem',{name:'编辑',exact:true}).isEnabled());assert(await activeMenu().getByRole('menuitem',{name:'删除',exact:true}).isEnabled());
+    await page.keyboard.press('Escape');await row('m28').getByRole('button',{name:'标记为待继续',exact:true}).click();
+    await row('m28').getByRole('button',{name:'取消待继续标记',exact:true}).waitFor();await row('m28').getByRole('button',{name:'取消待继续标记',exact:true}).click();
+    await row('m28').getByRole('button',{name:'标记为待继续',exact:true}).waitFor();
+    assert(!state.requests.some(r=>/\/m28\/(source|requeue-source|re_summarize|delete-and-requeue)$/.test(r.path)));
+    const sourceDialog=()=>page.getByRole('dialog',{name:'原文对话',exact:true});
+    const openSource=async id=>{await row(id).getByRole('button',{name:'查看原文',exact:true}).click();await sourceDialog().waitFor();};
+    const closeSource=async()=>{await page.keyboard.press('Escape');await sourceDialog().waitFor({state:'hidden'});};
+    await openSource('m31');await sourceDialog().getByText('原始聊天材料',{exact:false}).waitFor();
+    assert.equal(await sourceDialog().locator('.context-message').count(),3);assert.equal(await sourceDialog().locator('[data-context-event]').count(),1);
+    assert.equal(await sourceDialog().getByRole('button',{name:/重新生成|编辑|删除|重新总结/}).count(),0);
+    assert.equal(await sourceDialog().locator('[aria-current],[data-context-message],script,a[href],img').count(),0);
+    await geometry('[role="dialog"]');await geometry('[data-memory-id="m31"] [data-memory-item-actions="true"]');
+    await page.screenshot({path:`${output}/source-${width}.png`});await closeSource();
+    state.sourceMode='empty';await openSource('m30');await sourceDialog().getByText('此来源范围内没有可显示的原文消息。',{exact:true}).waitFor();await closeSource();
+    state.sourceMode='missing';await openSource('m30');await sourceDialog().getByText('原文已不可用',{exact:false}).waitFor();await closeSource();
+    state.sourceMode='failure';await openSource('m31');await sourceDialog().getByRole('alert').waitFor();assert(!(await sourceDialog().innerText()).includes('private'));
+    state.sourceMode='messages';await sourceDialog().getByRole('button',{name:'重新读取',exact:true}).click();await sourceDialog().getByText('原始聊天材料',{exact:false}).waitFor();
+    await page.goBack();await sourceDialog().waitFor({state:'hidden'});assert(await row('m31').isVisible());
     await row('m31').getByRole('button',{name:'展开',exact:true}).click();assert.equal(await row('m31').getByRole('button',{name:'收起',exact:true}).count(),1);
-    await menu('m31');await geometry('[role="menu"][data-open]');await page.screenshot({path:`${output}/menu-${width}.png`});await page.keyboard.press('Escape');
+    await menu('m31');await geometry('[role="menu"][data-open]');await delay(200);await page.screenshot({path:`${output}/menu-${width}.png`});await page.keyboard.press('Escape');
     await choose('m31','编辑');const edit=page.getByRole('dialog',{name:'编辑记忆',exact:true});await edit.waitFor();
     assert((await edit.getByRole('textbox',{name:'关键词',exact:true}).inputValue()).includes('tag-39'));
     assert.equal(await edit.getByRole('spinbutton',{name:'重要度',exact:true}).inputValue(),'0.456');
@@ -101,7 +137,7 @@ async function run(browser,width) {
     await choose('m31','重新总结');await confirm().getByRole('button',{name:'确认重新总结',exact:true}).click();await confirm().waitFor({state:'hidden'});await waitText('[data-memory-id="m31"]','同一 ID 的服务端重新总结');
     assert.equal(await row('m31').getByRole('button',{name:'取消待继续标记',exact:true}).getAttribute('aria-pressed'),'true');
     await row('m31').getByRole('button',{name:'取消待继续标记',exact:true}).click();await row('m31').getByRole('button',{name:'标记为待继续',exact:true}).waitFor();
-    await menu('m30');assert(await activeMenu().getByRole('menuitem',{name:'删除并重新总结来源',exact:true}).isDisabled());assert((await activeMenu().innerText()).includes('没有精确来源'));await page.keyboard.press('Escape');
+    await menu('m30');await activeMenu().getByText('没有精确来源',{exact:false}).waitFor();assert(await activeMenu().getByRole('menuitem',{name:'删除并重新总结来源',exact:true}).isDisabled());await page.keyboard.press('Escape');
     await choose('m31','删除并重新总结来源');await confirm().getByText('来源检查通过',{exact:false}).waitFor();state.failCombo=true;
     await confirm().getByRole('button',{name:'确认删除并入队',exact:true}).click();await confirm().getByRole('alert').waitFor();assert(await confirm().getByRole('button',{name:'确认删除并入队',exact:true}).isDisabled());assert(state.rows.some(r=>r.id==='m31'));
     await confirm().getByRole('button',{name:'重新检查来源',exact:true}).click();await confirm().getByText('来源检查通过',{exact:false}).waitFor();await geometry('[role="alertdialog"]');
@@ -114,7 +150,15 @@ async function run(browser,width) {
     await page.getByText('正在批量总结，可能包含新增消息和已入队的历史来源，请稍候…',{exact:true}).waitFor();
     assert(await page.getByRole('button',{name:'总结新记忆',exact:true}).isDisabled());assert(await page.getByRole('button',{name:'标记为待继续',exact:true}).first().isDisabled());
     await page.getByRole('button',{name:'总结新记忆',exact:true}).dispatchEvent('click');assert.equal(state.requests.filter(r=>r.path==='/api/memories/digest').length,beforeDigest+1);
-    releaseDigest();state.holdDigest=null;await waitText('[data-memory-task="task-1"]','来源总结已完成');await row('regenerated').waitFor();assert.equal(state.rows.find(r=>r.id==='regenerated').content,'历史来源重新总结的服务端结果');
+    let releasePostDigestTask;state.holdTask=new Promise(resolve=>{releasePostDigestTask=resolve;});
+    const beforeSourceReads=state.requests.filter(r=>r.path==='/api/memories/m30/requeue-source').length;
+    releaseDigest();state.holdDigest=null;
+    await page.waitForFunction(()=>!document.querySelector('button[aria-label="总结新记忆"]')?.disabled);
+    assert(state.requests.filter(r=>r.path==='/api/memories/m30/requeue-source').length>beforeSourceReads);
+    await menu('m30');await activeMenu().getByText('没有精确来源',{exact:false}).waitFor();assert(await activeMenu().getByRole('menuitem',{name:'删除并重新总结来源',exact:true}).isDisabled());await page.keyboard.press('Escape');
+    await menu('m29');await page.waitForFunction(()=>!document.querySelector('[role="menu"][data-open] [role="menuitem"]:last-of-type')?.disabled);
+    assert(await activeMenu().getByRole('menuitem',{name:'删除并重新总结来源',exact:true}).isEnabled());await page.keyboard.press('Escape');
+    releasePostDigestTask();state.holdTask=null;await waitText('[data-memory-task="task-1"]','来源总结已完成');await row('regenerated').waitFor();assert.equal(state.rows.find(r=>r.id==='regenerated').content,'历史来源重新总结的服务端结果');
     assert.equal(await page.locator('[data-memory-task]').getByRole('button',{name:'查询状态',exact:true}).count(),0);
     state.mode='empty';await page.getByRole('button',{name:'总结新记忆',exact:true}).click();await page.getByText('当前没有新增内容需要总结',{exact:true}).waitFor();assert((await page.locator('[data-memory-management-feedback]').innerText()).includes('新增 0 条记忆'));
     state.mode='failure';await page.getByRole('button',{name:'总结新记忆',exact:true}).click();await page.getByText('总结中断：辅助模型未完成，任务已保留',{exact:true}).waitFor();
@@ -139,6 +183,9 @@ async function run(browser,width) {
     assert.equal(state.requests.filter(r=>r.path.includes('/requeue/tasks/')).length,beforeTask+1);await page.getByRole('button',{name:'重新进入记忆库',exact:true}).click();await page.locator('[data-memory-id]').first().waitFor();assert.equal(await page.locator('[data-memory-task]').count(),0);
     await page.evaluate(()=>document.documentElement.classList.add('dark'));await page.screenshot({path:`${output}/dark-${width}.png`});assert.deepEqual(errors,[]);
     console.log(JSON.stringify({width,requests:state.requests.length,edits:writes.length,taskReads:reads,errors}));
+  } catch(error) {
+    console.error(JSON.stringify({width,url:page.url(),errors,diagnostics,requests:state.requests,body:await page.locator('body').innerText()}));
+    await page.screenshot({path:`${output}/failure-${width}.png`});throw error;
   } finally {await context.close();}
 }
 (async()=>{fs.mkdirSync(output,{recursive:true});const browser=await chromium.launch({headless:true,...(process.argv[3]?{executablePath:process.argv[3]}:{})});try{for(const width of [320,390,1280])await run(browser,width);}finally{await browser.close();}})().catch(error=>{console.error(error);process.exitCode=1;});

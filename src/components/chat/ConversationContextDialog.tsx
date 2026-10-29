@@ -1,12 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api";
 import { ReadonlyConversation } from "./ReadonlyConversation";
 import { readConversationContext, contextTime, type ConversationContextAnchor,
   type ConversationContext, type ConversationContextReader } from "./conversation-context";
-import { useReadonlyDialogFrame } from "./useReadonlyDialogFrame";
-import "./global-search.css";
+import { ReadonlyConversationDialog } from "./ReadonlyConversationDialog";
 
 type State = { key: string; data?: ConversationContext; error?: "unavailable" | "failed" };
 export function ConversationContextDialog({ anchor, onClose, read = readConversationContext, unavailable = false }: {
@@ -24,7 +21,6 @@ export function ConversationContextDialog({ anchor, onClose, read = readConversa
   const key = JSON.stringify([anchorKey, session.current.version, attempt]);
   const identity = useRef(key);
   identity.current = key;
-  const contentRef = useReadonlyDialogFrame(!!anchor, onClose, "conversationContext");
   useEffect(() => {
     const generation = ++sequence.current;
     if (!anchor || unavailable) { setState({ key }); return; }
@@ -47,19 +43,10 @@ export function ConversationContextDialog({ anchor, onClose, read = readConversa
   }, [key, attempt, read, unavailable]);
   const visible = state.key === key ? state : { key };
   const target = visible.data?.messages.find(m => m.id === anchor?.messageId);
-  return <Dialog open={!!anchor} onOpenChange={open => { if (!open) onClose(); }}>
-    <DialogContent ref={contentRef} className="mist-paper conversation-context-dialog max-w-2xl" initialFocus={contentRef}>
-      <DialogHeader className="px-4 pb-3 pt-4 sm:px-5 sm:pb-3 sm:pt-4">
-        <DialogTitle>原文对话</DialogTitle>
-        <DialogDescription>{visible.data?.conversationTitle ?? anchor?.conversationTitle ?? "来源会话"}{target && <> · {contextTime(target.createdAt)}</>}</DialogDescription>
-      </DialogHeader>
-      <DialogBody className="p-3 sm:p-4">
-        {unavailable || visible.error === "unavailable"
-          ? <p role="status">原文已不可用，可能已被删除或当前无法读取。</p>
-          : visible.error ? <div role="alert"><p>原文读取失败，请稍后重试。</p><Button variant="ghost" className="mt-2" onClick={() => retry(n => n + 1)}>重新读取</Button></div>
-          : visible.data ? <ReadonlyConversation messages={visible.data.messages} targetId={anchor!.messageId} />
-          : <p role="status">正在读取原文…</p>}
-      </DialogBody>
-    </DialogContent>
-  </Dialog>;
+  return <ReadonlyConversationDialog open={!!anchor} onClose={onClose}
+    description={<>{visible.data?.conversationTitle ?? anchor?.conversationTitle ?? "来源会话"}{target && <> · {contextTime(target.createdAt)}</>}</>}
+    status={unavailable || visible.error === "unavailable" ? "unavailable" : visible.error ? "failed" : visible.data ? "ready" : "loading"}
+    onRetry={() => retry(n => n + 1)}>
+    {visible.data && <ReadonlyConversation messages={visible.data.messages} targetId={anchor!.messageId} />}
+  </ReadonlyConversationDialog>;
 }

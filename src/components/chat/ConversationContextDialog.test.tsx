@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { hookSession, find } from "./test-utils/hook-session";
 import { ConversationContextDialog } from "./ConversationContextDialog";
+import { ReadonlyConversationDialog } from "./ReadonlyConversationDialog";
 import { ReadonlyConversation, ReadonlyPublicBody } from "./ReadonlyConversation";
 import type { ConversationContext, ConversationContextAnchor, ConversationContextReader } from "./conversation-context";
 import { mapMessage } from "@/domain/message/message-mappers";
@@ -54,7 +55,7 @@ it("handles missing and forbidden sources with the same safe unavailable message
     const read = vi.fn<ConversationContextReader>().mockRejectedValue(new ApiError("private detail", status));
     const h = hookSession(() => ConversationContextDialog({ anchor: anchor("a"), onClose: vi.fn(), read }));
     h.render(); h.commit(); await flush();
-    const texts = JSON.stringify(h.render());
-    expect(texts).toContain("原文已不可用"); expect(texts).not.toContain("private detail"); h.dispose();
+    expect(find(h.render(), ReadonlyConversationDialog).props.status).toBe("unavailable");
+    expect(JSON.stringify(h.render())).not.toContain("private detail"); h.dispose();
   }
 });

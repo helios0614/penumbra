@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryEditDialog, memoryKeywordDraft } from "./MemoryEditDialog";
 import { MemoryConfirmDialog } from "./MemoryConfirmDialog";
 import { MemoryActions } from "./MemoryActions";
+import { MemoryItem, MemoryPinAction } from "./MemoryItem";
 import { MemoryManagementFeedback } from "./MemoryManagementFeedback";
 import { INITIAL_MEMORY_MANAGEMENT_STATE, type MemorySourceRead } from "@/application/memory-management";
 import type { Memory } from "@/domain/memory";
@@ -27,6 +28,38 @@ function editor() {
   return {...h,submit,close,save:()=>form().props.onSubmit?.({preventDefault:vi.fn()} as never),pending:()=>{pending=true;}};
 }
 describe("memory management presentation",()=>{
+  it.each([undefined, {status:"ready",value:{supported:true,sourceCount:10}}, {status:"error",error:{code:"unknown",message:"failed",uncertain:true}}] as const)("hides source actions for the stored 知远总结 type regardless of cached preflight: %j", source => {
+    const special = {...memory,type:"知远总结",content:"正文不参与类型判断"}; const check=vi.fn(),action=vi.fn();
+    const h=hookSession(()=>MemoryActions({memory:special,pending:false,source,onCheckSource:check,onAction:action}));
+    find(h.render(),Popover).props.onOpenChange?.(true,{} as never);
+    expect(check).not.toHaveBeenCalled(); const items=elements(h.render()).filter(e=>e.props.role==="menuitem");
+    expect(items).toHaveLength(2); expect(JSON.stringify(h.render())).not.toContain("重新总结"); expect(JSON.stringify(h.render())).not.toContain("重新检查来源");
+    (items[0].props.onClick as ()=>void)(); expect(action).toHaveBeenLastCalledWith({kind:"edit",memory:special});
+    (items[1].props.onClick as ()=>void)(); expect(action).toHaveBeenLastCalledWith({kind:"delete",memory:special});
+    h.dispose();
+  });
+  it("hides only the source icon and keeps Pin for 知远总结, including inconsistent legacy metadata", () => {
+    const pin=vi.fn(),view=vi.fn(); const h=hookSession(()=>MemoryItem({memory:{...memory,type:"知远总结"},pending:false,onSetUnresolved:pin,onViewSource:view,onAction:vi.fn(),onCheckSource:vi.fn()}));
+    expect(elements(h.render()).filter(e=>e.props["aria-label"]==="查看原文")).toHaveLength(0);
+    const pinProps=find(h.render(),MemoryPinAction).props;
+    find(MemoryPinAction(pinProps),"button").props.onClick?.({} as never); expect(pin).toHaveBeenCalledWith("m",true); expect(view).not.toHaveBeenCalled();
+    expect(find(h.render(),"div",p=>p["data-memory-item-header" as keyof typeof p]==="true").props.className).toContain("pr-24"); h.dispose();
+  });
+  it.each(["digest","event","future-type",null])("preserves other types' source entry and four actions even when prose says 知远总结: %s", type => {
+    const other={...memory,type,content:"知远总结"}; const check=vi.fn();
+    const h=hookSession(()=>MemoryActions({memory:other,pending:false,source:{status:"ready",value:{supported:false,reason:"source_untracked"}},onCheckSource:check,onAction:vi.fn()}));
+    find(h.render(),Popover).props.onOpenChange?.(true,{} as never); expect(check).toHaveBeenCalledWith("m");
+    const items=elements(h.render()).filter(e=>e.props.role==="menuitem"); expect(items).toHaveLength(4); expect(items[3].props.disabled).toBe(true); h.dispose();
+    const item=hookSession(()=>MemoryItem({memory:other,pending:false,onSetUnresolved:vi.fn(),onViewSource:vi.fn()}));
+    expect(find(item.render(),"button",p=>p["aria-label"]==="查看原文").props.title).toBe("查看原文"); item.dispose();
+  });
+  it.each(["AI总结","澄明总结","历史名字总结","Aion 总结","总结"])("uses the backend name-derived type format without hardcoding a current AI name: %s", type => {
+    const named={...memory,type,content:"与名字无关的正文"};const check=vi.fn();
+    const h=hookSession(()=>MemoryActions({memory:named,pending:false,source:{status:"ready",value:{supported:true,sourceCount:10}},onCheckSource:check,onAction:vi.fn()}));
+    find(h.render(),Popover).props.onOpenChange?.(true,{} as never);expect(check).not.toHaveBeenCalled();expect(elements(h.render()).filter(e=>e.props.role==="menuitem")).toHaveLength(2);h.dispose();
+    const item=hookSession(()=>MemoryItem({memory:named,pending:false,onSetUnresolved:vi.fn(),onViewSource:vi.fn()}));
+    expect(elements(item.render()).filter(e=>e.props["aria-label"]==="查看原文")).toHaveLength(0);expect(find(item.render(),MemoryPinAction).props.memoryId).toBe("m");item.dispose();
+  });
   it("fills full keywords and exact importance, and preserves untouched fields on failed saves",async()=>{
     const s=editor();
     expect(find(s.render(),Textarea).props.value).toBe(memory.content);

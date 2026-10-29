@@ -132,3 +132,83 @@ describe("Memory task unmount cleanup",()=>{
     expect(await s.controller.submit()).toBe(false);expect(s.api.deleteAndRequeueMemory).toHaveBeenCalledOnce();
   });
 });
+
+describe("Source preflight across writes", () => {
+  it.each(["知远总结","AI总结","新名字总结","旧名字总结"])("rejects source actions for %s locally while retaining edit, Pin and ordinary delete", async type => {
+    const special={...memory,type}; const s=setup(vi.fn(async r=>page(r.page,[special]))); await s.list.load();
+    for(const kind of ["resummarize","requeue"] as const) {s.controller.open({kind,memory:special}); expect(s.controller.getState().action).toBeNull(); expect(await s.controller.submit()).toBe(false);}
+    await s.controller.checkSource("m"); expect(s.api.checkMemorySource).not.toHaveBeenCalled();
+    s.controller.open({kind:"edit",memory:special}); expect(await s.controller.submit({content:"edited"})).toBe(true); expect(s.api.editMemory).toHaveBeenCalledOnce();
+    expect(await s.list.setMemoryUnresolved("m",true)).toBe(true); expect(s.pin).toHaveBeenCalledOnce();
+    s.controller.open({kind:"delete",memory:special}); expect(await s.controller.submit()).toBe(true); expect(s.api.deleteMemory).toHaveBeenCalledOnce();
+    expect(s.api.resummarizeMemory).not.toHaveBeenCalled(); expect(s.api.deleteAndRequeueMemory).not.toHaveBeenCalled(); expect(s.api.checkMemorySource).not.toHaveBeenCalled();
+  });
+  it("drops old source cache and cancels late reads when the server GET now identifies 知远总结", async () => {
+    let type="digest"; const s=setup(vi.fn(async r=>page(r.page,[{...memory,type}]))); await s.list.load(); await s.controller.checkSource("m");
+    const late=deferred<{supported:true;sourceCount:number}>(); s.api.checkMemorySource.mockImplementationOnce(()=>late.promise); const pending=s.controller.checkSource("m");
+    const call=s.api.checkMemorySource.mock.calls[1] as unknown as [string,{signal:AbortSignal}]; type="知远总结"; await s.list.load(); await s.controller.checkSource("m");
+    expect(call[1].signal.aborted).toBe(true); late.resolve({supported:true,sourceCount:99}); await pending;
+    expect(s.controller.getState().sources.m).toBeUndefined(); await s.controller.digest(); await tick(); expect(s.api.checkMemorySource).toHaveBeenCalledTimes(2);
+  });
+  it.each([true, false])("rechecks the same source after digest without inventing support (supported=%s)", async supported => {
+    const s = setup(); s.api.checkMemorySource.mockResolvedValue((supported ? { supported: true, sourceCount: 10 } : { supported: false, reason: "source_untracked" }) as never);
+    await s.controller.checkSource("m"); await s.controller.digest(); await tick();
+    expect(s.api.checkMemorySource).toHaveBeenCalledTimes(2);
+    expect(s.controller.getState().sources.m).toMatchObject({ status: "ready", value: supported ? { supported: true } : { supported: false, reason: "source_untracked" } });
+    expect(s.controller.getState().digestPending).toBe(false); expect(s.list.getState().pendingMemoryIds).toEqual([]);
+  });
+  it.each(["source_missing", "source_changed", "source_already_represented", "source_requeue_pending", "source_not_historical"])("uses the fresh backend reason %s after digest", async reason => {
+    const s = setup(); await s.controller.checkSource("m");
+    s.api.checkMemorySource.mockResolvedValueOnce({ supported: false, reason } as never); await s.controller.digest(); await tick();
+    expect(s.controller.getState().sources.m).toMatchObject({ status: "ready", value: { supported: false, reason } });
+  });
+  it.each([false, true])("aborts source reads crossing digest and ignores late results, including digest failure=%s", async failed => {
+    const s = setup(); const late = deferred<{ supported: true; sourceCount: number }>();
+    s.api.checkMemorySource.mockImplementationOnce(() => late.promise); const read = s.controller.checkSource("m");
+    const options = s.api.checkMemorySource.mock.calls[0] as unknown as [string, { signal: AbortSignal }];
+    if (failed) s.api.digestMemories.mockRejectedValueOnce(new ApiError("private", 503));
+    s.api.checkMemorySource.mockResolvedValueOnce({ supported: false, reason: "source_changed" } as never);
+    await s.controller.digest(); await tick(); expect(options[1].signal.aborted).toBe(true);
+    late.resolve({ supported: true, sourceCount: 99 }); await read;
+    expect(s.controller.getState().sources.m).toMatchObject({ value: { supported: false, reason: "source_changed" } });
+    expect(s.controller.getState().digestPending).toBe(false);
+  });
+  it("invalidates cached capabilities while digest runs and allows a fresh menu preflight after it ends", async () => {
+    const s = setup(); await s.controller.checkSource("m"); const held = deferred<MemoryDigestResult>(); s.api.digestMemories.mockImplementationOnce(() => held.promise);
+    const write = s.controller.digest(); expect(s.controller.getState().sources.m.status).toBe("loading");
+    await s.controller.checkSource("m"); expect(s.api.checkMemorySource).toHaveBeenCalledOnce();
+    held.resolve(receipt()); await write; await tick(); expect(s.controller.getState().sources.m).toMatchObject({ value: { supported: true } });
+    s.controller.open({ kind: "requeue", memory }); await tick(); expect(s.api.checkMemorySource).toHaveBeenCalledTimes(3);
+    expect(s.controller.getState().action?.kind).toBe("requeue");
+  });
+  it("releases writes without waiting for post-digest task and source reads", async () => {
+    const s = setup(); s.controller.open({ kind: "requeue", memory }); await tick(); await s.controller.submit(); await tick();
+    await s.controller.checkSource("other"); const heldTask = deferred<MemoryRequeueTask>(); const heldSource = deferred<{ supported: true; sourceCount: number }>();
+    s.api.readMemoryTask.mockImplementationOnce(() => heldTask.promise); s.api.checkMemorySource.mockImplementationOnce(() => heldSource.promise);
+    await s.controller.digest(); expect(s.controller.getState().digestPending).toBe(false); expect(s.list.getState().pendingMemoryIds).toEqual([]);
+    s.controller.open({ kind: "edit", memory: { ...memory, id: "other" } }); expect(s.controller.getState().action?.kind).toBe("edit");
+    expect(await s.controller.submit({ content: "new" })).toBe(true);
+    heldTask.resolve(task()); heldSource.resolve({ supported: true, sourceCount: 99 }); await tick();
+    expect(s.controller.getState().sources.other).toMatchObject({ value: { sourceCount: 10 } });
+  });
+  it.each(["source_untracked", "source_missing", "source_changed", "source_already_represented", "source_requeue_pending"])("preserves authoritative combined conflict %s until an explicit preflight", async code => {
+    const s = setup(); s.controller.open({ kind: "requeue", memory }); await tick();
+    s.api.deleteAndRequeueMemory.mockRejectedValueOnce(new ApiError("private", 409, { detail: { code } }));
+    expect(await s.controller.submit()).toBe(false); expect(s.controller.getState().sources.m).toMatchObject({ value: { supported: false, reason: code } });
+    expect(s.controller.getState().tasks).toEqual([]); expect(s.list.getState().data?.items[0].id).toBe("m"); expect(s.api.deleteMemory).not.toHaveBeenCalled();
+    await s.controller.checkSource("m"); expect(s.controller.getState().sources.m).toMatchObject({ value: { supported: true } });
+  });
+  it("keeps an uncertain combination retryable for same-ID receipt recovery, reconciling only by GET", async () => {
+    const s = setup(); s.controller.open({ kind: "requeue", memory }); await tick();
+    s.api.deleteAndRequeueMemory.mockRejectedValueOnce(new ApiError("private", 0, undefined, "TIMEOUT"));
+    expect(await s.controller.submit()).toBe(false); expect(s.controller.getState().actionError?.uncertain).toBe(true); expect(s.controller.getState().tasks).toEqual([]);
+    expect(s.controller.getState().sources.m).toMatchObject({ value: { supported: true } });
+    expect(await s.controller.submit()).toBe(true); await tick(); expect(s.controller.getState().sources.m).toBeUndefined();
+    expect(s.controller.getState().tasks[0].task.id).toBe("t"); expect(s.api.deleteMemory).not.toHaveBeenCalled();
+  });
+  it("rechecks provenance after single resummary and drops a successfully deleted row's capability", async () => {
+    const s = setup(); await s.controller.checkSource("m"); s.controller.open({ kind: "resummarize", memory }); await s.controller.submit(); await tick();
+    expect(s.api.checkMemorySource).toHaveBeenCalledTimes(2);
+    s.controller.open({ kind: "delete", memory }); await s.controller.submit(); expect(s.controller.getState().sources.m).toBeUndefined(); expect(s.api.checkMemorySource).toHaveBeenCalledTimes(2);
+  });
+});

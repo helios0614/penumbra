@@ -4,9 +4,8 @@ import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
 import type { Message } from "@/domain/message/message-types";
 import { insertableBody } from "./insertable-body";
-import { contextTime } from "./conversation-context";
-import { cn } from "@/lib/utils";
 import { ReadonlyEvent } from "./ReadonlyEvent";
+import { ReadonlyMessageBubble } from "./ReadonlyMessageBubble";
 
 type Node = { type: string; value?: string; depth?: number; ordered?: boolean;
   lang?: string | null; children?: Node[] };
@@ -57,18 +56,10 @@ export function ReadonlyConversation({ messages, targetId }: {
 }) {
   return <ol className="space-y-2" aria-label="原文对话消息">
     {messages.filter(m => ["user", "assistant", "system"].includes(m.roleKind)).map(message =>
-      <li key={message.id} data-context-message={message.id} aria-current={message.id === targetId ? "true" : undefined}
-        className={cn("context-message rounded-2xl px-3 py-2.5 text-sm leading-[1.65] text-foreground",
-          message.roleKind === "user" ? "ml-2 bg-primary/8" : message.roleKind === "assistant" ? "mr-2 bg-ai/12" : "rounded-xl bg-background/25 py-2",
-          message.id === targetId && "context-target")}>
-        {message.roleKind === "system" ? <ReadonlyEvent message={message} target={message.id === targetId} /> : <>
-        <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] leading-5 text-muted-foreground">
-          <span className="font-medium text-muted-strong">{message.roleKind === "user" ? "你" : message.roleKind === "assistant" ? "知远" : "系统通知"}</span>
-          <time dateTime={new Date(message.createdAt * 1000).toISOString()}>{contextTime(message.createdAt)}</time>
-          {message.id === targetId && <span className="text-primary-ink">当前关注</span>}
-        </div>
-        <ReadonlyPublicBody message={message} target={message.id === targetId} />
-        </>}
-      </li>)}
+      <ReadonlyMessageBubble key={message.id} messageId={message.id} role={message.roleKind as "user" | "assistant" | "system"}
+        name={message.roleKind === "user" ? "你" : "知远"} createdAt={message.createdAt} target={message.id === targetId}>
+        {message.roleKind === "system" ? <ReadonlyEvent message={message} target={message.id === targetId} />
+          : <ReadonlyPublicBody message={message} target={message.id === targetId} />}
+      </ReadonlyMessageBubble>)}
   </ol>;
 }
