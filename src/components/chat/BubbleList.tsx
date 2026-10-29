@@ -94,6 +94,8 @@ interface BubbleListProps {
   readonly regenerateUnavailableReason?: string | null;
   readonly onRegenerate?: (messageId: string) => void;
   readonly onInsert?: (text: string) => void;
+  readonly onEdit?: (messageId: string) => void;
+  readonly editUnavailableReason?: (messageId: string) => string | null;
   readonly onLoadOlder?: () => void;
   readonly olderStatus?: OlderPageStatus;
   readonly olderPending?: boolean;
@@ -113,6 +115,8 @@ function BubbleListInner({
   regenerateUnavailableReason,
   onRegenerate,
   onInsert,
+  onEdit,
+  editUnavailableReason,
   onLoadOlder,
   olderStatus,
   olderPending = false,
@@ -238,6 +242,8 @@ function BubbleListInner({
                       regenerateDisabled={!regenerateEnabled}
                       regenerateUnavailableReason={message.id === regenerateTargetId ? regenerateUnavailableReason : "仅最新的普通回复可重新生成。"}
                       onInsert={onInsert}
+                      onEdit={onEdit ? () => onEdit(message.id) : undefined}
+                      editUnavailableReason={editUnavailableReason?.(message.id)}
                     />
                     {message.id===activeMessageId&&activeResult&&<div className="chat-search-match mt-2 rounded-lg px-3 py-2 text-xs text-muted-strong" aria-label="当前消息匹配内容">
                       {activeResult.snippets.map((s,i)=><p key={i} className="break-words leading-6 [overflow-wrap:anywhere]">{highlightSearchText(s.text,query)}</p>)}

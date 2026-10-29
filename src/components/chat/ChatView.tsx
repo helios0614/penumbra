@@ -34,7 +34,10 @@ import { BubbleList, type ChatReadingHandle, type ChatJump, type ReadingBookmark
 import { useChatSearch } from "./useChatSearch";
 import { ChatSearchPanel } from "./ChatSearchPanel";
 import { ChatSearchReveal } from "./ChatSearchReveal";
-import type { MessageSearchResult } from "@/domain/message";
+import type { Message, MessageSearchResult } from "@/domain/message";
+import { editMessageContent, MessageEditError } from "@/domain/message/message-edit";
+import { messageEditContentReason, messageEditWorkspaceReason } from "@/components/chat-workspace/chat-message-edit-policy";
+import { MessageEditDialog } from "./MessageEditDialog";
 import { useSearchBack, hasOpenChatDialog } from "./search-history";
 import { normalizeSearch, searchTextRanges } from "./search-highlight";
 import { ChatShell } from "./ChatShell";
@@ -67,6 +70,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
   const recoveryConversation = useRef(pendingChatConversationId());
   const toast = useToast("chat-conversations");
   const workspace = useChatWorkspace({ preferredConversationId: recoveryConversation.current });
+  const editSaving = useRef(false);
   const userName = useChatUserName(workspace.state.status === "ready");
   const send = useChatSend(workspace.reloadSelectedConversationHistory,
     workspace.state.status === "ready" ? workspace.state.workspace.selectedConversationId : null,
@@ -95,6 +99,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
   };
 
   const sendMessage = async (content: string, attachments: readonly string[] = [], expectedOwner?: string): Promise<boolean> => {
+    if (editSaving.current) return false;
     let current = workspace.getState();
     if (current.status === "ready" && current.workspace.history?.window && !current.workspace.history.window.reachesLatest && current.workspace.selectedConversationId) {
       try { await workspace.navigateHistory(current.workspace.selectedConversationId); } catch { return false; }
@@ -102,6 +107,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
     }
     if (
       current.status !== "ready" ||
+      editSaving.current ||
       current.workspace.selectedConversation === null ||
       (expectedOwner !== undefined && current.workspace.selectedConversation.id !== expectedOwner) ||
       (!getChatSenderAvailability(current, send.getState(current.workspace.selectedConversationId ?? undefined)).enabled || chatSettings.controller.isSaving())
@@ -116,6 +122,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
   };
 
   const regenerateMessage = (messageId: string): Promise<boolean> => {
+    if (editSaving.current) return Promise.resolve(false);
     const current = workspace.getState();
     if (current.status !== "ready") {
       return Promise.resolve(false);
@@ -136,6 +143,22 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       targetMessageId: availability.target.id,
       targetCreatedAt: availability.target.createdAt,
     });
+  };
+
+  const saveMessageEdit = async (original: Message, content: string) => {
+    const current = workspace.getState();
+    const reason = messageEditWorkspaceReason(current, send.getState(original.conversationId)) ?? messageEditContentReason(original);
+    if (editSaving.current || reason) throw new MessageEditError(reason ?? "正在保存消息。");
+    if (current.status !== "ready" || current.workspace.selectedConversationId !== original.conversationId ||
+        !current.workspace.history?.messages.some(message => message.id === original.id && message.rawRole === original.rawRole)) {
+      throw new MessageEditError("当前会话或消息已变化，请关闭并刷新核对。");
+    }
+    editSaving.current = true;
+    try {
+      await editMessageContent(original, content);
+      // Same HTTP-authoritative invalidation path as the backend's msg_updated.
+      await workspace.reconcileSelectedConversationRealtimeEvent({ type: "message-updated", conversationId: original.conversationId, messageId: original.id });
+    } finally { editSaving.current = false; }
   };
 
   const refreshState = async () => {
@@ -164,6 +187,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       getSendState={send.getState}
       onSend={sendMessage}
       onRegenerate={regenerateMessage}
+      onEditMessage={saveMessageEdit}
       onRetryFinalization={recoverExecution}
       onReleaseAfterReview={send.releaseAfterReview}
       onSaveMainSelection={workspace.saveMainSelection}
@@ -201,6 +225,7 @@ export interface ChatWorkspaceViewProps {
   readonly getSendState?: (conversationId?: string) => ChatSendState;
   readonly onSend?: (content: string, attachments?: readonly string[], expectedOwner?: string) => Promise<boolean>;
   readonly onRegenerate?: (messageId: string) => Promise<boolean>;
+  readonly onEditMessage?: (message: Message, content: string) => Promise<void>;
   readonly onRetryFinalization?: () => void | Promise<void>;
   readonly onReleaseAfterReview?: () => void;
   readonly onSaveMainSelection?: (conversationId: string, selection: MainSelection) => Promise<void>;
@@ -229,6 +254,7 @@ export function ChatWorkspaceView({
   getSendState,
   onSend,
   onRegenerate,
+  onEditMessage,
   onRetryFinalization,
   onReleaseAfterReview,
   onSaveMainSelection,
@@ -248,6 +274,7 @@ export function ChatWorkspaceView({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [modelSelectionPending, setModelSelectionPending] = useState(false);
   const [conversationAction, setConversationAction] = useState<ConversationAction | null>(null);
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [managementError, setManagementError] = useState<string | null>(null);
   const drafts = useRef(draftSession?.texts ?? new Map<string, SenderDraft>());
   const senderRef = useRef<SenderHandle | null>(null);
@@ -256,6 +283,7 @@ export function ChatWorkspaceView({
   const media = useAttachmentDrafts(ownerRef.current, draftSession?.attachments);
   const pasteScopeRef = useRef<HTMLDivElement>(null);
   const draftOwner = ownerRef.current;
+  useEffect(() => { setEditingMessage(null); }, [draftOwner]);
   // Workspace readiness gates editing; execution ownership only gates submission.
   const draftEditable = getChatSenderAvailability(state, INITIAL_CHAT_SEND_STATE).enabled && !modelSelectionPending && onSend !== undefined;
   const receiveFiles = useCallback((files: readonly File[]) => {
@@ -594,6 +622,14 @@ export function ChatWorkspaceView({
               onLatest={()=>void latest()}
               timelineKey={workspace.selectedConversation.id}
               messages={messages}
+              onEdit={onEditMessage ? messageId => {
+                const message = workspace.history?.messages.find(item => item.id === messageId);
+                if (message && !messageEditWorkspaceReason(state, getSendState?.(draftOwner ?? undefined) ?? sendState) && !messageEditContentReason(message)) setEditingMessage(message);
+              } : undefined}
+              editUnavailableReason={messageId => {
+                const message = workspace.history?.messages.find(item => item.id === messageId);
+                return messageEditWorkspaceReason(state, sendState) ?? (message ? messageEditContentReason(message) : "消息尚未确认保存。");
+              }}
               userName={userName}
               onInsert={draftEditable && !managementLocked && !modelSelectionPending ? (text) => {
                 if (ownerRef.current === draftOwner) senderRef.current?.append(text);
@@ -615,6 +651,13 @@ export function ChatWorkspaceView({
           )}
 
       </ChatShell>
+      {editingMessage?.conversationId === draftOwner && onEditMessage && <MessageEditDialog
+        key={`${editingMessage.conversationId}:${editingMessage.id}`}
+        message={editingMessage}
+        unavailableReason={messageEditWorkspaceReason(state, sendState)}
+        onSave={onEditMessage}
+        onClose={() => setEditingMessage(null)}
+      />}
       {conversationAction && onRenameConversation && onDeleteConversation && <ConversationDialog
         key={`${conversationAction.kind}:${conversationAction.id}`}
         action={conversationAction}

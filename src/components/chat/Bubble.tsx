@@ -92,6 +92,8 @@ interface BubbleProps {
   readonly regenerateDisabled?: boolean;
   readonly regenerateUnavailableReason?: string | null;
   readonly onInsert?: (text: string) => void;
+  readonly onEdit?: () => void;
+  readonly editUnavailableReason?: string | null;
 }
 
 function BubbleInner({
@@ -101,6 +103,8 @@ function BubbleInner({
   regenerateDisabled = false,
   regenerateUnavailableReason,
   onInsert,
+  onEdit,
+  editUnavailableReason,
 }: BubbleProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
   useChatRenderTrace(message);
@@ -167,6 +171,8 @@ function BubbleInner({
             <MessageActions
               role={message.kind}
               content={message.content}
+              onEdit={onEdit}
+              editUnavailableReason={editUnavailableReason}
               onRegenerate={message.kind === "assistant" && message.error ? undefined : onRegenerate}
               regenerateDisabled={regenerateDisabled}
               onInsert={insertText ? onInsert : undefined}

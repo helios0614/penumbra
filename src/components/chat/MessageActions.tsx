@@ -1,5 +1,5 @@
 import { memo, useRef } from "react";
-import { Copy, RefreshCw, TextCursorInput, Trash2 } from "lucide-react";
+import { Copy, Pencil, RefreshCw, TextCursorInput, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -15,6 +15,8 @@ interface MessageActionsProps {
   onRegenerate?: () => void;
   regenerateDisabled?: boolean;
   onDelete?: () => void;
+  onEdit?: () => void;
+  editUnavailableReason?: string | null;
   className?: string;
   onInsert?: (text: string) => void;
   getSelectedText?: () => string | null;
@@ -28,6 +30,8 @@ function MessageActionsInner({
   onRegenerate,
   regenerateDisabled = false,
   onDelete,
+  onEdit,
+  editUnavailableReason,
   className,
   onInsert,
   getSelectedText,
@@ -56,6 +60,15 @@ function MessageActionsInner({
         </TooltipTrigger>
         <TooltipContent>复制</TooltipContent>
       </Tooltip>
+
+      {role !== "system" && onEdit && <Tooltip>
+        <TooltipTrigger render={<Button type="button" variant="ghost" size="icon-xs"
+          aria-label="编辑消息" title={editUnavailableReason ?? "编辑消息"} disabled={!!editUnavailableReason}
+          className="text-muted-foreground hover:text-foreground" onClick={onEdit} />}>
+          <Pencil className="size-3" aria-hidden="true" />
+        </TooltipTrigger>
+        <TooltipContent>{editUnavailableReason ?? "编辑"}</TooltipContent>
+      </Tooltip>}
 
       {role === "assistant" && onInsert && insertContent.trim() && <Tooltip>
         <TooltipTrigger render={<Button variant="ghost" size="icon-xs"
