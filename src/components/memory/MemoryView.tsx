@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
+import { Plus, X, ScanText, RefreshCw, LoaderCircle } from "lucide-react";
 
 import type {
   SafeMemoryListError,
@@ -18,10 +18,16 @@ import { useMemoryList } from "@/components/memory/useMemoryList";
 import { PageHeader, PageHeaderAction } from "@/components/ui/page-header";
 import type { MemoryPage } from "@/domain/memory";
 import { cn } from "@/lib/utils";
+import type { MemoryAction, MemoryManagementState, MemorySourceRead } from "@/application/memory-management";
+import { MemoryPagination } from "./MemoryPagination";
+import { MemoryEditDialog } from "./MemoryEditDialog";
+import { MemoryConfirmDialog } from "./MemoryConfirmDialog";
+import { MemoryManagementFeedback } from "./MemoryManagementFeedback";
 
 export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
   const {
     state,
+    managementState, openMemoryAction, closeMemoryAction, submitMemoryAction, checkMemorySource, digestMemories, refreshMemoryTask,
     searchInput,
     setSearchInput,
     setDateFilter,
@@ -57,7 +63,12 @@ export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
         description="那些留下来的片段，会在需要时重新浮上来。"
         actions={
           <>
+            <PageHeaderAction aria-label="总结新记忆" title="总结新记忆与已入队的历史来源" disabled={managementState.digestPending || state.isCreating || state.pendingMemoryIds.length > 0} onClick={digestMemories} aria-busy={managementState.digestPending}>
+              {managementState.digestPending ? <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <ScanText aria-hidden="true" />}
+            </PageHeaderAction>
+            <PageHeaderAction aria-label="刷新记忆库" disabled={isLoading} onClick={retry}><RefreshCw aria-hidden="true" /></PageHeaderAction>
             <PageHeaderAction
+              disabled={managementState.digestPending}
               type="button"
               onClick={() => {
                 clearCreateError();
@@ -107,8 +118,12 @@ export function MemoryView({ onBack }: { readonly onBack?: () => void }) {
         onRetry={retry}
         onPageChange={setPage}
         onSetUnresolved={setMemoryUnresolved}
+        managementState={managementState} onAction={openMemoryAction} onCheckSource={checkMemorySource} onRefreshTask={refreshMemoryTask}
       />
 
+      {managementState.action && (managementState.action.kind === "edit"
+        ? <MemoryEditDialog key={managementState.action.memory.id} memory={managementState.action.memory} pending={managementState.actionPending} error={managementState.actionError} onSubmit={submitMemoryAction} onClose={closeMemoryAction} finalFocus={listScrollRef} />
+        : <MemoryConfirmDialog action={managementState.action} pending={managementState.actionPending} error={managementState.actionError} source={managementState.sources[managementState.action.memory.id]} onSubmit={() => { void submitMemoryAction(); }} onClose={closeMemoryAction} onCheckSource={() => checkMemorySource(managementState.action!.memory.id)} finalFocus={listScrollRef} />)}
       <MemoryCreateDialog
         open={createDialogOpen}
         isCreating={state.isCreating}
@@ -132,7 +147,12 @@ export function MemoryReadingPanel({
   onRetry,
   onPageChange,
   onSetUnresolved,
+  managementState, onAction, onCheckSource, onRefreshTask,
 }: {
+  readonly managementState?: MemoryManagementState;
+  readonly onAction?: (action: MemoryAction) => void;
+  readonly onCheckSource?: (id: string) => void;
+  readonly onRefreshTask?: (id: string) => void;
   readonly data: MemoryPage | null;
   readonly isLoading: boolean;
   readonly error: SafeMemoryListError | null;
@@ -183,6 +203,7 @@ export function MemoryReadingPanel({
         tabIndex={0}
         data-memory-list-scroll="true"
       >
+        {managementState && onRefreshTask && <MemoryManagementFeedback state={managementState} onRefreshTask={onRefreshTask} />}
         {mutationError && (
           <MemoryMutationError error={mutationError} onRetry={onRetry} isLoading={isLoading} />
         )}
@@ -200,8 +221,9 @@ export function MemoryReadingPanel({
                   <MemoryItem
                     key={memory.id}
                     memory={memory}
-                    pending={pendingMemoryIds.includes(memory.id)}
+                    pending={pendingMemoryIds.includes(memory.id) || !!managementState?.digestPending}
                     onSetUnresolved={onSetUnresolved}
+                    onAction={onAction} onCheckSource={onCheckSource} source={managementState?.sources[memory.id] as MemorySourceRead | undefined}
                   />
                 ))}
               </div>
@@ -235,52 +257,5 @@ export function resetMemoryListScrollPosition(
   if (scrollRegion) scrollRegion.scrollTop = 0;
 }
 
-function MemoryPagination({
-  page,
-  pageSize,
-  total,
-  hasMore,
-  disabled,
-  onPageChange,
-}: {
-  readonly page: number;
-  readonly pageSize: number;
-  readonly total: number;
-  readonly hasMore: boolean;
-  readonly disabled: boolean;
-  readonly onPageChange: (page: number) => void;
-}) {
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  return (
-    <nav className="flex items-center justify-center gap-3" aria-label="记忆分页">
-      <button
-        type="button"
-        onClick={() => onPageChange(page - 1)}
-        disabled={disabled || page <= 1}
-        className="grid size-11 place-items-center rounded-xl text-muted-strong transition-colors hover:bg-primary/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-        aria-label="上一页"
-        title="上一页"
-      >
-        <ChevronLeft className="size-4" aria-hidden="true" />
-      </button>
-      <span
-        className="min-w-24 text-center text-[11px] font-normal leading-none text-muted-foreground"
-        data-memory-pagination-label="true"
-      >
-        第 {page} / {totalPages} 页
-      </span>
-      <button
-        type="button"
-        onClick={() => onPageChange(page + 1)}
-        disabled={disabled || !hasMore}
-        className="grid size-11 place-items-center rounded-xl text-muted-strong transition-colors hover:bg-primary/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-        aria-label="下一页"
-        title="下一页"
-      >
-        <ChevronRight className="size-4" aria-hidden="true" />
-      </button>
-    </nav>
-  );
-}
 
 export default MemoryView;

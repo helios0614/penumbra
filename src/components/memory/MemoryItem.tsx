@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Pin } from "lucide-react";
+import { MemoryActions } from "./MemoryActions";
+import type { MemoryAction, MemorySourceRead } from "@/application/memory-management";
 
 import { presentMemoryItem } from "@/components/memory/memory-presentation";
 import type { Memory } from "@/domain/memory";
@@ -9,7 +11,11 @@ export function MemoryItem({
   memory,
   pending,
   onSetUnresolved,
+  onAction, onCheckSource, source,
 }: {
+  readonly onAction?: (action: MemoryAction) => void;
+  readonly onCheckSource?: (id: string) => void;
+  readonly source?: MemorySourceRead;
   readonly memory: Memory;
   readonly pending: boolean;
   readonly onSetUnresolved: (memoryId: string, unresolved: boolean) => void;
@@ -19,9 +25,9 @@ export function MemoryItem({
   const canExpand = memory.content.length > 260 || memory.content.split("\n").length > 4;
 
   return (
-    <article className="relative px-4 py-3.5 sm:px-6" data-memory-item>
+    <article className="relative px-4 py-3.5 sm:px-6" data-memory-item data-memory-id={memory.id} aria-busy={pending || undefined}>
       <div
-        className="min-w-0 pr-14"
+        className={cn("min-w-0", onAction ? "pr-24" : "pr-14")}
         data-memory-item-header="true"
       >
         <div
@@ -64,6 +70,7 @@ export function MemoryItem({
             pending={pending}
             onSetUnresolved={onSetUnresolved}
           />
+          {onAction && onCheckSource && <MemoryActions memory={memory} pending={pending} source={source} onAction={onAction} onCheckSource={onCheckSource} />}
         </div>
       </div>
 

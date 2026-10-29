@@ -14,6 +14,7 @@ import {
   type MemoryListState,
 } from "@/application/memory-list/memory-list-types";
 import {
+  MemoryBusinessError,
   type CreateMemoryInput,
   type MemoryCreateResult,
   setMemoryUnresolved,
@@ -47,6 +48,7 @@ export interface MemoryListController {
   setMemoryUnresolved(memoryId: string, unresolved: boolean): Promise<boolean>;
   createMemory(input: CreateMemoryInput): Promise<boolean>;
   clearCreateError(): void;
+  runWrite<T>(key: string, write: (options: ApiRequestOptions) => Promise<T>, syncMessage: string): Promise<T>;
   subscribe(listener: (state: MemoryListState) => void): () => void;
   dispose(): void;
 }
@@ -64,6 +66,7 @@ export function createMemoryListController(
   const mutationControllers = new Map<string, AbortController>();
   const pendingMemoryIds = new Set<string>();
   let createInFlight = false;
+  let recoverEmptyAfterWrite = false;
   // A confirmed write stays unsynchronized until a current GET succeeds,
   // including when its first refresh is superseded by a newer query.
   let pendingSyncError: MemoryListState["mutationError"] = null;
@@ -113,6 +116,11 @@ export function createMemoryListController(
       if (disposed || controller.signal.aborted || sequence !== requestSequence) {
         return "superseded";
       }
+      if (recoverEmptyAfterWrite && data.items.length === 0 && request.page > 1) {
+        const page = Math.min(request.page - 1, Math.max(1, Math.ceil(data.total / data.pageSize)));
+        return execute({ ...request, page }, mode);
+      }
+      recoverEmptyAfterWrite = false;
       pendingSyncError = null;
       publish({
         status: "ready",
@@ -272,6 +280,33 @@ export function createMemoryListController(
           createError: toSafeMemoryCreateError(error),
         });
         return false;
+      }
+    },
+
+    async runWrite<T>(key: string, write: (options: ApiRequestOptions) => Promise<T>, syncMessage: string): Promise<T> {
+      if (disposed || mutationControllers.has(key)) throw new MemoryBusinessError("operation_busy");
+      const controller = new AbortController();
+      mutationControllers.set(key, controller);
+      pendingMemoryIds.add(key);
+      publishMutationState(state.mutationError?.code === "sync" ? state.mutationError : null);
+      try {
+        const result = await write({ signal: controller.signal });
+        if (disposed || controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
+        recoverEmptyAfterWrite = true;
+        pendingSyncError = { code: "sync", message: syncMessage };
+        await execute(state.request, "reconcile");
+        return result;
+      } catch (error) {
+        if (!disposed && !controller.signal.aborted && !isAbortError(error)) {
+          recoverEmptyAfterWrite = true;
+          pendingSyncError = { code: "sync", message: "操作后的记忆列表暂时无法同步，请重新读取列表核对。" };
+          await execute(state.request, "reconcile");
+        }
+        throw error;
+      } finally {
+        mutationControllers.delete(key);
+        pendingMemoryIds.delete(key);
+        if (!disposed) publishMutationState(state.mutationError);
       }
     },
 

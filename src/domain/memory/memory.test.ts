@@ -97,6 +97,7 @@ describe("memory list adapter", () => {
           createdAt: 1_720_000_000.5,
           sourceConversationId: "conv_1",
           tags: ["海边", "电影"],
+          keywordsForEdit: '["  海边  ","电影","电影",4,null]',
           importance: 0.8,
           sourceStartedAt: 1_719_999_900,
           sourceEndedAt: 1_720_000_000,

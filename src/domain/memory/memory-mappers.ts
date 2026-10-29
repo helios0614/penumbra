@@ -186,6 +186,7 @@ function toMemory(dto: MemoryListItemDto): Memory {
     createdAt: dto.created_at,
     sourceConversationId: normalizeOptionalText(dto.source_conv),
     tags: normalizeTags(dto.keywords),
+    ...(dto.keywords != null ? { keywordsForEdit: typeof dto.keywords === "string" ? dto.keywords : JSON.stringify(dto.keywords) } : {}),
     importance: normalizeImportance(dto.importance),
     sourceStartedAt: normalizeTimestamp(dto.source_start_ts),
     sourceEndedAt: normalizeTimestamp(dto.source_end_ts),

@@ -5,6 +5,8 @@ export type Memory = {
   readonly createdAt: number;
   readonly sourceConversationId: string | null;
   readonly tags: readonly string[];
+  /** Full wire keywords for editing; the reading tags projection is capped. */
+  readonly keywordsForEdit?: string;
   readonly importance: number | null;
   readonly sourceStartedAt: number | null;
   readonly sourceEndedAt: number | null;
