@@ -1,13 +1,20 @@
 import { apiGet, apiPost, apiRequest, openApiStream, StreamContractError, type ApiRequestOptions } from "@/lib/api";
 import { parseSseStream } from "@/lib/sse";
 import { parseTriggerConfig, parseQuickNotePage, parseIncomplete, parseQuickNoteLog, requireAcknowledgement } from "./quick-note-mappers";
-import { QuickNoteContractError, type QuickNoteQuery, type QuickNote, type BackfillInput } from "./quick-note-types";
+import { QuickNoteContractError, type QuickNoteQuery, type QuickNote, type BackfillInput, type TriggerConfigInput } from "./quick-note-types";
+import { validateTriggerConfigInput } from "./quick-note-config";
 
 const endpoint = "/api/quick-notes";
 const path = (id: string) => `${endpoint}/${encodeURIComponent(id)}`;
 
 export async function getTriggerConfig(options?: ApiRequestOptions) {
-  return parseTriggerConfig(await apiGet<unknown>(`${endpoint}/trigger-config`, options));
+  return parseTriggerConfig(await apiGet<unknown>(`${endpoint}/trigger-config`, { ...options, cache: "no-store" }));
+}
+
+export async function saveTriggerConfig(input: TriggerConfigInput, options?: ApiRequestOptions): Promise<void> {
+  validateTriggerConfigInput(input);
+  // PUT returns only hours/labels. The subsequent GET supplies authoritative date metadata.
+  await apiRequest<unknown>(`${endpoint}/trigger-config`, { ...options, method: "PUT", body: { hours: input.hours, labels: input.labels } });
 }
 
 export async function listQuickNotes(query: QuickNoteQuery, options?: ApiRequestOptions) {

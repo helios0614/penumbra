@@ -25,6 +25,26 @@ function setup() {
 }
 
 describe("Quick Note loading, pagination, and request lifetimes", () => {
+  it("does not reload records when opening the editor reads an unchanged config", async () => {
+    const { deps, controller: c } = setup(); await c.loadConfig();
+    const data = c.getState().data;
+    await c.applyConfig({ ...config, hours: [...config.hours], labels: { ...config.labels } });
+    expect(deps.listQuickNotes).toHaveBeenCalledOnce(); expect(c.getState().data).toBe(data);
+    c.dispose();
+  });
+  it("applies readback config to date queries and invalidates stale config and candidates", async () => {
+    const { deps, controller: c } = setup(); await c.loadConfig();
+    const candidate = deferred<readonly client.IncompletePeriod[]>(); deps.getIncomplete.mockReturnValueOnce(candidate.promise);
+    const candidates = c.loadCandidates();
+    const pendingConfig = deferred<TriggerConfig>(); deps.getTriggerConfig.mockReturnValueOnce(pendingConfig.promise);
+    const older = c.loadConfig();
+    const updated = { ...config, hours: [6, 14, 21], dayBoundaryHour: 6, labels: { "6": "夜", "14": "日", "21": "晚" } };
+    await c.applyConfig(updated);
+    expect(deps.listQuickNotes).toHaveBeenLastCalledWith(expect.objectContaining({ periodFrom: Date.parse("2026-10-15T22:00Z") / 1000, periodTo: Date.parse("2026-10-16T22:00Z") / 1000 }), expect.anything());
+    pendingConfig.resolve(config); candidate.resolve([]); await Promise.all([older, candidates]);
+    expect(c.getState()).toMatchObject({ config: updated, candidates: null, candidatesLoading: false });
+    c.dispose();
+  });
   it("waits for real config, computes business date and paginated bounds, and recovers config failures", async () => {
     const { deps, controller: c } = setup();
     deps.getTriggerConfig.mockRejectedValueOnce(new Error("offline"));

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { backfillQuickNote, getTriggerConfig, listQuickNotes, readQuickNote, rerunQuickNote, saveQuickNote, streamQuickNoteLogs } from "./quick-note-client";
+import { backfillQuickNote, getTriggerConfig, listQuickNotes, readQuickNote, rerunQuickNote, saveQuickNote, saveTriggerConfig, streamQuickNoteLogs } from "./quick-note-client";
+import { triggerConfigInput, triggerConfigRows } from "./quick-note-config";
 import { normalizeOutput, normalizeSummary, parseIncomplete, parseQuickNote, parseQuickNoteLog, parseTriggerConfig } from "./quick-note-mappers";
 
 const configDto = { hours: [20, 5, 13], labels: { "5": "夜晚", "13": "上午", "20": "下午" }, day_boundary_hour: 5, time_zone: "Asia/Shanghai", date_contract_error: null };
@@ -10,9 +11,9 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Quick Note DTOs and saved content", () => {
-  it("parses the hour-keyed labels object and sorts hours without substituting historical labels", () => {
+  it("preserves server order and hour-keyed labels without substituting historical labels", () => {
     const config = parseTriggerConfig(configDto);
-    expect(config.hours).toEqual([5, 13, 20]);
+    expect(config.hours).toEqual([20, 5, 13]);
     expect(config.labels).toEqual(configDto.labels);
     expect(note.periodLabel).toBe("旧时段");
   });
@@ -59,6 +60,30 @@ describe("Quick Note DTOs and saved content", () => {
 });
 
 describe("Quick Note HTTP and SSE contracts", () => {
+  it("saves only hours and their remapped names, permitting repeated and empty names", async () => {
+    const fetch = vi.fn().mockResolvedValue(json({ hours: [6, 14, 21], labels: { "6": "记录", "14": "记录", "21": "" } }));
+    vi.stubGlobal("fetch", fetch);
+    const input = triggerConfigInput([{ hour: "6", label: "记录" }, { hour: "14", label: "记录" }, { hour: "21", label: "" }]);
+    await saveTriggerConfig(input);
+    expect(String(fetch.mock.calls[0][0])).toContain("/api/quick-notes/trigger-config");
+    expect(fetch.mock.calls[0][1].method).toBe("PUT");
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual(input);
+    expect(triggerConfigRows(parseTriggerConfig(configDto)).map((row) => row.hour)).toEqual(["20", "5", "13"]);
+  });
+  it.each(["", " ", "-1", "24", "1.5", "NaN", "1e1", "0x5"])("rejects invalid cutoff %s before sending", async (hour) => {
+    const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+    expect(() => triggerConfigInput([{ hour, label: "夜" }, { hour: "20", label: "日" }])).toThrow("整数");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("rejects duplicates, crossing order, too few hours and mismatched label keys", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    for (const [hours, labels] of [
+      [[5, 5], { "5": "重复" }], [[20, 5], { "20": "夜", "5": "日" }],
+      [[5], { "5": "夜" }], [[5, 12], { "5": "夜", "13": "日" }],
+      [[5, 12.5], { "5": "夜", "12.5": "日" }],
+    ] as const) await expect(saveTriggerConfig({ hours, labels })).rejects.toThrow();
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it("reads real config and requests paginated period_start bounds in Unix seconds", async () => {
     const fetch = vi.fn().mockResolvedValueOnce(json(configDto)).mockResolvedValueOnce(json({ items: [noteDto], page: 2, page_size: 10, total: 11, has_more: false }));
     vi.stubGlobal("fetch", fetch);

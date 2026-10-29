@@ -15,6 +15,11 @@ export interface TriggerConfig {
   readonly timeZone: string;
 }
 
+export interface TriggerConfigInput {
+  readonly hours: readonly number[];
+  readonly labels: Readonly<Record<string, string>>;
+}
+
 export interface QuickNoteQuery {
   readonly page: number;
   readonly pageSize: number;

@@ -9,15 +9,15 @@ const timestamp = (value: unknown): value is number => typeof value === "number"
 const positive = (value: unknown): value is number => Number.isInteger(value) && Number(value) > 0;
 
 export function parseTriggerConfig(value: unknown): TriggerConfig {
-  if (!isRecord(value) || value.date_contract_error !== null || !Array.isArray(value.hours) || !value.hours.length || !value.hours.every(hour) || !isRecord(value.labels) || !hour(value.day_boundary_hour) || typeof value.time_zone !== "string") {
+  if (!isRecord(value) || value.date_contract_error !== null || !Array.isArray(value.hours) || value.hours.length < 2 || !value.hours.every(hour) || !isRecord(value.labels) || !hour(value.day_boundary_hour) || typeof value.time_zone !== "string") {
     throw new QuickNoteContractError("时段配置或日期契约不可用，请重新读取配置");
   }
-  const hours = [...value.hours].sort((a, b) => a - b);
-  if (new Set(hours).size !== hours.length || hours[0] !== value.day_boundary_hour) throw new QuickNoteContractError("时段配置与日界不一致");
+  const hours = [...value.hours];
+  if (new Set(hours).size !== hours.length || Math.min(...hours) !== value.day_boundary_hour || Object.keys(value.labels).length !== hours.length) throw new QuickNoteContractError("时段配置与日界不一致");
   const labels: Record<string, string> = {};
   for (const h of hours) {
     const label = value.labels[String(h)];
-    if (typeof label !== "string" || !label.trim()) throw new QuickNoteContractError("时段名称配置不可用");
+    if (typeof label !== "string") throw new QuickNoteContractError("时段名称配置不可用");
     labels[String(h)] = label;
   }
   try { new Intl.DateTimeFormat("en", { timeZone: value.time_zone }).format(); }

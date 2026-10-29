@@ -179,6 +179,17 @@ export function createQuickNoteController(deps = client, now = () => Date.now())
     getState: () => state,
     subscribe(listener: (value: QuickNoteState) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     load, loadConfig, loadCandidates, mutate, saveEditor, verifyEditor,
+    async applyConfig(config: client.TriggerConfig) {
+      if (disposed) return;
+      const current = state.config;
+      if (current && current.timeZone === config.timeZone && current.dayBoundaryHour === config.dayBoundaryHour && current.hours.length === config.hours.length && current.hours.every((hour, i) => hour === config.hours[i] && current.labels[String(hour)] === config.labels[String(hour)])) return;
+      ++configSeq;
+      configAbort?.abort();
+      ++candidateSeq;
+      candidateAbort?.abort();
+      publish({ config, configLoading: false, configError: null, candidates: null, candidatesLoading: false, candidatesError: null });
+      await load(true, true);
+    },
     clearNotice() { feedbackGeneration++; publish({ notice: null }); },
     async selectDate(date: string) {
       if (disposed) return;

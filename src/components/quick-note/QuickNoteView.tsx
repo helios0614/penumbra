@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
-import { ListRestart, MoreHorizontal, RefreshCw, X } from "lucide-react";
-import type { QuickNote, TriggerConfig } from "@/domain/quick-note";
+import { ListRestart, MoreHorizontal, X } from "lucide-react";
+import type { QuickNote } from "@/domain/quick-note";
 import { Button } from "@/components/ui/button";
 import { PageHeader, PageHeaderAction } from "@/components/ui/page-header";
 import { PageScrollArea } from "@/components/ui/page-scroll-area";
@@ -12,6 +12,8 @@ import { QuickNoteEditor } from "./QuickNoteEditor";
 import { QuickNoteLogs } from "./QuickNoteLogs";
 import { QuickNoteOverview } from "./QuickNoteOverview";
 import { QuickNoteReader } from "./QuickNoteReader";
+import { QuickNoteConfig } from "./QuickNoteConfig";
+export { QuickNoteConfig } from "./QuickNoteConfig";
 import type { NoteAction } from "./QuickNoteSection";
 import { useQuickNoteNavigation } from "./useQuickNoteNavigation";
 import { useQuickNoteLogs, useQuickNotes } from "./useQuickNotes";
@@ -57,7 +59,7 @@ export function QuickNoteView({ onBack }: { readonly onBack?: () => void }) {
           {state.config && <QuickNoteDateNavigation config={state.config} date={state.date} onChange={(date) => void controller?.selectDate(date)} />}
           <QuickNoteLogs state={logs.state} timeZone={state.config?.timeZone} onReconnect={logs.reconnect} />
           <QuickNoteOverview state={pageState} controller={controller} onOpen={navigation.open} />
-          {state.config && <QuickNoteConfig config={state.config} loading={state.configLoading} onReload={() => void controller?.loadConfig()} />}
+          {state.config && <QuickNoteConfig config={state.config} loading={state.configLoading} onReload={() => void controller?.loadConfig()} onRead={(config) => void controller?.applyConfig(config)} />}
         </PageScrollArea>
         {navigation.reader && <div ref={navigation.readerRef} tabIndex={-1} className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden pb-2 focus:outline-none sm:mt-4" aria-label="单篇速记阅读">
           {state.config ? <QuickNoteReader note={selectedNote} timeZone={state.config.timeZone} state={pageState} controller={controller} actionsRef={readerActions} onBack={navigation.back} onAction={action} /> : <div className="mist-glass rounded-[24px] p-4">
@@ -82,15 +84,4 @@ export function QuickNoteView({ onBack }: { readonly onBack?: () => void }) {
       </main>
     </TooltipProvider>
   );
-}
-
-export function QuickNoteConfig({ config, loading, onReload }: { readonly config: TriggerConfig; readonly loading: boolean; readonly onReload: () => void }) {
-  return <details className="mist-glass rounded-[24px] px-4 sm:px-5">
-    <summary className="min-h-11 cursor-pointer py-3 text-sm font-medium">时段配置</summary>
-    <div className="space-y-3 pb-3 text-sm text-muted-strong">
-      <p>业务时区：{config.timeZone} · 日界：{String(config.dayBoundaryHour).padStart(2, "0")}:00</p>
-      <ul className="space-y-2">{config.hours.map((h) => <li key={h}>{config.labels[String(h)]} · 截止 {String(h).padStart(2, "0")}:00</li>)}</ul>
-      <Button variant="ghost" className="h-11 gap-2 px-2 text-xs text-muted-foreground hover:text-foreground" disabled={loading} onClick={onReload}><RefreshCw className="size-3.5" aria-hidden="true" />重新读取配置</Button>
-    </div>
-  </details>;
 }

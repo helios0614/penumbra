@@ -25,7 +25,7 @@ export function QuickNoteReader({ note, timeZone, state, controller, onBack, onA
     setShowTop(false);
   }, [note?.id]);
   const disabled = Boolean(state.pending || state.editor || state.configLoading || state.status === "loading" || state.error);
-  return <section className="quick-note-reader mist-glass-strong flex min-h-0 flex-1 flex-col overflow-hidden rounded-[24px]" aria-label="速记完整阅读">
+  return <section className="quick-note-reader mist-glass-strong flex min-h-0 flex-1 flex-col overflow-hidden rounded-[24px]" data-page-panel="true" aria-label="速记完整阅读">
     <header className="shrink-0 px-4 pt-3 sm:px-7 sm:pt-5" data-quick-note-reader-header="true">
       <div className="mb-3 flex items-center justify-between gap-2">
         <Button variant="ghost" className="h-11 px-2 text-muted-strong" onClick={onBack}><ArrowLeft aria-hidden="true" />返回日期概览</Button>
