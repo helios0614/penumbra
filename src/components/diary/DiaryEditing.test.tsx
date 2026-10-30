@@ -102,6 +102,6 @@ describe("Diary compact global automatic feed row", () => {
     callback(row, (node) => node.type === Button && node.props.children === "重新读取设置"); expect(read).toHaveBeenCalledOnce();
     const state = { ...initialDiaryState("2026-10-23"), calendar: { month: "2026-10", items: [] } };
     const html = renderToStaticMarkup(<DiaryCalendar state={state} controller={active} today={state.selectedDate} onOpen={vi.fn()} />);
-    expect(html.indexOf("自动投喂记忆")).toBeLessThan(html.indexOf("<table")); expect(html).toContain("这一天还没有日记"); active.dispose();
+    expect(html.indexOf("自动投喂记忆")).toBeLessThan(html.indexOf("<table")); expect(html).toContain("日历中尚无这一天的记录"); active.dispose();
   });
 });

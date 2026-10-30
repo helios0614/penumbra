@@ -27,13 +27,18 @@ export function useDiaryChatNavigation(calendarRef: RefObject<HTMLDivElement | n
       saved.current = null;
     }
   }, [entryId, calendarRef, openButtonRef, dateButtonRef]);
+  function openEntry(id: string) {
+    if (!id.trim()) return;
+    capture();
+    window.history.pushState({ ...window.history.state, penumbraDiaryChat: id }, "", diaryChatUrl(window.location.href, id));
+    setEntryId(id);
+  }
   return {
     entryId,
+    openEntry,
     open(item: DiaryCalendarItem) {
       if ((item.calendarState !== "pending" && item.calendarState !== "archived") || !item.entryId.trim()) return;
-      capture();
-      window.history.pushState({ ...window.history.state, penumbraDiaryChat: item.entryId }, "", diaryChatUrl(window.location.href, item.entryId));
-      setEntryId(item.entryId);
+      openEntry(item.entryId);
     },
     back() {
       if (window.history.state?.penumbraDiaryChat === entryId) { window.history.back(); return; }

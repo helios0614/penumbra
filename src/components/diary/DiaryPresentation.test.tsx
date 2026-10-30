@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 
 vi.mock("./useDiary", () => ({ useDiary: vi.fn() }));
 vi.mock("./useDiaryNavigation", () => ({ useDiaryNavigation: vi.fn() }));
+vi.mock("./useDiaryFeed", () => ({ useDiaryFeed: () => ({ state: { busyDate: null, notices: {} }, controller: null }) }));
 vi.mock("./useDiaryChatNavigation", () => ({ useDiaryChatNavigation: () => ({ entryId: null, open: vi.fn(), back: vi.fn() }) }));
 vi.mock("./useDiaryEditorNavigation", () => ({ useDiaryEditorNavigation: () => ({ editorRef: { current: null }, editButtonRef: { current: null }, discard: null, cancel: vi.fn(), exit: vi.fn(), keep: vi.fn(), confirm: vi.fn() }) }));
 vi.mock("@/components/ui/toast", async (importOriginal) => ({ ...await importOriginal<typeof import("@/components/ui/toast")>(), useFeedbackToast: vi.fn() }));
@@ -110,7 +111,7 @@ describe("Diary calendar UI", () => {
     expect(draft).toContain("有保存的正文草稿，尚未归档。");
     expect(draft).not.toMatch(/继续对话|提取正文|重新生成|阅读全文|生成完成/);
     const empty = renderCalendar({ ...loaded, selectedDate: "2026-10-12" });
-    expect(empty).toContain("这一天还没有日记。");
+    expect(empty).toContain("日历中尚无这一天的记录。");
     expect(empty.match(/<button[^>]*data-diary-date="2026-10-12"[^>]*>[\s\S]*?<\/button>/)?.[0]).not.toContain("data-diary-marker");
     const bad = renderCalendar({ ...loaded, selectedDate: invalid.date });
     expect(bad).toContain("日记记录状态异常"); expect(bad).toContain("没有有效的已保存正文");
@@ -138,13 +139,13 @@ describe("Diary calendar UI", () => {
     expect(html).toContain("正文预览暂不可用，可进入阅读重试。"); expect(html).not.toContain("private failure");
     expect(html).toContain("阅读全文：当天的真实标题"); expect(html).not.toMatch(/<button[^>]*\sdisabled(?:=|\s|>)/);
     const empty = renderToStaticMarkup(<DiarySelection date="2026-10-12" item={null} known onOpen={vi.fn()} />);
-    expect(empty).toContain("这一天还没有日记。"); expect(empty).not.toMatch(/<button|min-h-|diary-entry-link|data-diary-marker/);
+    expect(empty).toContain("日历中尚无这一天的记录。"); expect(empty).not.toMatch(/<button|min-h-|diary-entry-link|data-diary-marker/);
   });
   it("shows loading/read errors and explicitly identifies failed refresh with retained data", () => {
     const loading = renderCalendar({ ...loaded, calendar: null, calendarLoading: true });
-    expect(loading).toContain("正在读取日历"); expect(loading).not.toContain("这一天还没有日记");
+    expect(loading).toContain("正在读取日历"); expect(loading).not.toContain("日历中尚无这一天的记录");
     const failed = renderCalendar({ ...loaded, calendar: null, calendarError: "网络连接中断，请重试。" });
-    expect(failed).toContain('role="alert"'); expect(failed).toContain("重新读取日历"); expect(failed).not.toContain("这一天还没有日记");
+    expect(failed).toContain('role="alert"'); expect(failed).toContain("重新读取日历"); expect(failed).not.toContain("日历中尚无这一天的记录");
     const stale = renderCalendar({ ...loaded, calendarError: "网络连接中断，请重试。" });
     expect(stale).toContain("刷新未成功，以下保留上次读取的索引"); expect(stale).toContain("当天的真实标题");
   });
@@ -253,6 +254,7 @@ describe("Diary full-text reader and page", () => {
     const tree = DiaryView({});
     click(find(tree, (el) => el.props["aria-label"] === "刷新日历")); expect(refresh).toHaveBeenCalledOnce();
     expect(setting).toHaveBeenCalledOnce();
-    expect(renderPage(loaded)).not.toMatch(/开始投喂|继续写|封面|摘要|Chat/);
+    expect(renderPage(loaded)).toContain("开始投喂");
+    expect(renderPage(loaded)).not.toMatch(/继续写|封面|摘要|Chat/);
   });
 });

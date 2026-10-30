@@ -161,6 +161,11 @@ export function createDiaryReaderController(
     saveEdit: actions.saveEdit, verifyEdit: actions.verifyEdit, loadAutoFeed: actions.loadAutoFeed, toggleAutoFeed: actions.toggleAutoFeed,
     getState: () => state,
     load: () => loadCalendar(),
+    reloadCalendar() {
+      if (disposed) return Promise.resolve(false);
+      ++calendarSeq; calendarRead?.abort.abort(); calendarRead = null;
+      return loadCalendar();
+    },
     selectMonth: (month: string) => selectMonth(month),
     selectDate(date: string) {
       if (disposed || state.reader || state.editor || !isDiaryDate(date) || date.slice(0, 7) !== state.month) return Promise.resolve(false);

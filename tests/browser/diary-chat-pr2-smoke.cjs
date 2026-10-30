@@ -78,7 +78,8 @@ async function run(browser, path, width, dark = false) {
     await thinking.click(); assert.equal(await thinking.getAttribute('aria-expanded'), 'true');
     assert.equal(await chat.getByText('合成 Thinking 内容', { exact: true }).count(), 1);
     assert.equal(await chat.getByText('合成 DRIFT 内容', { exact: true }).count(), 1);
-    assert.equal(await chat.locator('textarea,[contenteditable="true"]').count(), 0);
+    assert.equal(await chat.getByRole('textbox', { name: '消息正文' }).count(), 1);
+    assert(await chat.getByRole('button', { name: '发送消息', exact: true }).isDisabled());
     assert.equal(await chat.getByRole('button', { name: '复制消息', exact: true }).count(), 0);
     assert.equal(await chat.getByText('finished', { exact: true }).count(), 0); assert.equal(await chat.getByText('must not display').count(), 0);
     assert.equal(await page.locator(path.includes('editorial') ? '.editorial-desktop' : '.desktop-wallpaper').evaluate(el => getComputedStyle(el).backgroundImage), wallpaperBefore);
