@@ -26,6 +26,8 @@ export type FileSyncedRealtimeEventDto = RealtimeEnvelopeDto & {
 };
 
 export type KnownRealtimeEventDto =
+  | { readonly type: "diary_msg_created"; readonly data: { readonly id: string; readonly entry_id: string } }
+  | { readonly type: "diary_entry_created" | "diary_entry_deleted"; readonly data: { readonly id: string } }
   | MessageRealtimeEventDto
   | ConversationRealtimeEventDto
   | FileSyncedRealtimeEventDto

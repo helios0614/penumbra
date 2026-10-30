@@ -10,26 +10,30 @@ import { useDiaryNavigation } from "./useDiaryNavigation";
 import { useDiaryEditorNavigation } from "./useDiaryEditorNavigation";
 import { DiaryDiscardDialog, DiaryEditor } from "./DiaryEditor";
 import "./diary.css";
+import { useDiaryChatNavigation } from "./useDiaryChatNavigation";
+import { DiaryChatView } from "./DiaryChatView";
 
 export function DiaryView({ onBack }: { readonly onBack?: () => void }) {
   const { state, controller, today } = useDiary();
   const navigation = useDiaryNavigation(state, controller);
+  const chat = useDiaryChatNavigation(navigation.calendarRef, navigation.openButtonRef, navigation.dateButtonRef);
   const editing = useDiaryEditorNavigation(state, controller);
   const loading = state.reader ? state.reader.loading : state.calendarLoading;
   const refreshLabel = state.reader ? "刷新正文" : "刷新日历";
   useFeedbackToast(state.notice, state.notice ? { type: "success", text: state.notice.text, description: state.notice.description } : null, `${state.month}:${state.reader?.entryId ?? "calendar"}`);
   return <TooltipProvider>
-    <main className="mx-auto flex h-full max-h-dvh min-h-0 w-full max-w-5xl flex-col overflow-hidden px-4 pb-4 pt-5 sm:px-0 sm:pb-8 sm:pt-8" aria-labelledby="diary-page-title">
+    <main hidden={Boolean(chat.entryId)} style={chat.entryId ? { display: "none" } : undefined} className="mx-auto flex h-full max-h-dvh min-h-0 w-full max-w-5xl flex-col overflow-hidden px-4 pb-4 pt-5 sm:px-0 sm:pb-8 sm:pt-8" aria-labelledby="diary-page-title">
       <PageHeader eyebrow="DIARY" title="日记" titleId="diary-page-title" description="在时间的缝隙里，翻阅被留下来的日常。" actions={<>
         <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label={refreshLabel} disabled={!controller || loading || Boolean(state.editor)} onClick={() => { void controller?.refresh(); if (!state.reader) void controller?.loadAutoFeed(); }} />}><RefreshCw className={loading ? "animate-spin motion-reduce:animate-none" : undefined} aria-hidden="true" /></TooltipTrigger><TooltipContent>{refreshLabel}</TooltipContent></Tooltip>
         {onBack && <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="返回桌面" disabled={Boolean(state.editor?.busy)} onClick={() => editing.exit(onBack)} />}><X aria-hidden="true" /></TooltipTrigger><TooltipContent>返回桌面</TooltipContent></Tooltip>}
       </>} />
       <PageScrollArea scrollRef={navigation.calendarRef} hidden={Boolean(state.reader)} syncKey={`${state.month}:${state.reader ? "reader" : "calendar"}`} label="日记月历与日期预览" topLabel="回到月历顶部" className="mt-3 sm:mt-4" contentClassName="pb-2">
-        <DiaryCalendar state={state} controller={controller} today={today} onOpen={navigation.open} openButtonRef={navigation.openButtonRef} dateButtonRef={navigation.dateButtonRef} />
+        <DiaryCalendar state={state} controller={controller} today={today} onOpen={navigation.open} onOpenChat={chat.open} openButtonRef={navigation.openButtonRef} dateButtonRef={navigation.dateButtonRef} />
       </PageScrollArea>
       {state.reader && !state.editor && <DiaryReader reader={state.reader} readerRef={navigation.readerRef} editButtonRef={editing.editButtonRef} onEdit={() => controller?.beginEdit()} onBack={navigation.back} onRetry={() => void controller?.refresh()} />}
       {state.editor && <DiaryEditor editor={state.editor} controller={controller} editorRef={editing.editorRef} onCancel={editing.cancel} />}
       <DiaryDiscardDialog open={Boolean(editing.discard)} busy={Boolean(state.editor?.busy)} onKeep={editing.keep} onDiscard={editing.confirm} finalFocus={() => state.editor ? true : editing.editButtonRef.current ?? true} />
     </main>
+    {chat.entryId && <DiaryChatView key={chat.entryId} entryId={chat.entryId} onBack={chat.back} />}
   </TooltipProvider>;
 }

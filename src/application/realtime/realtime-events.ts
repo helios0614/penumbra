@@ -16,6 +16,13 @@ export function mapRealtimeEvent(input: unknown): RealtimeEvent {
     }
 
     switch (rawType) {
+      case "diary_msg_created": {
+        const data = eventData(input);
+        return { type: "diary-message-created", entryId: nonEmptyId(data, "entry_id"), messageId: nonEmptyId(data, "id") };
+      }
+      case "diary_entry_created":
+      case "diary_entry_deleted":
+        return { type: rawType === "diary_entry_created" ? "diary-entry-created" : "diary-entry-deleted", entryId: eventId(input, "id") };
       case "reaction":
       case "heart_whisper":
       case "web_search_result": {

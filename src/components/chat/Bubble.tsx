@@ -61,6 +61,8 @@ function NeutralMessage({
 }) {
   return (
     <div
+      data-message-id={message.id}
+      tabIndex={-1}
       className="mist-glass mx-auto flex w-full max-w-[560px] items-start gap-2 rounded-lg px-3 py-2 text-muted-foreground shadow-sm! sm:px-4"
       role="note"
     >
@@ -86,6 +88,7 @@ function NeutralMessage({
 }
 
 interface BubbleProps {
+  readonly showActions?: boolean;
   readonly message: ChatMessageViewModel;
   readonly userName?: string;
   readonly onRegenerate?: () => void;
@@ -97,6 +100,7 @@ interface BubbleProps {
 }
 
 function BubbleInner({
+  showActions = true,
   message,
   userName = "你",
   onRegenerate,
@@ -168,7 +172,7 @@ function BubbleInner({
             {executionLabel}
           </span>
         )}
-        {message.executionStatus === undefined && (
+        {showActions && message.executionStatus === undefined && (
           <div className="chat-message-actions shrink-0 opacity-0 transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100">
             <MessageActions
               role={message.kind}
@@ -210,7 +214,7 @@ function BubbleInner({
             kind={message.kind} reaction={message.kind==="user"?message.capabilities?.reaction:null}/>
           {showEmptyFallback && <p data-message-empty data-chat-non-body className="px-1 py-1 text-xs text-muted-foreground">暂无可显示内容</p>}
           {message.kind === "assistant" && message.error && <div className={cn(BUBBLE_SURFACE, AI_BUBBLE_SURFACE, "whitespace-pre-wrap text-sm break-words")} role="alert">{message.error}
-            {message.executionStatus === undefined && (onRegenerate && !regenerateDisabled
+            {showActions && message.executionStatus === undefined && (onRegenerate && !regenerateDisabled
               ? <div className="mt-2"><Button size="sm" variant="outline" onClick={onRegenerate} aria-label="重新生成回复">重新生成</Button></div>
               : regenerateUnavailableReason ? <p className="mt-2 text-xs text-muted-foreground">{regenerateUnavailableReason}</p> : null)}
           </div>}

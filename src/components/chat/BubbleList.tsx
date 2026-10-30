@@ -43,6 +43,7 @@ function DateSeparator({ timestamp }: { readonly timestamp: number }) {
 }
 
 interface DateGroup {
+  readonly groupKey: string;
   readonly dateKey: string;
   readonly timestamp: number;
   readonly messages: ChatMessageViewModel[];
@@ -50,6 +51,7 @@ interface DateGroup {
 
 function groupByDate(messages: readonly ChatMessageViewModel[]): DateGroup[] {
   const groups: DateGroup[] = [];
+  const occurrences = new Map<string, number>();
   let currentKey = "";
   let currentGroup: DateGroup | null = null;
 
@@ -57,7 +59,10 @@ function groupByDate(messages: readonly ChatMessageViewModel[]): DateGroup[] {
     const key = format(new Date(message.createdAt * 1000), "yyyy-MM-dd");
 
     if (key !== currentKey) {
+      const occurrence = occurrences.get(key) ?? 0;
+      occurrences.set(key, occurrence + 1);
       currentGroup = {
+        groupKey: `${key}:${occurrence}`,
         dateKey: key,
         timestamp: message.createdAt,
         messages: [],
@@ -72,6 +77,7 @@ function groupByDate(messages: readonly ChatMessageViewModel[]): DateGroup[] {
 }
 
 interface BubbleListProps {
+  readonly showActions?: boolean;
   readonly readingRef?: MutableRefObject<ChatReadingHandle | null>;
   readonly jump?: ChatJump | null;
   readonly readingMode?: boolean;
@@ -103,6 +109,7 @@ interface BubbleListProps {
 }
 
 interface MessageRowProps {
+  readonly showActions: boolean;
   readonly message: ChatMessageViewModel;
   readonly userName?: string;
   readonly query: string;
@@ -118,12 +125,12 @@ interface MessageRowProps {
 
 // Per-row handlers and search values stay stable when another message streams.
 const MessageRow = memo(function MessageRow({ message, userName, query, active, result,
-  onRegenerate, regenerateDisabled, regenerateUnavailableReason, onInsert, onEdit, editUnavailableReason }: MessageRowProps) {
+  showActions, onRegenerate, regenerateDisabled, regenerateUnavailableReason, onInsert, onEdit, editUnavailableReason }: MessageRowProps) {
   const regenerate = useCallback(() => onRegenerate?.(message.id), [onRegenerate, message.id]);
   const edit = useCallback(() => onEdit?.(message.id), [onEdit, message.id]);
   const search = useMemo(() => ({ query, active, segments: result?.snippets.map(s => s.segmentKey) }), [query, active, result]);
   return <SearchHighlightContext value={search}>
-    <Bubble message={message} userName={userName} onRegenerate={onRegenerate ? regenerate : undefined}
+    <Bubble message={message} userName={userName} showActions={showActions} onRegenerate={onRegenerate ? regenerate : undefined}
       regenerateDisabled={regenerateDisabled} regenerateUnavailableReason={regenerateUnavailableReason}
       onInsert={onInsert} onEdit={onEdit ? edit : undefined} editUnavailableReason={editUnavailableReason} />
     {active && result && <div className="chat-search-match mt-2 rounded-lg px-3 py-2 text-xs text-muted-strong" aria-label="当前消息匹配内容">
@@ -133,6 +140,7 @@ const MessageRow = memo(function MessageRow({ message, userName, query, active, 
 });
 
 function BubbleListInner({
+  showActions = true,
   readingRef, jump, readingMode=false, query="", activeResult, activeMessageId, onUserRead,
   onLoadNewer, hasNewer=false, newerPending=false, newerError, onLatest,
   audioControllerFactory,
@@ -256,7 +264,7 @@ function BubbleListInner({
         </div>}
         <ChatAudio scope={timelineKey} createController={audioControllerFactory} identities={messages.flatMap(message => "attachments" in message ? message.attachments.flatMap((a, index) => a.kind === "music" ? [musicIdentity(message.id, index, a)] : []) : [])}>
         <CapabilityExpansionProvider>{dateGroups.map((group) => (
-          <div key={group.dateKey}>
+          <div key={group.groupKey}>
             <DateSeparator timestamp={group.timestamp} />
             <div className="flex w-full flex-col items-stretch overflow-hidden">
               {group.messages.map((message, index) => {
@@ -269,6 +277,7 @@ function BubbleListInner({
                     className={cn(isRoleSwitch ? "my-3" : "mt-1")}
                   >
                     <MessageRow
+                      showActions={showActions}
                       message={message}
                       userName={userName}
                       query={query}

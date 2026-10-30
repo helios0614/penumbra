@@ -15,7 +15,8 @@ export function DiaryMarker({ state }: { readonly state: DiaryCalendarState }) {
     : <span className="diary-marker diary-marker-dot" aria-hidden="true" data-diary-marker={state} />;
 }
 
-export function DiaryCalendar({ state, controller, today, onOpen, openButtonRef, dateButtonRef }: {
+export function DiaryCalendar({ state, controller, today, onOpen, onOpenChat, openButtonRef, dateButtonRef }: {
+  readonly onOpenChat?: (item: DiaryCalendarItem) => void;
   readonly state: DiaryState;
   readonly controller: DiaryReaderController | null;
   readonly today: string;
@@ -60,7 +61,7 @@ export function DiaryCalendar({ state, controller, today, onOpen, openButtonRef,
       <span className="flex items-center gap-2"><DiaryMarker state="archived" />已归档</span>
       <span className="flex items-center gap-2"><DiaryMarker state="invalid" />记录异常</span>
     </div>
-    <DiarySelection date={state.selectedDate} item={selected ?? null} known={Boolean(state.calendar)} preview={state.preview} onOpen={onOpen} openButtonRef={openButtonRef} />
+    <DiarySelection date={state.selectedDate} item={selected ?? null} known={Boolean(state.calendar)} preview={state.preview} onOpen={onOpen} onOpenChat={onOpenChat} openButtonRef={openButtonRef} />
     {undated.length > 0 && <div className="mt-4 border-t border-border pt-4 text-[13px] leading-6" role="note" aria-label="日期异常记录">
       <p className="font-medium text-muted-strong">有记录的日期无法对应到日历</p>
       <ul className="mt-2 space-y-2">{undated.map((item) => <li key={item.entryId} className="flex items-start gap-2 [overflow-wrap:anywhere]">
@@ -70,7 +71,8 @@ export function DiaryCalendar({ state, controller, today, onOpen, openButtonRef,
   </section>;
 }
 
-export function DiarySelection({ date, item, known, preview, onOpen, openButtonRef }: {
+export function DiarySelection({ date, item, known, preview, onOpen, onOpenChat, openButtonRef }: {
+  readonly onOpenChat?: (item: DiaryCalendarItem) => void;
   readonly date: string;
   readonly item: DiaryCalendarItem | null;
   readonly known: boolean;
@@ -104,6 +106,7 @@ export function DiarySelection({ date, item, known, preview, onOpen, openButtonR
         : <>
           {item.title?.trim() && <h3 className="mt-2 text-base font-medium leading-7 [overflow-wrap:anywhere]">{item.title}</h3>}
           <p className="mt-1 text-[13px] leading-6 text-muted-strong">{diaryItemDescription(item)}</p>
+          {item.calendarState === "pending" && item.entryId.trim() && onOpenChat && <Button ref={openButtonRef} type="button" variant="ghost" className="mt-2 min-h-11" onClick={() => onOpenChat(item)}>查看对话</Button>}
         </>}
     </div>}
   </section>;

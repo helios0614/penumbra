@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 
 vi.mock("./useDiary", () => ({ useDiary: vi.fn() }));
 vi.mock("./useDiaryNavigation", () => ({ useDiaryNavigation: vi.fn() }));
+vi.mock("./useDiaryChatNavigation", () => ({ useDiaryChatNavigation: () => ({ entryId: null, open: vi.fn(), back: vi.fn() }) }));
 vi.mock("./useDiaryEditorNavigation", () => ({ useDiaryEditorNavigation: () => ({ editorRef: { current: null }, editButtonRef: { current: null }, discard: null, cancel: vi.fn(), exit: vi.fn(), keep: vi.fn(), confirm: vi.fn() }) }));
 vi.mock("@/components/ui/toast", async (importOriginal) => ({ ...await importOriginal<typeof import("@/components/ui/toast")>(), useFeedbackToast: vi.fn() }));
 afterEach(() => vi.resetAllMocks());
