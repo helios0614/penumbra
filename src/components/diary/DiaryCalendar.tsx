@@ -1,5 +1,5 @@
 import type { Ref } from "react";
-import { ChevronLeft, ChevronRight, TriangleAlert } from "lucide-react";
+import { ChevronLeft, ChevronRight, MessagesSquare, TriangleAlert } from "lucide-react";
 import { diaryCalendarWeeks, diaryDateLabel, diaryDateWeekday, diaryItemDescription, diaryItemStatus, diaryMonthLabel, diaryTitle, diaryUndatedItems, DIARY_WEEKDAYS } from "@/application/diary-reader/diary-calendar";
 import type { DiaryReader, DiaryState } from "@/application/diary-reader/diary-reader-state";
 import type { DiaryReaderController } from "@/application/diary-reader/diary-reader-controller";
@@ -81,18 +81,25 @@ export function DiarySelection({ date, item, known, preview, onOpen, onOpenChat,
   readonly openButtonRef?: Ref<HTMLButtonElement>;
 }) {
   const detail = item && preview?.entryId === item.entryId && preview.date === date ? preview : null;
-  const metadata = <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-normal leading-6 text-muted-strong">
+  const metadata = <div data-diary-selection-meta="true" className="flex items-center justify-between gap-3 px-1">
+    <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs font-normal leading-6 text-muted-strong">
       <time dateTime={date}>{diaryDateLabel(date)}</time><span>{diaryDateWeekday(date)}</span>
       {known && item && <span className="flex items-center gap-1.5"><DiaryMarker state={item.calendarState} />{diaryItemStatus(item)}</span>}
-    </span>;
+    </span>
+    {known && item && (item.calendarState === "pending" || item.calendarState === "archived") && item.entryId.trim() && onOpenChat && <Button
+      ref={item.calendarState === "pending" ? openButtonRef : undefined} data-diary-chat-trigger="true" type="button" variant="link" size="compact"
+      className="min-h-11 shrink-0 gap-1.5 px-1 text-xs font-normal text-muted-strong" onClick={() => onOpenChat(item)}>
+      <MessagesSquare className="size-3.5" aria-hidden="true" />查看对话
+    </Button>}
+  </div>;
   const title = diaryTitle(detail?.entry ? detail.entry.title : item?.title ?? null);
   const excerpt = detail?.entry && Array.from(detail.entry.content).slice(0, 180).join("");
   return <section className="mt-3 border-t border-primary/10 pt-3" aria-label="选中日期的日记" aria-live="polite" aria-atomic="true">
+    {metadata}
     {known && item?.calendarState === "archived" ? <Button ref={openButtonRef} type="button" variant="ghost" size="comfortable"
       className="diary-entry-link w-full min-w-0 items-start justify-between gap-3 rounded-2xl px-3 py-3 text-left"
       onClick={() => onOpen(item)} aria-label={`阅读全文：${title}，${diaryDateLabel(date)}`}>
       <span className="min-w-0 flex-1">
-        {metadata}
         <span className="mt-1.5 block text-base font-semibold leading-7 text-foreground [overflow-wrap:anywhere] sm:text-lg">{title}</span>
         {excerpt && <span className="mt-1.5 line-clamp-2 whitespace-pre-line text-[13px] font-normal leading-6 text-muted-strong [overflow-wrap:anywhere]" data-diary-excerpt="true">{excerpt}</span>}
         {detail?.loading && !excerpt && <span className="mt-1.5 block text-xs font-normal leading-6 text-muted-foreground">正在读取正文预览…</span>}
@@ -100,13 +107,11 @@ export function DiarySelection({ date, item, known, preview, onOpen, onOpenChat,
       </span>
       <ChevronRight className="mt-1 size-4 text-muted-strong" aria-hidden="true" />
     </Button> : <div className="px-1 pb-1">
-      {metadata}
       {!known ? <p className="mt-1 text-[13px] leading-6 text-muted-foreground">读取当月记录后，可查看这一天的日记状态。</p>
         : !item ? <p className="mt-1 text-[13px] leading-6 text-muted-foreground">这一天还没有日记。</p>
         : <>
           {item.title?.trim() && <h3 className="mt-2 text-base font-medium leading-7 [overflow-wrap:anywhere]">{item.title}</h3>}
           <p className="mt-1 text-[13px] leading-6 text-muted-strong">{diaryItemDescription(item)}</p>
-          {item.calendarState === "pending" && item.entryId.trim() && onOpenChat && <Button ref={openButtonRef} type="button" variant="ghost" className="mt-2 min-h-11" onClick={() => onOpenChat(item)}>查看对话</Button>}
         </>}
     </div>}
   </section>;

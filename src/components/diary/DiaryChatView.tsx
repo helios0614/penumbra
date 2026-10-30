@@ -6,13 +6,14 @@ import { Button } from "@/components/ui/button";
 import { diaryDateLabel } from "@/application/diary-reader/diary-calendar";
 import { useDiaryChat } from "./useDiaryChat";
 import { presentDiaryMessage } from "./diary-chat-presenter";
+import "./diary-chat.css";
 
 export function DiaryChatView({ entryId, onBack }: { readonly entryId: string; readonly onBack: () => void }) {
   const { state, controller, connection } = useDiaryChat(entryId);
   const heading = useRef<HTMLHeadingElement>(null);
   useLayoutEffect(() => { heading.current?.focus({ preventScroll: true }); }, [entryId]);
   const messages = useMemo(() => state.messages?.map(presentDiaryMessage) ?? [], [state.messages]);
-  return <ChatShell composer={null} header={<header className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-3 sm:px-4">
+  return <div className="diary-chat-reading flex min-h-0 w-full flex-1 overflow-hidden"><ChatShell composer={null} header={<header className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-3 sm:px-4">
     <Button type="button" variant="ghost" className="min-h-11 shrink-0 gap-1 px-2" onClick={onBack} aria-label="返回日历"><ArrowLeft className="size-4" aria-hidden="true" /><span className="text-xs">日历</span></Button>
     <div className="min-w-0 flex-1">
       <h1 ref={heading} tabIndex={-1} className="text-sm font-semibold outline-none">Diary Chat</h1>
@@ -26,5 +27,5 @@ export function DiaryChatView({ entryId, onBack }: { readonly entryId: string; r
   </>}>
     {state.messages !== null && <BubbleList timelineKey={`diary:${entryId}`} messages={messages} showActions={false} />}
     {state.status === "empty" && <p role="status" className="pointer-events-none absolute inset-x-4 top-1/2 text-center text-sm text-muted-strong">暂无消息</p>}
-  </ChatShell>;
+  </ChatShell></div>;
 }

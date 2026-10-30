@@ -30,7 +30,7 @@ export function useDiaryChatNavigation(calendarRef: RefObject<HTMLDivElement | n
   return {
     entryId,
     open(item: DiaryCalendarItem) {
-      if (item.calendarState !== "pending" || !item.entryId.trim()) return;
+      if ((item.calendarState !== "pending" && item.calendarState !== "archived") || !item.entryId.trim()) return;
       capture();
       window.history.pushState({ ...window.history.state, penumbraDiaryChat: item.entryId }, "", diaryChatUrl(window.location.href, item.entryId));
       setEntryId(item.entryId);

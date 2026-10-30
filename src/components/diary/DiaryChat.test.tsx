@@ -20,17 +20,26 @@ const pending: DiaryCalendarItem = { entryId: "entry/real", date: "2026-10-09", 
 const row = (role: string, content: string): DiaryMessage => ({ id: `m-${role}`, entryId: pending.entryId, role, content, createdAt: 10, updatedAt: 0, drift: "DRIFT 内容", thinking: "Thinking 内容" });
 
 describe("Diary Chat display assembly", () => {
-  it("only offers pending records with a real ID a Chat entry and preserves archived reading", () => {
+  it("offers sibling Chat and formal-reading actions for archived entries, and Chat for pending", () => {
     const open = vi.fn(), chat = vi.fn();
     const tree = DiarySelection({ item: pending, date: pending.date, known: true, onOpen: open, onOpenChat: chat });
-    (find(tree, Button).props.onClick as () => void)();
+    (find(tree, Button, props => props.variant === "link").props.onClick as () => void)();
     expect(chat).toHaveBeenCalledWith(pending); expect(open).not.toHaveBeenCalled();
     for (const item of [{ ...pending, entryId: "" }, { ...pending, calendarState: "invalid" as const }]) {
       expect(elements(DiarySelection({ item, date: item.date, known: true, onOpen: open, onOpenChat: chat })).filter(n => n.type === Button)).toHaveLength(0);
     }
     const archived = { ...pending, calendarState: "archived" as const, hasSavedContent: true, entryStatus: "done" };
-    (find(DiarySelection({ item: archived, date: archived.date, known: true, onOpen: open, onOpenChat: chat }), Button).props.onClick as () => void)();
-    expect(open).toHaveBeenCalledWith(archived); expect(chat).toHaveBeenCalledOnce();
+    const archivedTree = DiarySelection({ item: archived, date: archived.date, known: true, onOpen: open, onOpenChat: chat });
+    (find(archivedTree, Button, props => props.variant === "link").props.onClick as () => void)();
+    expect(chat).toHaveBeenLastCalledWith(archived); expect(open).not.toHaveBeenCalled();
+    (find(archivedTree, Button, props => String(props["aria-label"]).startsWith("阅读全文")).props.onClick as () => void)();
+    expect(open).toHaveBeenCalledWith(archived); expect(chat).toHaveBeenCalledTimes(2);
+    for (const item of [pending, archived]) {
+      const html = renderToStaticMarkup(<DiarySelection item={item} date={item.date} known onOpen={open} onOpenChat={chat} />);
+      expect(html).toContain('data-diary-selection-meta="true"');
+      expect(html).toContain("lucide-messages-square");
+      expect(html).not.toMatch(/<button\b[^>]*>(?:(?!<\/button>)[\s\S])*<button\b/);
+    }
   });
   it("uses shared Markdown, code, thinking and DRIFT without message actions", () => {
     const message = presentDiaryMessage(row("assistant", "**粗体**\n\n```ts\nconst saved = true;\n```"));
@@ -63,7 +72,7 @@ describe("Diary-local URL and return navigation", () => {
     expect(diaryChatUrl(parsed.href, null)).toBe(`${path}?legacy=1&keep=a#section`);
     expect(diaryChatEntry("?diaryEntry=%20")).toBeNull();
   });
-  it("keeps the calendar mounted, restores scroll/focus and responds to browser back/forward", () => {
+  it.each([pending, { ...pending, entryId: "archived/real", calendarState: "archived" as const, entryStatus: "done" }])("restores calendar scroll/focus for $calendarState and responds to browser back/forward", item => {
     const host = new EventTarget(); const trigger = { isConnected: true, disabled: false, focus: vi.fn() };
     vi.stubGlobal("HTMLElement", Object); vi.stubGlobal("document", { activeElement: trigger });
     const location = { href: "https://example.test/app/diary?keep=1#cal", search: "?keep=1" };
@@ -71,11 +80,11 @@ describe("Diary-local URL and return navigation", () => {
     vi.stubGlobal("window", Object.assign(host, { location, history }));
     const viewport = { scrollTop: 112, scrollHeight: 900, clientHeight: 300, focus: vi.fn(), contains: () => true };
     const session = hookSession(() => useDiaryChatNavigation({ current: viewport as unknown as HTMLDivElement }, { current: trigger as unknown as HTMLButtonElement }, { current: null }));
-    let nav = session.render(); session.commit(); nav.open(pending); nav = session.render(); session.commit();
-    expect(nav.entryId).toBe(pending.entryId); expect(history.state).toMatchObject({ penumbraApp: "diary" }); nav.back(); expect(history.back).toHaveBeenCalledOnce();
+    let nav = session.render(); session.commit(); nav.open(item); nav = session.render(); session.commit();
+    expect(nav.entryId).toBe(item.entryId); expect(history.state).toMatchObject({ penumbraApp: "diary" }); nav.back(); expect(history.back).toHaveBeenCalledOnce();
     viewport.scrollTop = 0; location.search = "?keep=1"; host.dispatchEvent(new Event("popstate")); nav = session.render(); session.commit();
     expect(nav.entryId).toBeNull(); expect(viewport.scrollTop).toBe(112); expect(trigger.focus).toHaveBeenCalledWith({ preventScroll: true });
-    location.search = "?diaryEntry=entry%2Freal"; host.dispatchEvent(new Event("popstate")); nav = session.render(); session.commit(); expect(nav.entryId).toBe(pending.entryId);
+    location.search = `?diaryEntry=${encodeURIComponent(item.entryId)}`; host.dispatchEvent(new Event("popstate")); nav = session.render(); session.commit(); expect(nav.entryId).toBe(item.entryId);
     session.dispose();
   });
 });

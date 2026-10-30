@@ -1,0 +1,11 @@
+/* Keep the existing wallpaper visible through a quiet, warm reading layer.
+   Bubbles inherit the shared Chat styles without Diary-specific overrides. */
+.diary-chat-reading {
+  background: rgb(255 252 247 / 72%);
+  backdrop-filter: blur(6px);
+}
+
+/* A warm dark paper keeps the existing dark theme usable without a white wash. */
+.dark .diary-chat-reading {
+  background: rgb(25 24 22 / 78%);
+}
