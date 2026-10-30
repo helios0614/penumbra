@@ -83,6 +83,8 @@ async function exercise(browser, origin, production, width) {
   const base = production ? '/penumbra/' : '/';
   const context = await browser.newContext({ viewport: { width, height: 900 }, isMobile: width < 768, hasTouch: width < 768 });
   const requests = [], sockets = [], errors = [], failures = [], escaped = [];
+  let legacyDestination = false;
+  await context.addCookies([{ name: 'aion_session', value: 'synthetic-switch-session', url: origin, httpOnly: true, sameSite: 'Lax' }]);
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   page.on('pageerror', error => errors.push(error.message));
@@ -98,6 +100,11 @@ async function exercise(browser, origin, production, width) {
   await context.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url());
     if (url.origin !== origin) { escaped.push(url.origin); return route.abort('blockedbyclient'); }
+    if (legacyDestination && url.pathname === '/' && request.isNavigationRequest()) {
+      assert.equal(request.frame(), page.mainFrame());
+      assert((await request.allHeaders()).cookie.includes('aion_session=synthetic-switch-session'));
+      return route.fulfill({ contentType: 'text/html', body: '<h1>Synthetic legacy home</h1>' });
+    }
     if (url.pathname.startsWith('/api/')) {
       requests.push({ path: url.pathname, method: request.method() });
       const fixtures = {
@@ -148,6 +155,25 @@ async function exercise(browser, origin, production, width) {
     await page.getByRole('button', { name: '返回经典桌面', exact: true }).click(); await classicHome();
     assert.equal(pathname(), base);
 
+    // The shared Settings link must leave either Penumbra desktop for the root,
+    // even in a production build whose internal base is /penumbra/.
+    for (const desktop of ['', 'editorial']) {
+      await page.goto(`${origin}${base}${desktop}`);
+      await page.getByRole('button', { name: '打开设置', exact: true }).last().click();
+      const link = page.getByRole('link', { name: '返回旧版知远', exact: true });
+      await link.scrollIntoViewIfNeeded();
+      assert.equal(await link.getAttribute('href'), '/');
+      assert.equal(await link.getAttribute('target'), '_top');
+      assert(await page.locator('#frontend-version-note').isVisible());
+      legacyDestination = true;
+      await link.click();
+      await page.getByRole('heading', { name: 'Synthetic legacy home', exact: true }).waitFor();
+      assert.equal(pathname(), '/');
+      const cookies = await context.cookies(origin);
+      assert.equal(cookies.find(cookie => cookie.name === 'aion_session').value, 'synthetic-switch-session');
+      legacyDestination = false;
+    }
+
     await page.goto(`${origin}${base}proxy-test`);
     if (production) {
       await classicHome(); assert.equal(await page.getByRole('heading', { name: 'AionHome API Proxy Test' }).count(), 0);
@@ -163,7 +189,7 @@ async function exercise(browser, origin, production, width) {
     assert(requests.some(request => request.path === '/api/conversations'));
     assert(sockets.length && sockets.every(socket => socket === '/ws'), JSON.stringify(sockets));
     assert.deepEqual(escaped, []); assert.deepEqual(errors, []); assert.deepEqual(failures, []);
-    return { mode: production ? 'preview' : 'dev', width, navigation: 'passed', apiRoot: '/api/', websocketRoot: '/ws', pageErrors: 0 };
+    return { mode: production ? 'preview' : 'dev', width, navigation: 'passed', legacySwitch: 'both desktops passed', apiRoot: '/api/', websocketRoot: '/ws', pageErrors: 0 };
   } finally { await context.close(); }
 }
 

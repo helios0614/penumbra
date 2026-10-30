@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import {
   Check,
+  ArrowUpRight,
   Image as ImageIcon,
   Monitor,
   Moon,
@@ -159,6 +160,16 @@ export function SettingsView({ onBack }: SettingsViewProps) {
 
   const isOverviewLoading =
     overviewState.status === "idle" || overviewState.status === "loading";
+
+  useEffect(() => {
+    if (!isSavingWallpaper) return;
+    const preventUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", preventUnload);
+    return () => window.removeEventListener("beforeunload", preventUnload);
+  }, [isSavingWallpaper]);
 
   return (
     <div
@@ -467,6 +478,17 @@ export function SettingsView({ onBack }: SettingsViewProps) {
       </div>
 
       <SettingsSafeBasics state={overviewState} onRetry={reloadOverview} />
+
+      <section className="border-t border-border pt-4" aria-labelledby="frontend-version-title">
+        <h2 id="frontend-version-title" className="text-sm font-semibold text-foreground">其他版本</h2>
+        <a href="/" target="_top" aria-describedby="frontend-version-note"
+          className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-medium text-primary-ink hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-ring">
+          返回旧版知远<ArrowUpRight className="size-4" aria-hidden="true" />
+        </a>
+        <p id="frontend-version-note" className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          已保存的数据可继续读取；草稿与未保存内容不跨版本保留，生成中的任务可能继续执行。
+        </p>
+      </section>
 
       <div className="grid gap-3 md:grid-cols-3">
         <PlaceholderSection title="日历设置" />
