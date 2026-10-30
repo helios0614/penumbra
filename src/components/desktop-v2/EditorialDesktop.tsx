@@ -9,7 +9,8 @@ import { SettingsView } from "@/components/settings/SettingsView";
 import { cn } from "@/lib/utils";
 import { getDesktopAppId, getDesktopAppPath, getDesktopPath } from "@/lib/app-paths";
 import { EditorialDock } from "./EditorialDock";
-import { NowPlaying, TodayPanel } from "./EditorialPanels";
+// Demo panels are temporarily hidden; keep EditorialPanels.tsx for later wiring.
+// import { NowPlaying, TodayPanel } from "./EditorialPanels";
 import { EditorialQuickApps } from "./EditorialQuickApps";
 import { EditorialSignature } from "./EditorialSignature";
 
@@ -121,12 +122,14 @@ export function EditorialDesktop() {
         ) : (
           <div className="editorial-home mx-auto max-w-6xl space-y-8 pb-4">
             <EditorialSignature />
-            <div className="grid gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(310px,0.8fr)]">
+            <div className="grid gap-8">
               <EditorialQuickApps onLaunch={openApp} onSettings={openSettings} />
+              {/* Temporarily hidden example previews; real Todo and Chat shortcuts remain.
               <div className="space-y-3">
                 <TodayPanel onOpen={() => openApp("todo")} />
                 <NowPlaying onOpen={() => openApp("music")} />
               </div>
+              */}
             </div>
           </div>
         )}

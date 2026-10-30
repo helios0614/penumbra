@@ -9,6 +9,8 @@ import {
 } from "@/components/apps/DesktopAppView";
 import { DesktopApps } from "@/components/desktop/DesktopApps";
 import { EditorialQuickApps } from "@/components/desktop-v2/EditorialQuickApps";
+import { widgetRegistry } from "@/widgets/registry";
+import { isDesktopShortcutVisible, isDesktopWidgetVisible } from "@/lib/desktop-entry-visibility";
 
 const desktopStyles = readFileSync(
   new URL("../../index.css", import.meta.url),
@@ -22,7 +24,7 @@ describe("desktop memory route and navigation", () => {
     expect(DESKTOP_APP_META.notes.name).toBe("笔记");
     const classic = renderToStaticMarkup(<DesktopApps onLaunch={vi.fn()} onSettings={vi.fn()} />);
     const editorial = renderToStaticMarkup(<EditorialQuickApps onLaunch={vi.fn()} onSettings={vi.fn()} />);
-    expect(classic).toContain('aria-label="打开日记"'); expect(classic).toContain('aria-label="打开笔记"');
+    expect(classic).toContain('aria-label="打开日记"'); expect(classic).not.toContain('aria-label="打开笔记"');
     expect(editorial).toContain('aria-label="打开日记"');
     const source = readFileSync(new URL("../desktop-v2/EditorialQuickApps.tsx", import.meta.url), "utf8");
     expect(source).toContain('id: "diary", label: "日记"'); expect(source).not.toContain('id: "notes", label: "日记"');
@@ -43,7 +45,7 @@ describe("desktop memory route and navigation", () => {
     expect(DESKTOP_APP_META.notes.name).toBe("笔记");
     const html = renderToStaticMarkup(<DesktopApps onLaunch={vi.fn()} onSettings={vi.fn()} />);
     expect(html).toContain('aria-label="打开速记"');
-    expect(html).toContain('aria-label="打开笔记"');
+    expect(html).not.toContain('aria-label="打开笔记"');
     expect(renderToStaticMarkup(<DesktopAppView appId="quick-notes" onBack={vi.fn()} />)).not.toContain("页面还在搭建中");
   });
   it("registers memory as a real desktop app route", () => {
@@ -53,6 +55,31 @@ describe("desktop memory route and navigation", () => {
       description: "翻阅被留下来的片段",
     });
     expect(isDesktopAppId("memories")).toBe(false);
+  });
+
+  it("hides placeholder shortcuts in both desktops without removing their routes", () => {
+    const classic = renderToStaticMarkup(<DesktopApps onLaunch={vi.fn()} onSettings={vi.fn()} />);
+    const editorial = renderToStaticMarkup(<EditorialQuickApps onLaunch={vi.fn()} onSettings={vi.fn()} />);
+    for (const id of ["notes", "music", "weather"] as const) {
+      expect(isDesktopAppId(id)).toBe(true);
+      expect(isDesktopShortcutVisible(id)).toBe(false);
+      expect(widgetRegistry[id]).toBeDefined();
+      for (const html of [classic, editorial]) expect(html).not.toContain(`aria-label="打开${DESKTOP_APP_META[id].name}"`);
+      expect(renderToStaticMarkup(<DesktopAppView appId={id} onBack={vi.fn()} />)).toContain("页面还在搭建中");
+    }
+    for (const id of ["chat", "calendar", "todo", "diary", "clock", "memory", "quick-notes", "activity", "location"] as const) {
+      expect(isDesktopShortcutVisible(id)).toBe(true);
+      expect(classic).toContain(`aria-label="打开${DESKTOP_APP_META[id].name}"`);
+    }
+  });
+
+  it("hides demo widget previews while preserving real shortcuts and widget registrations", () => {
+    for (const id of ["chat", "calendar", "todo", "notes", "music", "weather"]) {
+      expect(isDesktopWidgetVisible(id)).toBe(false);
+      expect(widgetRegistry[id]).toBeDefined();
+    }
+    for (const id of ["clock", "sticker", "signature"]) expect(isDesktopWidgetVisible(id)).toBe(true);
+    for (const id of ["chat", "calendar", "todo"]) expect(isDesktopShortcutVisible(id)).toBe(true);
   });
 
   it("renders the memory navigation entry without emoji controls", () => {

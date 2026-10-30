@@ -42,6 +42,7 @@ import {
 } from './storage';
 import { cn } from '@/lib/utils';
 import { getDesktopAppId, getDesktopAppPath, getDesktopPath } from '@/lib/app-paths';
+import { isDesktopWidgetVisible } from '@/lib/desktop-entry-visibility';
 import {
   getCustomWallpaper,
   getStoredWallpaperSettings,
@@ -456,13 +457,13 @@ export function Desktop() {
     gap: `${GRID_GAP}px`,
   }), []);
 
-  const widgets = useMemo(() => getAllWidgets(), []);
+  const widgets = useMemo(() => getAllWidgets().filter(widget => isDesktopWidgetVisible(widget.id)), []);
   const primaryLayout = useMemo(
-    () => layout.filter((item) => (item.page ?? WIDGETS_PAGE) === HOME_PAGE),
+    () => layout.filter((item) => (item.page ?? WIDGETS_PAGE) === HOME_PAGE && isDesktopWidgetVisible(item.widgetId)),
     [layout],
   );
   const secondaryLayout = useMemo(
-    () => layout.filter((item) => (item.page ?? WIDGETS_PAGE) === WIDGETS_PAGE),
+    () => layout.filter((item) => (item.page ?? WIDGETS_PAGE) === WIDGETS_PAGE && isDesktopWidgetVisible(item.widgetId)),
     [layout],
   );
   const primaryLayoutMeasure = useMemo(() => measureHomeLayout(primaryLayout), [primaryLayout]);

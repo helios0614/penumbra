@@ -85,6 +85,16 @@ async function exercise(browser, origin, production, width) {
   const requests = [], sockets = [], errors = [], failures = [], escaped = [];
   let legacyDestination = false;
   await context.addCookies([{ name: 'aion_session', value: 'synthetic-switch-session', url: origin, httpOnly: true, sameSite: 'Lax' }]);
+  await context.addInitScript(() => {
+    if (localStorage.getItem('penumbra-desktop-layout')) return;
+    const items = [
+      ['clock', 0, 0, 0], ['weather', 0, 1, 0], ['sticker', 1, 0, 0],
+      ['music', 1, 2, 0], ['signature', 1, 0, 1], ['calendar', 1, 0, 2],
+      ['chat', 1, 2, 2], ['notes', 1, 0, 4], ['todo', 1, 2, 4],
+    ].map(([widgetId, page, col, row]) => ({ instanceId: `${widgetId}-fixture`, widgetId, page, position: { col, row } }));
+    localStorage.setItem('penumbra-desktop-layout', JSON.stringify(items));
+    localStorage.setItem('penumbra-desktop-layout-version', '2');
+  });
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   page.on('pageerror', error => errors.push(error.message));
@@ -124,8 +134,23 @@ async function exercise(browser, origin, production, width) {
   const chat = () => page.getByRole('heading', { name: '暂无会话', exact: true }).waitFor();
   const editorialHome = () => page.locator('.editorial-home').waitFor();
   const pathname = () => new URL(page.url()).pathname;
+  const hiddenEntries = async () => {
+    for (const name of ['打开音乐', '打开天气', '打开笔记']) assert.equal(await page.getByRole('button', { name, exact: true }).count(), 0);
+    for (const id of ['notes', 'music', 'weather', 'chat', 'calendar', 'todo']) assert.equal(await page.locator(`[data-widget-id="${id}"]`).count(), 0);
+  };
   try {
     await page.goto(`${origin}${base}`); await classicHome();
+    await hiddenEntries();
+    for (const id of ['clock', 'sticker', 'signature']) assert.equal(await page.locator(`[data-widget-id="${id}"]`).count(), 1);
+    await page.getByRole('button', { name: '编辑桌面', exact: true }).click();
+    await page.getByRole('button', { name: '添加桌面组件', exact: true }).click();
+    const picker = page.getByRole('heading', { name: '添加到首页', exact: true }).locator('..').locator('..').locator('..');
+    for (const name of ['对话', '日历', '待办', '音乐', '天气', '笔记']) assert.equal(await picker.getByRole('button', { name: new RegExp(`^${name}`) }).count(), 0);
+    for (const name of ['时钟', '贴纸', '个性签名']) assert.equal(await picker.getByRole('button', { name: new RegExp(`^${name}`) }).count(), 1);
+    await picker.getByRole('button', { name: '关闭', exact: true }).click();
+    await page.getByRole('button', { name: '完成编辑', exact: true }).click();
+    const savedWidgetIds = await page.evaluate(() => JSON.parse(localStorage.getItem('penumbra-desktop-layout')).map(item => item.widgetId));
+    for (const id of ['notes', 'music', 'weather', 'chat', 'calendar', 'todo']) assert(savedWidgetIds.includes(id));
     await page.getByRole('button', { name: '打开对话', exact: true }).last().click();
     await chat(); assert.equal(pathname(), `${base}app/chat`);
     await page.reload(); await chat();
@@ -141,6 +166,9 @@ async function exercise(browser, origin, production, width) {
     await page.getByRole('button', { name: '编辑桌面', exact: true }).click();
     await page.getByRole('button', { name: '切换到实验桌面', exact: true }).click(); await editorialHome();
     assert.equal(pathname(), `${base}editorial`);
+    await hiddenEntries();
+    assert.equal(await page.getByRole('heading', { name: 'Today', exact: true }).count(), 0);
+    assert.equal(await page.getByRole('button', { name: '播放音乐', exact: true }).count(), 0);
     await page.getByRole('button', { name: '打开对话', exact: true }).last().click(); await chat();
     assert.equal(pathname(), `${base}editorial/app/chat`);
     await page.reload(); await chat();
@@ -189,7 +217,7 @@ async function exercise(browser, origin, production, width) {
     assert(requests.some(request => request.path === '/api/conversations'));
     assert(sockets.length && sockets.every(socket => socket === '/ws'), JSON.stringify(sockets));
     assert.deepEqual(escaped, []); assert.deepEqual(errors, []); assert.deepEqual(failures, []);
-    return { mode: production ? 'preview' : 'dev', width, navigation: 'passed', legacySwitch: 'both desktops passed', apiRoot: '/api/', websocketRoot: '/ws', pageErrors: 0 };
+    return { mode: production ? 'preview' : 'dev', width, navigation: 'passed', desktopCleanup: 'shortcuts, saved widgets and picker passed', legacySwitch: 'both desktops passed', apiRoot: '/api/', websocketRoot: '/ws', pageErrors: 0 };
   } finally { await context.close(); }
 }
 

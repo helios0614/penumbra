@@ -13,6 +13,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { DesktopAppId } from "@/components/apps/DesktopAppView";
+import { isDesktopShortcutVisible } from "@/lib/desktop-entry-visibility";
 
 interface EditorialShortcut {
   id: DesktopAppId | "settings";
@@ -42,6 +43,7 @@ export function EditorialQuickApps({
   onLaunch: (appId: DesktopAppId) => void;
   onSettings: () => void;
 }) {
+  const visibleShortcuts = SHORTCUTS.filter(shortcut => isDesktopShortcutVisible(shortcut.id));
   return (
     <section>
       <div className="mb-4 flex items-end justify-between gap-4 px-1">
@@ -49,11 +51,11 @@ export function EditorialQuickApps({
           <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">Desk tools</p>
           <h2 className="mt-1 text-xl font-semibold tracking-tight">常用空间</h2>
         </div>
-        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{SHORTCUTS.length} essentials</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{visibleShortcuts.length} essentials</span>
       </div>
 
       <div className="grid grid-cols-4 gap-x-2 gap-y-5 sm:gap-x-3">
-        {SHORTCUTS.map((shortcut) => {
+        {visibleShortcuts.map((shortcut) => {
           const Icon = shortcut.icon;
           return (
             <button
