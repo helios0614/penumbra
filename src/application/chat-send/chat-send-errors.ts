@@ -39,6 +39,10 @@ function mapChatExecutionError(
   if (error instanceof ApiError) {
     const detail = safeErrorDetail(error.data);
 
+    if (regenerate && error.status === 500 && detail.code === "regenerate_preflight_failed") {
+      return safeError("service", "重新生成服务暂时出错，请稍后手动重试。");
+    }
+
     if (error.status === 401 || error.status === 403) {
       return safeError(
         "authentication",

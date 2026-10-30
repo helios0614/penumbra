@@ -11,6 +11,9 @@ export function isDefiniteChatRejection(error: unknown, kind: "send" | "regenera
   if (error.status === 404 && detail === "Conversation not found") return true;
   if (!detail || typeof detail !== "object" || Array.isArray(detail)) return false;
   const code = (detail as Record<string, unknown>).code;
+  // This canonical response is emitted only before a provider task starts.
+  // Bare/proxy 500s still cannot prove that a generation was rejected.
+  if (kind === "regenerate" && error.status === 500 && code === "regenerate_preflight_failed") return true;
   if (typeof code === "string" && code.startsWith("regenerate_") && kind !== "regenerate") return false;
   // _require_executable_conversation_model / _resolve_chat_generation_request
   // emit these before _persist_send_messages, never from a running provider.

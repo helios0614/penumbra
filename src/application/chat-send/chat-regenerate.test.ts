@@ -15,6 +15,7 @@ import {
   type RegeneratePersistenceProjection,
 } from "@/application/chat-send";
 import { ApiError } from "@/lib/api";
+import { isDefiniteChatRejection } from "./chat-send-rejection";
 
 describe("chat regenerate request composition", () => {
   it("keeps only explicit allowlisted values and preserves zero and false", () => {
@@ -82,6 +83,7 @@ describe("safe regenerate errors", () => {
     [httpError(422, "regenerate_target_invalid"), "regenerate-target-invalid", "当前回复不能重新生成。"],
     [httpError(409, "regenerate_target_not_latest"), "regenerate-target-not-latest", "该回复已不是当前最新回复。"],
     [httpError(409, "regenerate_conflict"), "regenerate-conflict", "会话已发生变化，请刷新后重试。"],
+    [httpError(500, "regenerate_preflight_failed"), "service", "重新生成服务暂时出错，请稍后手动重试。"],
     [httpError(409, "unknown_model"), "unknown-model", "当前会话使用的模型已不可用。"],
     [httpError(422, "invalid_generation_options", "temperature"), "invalid-generation-options", "当前生成参数无效。"],
     [httpError(422, "unsupported_generation_option", "fast_mode"), "unsupported-generation-option", "当前模型不支持所选生成参数。"],
@@ -97,6 +99,46 @@ describe("safe regenerate errors", () => {
 });
 
 describe("unified regenerate execution controller", () => {
+  it("only trusts the explicit regenerate preflight failure, leaving generic 500 results uncertain", () => {
+    expect(isDefiniteChatRejection(httpError(500, "regenerate_preflight_failed"), "regenerate")).toBe(true);
+    expect(isDefiniteChatRejection(httpError(500, "regenerate_preflight_failed"), "send")).toBe(false);
+    expect(isDefiniteChatRejection(httpError(500, "internal_error"), "regenerate")).toBe(false);
+    expect(toSafeChatExecutionError(httpError(500, "internal_error"), "regenerate").message).toContain("尚未确认");
+  });
+
+  it.each(["preflight", "commit"] as const)("keeps %s internal failure on the original target until a manual retry", async phase => {
+    const saved = { ...oldTarget(), content: "recovered" };
+    let persisted = oldTarget() as RegeneratePersistenceProjection;
+    const openRegenerateExecution = vi.fn<ChatRegenerateExecutionOpener>(async () => {
+      if (openRegenerateExecution.mock.calls.length === 1) {
+        if (phase === "preflight") throw httpError(500, "regenerate_preflight_failed");
+        return stream([
+          { type: "start", assistantMessageId: "assistant-a" },
+          { type: "failure", messageId: "assistant-a", code: "provider_execution_failed" },
+        ]);
+      }
+      persisted = saved;
+      return stream([{ type: "start", assistantMessageId: "assistant-a" }, persistedReceipt(saved)]);
+    });
+    const controller = createChatSendController({
+      openRegenerateExecution,
+      reconcileHistory: async () => reconciliation(persisted),
+      createUuid: () => "manual-retry",
+    });
+    await controller.regenerate(regenerateInput());
+    await waitFor(() => controller.getState().kind === "error");
+    expect(controller.getState()).toMatchObject({ confirmedFailure: true, failedMessageId: "assistant-a" });
+    const state = controller.getState();
+    expect(state.kind === "error" && state.error.message).not.toMatch(/会话已发生变化/);
+    expect(openRegenerateExecution).toHaveBeenCalledOnce();
+    expect(persisted).toEqual(oldTarget());
+    await controller.regenerate(regenerateInput());
+    await waitFor(() => controller.getState().kind === "idle");
+    expect(openRegenerateExecution).toHaveBeenCalledTimes(2);
+    expect(openRegenerateExecution.mock.calls.map(call => call.slice(0, 2)))
+      .toEqual([["conv-a", "assistant-a"], ["conv-a", "assistant-a"]]);
+  });
+
   it("shows an empty replacement overlay immediately and blocks send and a second regenerate", async () => {
     const opened = deferred<ChatExecutionStream>();
     const openRegenerateExecution = vi.fn<ChatRegenerateExecutionOpener>(
