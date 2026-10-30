@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import { ChatShell } from "@/components/chat/ChatShell";
 import { BubbleList } from "@/components/chat/BubbleList";
@@ -9,6 +9,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import type { DiaryMessage } from "@/domain/diary/diary-chat-types";
 import { DiaryMessageActionError } from "@/domain/diary/diary-chat-actions-client";
 import { diaryDateLabel } from "@/application/diary-reader/diary-calendar";
+import { DiaryModelSelection } from "./DiaryModelSelection";
 import { useDiaryChat } from "./useDiaryChat";
 import { presentDiaryTimeline } from "./diary-chat-presenter";
 import "./diary-chat.css";
@@ -20,11 +21,14 @@ export function DiaryChatView({ entryId, onBack }: { readonly entryId: string; r
   const [confirmation, setConfirmation] = useState<{ kind: "delete" | "regenerate"; message: DiaryMessage } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const confirmBusy = useRef(false);
+  const [modelPending, setModelPending] = useState(false);
+  const modelPendingRef = useRef(false);
+  const onModelPending = useCallback((pending: boolean) => { modelPendingRef.current = pending; setModelPending(pending); }, []);
   const mounted = useRef(true);
   useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useLayoutEffect(() => { heading.current?.focus({ preventScroll: true }); }, [entryId]);
   const messages = useMemo(() => presentDiaryTimeline(entryId, state.messages, state.overlays), [entryId, state.messages, state.overlays]);
-  const busy = state.sending || !!state.mutation;
+  const busy = state.sending || !!state.mutation || modelPending;
   const savedMessage = (id: string) => state.messages?.find(row => row.entryId === entryId && row.id === id);
   const available = (id: string) => {
     const row = savedMessage(id);
@@ -37,7 +41,7 @@ export function DiaryChatView({ entryId, onBack }: { readonly entryId: string; r
   };
   const safeError = (error: unknown) => error instanceof DiaryMessageActionError ? error.message : "操作结果尚未确认，请刷新核对。编辑内容已保留。";
   const submitConfirmation = async () => {
-    if (!confirmation || !controller || confirmBusy.current) return;
+    if (!confirmation || !controller || confirmBusy.current || modelPendingRef.current) return;
     confirmBusy.current = true; setActionError(null);
     try {
       if (confirmation.kind === "regenerate") {
@@ -52,7 +56,8 @@ export function DiaryChatView({ entryId, onBack }: { readonly entryId: string; r
   };
   const targetIndex = state.messages?.findIndex(row => row.id === confirmation?.message.id) ?? -1;
   const laterCount = targetIndex < 0 ? 0 : state.messages!.length - targetIndex - 1;
-  return <div className="diary-chat-reading flex min-h-0 w-full flex-1 overflow-hidden"><ChatShell composer={<Sender key={entryId} onSend={content => controller?.send(content) ?? false}
+  return <div className="diary-chat-reading flex min-h-0 w-full flex-1 overflow-hidden"><ChatShell composer={<Sender key={entryId} onSend={content => modelPendingRef.current ? false : controller?.send(content) ?? false}
+    toolsLabel="日记模型" tools={<DiaryModelSelection key={entryId} entryId={entryId} disabled={!state.entry || state.sending || !!state.mutation} onPendingChange={onModelPending} />}
     submitDisabled={!state.entry || busy} placeholder="继续这篇日记的对话…"
     statusMessage={state.sending ? "正在接收本次回复…" : undefined} />}
     header={<header className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-3 sm:px-4">

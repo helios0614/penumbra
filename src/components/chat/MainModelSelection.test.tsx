@@ -2,6 +2,7 @@ import { messageWindowWire } from "@/test-fixtures/message-window-wire";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ModelSelectionPanel } from "./ModelSelectionPanel";
 import { MainModelSelection } from "./MainModelSelection";
 import { createChatSetupViewModel } from "@/application/chat-setup";
 import { mapChatReadiness, mapMainConfiguration } from "@/domain/runtime";
@@ -30,7 +31,7 @@ function setup(selected = true) {
 }
 function session(onSave: React.ComponentProps<typeof MainModelSelection>["onSave"] = vi.fn(async () => {}), advanced = true) {
   let props: React.ComponentProps<typeof MainModelSelection> = { setup: setup(), disabled: false, onSave, onRefresh: vi.fn(async () => {}) };
-  const s = hookSession(() => MainModelSelection(props));
+  const s = hookSession(() => { const panel = MainModelSelection(props); return ModelSelectionPanel(panel.props); });
   s.render(); s.commit();
   find(s.render(), "details").props.onToggle?.({ currentTarget: { open: advanced } } as never);
   return { ...s,
