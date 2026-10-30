@@ -41,6 +41,7 @@ import {
   type DesktopLayoutItem,
 } from './storage';
 import { cn } from '@/lib/utils';
+import { getDesktopAppId, getDesktopAppPath, getDesktopPath } from '@/lib/app-paths';
 import {
   getCustomWallpaper,
   getStoredWallpaperSettings,
@@ -133,8 +134,8 @@ function getHomeGridStyles(item: DesktopLayoutItem) {
 }
 
 function getAppFromPath(pathname: string): DesktopAppId | null {
-  const match = pathname.match(/^\/app\/([^/]+)\/?$/);
-  return match && isDesktopAppId(match[1]) ? match[1] : null;
+  const appId = getDesktopAppId(pathname);
+  return appId && isDesktopAppId(appId) ? appId : null;
 }
 
 /**
@@ -492,7 +493,7 @@ export function Desktop() {
     setIsSettingsOpen(false);
     setIsEditing(false);
     setIsPickerOpen(false);
-    window.history.pushState({ penumbraApp: appId }, '', `/app/${appId}`);
+    window.history.pushState({ penumbraApp: appId }, '', getDesktopAppPath(appId));
     setActiveApp(appId);
   };
 
@@ -502,7 +503,7 @@ export function Desktop() {
       return;
     }
 
-    window.history.replaceState({}, '', '/');
+    window.history.replaceState({}, '', getDesktopPath());
     setActiveApp(null);
   };
 
@@ -771,7 +772,7 @@ export function Desktop() {
           isEditing={isEditing}
           onAddWidget={() => setIsPickerOpen(true)}
           onLaunch={openApp}
-          onOpenEditorial={() => window.location.assign('/editorial')}
+          onOpenEditorial={() => window.location.assign(getDesktopPath('editorial'))}
           onResetLayout={() => setLayout(resetDesktopLayout())}
           onToggleWallpaperText={toggleWallpaperTextTone}
           onToggleEditing={() => setIsEditing((editing) => !editing)}

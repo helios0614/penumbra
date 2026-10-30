@@ -7,14 +7,15 @@ import {
 } from "@/components/apps/DesktopAppView";
 import { SettingsView } from "@/components/settings/SettingsView";
 import { cn } from "@/lib/utils";
+import { getDesktopAppId, getDesktopAppPath, getDesktopPath } from "@/lib/app-paths";
 import { EditorialDock } from "./EditorialDock";
 import { NowPlaying, TodayPanel } from "./EditorialPanels";
 import { EditorialQuickApps } from "./EditorialQuickApps";
 import { EditorialSignature } from "./EditorialSignature";
 
 function getEditorialAppFromPath(pathname: string): DesktopAppId | null {
-  const match = pathname.match(/^\/editorial\/app\/([^/]+)\/?$/);
-  return match && isDesktopAppId(match[1]) ? match[1] : null;
+  const appId = getDesktopAppId(pathname, "editorial");
+  return appId && isDesktopAppId(appId) ? appId : null;
 }
 
 export function EditorialDesktop() {
@@ -52,7 +53,7 @@ export function EditorialDesktop() {
 
   const openApp = (appId: DesktopAppId) => {
     setIsSettingsOpen(false);
-    window.history.pushState({ penumbraEditorialApp: appId }, "", `/editorial/app/${appId}`);
+    window.history.pushState({ penumbraEditorialApp: appId }, "", getDesktopAppPath(appId, "editorial"));
     setActiveApp(appId);
   };
 
@@ -61,7 +62,7 @@ export function EditorialDesktop() {
       window.history.back();
       return;
     }
-    window.history.replaceState({}, "", "/editorial");
+    window.history.replaceState({}, "", getDesktopPath("editorial"));
     setActiveApp(null);
   };
 
@@ -92,7 +93,7 @@ export function EditorialDesktop() {
             </span>
             <button
               type="button"
-              onClick={() => window.location.assign("/")}
+              onClick={() => window.location.assign(getDesktopPath())}
               className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border-strong bg-card px-3.5 text-xs font-medium shadow-sm hover:bg-surface-secondary"
               aria-label="返回经典桌面"
               title="返回经典桌面"

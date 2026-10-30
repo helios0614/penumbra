@@ -46,6 +46,25 @@ legacy `/camera` page and its assets reachable separately from the Penumbra SPA.
 
 `/ws/android-push` is not used by Penumbra and no push token is added. `/files` is not proxied because AionHome exposes file management below `/api/files`; no unverified static path is configured.
 
+## Production subpath and preview
+
+`npm run dev` keeps the root-path routes (`/`, `/app/chat`, `/editorial`) and
+development-only `/proxy-test` and `/dev/chat-markdown` pages.
+
+`npm run build` produces a `/penumbra/` build. Run `npm run preview` and open
+`http://localhost:4173/penumbra/` to check it, including direct application URLs
+such as `/penumbra/app/chat` and `/penumbra/editorial/app/music`.
+Preview does not load the remote development proxy. API, SSE, upload/media and
+WebSocket URLs still use their existing backend paths (`/api/...`, `/uploads/...`,
+`/ws`); preview by itself does not supply a backend. Production FastAPI mapping
+and SPA fallback are a separate deployment phase.
+
+After building, `node tests/browser/production-subpath-smoke.cjs` checks the real
+preview and development servers using synthetic API/WS responses. Playwright
+must already be available; optional arguments specify its module path and a
+browser executable. The test blocks external page requests and never contacts
+the configured remote development backend.
+
 ## Session cookie
 
 AionHome establishes a session through `POST /api/auth/login`. Its `aion_session` cookie is `HttpOnly`, `SameSite=Lax`, `Path=/`, and host-only because the response does not set `Domain`. The Vite proxy therefore does not rewrite Cookie domain or path and never exposes Cookie content to JavaScript.

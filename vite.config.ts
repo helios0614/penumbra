@@ -8,14 +8,15 @@ import {
   DEV_PROXY_TARGET_ENV,
 } from "./src/config/dev-proxy-config";
 
-export default defineConfig(({ command, mode }) => {
+export default defineConfig(({ command, mode, isPreview }) => {
   let proxy: Record<string, ProxyOptions> | undefined;
-  if (command === "serve") {
+  if (command === "serve" && !isPreview) {
     const environment = loadEnv(mode, process.cwd(), "");
     proxy = createDevProxyConfig(environment[DEV_PROXY_TARGET_ENV]);
   }
 
   return {
+    base: command === "build" || isPreview ? "/penumbra/" : "/",
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
