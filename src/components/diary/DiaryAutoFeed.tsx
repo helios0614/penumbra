@@ -10,7 +10,7 @@ export function DiaryAutoFeed({ state, controller }: { readonly state: DiaryStat
     <div className="flex min-h-11 items-center gap-2 px-1 text-xs text-muted-strong">
       <Sparkles className="size-3.5 shrink-0 text-primary-ink" aria-hidden="true" /><span id="diary-auto-feed-label">自动投喂记忆</span>
       <Popover><PopoverTrigger aria-label="了解自动投喂记忆" render={<Button variant="ghost" className="size-11 px-0 text-muted-foreground" />}><CircleHelp className="size-3.5" aria-hidden="true" /></PopoverTrigger>
-        <PopoverContent><PopoverTitle>自动投喂记忆</PopoverTitle><PopoverDescription className="text-xs leading-6">这是全局设置，与所选月份和日期无关。开启既有记忆投喂，不代表日记正文已完成或归档。旧执行链路仍有替换未完成记录的风险，重要草稿请先备份。</PopoverDescription></PopoverContent>
+        <PopoverContent><PopoverTitle>自动投喂记忆</PopoverTitle><PopoverDescription className="text-xs leading-6">对所有日期生效，自动投喂后仍需确认并保存日记。重要草稿请先备份。</PopoverDescription></PopoverContent>
       </Popover>
       <div className="ml-auto shrink-0">
         {state.enabled === null ? <span className="text-xs text-muted-foreground" role="status">{state.loading ? "读取中…" : "状态未知"}</span>

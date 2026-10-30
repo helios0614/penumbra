@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import type { Message } from "@/domain/message";
 import { MessageEditError } from "@/domain/message/message-edit";
 import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-export function MessageEditDialog({ message, unavailableReason, onSave, onClose }: {
-  readonly message: Message;
+export function MessageEditDialog<T extends { readonly content: string }>({ message, unavailableReason, onSave, onClose, saveErrorMessage, description = "修改整条消息的正文，保存后不会自动生成回复。" }: {
+  readonly message: T;
   readonly unavailableReason: string | null;
-  readonly onSave: (message: Message, content: string) => Promise<void>;
+  readonly onSave: (message: T, content: string) => Promise<void>;
   readonly onClose: () => void;
+  readonly description?: string | null;
+  readonly saveErrorMessage?: (error: unknown) => string;
 }) {
   // Keep the opening source, including whitespace, independent of history/WS refreshes.
   const [content, setContent] = useState(message.content);
@@ -34,17 +35,17 @@ export function MessageEditDialog({ message, unavailableReason, onSave, onClose 
     busyRef.current = true; setBusy(true); setError(null);
     try { await onSave(message, content); onClose(); }
     catch (error) {
-      setError(error instanceof MessageEditError ? error.message
+      setError(saveErrorMessage ? saveErrorMessage(error) : error instanceof MessageEditError ? error.message
         : error instanceof ApiError && (error.status === 401 || error.status === 403) ? "没有编辑权限或登录已过期。编辑内容已保留。"
         : error instanceof ApiError && error.status === 404 ? "消息已不存在，编辑内容已保留。请关闭并刷新核对。"
         : "尚未确认保存，编辑内容已保留，请重试或刷新核对。");
     } finally { busyRef.current = false; setBusy(false); }
   };
   return <Dialog open onOpenChange={open => { if (!open && !busyRef.current) onClose(); }}>
-    <DialogContent ref={contentRef} closeButtonProps={{ disabled: busy }}>
+    <DialogContent ref={contentRef} closeButtonProps={{ disabled: busy }} {...(description === null ? { "aria-describedby": undefined } : {})}>
       <DialogHeader>
         <DialogTitle>编辑消息</DialogTitle>
-        <DialogDescription>修改整条消息的正文，保存后不会自动生成回复。</DialogDescription>
+        {description !== null && <DialogDescription>{description}</DialogDescription>}
       </DialogHeader>
       <DialogBody>
         <label className="flex flex-col gap-2 text-sm">消息正文

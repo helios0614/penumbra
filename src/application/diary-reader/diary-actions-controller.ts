@@ -26,8 +26,8 @@ export function createDiaryActions(options: {
     options.onSaved(entry);
     const moreEdits = !sameDiaryDraft(editor.draft, submitted);
     publish({
-      editor: moreEdits ? { ...editor, baseline: entry, submitted: null, uncertain: false, conflict: false, busy: null, error: "上次保存已确认；当前新增修改尚未保存。" } : null,
-      notice: { text: "日记已保存", description: "已回读核对日记内容；当前接口未提供向量处理结果。" },
+      editor: moreEdits ? { ...editor, baseline: entry, submitted: null, uncertain: false, conflict: false, busy: null, error: "已确认上次保存，新增修改尚未保存。" } : null,
+      notice: { text: "日记已保存" },
     });
   }
 
@@ -40,9 +40,9 @@ export function createDiaryActions(options: {
       const latest = await deps.getArchivedDiary(editor.baseline.id, editor.baseline.date, { signal: abort.signal });
       if (disposed || abort.signal.aborted) return false;
       if (sameDiaryDraft(diaryDraft(latest), editor.submitted)) { accept(latest, editor.submitted); return true; }
-      publish({ editor: { ...getState().editor!, busy: null, uncertain: true, error: "服务端内容与上次提交不一致，保存结果尚未确认。草稿已保留，请勿重复提交。" } });
+      publish({ editor: { ...getState().editor!, busy: null, uncertain: true, error: "保存结果仍未确认，草稿已保留，请勿重复提交。" } });
     } catch {
-      if (!disposed && !abort.signal.aborted) publish({ editor: { ...getState().editor!, busy: null, uncertain: true, error: "无法核对保存结果，记录可能已变化或不可用。草稿已保留，可复制备份后再次核对。" } });
+      if (!disposed && !abort.signal.aborted) publish({ editor: { ...getState().editor!, busy: null, uncertain: true, error: "暂时无法核对保存结果。草稿已保留，请先备份后重试核对。" } });
     } finally { if (write === abort) write = null; }
     return false;
   }
@@ -64,7 +64,7 @@ export function createDiaryActions(options: {
       const latest = await deps.getArchivedDiary(editor.baseline.id, editor.baseline.date, { signal: abort.signal });
       if (disposed || abort.signal.aborted) return false;
       if (!sameDiaryDraft(diaryDraft(latest), diaryDraft(editor.baseline))) {
-        publish({ editor: { ...editor, busy: null, conflict: true, error: "服务端日记已变化，未发送保存请求。草稿已保留；请先备份修改，再返回阅读并刷新核对。" } });
+        publish({ editor: { ...editor, busy: null, conflict: true, error: "日记已被修改，本次未保存。请先备份草稿，再刷新核对。" } });
         return false;
       }
       sent = true;
@@ -74,14 +74,14 @@ export function createDiaryActions(options: {
       const saved = await deps.getArchivedDiary(editor.baseline.id, editor.baseline.date, { signal: abort.signal });
       if (disposed || abort.signal.aborted) return false;
       if (!sameDiaryDraft(diaryDraft(saved), editor.draft)) {
-        publish({ editor: { ...getState().editor!, busy: null, uncertain: true, error: "服务端回读与提交内容不一致，未确认保存成功。草稿已保留，请先核对保存结果。" } });
+        publish({ editor: { ...getState().editor!, busy: null, uncertain: true, error: "读回内容不一致，尚未确认保存。草稿已保留，请先核对结果。" } });
         return false;
       }
       accept(saved, editor.draft); return true;
     } catch (error) {
       if (disposed || abort.signal.aborted) return false;
       const uncertain = sent && (accepted || diaryWriteUncertain(error));
-      publish({ editor: { ...getState().editor!, busy: null, uncertain, error: uncertain ? "保存结果暂时未知，草稿已保留。请先核对结果，不要重复提交。" : sent ? "保存失败，输入已保留。请检查连接或登录状态后重试。" : "无法核对服务端日记，未发送保存请求。草稿已保留，请重试。" } });
+      publish({ editor: { ...getState().editor!, busy: null, uncertain, error: uncertain ? "保存结果未知，草稿已保留。请先核对，勿重复提交。" : sent ? "保存失败，草稿已保留，请稍后重试。" : "暂时无法读取日记，本次未保存。草稿已保留，请重试。" } });
       return false;
     } finally { if (write === abort) write = null; }
   }
@@ -94,7 +94,7 @@ export function createDiaryActions(options: {
       const enabled = await deps.getDiaryAutoFeed({ signal: abort.signal });
       if (disposed || abort.signal.aborted || seq !== feedSeq) return false;
       const uncertain = getState().autoFeed.uncertain && enabled !== feedTarget;
-      updateFeed({ enabled, loading: false, uncertain, error: uncertain ? "当前状态已读取，但上次切换结果仍未确认，请稍后再次核对。" : null });
+      updateFeed({ enabled, loading: false, uncertain, error: uncertain ? "上次切换结果仍未确认，请稍后核对。" : null });
       return true;
     } catch {
       if (!disposed && !abort.signal.aborted && seq === feedSeq) updateFeed({ loading: false, error: "无法读取自动投喂设置，请重新读取。" });
@@ -115,14 +115,14 @@ export function createDiaryActions(options: {
       const confirmed = await deps.getDiaryAutoFeed({ signal: abort.signal });
       if (disposed || abort.signal.aborted) return false;
       if (returned !== enabled || confirmed !== enabled) {
-        updateFeed({ enabled: confirmed, saving: false, uncertain: false, error: "服务端当前设置与本次切换不一致，未确认切换成功。" }); return false;
+        updateFeed({ enabled: confirmed, saving: false, uncertain: false, error: "当前设置与本次选择不一致，请核对。" }); return false;
       }
       updateFeed({ enabled: confirmed, saving: false, uncertain: false, error: null });
       publish({ notice: { text: confirmed ? "自动投喂记忆已开启" : "自动投喂记忆已关闭" } }); return true;
     } catch (error) {
       if (!disposed && !abort.signal.aborted) {
         const uncertain = accepted || diaryWriteUncertain(error);
-        updateFeed({ saving: false, uncertain, error: uncertain ? "切换结果暂时未知，请先核对状态，不要重复切换。" : "切换失败，保留上次确认的设置。" });
+        updateFeed({ saving: false, uncertain, error: uncertain ? "切换结果未知，请先核对，勿重复切换。" : "切换失败，保留上次确认的设置。" });
       }
       return false;
     } finally { if (feedWrite === abort) feedWrite = null; }

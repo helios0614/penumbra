@@ -26,7 +26,7 @@ describe("manual calendar feed UI", () => {
     (find(tree, Button, p => p.children === "继续原日记").props.onClick as () => void)(); expect(open).toHaveBeenCalledWith("old"); expect(start).toHaveBeenCalledOnce();
     (find(tree, Button, p => p.children === "替换并重新投喂").props.onClick as () => void)(); tree = session.render(); session.commit();
     expect(replace).not.toHaveBeenCalled();
-    expect(String(find(tree, AlertDialogDescription).props.children)).toContain("可能失去原有可访问性");
+    expect(String(find(tree, AlertDialogDescription).props.children)).toContain("旧草稿和对话将被替换");
     (find(tree, AlertDialogAction).props.onClick as () => void)(); expect(replace).toHaveBeenCalledWith("2020-01-02", "old");
     session.dispose(); c.dispose();
   });

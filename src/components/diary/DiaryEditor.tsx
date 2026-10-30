@@ -77,7 +77,7 @@ export function DiaryEditList({ label, values, disabled, onChange }: { readonly 
 export function DiaryDiscardDialog({ open, busy, onKeep, onDiscard, finalFocus }: { readonly open: boolean; readonly busy: boolean; readonly onKeep: () => void; readonly onDiscard: () => void; readonly finalFocus?: ComponentProps<typeof AlertDialogContent>["finalFocus"] }) {
   return <AlertDialog open={open} onOpenChange={(next) => { if (!next) onKeep(); }}>
     <AlertDialogContent ref={diaryDialogViewportRef} finalFocus={finalFocus}>
-      <AlertDialogHeader><AlertDialogTitle>放弃未保存的修改？</AlertDialogTitle><AlertDialogDescription>当前编辑草稿会被放弃。若保存结果尚未确认，离开不会撤销已经发送的请求，请先核对或复制备份。</AlertDialogDescription></AlertDialogHeader>
+      <AlertDialogHeader><AlertDialogTitle>放弃未保存的修改？</AlertDialogTitle><AlertDialogDescription>未保存的修改将丢失。若保存结果未知，请先核对或备份；离开不会撤销保存请求。</AlertDialogDescription></AlertDialogHeader>
       <AlertDialogFooter><AlertDialogCancel disabled={busy} onClick={onKeep}>继续编辑</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={busy} onClick={onDiscard}>放弃修改</AlertDialogAction></AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>;

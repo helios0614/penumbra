@@ -38,7 +38,8 @@ describe("Diary archived editing lifecycle", () => {
     await controller.saveEdit();
     expect(api.updateArchivedDiary).toHaveBeenCalledWith(original.id, { ...expected, status: "done" }, { signal: expect.any(AbortSignal), timeoutMs: 60_000 });
     expect(api.getArchivedDiary).toHaveBeenCalledTimes(3);
-    expect(controller.getState()).toMatchObject({ editor: null, notice: { text: "日记已保存", description: expect.stringContaining("未提供向量处理结果") }, reader: { date: original.date, entry: expected }, preview: { entry: expected } });
+    expect(controller.getState()).toMatchObject({ editor: null, notice: { text: "日记已保存" }, reader: { date: original.date, entry: expected }, preview: { entry: expected } });
+    expect(controller.getState().notice?.description).toBeUndefined();
     controller.back(); expect(controller.getState().calendar?.items[0].title).toBe("新标题");
     expect(api.updateArchivedDiary).toHaveBeenCalledTimes(1);
   });

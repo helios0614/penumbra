@@ -40,13 +40,12 @@ export function DiaryFeedAction({ date, indexedEntryId, state, controller, onOpe
       {notice?.kind === "started" && notice.entryId && notice.entryId !== indexedEntryId && <Button type="button" variant="link" size="compact" className="min-h-11 gap-1.5 px-0 text-xs" onClick={() => onOpen(notice.entryId!)}>
         <MessagesSquare className="size-3.5" aria-hidden="true" />进入本次日记对话
       </Button>}
-      {notice?.kind === "uncertain" && <p className="text-xs leading-5 text-muted-strong">可使用页面上方的刷新日历核对。</p>}
     </div>
     {notice && <p role={notice.kind === "uncertain" || notice.kind === "refused" ? "alert" : "status"} className="text-xs leading-5 text-muted-strong">{notice.text}</p>}
     <AlertDialog open={Boolean(replacement)} onOpenChange={open => { if (!open) setReplacement(null); }}>
       <AlertDialogContent ref={diaryDialogViewportRef}>
         <AlertDialogHeader><AlertDialogTitle>替换草稿并重新投喂？</AlertDialogTitle><AlertDialogDescription>
-          {replacement?.date} 的旧草稿及其消息可能失去原有可访问性。确认后会替换为新的日记并重新投喂；继续原日记可保留当前对话。
+          {replacement?.date} 的旧草稿和对话将被替换，并重新投喂。此操作无法撤回。
         </AlertDialogDescription></AlertDialogHeader>
         <AlertDialogFooter><AlertDialogCancel>保留旧草稿</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={busy} onClick={() => {
           if (replacement) void controller?.replaceConfirmed(replacement.date, replacement.id);

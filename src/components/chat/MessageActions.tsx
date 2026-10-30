@@ -121,6 +121,7 @@ function MessageActionsInner({
               <Button
                 variant="ghost"
                 size="icon-xs"
+                aria-label="删除消息"
                 onClick={onDelete}
                 className="text-muted-foreground hover:text-destructive"
               />

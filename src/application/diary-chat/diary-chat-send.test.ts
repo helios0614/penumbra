@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/lib/api";
 import { createDiaryChatController } from "./diary-chat-controller";
 import { presentDiaryTimeline } from "@/components/diary/diary-chat-presenter";
 import type { DiarySendEvent } from "@/domain/diary/diary-chat-send-client";
@@ -124,4 +125,12 @@ describe("Diary same-Entry send and persistence reconciliation", () => {
     expect(visible()[1]).toMatchObject({ content: "正文", thinking: "思考", simpleThink: "记录" });
     wire.push(done(null)); wire.end(); await task; c.dispose();
   });
+});
+
+
+it("shows a known API-address preflight error for send without keeping unsaved local placeholders", async () => {
+  const { c, deps, visible } = await setup();
+  deps.sendMessage.mockImplementationOnce(async function* () { throw new ApiError("private", 422, { detail: { code: "missing_base_url" } }); });
+  expect(await c.send("draft")).toBe(false); await settle();
+  expect(visible()).toEqual([]); expect(c.getState().sendError).toBe("当前模型配置缺少 API 地址，请检查模型设置。"); c.dispose();
 });

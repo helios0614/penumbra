@@ -96,6 +96,7 @@ interface BubbleProps {
   readonly regenerateUnavailableReason?: string | null;
   readonly onInsert?: (text: string) => void;
   readonly onEdit?: () => void;
+  readonly onDelete?: () => void;
   readonly editUnavailableReason?: string | null;
 }
 
@@ -108,6 +109,7 @@ function BubbleInner({
   regenerateUnavailableReason,
   onInsert,
   onEdit,
+  onDelete,
   editUnavailableReason,
 }: BubbleProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -177,6 +179,7 @@ function BubbleInner({
             <MessageActions
               role={message.kind}
               content={message.content}
+              onDelete={onDelete}
               onEdit={onEdit}
               editUnavailableReason={editUnavailableReason}
               onRegenerate={message.kind === "assistant" && message.error ? undefined : onRegenerate}

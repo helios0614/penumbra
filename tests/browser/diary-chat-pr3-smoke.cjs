@@ -106,7 +106,7 @@ async function run(browser, appPath, width) {
     await select('2026-09-05'); await launch().scrollIntoViewIfNeeded(); await launch().focus();
     const calendar = page.getByRole('region', { name: '日记月历与日期预览', exact: true });
     const top = await calendar.evaluate(el => el.scrollTop), beforeReads = f.indexReads;
-    await launch().click(); await page.getByText('已开始投喂，可稍后查看对话中的已保存消息。', { exact: true }).waitFor(); await wait(150);
+    await launch().click(); await page.getByText('已开始投喂，可进入对话查看。', { exact: true }).waitFor(); await wait(150);
     assert.equal(f.indexReads, beforeReads + 1); assert.equal(await page.locator('.chat-shell').count(), 0);
     assert.equal(await calendar.evaluate(el => el.scrollTop), top); assert(await launch().evaluate(el => el === document.activeElement));
     assert.equal(await page.locator('[data-diary-date="2026-09-05"]').getAttribute('aria-pressed'), 'true');
@@ -149,11 +149,11 @@ async function run(browser, appPath, width) {
     const draftPosts = feedPosts().length; await keep.click(); await page.locator('[data-message-id="draft-exact-question"]').waitFor(); assert.equal(feedPosts().length, draftPosts);
     await page.getByRole('button', { name: '返回日历', exact: true }).click();
     await page.getByRole('button', { name: '替换并重新投喂', exact: true }).click();
-    await page.getByRole('alertdialog').waitFor(); await wait(250); assert((await page.getByRole('alertdialog').textContent()).includes('旧草稿及其消息可能失去原有可访问性'));
+    await page.getByRole('alertdialog').waitFor(); await wait(250); assert((await page.getByRole('alertdialog').textContent()).includes('旧草稿和对话将被替换'));
     await noOverflow(); await page.screenshot({ path: `${output}/${label}-replace-warning.png` });
     await page.getByRole('button', { name: '保留旧草稿', exact: true }).click(); assert.equal(feedPosts().length, draftPosts);
     await page.getByRole('button', { name: '替换并重新投喂', exact: true }).click(); await page.getByRole('button', { name: '确认替换并投喂', exact: true }).click();
-    await page.getByText('已开始投喂，可稍后查看对话中的已保存消息。', { exact: true }).waitFor();
+    await page.getByText('已开始投喂，可进入对话查看。', { exact: true }).waitFor();
     assert.equal(feedPosts().at(-1).replace, 'true'); assert.equal(feedPosts().length, draftPosts + 1); assert.equal(await page.locator('.chat-shell').count(), 0);
     // Existing done Entry stays archived and retains formal reader/editor.
     await select('2026-09-07'); await launch().click(); await page.getByRole('alert').filter({ hasText: '未启动投喂' }).waitFor();

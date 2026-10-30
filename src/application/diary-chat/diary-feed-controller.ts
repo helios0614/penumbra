@@ -30,12 +30,12 @@ export function createDiaryFeedController(refreshIndex: () => Promise<unknown>, 
     try {
       const result = await start(date, replace, abort.signal);
       if (disposed) return;
-      notice = result.kind === "started" ? { ...result, text: "已开始投喂，可稍后查看对话中的已保存消息。" }
-        : result.kind === "draft" ? { ...result, text: "这一天已有草稿，可以继续原日记，或确认替换后重新投喂。" }
-        : { kind: "refused", text: "未启动投喂：这一天可能已有归档日记，或没有可投喂的记忆。请查看日历记录。" };
+      notice = result.kind === "started" ? { ...result, text: "已开始投喂，可进入对话查看。" }
+        : result.kind === "draft" ? { ...result, text: "这一天已有草稿。" }
+        : { kind: "refused", text: "未启动投喂：当天可能已归档或没有可投喂的记忆。" };
     } catch {
       if (disposed) return;
-      notice = { kind: "uncertain", text: "启动结果待核对。请先刷新日历，若已有记录可进入对话；不要直接再次投喂，以免重复创建。" };
+      notice = { kind: "uncertain", text: "启动结果待核对，请刷新日历，勿重复投喂。" };
     } finally {
       request = null;
       publish({ busyDate: null });

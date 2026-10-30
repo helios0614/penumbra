@@ -101,6 +101,8 @@ interface BubbleListProps {
   readonly onRegenerate?: (messageId: string) => void;
   readonly onInsert?: (text: string) => void;
   readonly onEdit?: (messageId: string) => void;
+  readonly onDelete?: (messageId: string) => void;
+  readonly actionsForMessage?: (messageId: string) => { edit: boolean; delete: boolean; regenerate: boolean };
   readonly editUnavailableReason?: (messageId: string) => string | null;
   readonly onLoadOlder?: () => void;
   readonly olderStatus?: OlderPageStatus;
@@ -120,19 +122,21 @@ interface MessageRowProps {
   readonly regenerateUnavailableReason?: string | null;
   readonly onInsert?: (text: string) => void;
   readonly onEdit?: (id: string) => void;
+  readonly onDelete?: (id: string) => void;
   readonly editUnavailableReason?: string | null;
 }
 
 // Per-row handlers and search values stay stable when another message streams.
 const MessageRow = memo(function MessageRow({ message, userName, query, active, result,
-  showActions, onRegenerate, regenerateDisabled, regenerateUnavailableReason, onInsert, onEdit, editUnavailableReason }: MessageRowProps) {
+  showActions, onRegenerate, regenerateDisabled, regenerateUnavailableReason, onInsert, onEdit, onDelete, editUnavailableReason }: MessageRowProps) {
   const regenerate = useCallback(() => onRegenerate?.(message.id), [onRegenerate, message.id]);
+  const remove = useCallback(() => onDelete?.(message.id), [onDelete, message.id]);
   const edit = useCallback(() => onEdit?.(message.id), [onEdit, message.id]);
   const search = useMemo(() => ({ query, active, segments: result?.snippets.map(s => s.segmentKey) }), [query, active, result]);
   return <SearchHighlightContext value={search}>
     <Bubble message={message} userName={userName} showActions={showActions} onRegenerate={onRegenerate ? regenerate : undefined}
       regenerateDisabled={regenerateDisabled} regenerateUnavailableReason={regenerateUnavailableReason}
-      onInsert={onInsert} onEdit={onEdit ? edit : undefined} editUnavailableReason={editUnavailableReason} />
+      onDelete={onDelete ? remove : undefined} onInsert={onInsert} onEdit={onEdit ? edit : undefined} editUnavailableReason={editUnavailableReason} />
     {active && result && <div className="chat-search-match mt-2 rounded-lg px-3 py-2 text-xs text-muted-strong" aria-label="当前消息匹配内容">
       {result.snippets.map((s, i) => <p key={i} className="break-words leading-6 [overflow-wrap:anywhere]">{highlightSearchText(s.text, query)}</p>)}
     </div>}
@@ -154,6 +158,8 @@ function BubbleListInner({
   onRegenerate,
   onInsert,
   onEdit,
+  onDelete,
+  actionsForMessage,
   editUnavailableReason,
   onLoadOlder,
   olderStatus,
@@ -161,9 +167,10 @@ function BubbleListInner({
   olderError,
 }: BubbleListProps) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const actions = useRef({ onEdit, onInsert, onRegenerate });
-  useLayoutEffect(() => { actions.current = { onEdit, onInsert, onRegenerate }; }, [onEdit, onInsert, onRegenerate]);
+  const actions = useRef({ onEdit, onInsert, onRegenerate, onDelete });
+  useLayoutEffect(() => { actions.current = { onEdit, onInsert, onRegenerate, onDelete }; }, [onEdit, onInsert, onRegenerate, onDelete]);
   const rowActions = useMemo(() => ({
+    delete: (id: string) => actions.current.onDelete?.(id),
     edit: (id: string) => actions.current.onEdit?.(id),
     insert: (text: string) => actions.current.onInsert?.(text),
     regenerate: (id: string) => actions.current.onRegenerate?.(id),
@@ -268,6 +275,7 @@ function BubbleListInner({
             <DateSeparator timestamp={group.timestamp} />
             <div className="flex w-full flex-col items-stretch overflow-hidden">
               {group.messages.map((message, index) => {
+                const available = actionsForMessage?.(message.id);
                 const previous = group.messages[index - 1];
                 const isRoleSwitch = previous && previous.kind !== message.kind;
 
@@ -283,11 +291,12 @@ function BubbleListInner({
                       query={query}
                       active={message.id === activeMessageId && !!query}
                       result={message.id === activeMessageId ? activeResult : undefined}
-                      onRegenerate={message.id === regenerateTargetId && onRegenerate ? rowActions.regenerate : undefined}
+                      onRegenerate={(available ? available.regenerate : message.id === regenerateTargetId) && onRegenerate ? rowActions.regenerate : undefined}
                       regenerateDisabled={!regenerateEnabled}
                       regenerateUnavailableReason={message.id === regenerateTargetId ? regenerateUnavailableReason : "仅最新的普通回复可重新生成。"}
                       onInsert={onInsert ? rowActions.insert : undefined}
-                      onEdit={onEdit ? rowActions.edit : undefined}
+                      onEdit={onEdit && available?.edit !== false ? rowActions.edit : undefined}
+                      onDelete={onDelete && available?.delete !== false ? rowActions.delete : undefined}
                       editUnavailableReason={editUnavailableReason?.(message.id)}
                     />
                   </div>

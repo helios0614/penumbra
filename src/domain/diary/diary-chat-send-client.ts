@@ -10,6 +10,20 @@ export type DiarySendEvent =
   | { readonly type: "error" }
   | { readonly type: "done"; readonly drift: string | null; readonly thinking: string | null; readonly message: DiaryMessage | null };
 
+export type DiaryRegenerateEvent = Exclude<DiarySendEvent, { type: "start" }> |
+  { readonly type: "start"; readonly entryId: string; readonly assistantId: string; readonly replacedIds: readonly string[] };
+
+export function parseDiaryRegenerateEvent(input: unknown, entryId: string): DiaryRegenerateEvent | null {
+  if (input && typeof input === "object" && "type" in input && input.type === "start") {
+    const row = input as Record<string, unknown>;
+    if (row.entry_id !== entryId || typeof row.id !== "string" || !row.id.trim() || !Array.isArray(row.replaced_message_ids) ||
+      !row.replaced_message_ids.length || row.replaced_message_ids.some(id => typeof id !== "string" || !id.trim()) || row.replaced_message_ids.includes(row.id)) throw new DiaryContractError();
+    return { type: "start", entryId, assistantId: row.id, replacedIds: row.replaced_message_ids };
+  }
+  const event = parseDiarySendEvent(input, entryId);
+  return event?.type === "start" ? null : event;
+}
+
 export function parseDiarySendEvent(input: unknown, entryId: string): DiarySendEvent | null {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new DiaryContractError();
   const row = input as Record<string, unknown>;
@@ -38,8 +52,17 @@ export function parseDiarySendEvent(input: unknown, entryId: string): DiarySendE
 /** MsgCreate: omit optional generation overrides so Diary's existing selection/context applies. */
 export async function* sendDiaryMessage(entryId: string, content: string, signal: AbortSignal): AsyncGenerator<DiarySendEvent> {
   if (!entryId.trim() || !content.trim()) throw new DiaryContractError();
-  const stream = await openApiStream(`/api/diary/entries/${encodeURIComponent(entryId)}/messages`, {
-    method: "POST", body: { content, role: "user" }, signal,
+  yield* readDiaryStream(`/api/diary/entries/${encodeURIComponent(entryId)}/messages`, { content, role: "user" }, entryId, signal, parseDiarySendEvent);
+}
+
+export async function* regenerateDiaryMessage(entryId: string, messageId: string, signal: AbortSignal): AsyncGenerator<DiaryRegenerateEvent> {
+  if (!entryId.trim() || !messageId.trim()) throw new DiaryContractError();
+  yield* readDiaryStream(`/api/diary/entries/${encodeURIComponent(entryId)}/messages/${encodeURIComponent(messageId)}/regenerate`, undefined, entryId, signal, parseDiaryRegenerateEvent);
+}
+
+async function* readDiaryStream<T>(path: string, body: { content: string; role: string } | undefined, entryId: string, signal: AbortSignal, parse: (input: unknown, entryId: string) => T | null) {
+  const stream = await openApiStream(path, {
+    method: "POST", body, signal,
     timeoutMs: 30_000, streamIdleTimeoutMs: 120_000,
   });
   if (!stream.contentType.includes("text/event-stream")) {
@@ -47,7 +70,7 @@ export async function* sendDiaryMessage(entryId: string, content: string, signal
     throw new DiaryContractError();
   }
   for await (const frame of parseSseStream(stream.body, { signal })) {
-    const event = parseDiarySendEvent(parseSseJsonData(frame), entryId);
+    const event = parse(parseSseJsonData(frame), entryId);
     if (event) yield event;
   }
 }
