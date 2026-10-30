@@ -1,5 +1,7 @@
 /* Run after npm run build: node tests/browser/production-subpath-smoke.cjs [playwright module] [browser executable].
- * Starts local Vite preview/dev only. Backend API/WS is synthetic; only local Vite HMR is forwarded. */
+ * Standalone: local Vite preview/dev with synthetic backend API/WS.
+ * Exported exercise(..., { mockBackend: false }): real local FastAPI transport,
+ * whose business API fixtures are supplied by the integration test application. */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -79,7 +81,7 @@ async function stop(child) {
   await exited;
 }
 
-async function exercise(browser, origin, production, width) {
+async function exercise(browser, origin, production, width, { mockBackend = true } = {}) {
   const base = production ? '/penumbra/' : '/';
   const context = await browser.newContext({ viewport: { width, height: 900 }, isMobile: width < 768, hasTouch: width < 768 });
   const requests = [], sockets = [], errors = [], failures = [], escaped = [];
@@ -99,7 +101,7 @@ async function exercise(browser, origin, production, width) {
   page.setDefaultTimeout(15000);
   page.on('pageerror', error => errors.push(error.message));
   page.on('response', response => { if (response.status() >= 400) failures.push(`${response.status()} ${new URL(response.url()).pathname}`); });
-  await context.routeWebSocket(() => true, socket => {
+  if (mockBackend) await context.routeWebSocket(() => true, socket => {
     const url = new URL(socket.url());
     if (!production && url.origin.replace(/^ws/, 'http') === origin && url.pathname === '/') {
       socket.connectToServer(); // Vite's own local HMR socket, separate from the backend /ws.
@@ -107,16 +109,18 @@ async function exercise(browser, origin, production, width) {
     }
     sockets.push(url.pathname);
   });
+  else page.on('websocket', socket => sockets.push(new URL(socket.url()).pathname));
   await context.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url());
     if (url.origin !== origin) { escaped.push(url.origin); return route.abort('blockedbyclient'); }
-    if (legacyDestination && url.pathname === '/' && request.isNavigationRequest()) {
+    if (mockBackend && legacyDestination && url.pathname === '/' && request.isNavigationRequest()) {
       assert.equal(request.frame(), page.mainFrame());
       assert((await request.allHeaders()).cookie.includes('aion_session=synthetic-switch-session'));
       return route.fulfill({ contentType: 'text/html', body: '<h1>Synthetic legacy home</h1>' });
     }
     if (url.pathname.startsWith('/api/')) {
       requests.push({ path: url.pathname, method: request.method() });
+      if (!mockBackend) return route.continue();
       const fixtures = {
         '/api/session': { authenticated: true }, '/api/conversations': [], '/api/models': [],
         '/api/main/configuration': { connections: [], allowed_protocols: [], profiles: [], models: [], selection: null, connection_selection: null, diagnostic: null },
@@ -161,10 +165,14 @@ async function exercise(browser, origin, production, width) {
 
     // A direct detail load has no app-owned history entry: close must replace with the correct desktop.
     await page.goto(`${origin}${base}app/chat`); await chat();
+    await page.reload(); await chat();
     await page.getByRole('button', { name: '返回桌面', exact: true }).click(); await classicHome();
     assert.equal(pathname(), base);
     await page.getByRole('button', { name: '编辑桌面', exact: true }).click();
     await page.getByRole('button', { name: '切换到实验桌面', exact: true }).click(); await editorialHome();
+    assert.equal(pathname(), `${base}editorial`);
+    await page.goto(`${origin}${base}editorial`); await editorialHome();
+    await page.reload(); await editorialHome();
     assert.equal(pathname(), `${base}editorial`);
     await hiddenEntries();
     assert.equal(await page.getByRole('heading', { name: 'Today', exact: true }).count(), 0);
@@ -197,13 +205,20 @@ async function exercise(browser, origin, production, width) {
       await link.click();
       await page.getByRole('heading', { name: 'Synthetic legacy home', exact: true }).waitFor();
       assert.equal(pathname(), '/');
+      assert(await page.evaluate(() => window === window.top));
+      assert.equal(page.frames().length, 1);
       const cookies = await context.cookies(origin);
       assert.equal(cookies.find(cookie => cookie.name === 'aion_session').value, 'synthetic-switch-session');
       legacyDestination = false;
     }
 
-    await page.goto(`${origin}${base}proxy-test`);
-    if (production) {
+    const proxyPage = await page.goto(`${origin}${base}proxy-test`);
+    if (production && !mockBackend) {
+      assert.equal(proxyPage.status(), 404);
+      assert.equal((await page.goto(`${origin}${base}dev/chat-markdown`)).status(), 404);
+      // Expected errors are recorded separately from unexpected resource failures.
+      assert.deepEqual(failures.splice(0), [`404 ${base}proxy-test`, `404 ${base}dev/chat-markdown`]);
+    } else if (production) {
       await classicHome(); assert.equal(await page.getByRole('heading', { name: 'AionHome API Proxy Test' }).count(), 0);
       await page.goto(`${origin}${base}dev/chat-markdown`); await classicHome();
       assert.equal(await page.getByRole('heading', { name: 'Chat Markdown 开发验收' }).count(), 0);
@@ -217,11 +232,11 @@ async function exercise(browser, origin, production, width) {
     assert(requests.some(request => request.path === '/api/conversations'));
     assert(sockets.length && sockets.every(socket => socket === '/ws'), JSON.stringify(sockets));
     assert.deepEqual(escaped, []); assert.deepEqual(errors, []); assert.deepEqual(failures, []);
-    return { mode: production ? 'preview' : 'dev', width, navigation: 'passed', desktopCleanup: 'shortcuts, saved widgets and picker passed', legacySwitch: 'both desktops passed', apiRoot: '/api/', websocketRoot: '/ws', pageErrors: 0 };
+    return { mode: !mockBackend ? 'fastapi-real-dist' : production ? 'preview' : 'dev', width, navigation: 'passed', desktopCleanup: 'shortcuts, saved widgets and picker passed', legacySwitch: 'both desktops passed', apiRoot: '/api/', websocketRoot: '/ws', pageErrors: 0 };
   } finally { await context.close(); }
 }
 
-(async () => {
+async function main() {
   const build = checkBuild();
   const browser = await chromium.launch({ headless: true, ...(process.argv[3] ? { executablePath: process.argv[3] } : {}) });
   const results = [];
@@ -233,4 +248,7 @@ async function exercise(browser, origin, production, width) {
     }
     console.log(JSON.stringify({ build, browser: results }, null, 2));
   } finally { await browser.close(); }
-})().catch(error => { console.error(error); process.exitCode = 1; });
+}
+
+module.exports = { checkBuild, exercise };
+if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
