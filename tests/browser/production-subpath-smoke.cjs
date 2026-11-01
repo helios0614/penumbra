@@ -7,7 +7,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
 const { spawn } = require('node:child_process');
-const { chromium } = require(process.argv[2] || 'playwright');
 const root = path.resolve(__dirname, '../..');
 const dist = path.join(root, 'dist');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -25,7 +24,8 @@ function checkBuild() {
   assert(entryUrls.some(url => url.startsWith('/penumbra/assets/') && url.endsWith('.js')));
   assert(entryUrls.some(url => url.startsWith('/penumbra/assets/') && url.endsWith('.css')));
   const assetUrls = [...entryUrls];
-  for (const file of files(dist)) {
+  const builtFiles = files(dist);
+  for (const file of builtFiles) {
     if (/\.(js|css)$/.test(file)) {
       const content = fs.readFileSync(file, 'utf8');
       assert(!/AionHome API Proxy Test|Chat Markdown 开发验收|Ready to test the Vite dev proxy/.test(content), `Development page in ${path.basename(file)}`);
@@ -38,7 +38,12 @@ function checkBuild() {
     assert(url.startsWith('/penumbra/'), `Static URL escaped application base: ${url}`);
     assert(fs.statSync(path.join(dist, decodeURIComponent(url.slice('/penumbra/'.length)))).isFile(), `Missing built asset: ${url}`);
   }
-  return { staticUrls: assetUrls.length, developmentPagesExcluded: true };
+  return {
+    staticUrls: assetUrls.length,
+    developmentPagesExcluded: true,
+    fileCount: builtFiles.length,
+    sizeBytes: builtFiles.reduce((total, file) => total + fs.statSync(file).size, 0),
+  };
 }
 
 async function freePort() {
@@ -237,6 +242,7 @@ async function exercise(browser, origin, production, width, { mockBackend = true
 }
 
 async function main() {
+  const { chromium } = require(process.argv[2] || 'playwright');
   const build = checkBuild();
   const browser = await chromium.launch({ headless: true, ...(process.argv[3] ? { executablePath: process.argv[3] } : {}) });
   const results = [];
