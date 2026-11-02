@@ -87,6 +87,8 @@ python3.12 "$INSTALLER" install "${FIRST_RELEASE[@]}"
 python3.12 "$INSTALLER" status --root "$DEPLOY_ROOT"
 ```
 
+`verify`、`install`、`rollback` 支持 `--fetch-timeout <秒数>`，默认 **1200 秒**，只影响每次 `git fetch` 的总时限。例如 `python3.12 "$INSTALLER" verify "${FIRST_RELEASE[@]}" --fetch-timeout 1200`。其他 Git 操作仍使用 **300 秒**，不会一起延长。该参数是总耗时上限，不是无数据传输超时；调大时限不保证网络传输必然成功。
+
 `status` 返回活动身份、实测首页哈希、`consistent`、待恢复事务阶段和 `ready`。只有 `ready:true` 才是完整可用的部署记录状态。不存在/未初始化的根目录、权限错误、锁冲突、不一致或未完成事务均返回非零（2），不会静默初始化。
 
 ## 升级、指定版本回滚与首次撤销
@@ -143,6 +145,18 @@ python3.12 "$INSTALLER" status --root "$DEPLOY_ROOT"
 
 恢复策略是确定的：未完成获取标记放弃并保留暂存；未完成切换统一恢复到事务前的首页和版本记录，即使新首页已切换、甚至 current 已写入，也不把未提交事务自动算作成功。首次部署恢复到无活动首页。恢复可以重试，已完成的恢复不会重复切换。
 
+### Git fetch 超时与进程组（B3.2）
+
+每条 Git 命令通过 `Popen(start_new_session=True)` 在独立 POSIX session/process group 中运行，继续继承绑定仓库目录及部署锁的 fd。正常完成会回收直接子进程；即使主进程已退出、输出管道已关闭，只要同组后代仍在运行，也不会当作成功。
+
+超时后先向整个进程组发送 **SIGTERM**，最多等待 **5 秒**；进程组仍存在则发送 **SIGKILL**，再最多等待 **5 秒**并执行 wait，确认直接子进程已回收。终止期间继续收集输出，进程组未消失、信号失败、管道未关闭或 wait 失败均明确报告清理失败，不报告安全恢复成功。实际退出时间可能比命令总时限多出这两个有限宽限期。安装器本身被 SIGKILL 或机器断电时无法执行这段清理，仍须人工核对存活进程及锁。
+
+错误分别报告 `Git fetch total timeout`、`exited with status`、`process-group cleanup failed` 和 `system error`，附实际运行耗时与该命令超时上限。fetch 开启普通 `--progress`，错误附脱敏后的 stderr 尾部（最多 16,384 字符）；先脱敏再截取，覆盖认证/Cookie 行、Bearer/Basic、URL/代理 userinfo、Token/密码字段及环境中已知敏感值。不启用 curl verbose 或认证头追踪。
+
+超时不会由安装器删除 `tmp_pack_*`、`tmp_idx_*`、未知 `.lock`，也不会重置或重新初始化已有对象库。必须先停止重试，检查相关 Git/remote/index-pack 进程、文件占用、部署锁及 Git 锁，记录临时文件大小、时间与来源。确认没有活动写入者后，经批准把已确认的不完整 pack 隔离到 Web 根之外并保留证据，才可重试固定 SHA。未知锁不能仅凭文件年龄处理。**禁止直接删除整个 `repository.git`**，其中可能包含既有版本的完整性校验与回滚材料。
+
+只把获取事务标为 `aborted` 不会解除仓库检查；`status` 仍不就绪，`recover` 和新的获取仍拒绝不明临时文件。不要通过重复 recover、修改事务记录或更换 Artifact 绕过检查。本轮 B3.2 仅修改本地工具，生产服务器现有截断 pack 保持原样。
+
 ### Git 目录绑定与初始化（B1.2）
 
 Git 不再接收调用者原始 root 的字符串路径。每次调用先以 `O_NOFOLLOW`/`dir_fd` 打开仓库目录：
@@ -196,3 +210,13 @@ Python 测试仅使用标准库、临时目录和本地 Git 仓库。Node 是开
 - 原有 Node 发布回归：43 项通过，1 项真实 Vite 构建用例因缺少本地 Manifest 跳过。Python 3.12 语法、Workflow YAML、空白检查通过。
 - **Ubuntu/Linux 的 procfs Git 分支及 Python 3.12 尚未在本机实跑**；没有下载解释器或安装全局依赖。现有 Ubuntu 24.04 / Python 3.12 CI Job 保持原样，提交后必须验证其实际结果，再考虑生产操作。
 - 本轮只修改安装器、测试及本文；保留原有 build.yml 未提交修改，未 Commit、Push、连接生产或部署。
+
+### B3.2 本地回归记录（2026-11-02）
+
+- macOS arm64 / Python **3.14.4**：**61 项完整隔离测试全部通过，0 skipped，218.313 秒**。原有 48 项测试正文保持不变，新增 13 项。
+- 真实独立进程验证：TERM 结束父子进程、忽略 TERM 后全组 KILL、主进程退出及管道 EOF 后仍清理后代、直接子进程 wait 回收、正常完成、非零退出、启动系统异常及 stderr 保留/脱敏。实际进程组退出时出现的短暂检查失败会在宽限期内复核，不把 EPERM 当作退出成功。
+- 故障注入验证：TERM 权限失败、瞬时进程组检查失败，以及真实本地 Git fetch 的 upload-pack 暂停。后者注入不完整 pack，验证超时后字节/inode/mtime 不变、旧首页和 current 不变、status 不就绪，verify/recover 均拒绝直接使用残留。没有重新连接 GitHub 下载正式产物，也没有重现生产网络故障。
+- 使用真实本地 Git 获取发布器夹具，核对 fetch 默认 1200 秒、配置值只传给 fetch、其他 Git 命令仍为 300 秒；正常版本获取和原有部署/回滚行为均通过。
+- Node 发布回归 **43 项通过、1 项跳过**；真实 Vite 构建集成用例未设置 `PENUMBRA_DEPLOY_TEST_SOURCE`，未重新构建业务前端。
+- Python 3.12 语法解析、Python 3.14 本地编译、Workflow YAML/CI 配置检查及 `git diff --check` 通过。本机没有 Python 3.12；**本次修改尚未实际运行 Ubuntu 24.04 / Python 3.12 CI**。现有 CI 配置保持不变，须在用户批准 Commit/Push 后验收，语法解析不能代替该结果。
+- 仅修改安装器、对应测试及本文；未连接生产服务器，未处理生产 tmp_pack，未更换固定 Artifact，未 Commit/Push 或执行生产命令。

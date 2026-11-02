@@ -40,6 +40,191 @@ class Crash(BaseException):
     """Like process termination: bypass the installer's exception rollback."""
 
 
+class GitProcessTests(unittest.TestCase):
+    """Real POSIX processes; only deadlines are shortened for these fixtures."""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="penumbra-git-process-test-")
+        self.addCleanup(self.temporary.cleanup)
+        self.base = Path(self.temporary.name).resolve()
+        self.pids = self.base / "pids.json"
+        self.script = self.base / "git-fixture.py"
+        self.addCleanup(self.cleanup_group)
+
+    def cleanup_group(self):
+        if self.pids.exists():
+            pid = json.loads(self.pids.read_text())["parent"]
+            try:
+                os.killpg(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            try:
+                os.waitpid(pid, 0)
+            except ChildProcessError:
+                pass
+
+    def assert_gone(self, pid):
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(.02)
+        self.fail(f"Fixture process {pid} survived group cleanup")
+
+    def run_fixture(self, source, timeout=.8, env=None):
+        self.script.write_text(source)
+        with mock.patch.object(deploy, "GIT_TERM_GRACE", .25), mock.patch.object(deploy, "GIT_KILL_GRACE", 2):
+            return deploy.run_git([sys.executable, "-B", str(self.script)], cwd=str(self.base), pass_fds=(),
+                                  env=dict(os.environ) if env is None else env, operation="fetch", timeout=timeout)
+
+    def tree_source(self, *, ignore_parent=False, ignore_child=False, close_child_pipes=False):
+        child_ready = self.base / "child-ready"
+        child = (
+            "import os,signal,time,pathlib\n"
+            f"signal.signal(signal.SIGTERM, signal.{'SIG_IGN' if ignore_child else 'SIG_DFL'})\n"
+            f"pathlib.Path({str(child_ready)!r}).write_text('ready')\n"
+            + ("os.close(1);os.close(2)\n" if close_child_pipes else "")
+            + "while True:time.sleep(.05)\n"
+        )
+        return (
+            "import json,os,pathlib,signal,subprocess,sys,time\n"
+            f"signal.signal(signal.SIGTERM, signal.{'SIG_IGN' if ignore_parent else 'SIG_DFL'})\n"
+            f"child=subprocess.Popen([sys.executable,'-B','-c',{child!r},'git-remote-https-fixture'])\n"
+            f"pathlib.Path({str(self.pids)!r}).write_text(json.dumps({{'parent':os.getpid(),'child':child.pid,'group':os.getpgrp(),'session':os.getsid(0)}}))\n"
+            f"while not pathlib.Path({str(child_ready)!r}).exists():time.sleep(.01)\n"
+            "sys.stderr.write('Receiving objects: 20% (fixture)\\n');sys.stderr.flush()\n"
+            "while True:time.sleep(.05)\n"
+        )
+
+    def assert_tree_reaped(self):
+        pids = json.loads(self.pids.read_text())
+        self.assertEqual(pids["parent"], pids["group"])
+        self.assertEqual(pids["parent"], pids["session"])
+        for key in ("parent", "child"):
+            self.assert_gone(pids[key])
+        with self.assertRaises(ChildProcessError):
+            os.waitpid(pids["parent"], os.WNOHANG)
+        with self.assertRaises(ProcessLookupError):
+            os.killpg(pids["group"], 0)
+
+    def test_timeout_terms_leader_and_real_descendant_and_reaps_child(self):
+        with mock.patch.object(deploy.os, "killpg", wraps=os.killpg) as sent:
+            with self.assertRaisesRegex(deploy.DeployError, r"Git fetch total timeout.*limit 0.8s") as caught:
+                self.run_fixture(self.tree_source())
+        self.assertTrue(any(c.args[1] == signal.SIGTERM for c in sent.call_args_list))
+        self.assertFalse(any(c.args[1] == signal.SIGKILL for c in sent.call_args_list))
+        self.assertIn("Receiving objects: 20%", str(caught.exception))
+        self.assertNotIn("cleanup failed", str(caught.exception))
+        self.assert_tree_reaped()
+
+    def test_successful_leader_cannot_leave_a_detached_pipe_descendant(self):
+        source = self.tree_source(ignore_child=True, close_child_pipes=True)
+        source = source.rsplit("while True:time.sleep(.05)", 1)[0] + "sys.exit(0)\n"
+        with self.assertRaisesRegex(deploy.DeployError, "left descendant processes after exit"):
+            self.run_fixture(source, timeout=2)
+        self.assert_tree_reaped()
+
+    def test_ignored_term_escalates_to_kill_for_leader_and_descendant(self):
+        real_popen = subprocess.Popen
+        processes = []
+        def observe(*args, **kwargs):
+            process = real_popen(*args, **kwargs)
+            processes.append(process)
+            return process
+        with mock.patch.object(deploy.subprocess, "Popen", observe):
+            with self.assertRaisesRegex(deploy.DeployError, "total timeout"):
+                self.run_fixture(self.tree_source(ignore_parent=True, ignore_child=True))
+        self.assertEqual(processes[0].returncode, -signal.SIGKILL)
+        self.assert_tree_reaped()
+
+    def test_leader_exit_and_pipe_eof_do_not_hide_term_ignoring_descendant(self):
+        with self.assertRaisesRegex(deploy.DeployError, "total timeout"):
+            self.run_fixture(self.tree_source(ignore_child=True, close_child_pipes=True))
+        self.assert_tree_reaped()
+
+    def test_timeout_retains_stderr_and_redacts_credentials_before_truncation(self):
+        secrets = ["bearer-fixture-123", "basic-fixture-456", "cookie-fixture-789", "setcookie-fixture-abc",
+                   "proxy-user", "proxy-pass", "query-fixture-def", "env-fixture-ghi", "password-fixture-jkl",
+                   "ghp_fixtureABCDEFGHIJKLMNOP", "github_pat_fixtureABCDEFGHIJKLMNOP"]
+        diagnostic = (
+            "Receiving objects: 20%\n"
+            "Authorization: Bearer bearer-fixture-123\n"
+            "Proxy-Authorization: Basic basic-fixture-456\n"
+            "Cookie: session=cookie-fixture-789\nSet-Cookie: session=setcookie-fixture-abc; Secure\n"
+            "https://proxy-user:proxy-pass@example.invalid/path\n"
+            "https://example.invalid/path?access_token=query-fixture-def&x=1\n"
+            "remote: env-fixture-ghi\npassword=password-fixture-jkl\n"
+            "remote: ghp_fixtureABCDEFGHIJKLMNOP github_pat_fixtureABCDEFGHIJKLMNOP\n"
+        )
+        source = f"import sys,time\nsys.stderr.write({diagnostic!r});sys.stderr.flush()\ntime.sleep(10)\n"
+        with self.assertRaises(deploy.DeployError) as caught:
+            self.run_fixture(source, env=dict(os.environ, EXAMPLE_API_TOKEN="env-fixture-ghi"))
+        message = str(caught.exception)
+        self.assertIn("Receiving objects: 20%", message)
+        self.assertIn("[REDACTED]", message)
+        for secret in secrets:
+            self.assertNotIn(secret, message)
+        # Truncation inside a sensitive line must not expose its tail.
+        self.assertNotIn("tail-secret", deploy.git_stderr(("Authorization: " + "x" * 20000 + "tail-secret").encode(), {}))
+        boundary = ('Authorization: Bearer header-secret\n'
+                    'Cookie: cookie-secret\n{"token": "json-secret"}\n'
+                    'proxy: proxyuser:proxypass@host.invalid:8080\n')
+        redacted = deploy.git_stderr(boundary, {"EXAMPLE_TOKEN": "or"})
+        for secret in ("header-secret", "cookie-secret", "json-secret", "proxyuser", "proxypass"):
+            self.assertNotIn(secret, redacted)
+
+    def test_nonzero_exit_is_distinct_from_timeout_and_reaped(self):
+        source = ("import os,pathlib,json,sys\n"
+                  f"pathlib.Path({str(self.pids)!r}).write_text(json.dumps({{'parent':os.getpid()}}))\n"
+                  "sys.stderr.write('fatal: transport rejected\\n');sys.exit(23)\n")
+        with self.assertRaisesRegex(deploy.DeployError, r"Git fetch exited with status 23.*limit 0.8s") as caught:
+            self.run_fixture(source)
+        self.assertNotIn("total timeout", str(caught.exception))
+        self.assertIn("fatal: transport rejected", str(caught.exception))
+        with self.assertRaises(ChildProcessError):
+            os.waitpid(json.loads(self.pids.read_text())["parent"], os.WNOHANG)
+
+    def test_system_launch_error_is_distinct(self):
+        with self.assertRaisesRegex(deploy.DeployError, "Git fetch system error") as caught:
+            deploy.run_git([str(self.base / "absent")], cwd=str(self.base), pass_fds=(),
+                           env=dict(os.environ), operation="fetch", timeout=1)
+        self.assertNotIn("total timeout", str(caught.exception))
+        self.assertNotIn("exited with status", str(caught.exception))
+
+    def test_termination_failure_is_reported_even_if_kill_later_succeeds(self):
+        killpg = os.killpg
+        def refuse_term(pid, sig):
+            if sig == signal.SIGTERM:
+                raise PermissionError(1, "synthetic TERM denial")
+            return killpg(pid, sig)
+        with mock.patch.object(deploy.os, "killpg", refuse_term):
+            with self.assertRaisesRegex(deploy.DeployError, "process-group cleanup failed") as caught:
+                self.run_fixture(self.tree_source(ignore_parent=True, ignore_child=True))
+        self.assertIn("synthetic TERM denial", str(caught.exception))
+        self.assert_tree_reaped()
+
+    def test_transient_group_probe_failure_is_rechecked_within_grace(self):
+        killpg = os.killpg
+        injected = False
+        def transient_probe(pid, sig):
+            nonlocal injected
+            if sig == 0 and not injected:
+                injected = True
+                raise PermissionError(1, "synthetic transient group probe failure")
+            return killpg(pid, sig)
+        with mock.patch.object(deploy.os, "killpg", transient_probe):
+            with self.assertRaisesRegex(deploy.DeployError, "total timeout") as caught:
+                self.run_fixture(self.tree_source())
+        self.assertTrue(injected)
+        self.assertNotIn("cleanup failed", str(caught.exception))
+        self.assert_tree_reaped()
+
+    def test_normal_process_returns_stdout(self):
+        self.assertEqual(self.run_fixture("print('normal completion')\n"), b"normal completion\n")
+
+
 class InstallTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="penumbra-installer-test-")
@@ -135,6 +320,70 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(git(self.remote, "status", "--porcelain"), b"")
         self.assertEqual(git(self.root / "repository.git", "rev-parse", "--is-bare-repository").strip(), b"true")
         self.assertEqual(git(self.root / "repository.git", "rev-parse", "refs/penumbra/artifacts/" + first.artifact).decode().strip(), first.artifact)
+
+    def test_fetch_timeout_configuration_leaves_other_git_limits_unchanged(self):
+        expected = self.artifact()
+        self.assertEqual(self.tool().fetch_timeout, 1200)
+        tool = deploy.Installer(self.root, transport=self.remote, fetch_timeout=42)
+        with mock.patch.object(deploy, "run_git", wraps=deploy.run_git) as observed:
+            result = tool.execute("verify", expected)  # Real Git and publisher fixture.
+        self.assertEqual(result["verified"], expected.artifact)
+        calls = observed.call_args_list
+        self.assertTrue(any(c.kwargs["operation"] == "fetch" for c in calls))
+        self.assertTrue(any(c.kwargs["operation"] != "fetch" for c in calls))
+        for call in calls:
+            self.assertEqual(call.kwargs["timeout"], 42 if call.kwargs["operation"] == "fetch" else 300)
+        self.assertIsNone(self.index())
+
+    def test_invalid_fetch_timeout_and_cli_option(self):
+        for value in (0, -1, True, "1200", float("nan"), float("inf"), 10 ** 1000):
+            with self.subTest(value=value), self.assertRaises(deploy.DeployError):
+                deploy.Installer(self.root, fetch_timeout=value)
+        help_result = subprocess.run([sys.executable, "-B", str(PROJECT / "scripts/deploy/install.py"),
+                                      "verify", "--help"], capture_output=True, check=True)
+        self.assertIn(b"--fetch-timeout", help_result.stdout)
+        result = subprocess.run([sys.executable, "-B", str(PROJECT / "scripts/deploy/install.py"), "verify",
+                                 "--root", str(self.root), "--artifact-sha", "a" * 40,
+                                 "--source-sha", "b" * 40, "--workflow-sha", "c" * 40,
+                                 "--build-id", "actions-123-1", "--fetch-timeout", "0"], capture_output=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(b"--fetch-timeout", result.stderr)
+        self.assertFalse(self.root.exists())
+
+    def test_real_git_fetch_timeout_keeps_pack_and_refuses_retry_without_touching_index(self):
+        first, old = self.installed()
+        second = self.artifact("two")
+        pack = self.root / "repository.git/objects/pack/tmp_pack_interrupted"
+        helper_pid = self.base / "upload-pid"
+        upload = self.base / "paused-upload-pack"
+        upload.write_text(
+            f"#!{sys.executable}\nimport os,pathlib,time\n"
+            f"pathlib.Path({str(pack)!r}).write_bytes(b'PACK synthetic incomplete fixture')\n"
+            f"pathlib.Path({str(helper_pid)!r}).write_text(str(os.getpid()))\n"
+            "while True:time.sleep(.05)\n")
+        upload.chmod(0o700)
+        tool = deploy.Installer(self.root, transport=self.remote, fetch_timeout=.8)
+        original = tool.git
+        def paused(*args):
+            if args[0] == "fetch":
+                return original("fetch", "--upload-pack=" + str(upload), *args[1:])
+            return original(*args)
+        tool.git = paused
+        with mock.patch.object(deploy, "GIT_TERM_GRACE", .25):
+            with self.assertRaisesRegex(deploy.DeployError, "Git fetch total timeout"):
+                tool.execute("install", second)
+        self.assertTrue(helper_pid.exists(), "Real Git must have started its upload-pack child")
+        with self.assertRaises(ProcessLookupError):
+            os.kill(int(helper_pid.read_text()), 0)
+        snapshot = (pack.read_bytes(), pack.stat().st_ino, pack.stat().st_mtime_ns)
+        self.assertEqual(self.index(), old)
+        self.assertFalse(self.status()["ready"])
+        for command in ("verify", "recover"):
+            with self.subTest(command=command), self.assertRaisesRegex(deploy.DeployError, "manual investigation"):
+                self.tool().execute(command, second if command == "verify" else None)
+            self.assertEqual((pack.read_bytes(), pack.stat().st_ino, pack.stat().st_mtime_ns), snapshot)
+            self.assertEqual(self.index(), old)
+        self.assertEqual(json.loads((self.root / "current.json").read_text())["active"]["artifactSha"], first.artifact)
 
     def test_nonexistent_commit_preserves_active(self):
         _, old = self.installed()

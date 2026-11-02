@@ -13,13 +13,16 @@ import datetime as dt
 import fcntl
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import stat
 import subprocess
 import sys
+import time
 import uuid
 from dataclasses import dataclass
 
@@ -46,6 +49,10 @@ SWITCH_PHASES = {"prepared", "resources_ready", "switching", "index_switched", "
 MAX_FILES = 10000
 MAX_BYTES = 1024 * 1024 * 1024
 MAX_FILE = 128 * 1024 * 1024
+GIT_TIMEOUT = 300
+FETCH_TIMEOUT = 1200
+GIT_TERM_GRACE = 5
+GIT_KILL_GRACE = 5
 
 
 class DeployError(Exception):
@@ -55,6 +62,152 @@ class DeployError(Exception):
 def require(condition, message):
     if not condition:
         raise DeployError(message)
+
+
+def git_stderr(data, env):
+    """Redact before truncating; never report raw subprocess exceptions/argv."""
+    text = data.decode("utf-8", errors="replace") if isinstance(data, bytes) else (data or "")
+    text = re.sub(r"(?i)\b((?:https?|socks[45]h?)://)[^\s/]*@", r"\1[REDACTED]@", text)
+    text = re.sub(r"(?<![\w])[^/\s:@]+:[^/\s@]+@(?=[A-Za-z0-9\[])", "[REDACTED]@", text)
+    # A full sensitive line is withheld, including values containing spaces.
+    text = re.sub(r"(?im)\b((?:proxy-)?authorization|(?:set-)?cookie|[\w.-]*(?:token|password|passwd|secret|api[_-]?key)[\w.-]*)"
+                  r"[\"']?\s*[:=][^\r\n]*", r"\1: [REDACTED]", text)
+    text = re.sub(r"(?i)\b(Bearer|Basic)\s+[^\s'\"]+", r"\1 [REDACTED]", text)
+    text = re.sub(r"\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)", "[REDACTED]", text)
+    # Do this last: a short secret must not break a header name before matching.
+    for key, value in env.items():
+        if value and re.search(r"TOKEN|SECRET|PASSWORD|PASSWD|COOKIE|AUTHORIZATION|API_?KEY", key, re.I):
+            text = text.replace(value, "[REDACTED]")
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "?", text).replace("\r", "\n")
+    return text[-16384:].strip()
+
+
+def git_group_exists(process):
+    # poll also reaps the direct child, so its zombie cannot keep the group alive.
+    process.poll()
+    try:
+        os.killpg(process.pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+
+
+def stop_git(process):
+    """Bounded TERM/KILL of the entire session's group, including orphan helpers.
+
+    Pipe EOF or the leader exiting is insufficient: a helper can close its pipes
+    and ignore TERM. Keep checking the group until the grace period expires.
+    Unknown Git locks/temporary files are deliberately never touched here.
+    """
+    issues = []
+    stderr = b""
+
+    def send(sig):
+        try:
+            os.killpg(process.pid, sig)
+        except ProcessLookupError:
+            pass
+        except OSError as exc:
+            issues.append(f"{sig.name}: {exc.strerror}")
+
+    def wait_group(deadline):
+        while True:
+            error = None
+            try:
+                if not git_group_exists(process):
+                    return False
+            except OSError as exc:
+                # A dying/orphaned group can briefly be uninspectable on macOS.
+                # Keep the bounded wait; never interpret EPERM as proof of exit.
+                error = exc.strerror
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                if error:
+                    issues.append(f"Process-group check: {error}")
+                return True
+            time.sleep(min(.05, remaining))
+
+    send(signal.SIGTERM)
+    deadline = time.monotonic() + GIT_TERM_GRACE
+    try:
+        _, stderr = process.communicate(timeout=GIT_TERM_GRACE)
+    except subprocess.TimeoutExpired as exc:
+        stderr = exc.stderr or b""
+    except OSError as exc:
+        issues.append(f"Pipe read: {exc.strerror}")
+    if wait_group(deadline):
+        send(signal.SIGKILL)
+    deadline = time.monotonic() + GIT_KILL_GRACE
+    try:
+        _, stderr = process.communicate(timeout=GIT_KILL_GRACE)
+    except subprocess.TimeoutExpired as exc:
+        stderr = exc.stderr or stderr
+        issues.append("Output pipes did not close after termination")
+    except OSError as exc:
+        issues.append(f"Pipe read: {exc.strerror}")
+    # Always attempt wait, even if signaling or reading pipes failed.
+    try:
+        process.wait(timeout=max(.01, deadline - time.monotonic()))
+    except subprocess.TimeoutExpired:
+        issues.append("Direct Git child was not reaped")
+    except OSError as exc:
+        issues.append(f"wait: {exc.strerror}")
+    if wait_group(deadline):
+        issues.append("Git process group still exists; inspect processes before recovery")
+    return stderr, issues
+
+
+def run_git(command, *, cwd, pass_fds, env, operation, timeout):
+    started = time.monotonic()
+    process = None
+    try:
+        process = subprocess.Popen(command, cwd=cwd, pass_fds=pass_fds, env=env,
+                                   stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   start_new_session=True, umask=0o027)
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except BaseException as exc:
+            elapsed = time.monotonic() - started
+            stderr, issues = stop_git(process)
+            stderr = stderr or getattr(exc, "stderr", b"")
+            if isinstance(exc, subprocess.TimeoutExpired):
+                reason = f"Git {operation} total timeout after {elapsed:.3f}s (limit {timeout:g}s)"
+            elif isinstance(exc, OSError):
+                reason = f"Git {operation} system error after {elapsed:.3f}s (limit {timeout:g}s): {exc.strerror}"
+            else:
+                if not issues:
+                    raise
+                reason = f"Git {operation} interrupted after {elapsed:.3f}s (limit {timeout:g}s)"
+            if issues:
+                reason = "Git process-group cleanup failed; " + reason + "; " + "; ".join(issues)
+            detail = git_stderr(stderr, env)
+            raise DeployError(git_stderr(reason, env) + "; inspect repository locks/temporary files before recovery"
+                              + ("\nstderr (redacted tail):\n" + detail if detail else "")) from None
+        elapsed = time.monotonic() - started
+        if git_group_exists(process):
+            remaining_stderr, issues = stop_git(process)
+            reason = "Git process-group cleanup failed" if issues else "Git left descendant processes after exit"
+            raise DeployError(f"{reason}; Git {operation} exited with status {process.returncode} after {elapsed:.3f}s "
+                              f"(limit {timeout:g}s); " + git_stderr("; ".join(issues), env)
+                              + "\nstderr (redacted tail):\n" + git_stderr(remaining_stderr or stderr, env))
+        if process.returncode:
+            raise DeployError(f"Git {operation} exited with status {process.returncode} after {elapsed:.3f}s "
+                              f"(limit {timeout:g}s); inspect repository locks/temporary files before recovery"
+                              + ("\nstderr (redacted tail):\n" + git_stderr(stderr, env) if stderr else ""))
+        return stdout
+    except OSError as exc:
+        if process is not None:
+            stderr, issues = stop_git(process)
+        else:
+            stderr, issues = b"", []
+        reason = f"Git {operation} system error after {time.monotonic()-started:.3f}s (limit {timeout:g}s): {exc.strerror}"
+        if issues:
+            reason = "Git process-group cleanup failed; " + reason + "; " + "; ".join(issues)
+        raise DeployError(git_stderr(reason, env) + ("\nstderr (redacted tail):\n" + git_stderr(stderr, env) if stderr else "")) from None
+    finally:
+        if process is not None:
+            process.stdout.close()
+            process.stderr.close()
 
 
 def digest(data):
@@ -345,13 +498,17 @@ def expected_directories(files):
 
 
 class Installer:
-    def __init__(self, root, *, transport=REMOTE, checkpoint=None):
+    def __init__(self, root, *, transport=REMOTE, checkpoint=None, fetch_timeout=FETCH_TIMEOUT):
         self.root = str(root)
         # Only the Python test API accepts a local simulated remote. The CLI
         # always uses REMOTE and cannot redirect approval to an arbitrary URL.
         require(transport == REMOTE or Path(transport).is_absolute(), "Invalid transport")
         self.transport = str(transport)
         self.checkpoint = checkpoint or (lambda name: None)
+        require(type(fetch_timeout) in (int, float) and 0 < fetch_timeout <= sys.maxsize
+                and math.isfinite(fetch_timeout),
+                "--fetch-timeout must be a finite positive number of seconds")
+        self.fetch_timeout = fetch_timeout
         self.git_path = "repository.git"
         self.git_executable = shutil.which("git")
         require(self.git_executable is not None, "Git is required")
@@ -415,10 +572,10 @@ class Installer:
                 # With no commondir/alternates file, the explicit bare gitdir
                 # is also the common/object root. Keep temp files there too.
                 env.update(TMPDIR=anchor, TMP=anchor, TEMP=anchor)
-                return subprocess.run(command, cwd=cwd, pass_fds=inherited, env=env, check=True,
-                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300, umask=0o027).stdout
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-            raise DeployError(f"Git operation failed: {args[0]}; inspect repository locks before recovery") from exc
+                return run_git(command, cwd=cwd, pass_fds=inherited, env=env, operation=args[0],
+                               timeout=self.fetch_timeout if args[0] == "fetch" else GIT_TIMEOUT)
+        except OSError as exc:
+            raise DeployError("Git directory access failed: " + git_stderr(exc.strerror, env)) from None
 
     @contextlib.contextmanager
     def repository_at(self, path):
@@ -600,7 +757,7 @@ class Installer:
         self.record(record, "fetching")
         try:
             self.initialize_repository(record)
-            self.git("fetch", "--no-tags", "--no-write-fetch-head", "--no-recurse-submodules", self.transport, expected.artifact)
+            self.git("fetch", "--progress", "--no-tags", "--no-write-fetch-head", "--no-recurse-submodules", self.transport, expected.artifact)
             self.checkpoint("after_fetch")
             tree = self.tree(expected.artifact)
             ref = "refs/penumbra/artifacts/" + expected.artifact
@@ -814,6 +971,8 @@ def main(argv=None):
         sub = commands.add_parser(name)
         sub.add_argument("--root", required=True, help="Explicit absolute deployment root")
         if name in {"verify", "install", "rollback"}:
+            sub.add_argument("--fetch-timeout", type=int, default=FETCH_TIMEOUT,
+                             help="Total seconds per fetch (default: 1200); other Git commands remain at 300")
             sub.add_argument("--artifact-sha", required=name != "rollback")
             sub.add_argument("--source-sha")
             sub.add_argument("--workflow-sha")
@@ -831,7 +990,8 @@ def main(argv=None):
             else:
                 require(all((args.artifact_sha, args.source_sha, args.workflow_sha, args.build_id)), "Supply full --artifact-sha, --source-sha, --workflow-sha and --build-id")
                 expected = Expected(args.artifact_sha, args.source_sha, args.workflow_sha, args.build_id)
-        result = Installer(args.root).execute(args.command, expected, undeploy=getattr(args, "undeploy", False))
+        result = Installer(args.root, fetch_timeout=getattr(args, "fetch_timeout", FETCH_TIMEOUT)).execute(
+            args.command, expected, undeploy=getattr(args, "undeploy", False))
         print(json.dumps(result, indent=2))
         return 0 if result.get("ready", True) else 2
     except (DeployError, OSError, ValueError, KeyError, TypeError) as exc:
