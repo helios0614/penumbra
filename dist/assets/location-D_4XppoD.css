@@ -1,0 +1,1 @@
+.location-time-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;overflow:hidden}.location-time-options{position:relative;min-height:0;height:min(15rem,40dvh);overflow-y:auto;overscroll-behavior:contain}

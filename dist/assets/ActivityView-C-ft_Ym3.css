@@ -1,0 +1,1 @@
+.activity-reading,.activity-phone{background:color-mix(in srgb,var(--glass-surface-strong) 69%,var(--glass-surface) 31%)}.activity-phone-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,7rem),1fr));column-gap:.75rem}.activity-reading [data-activity-event-key]{overflow-wrap:anywhere}
