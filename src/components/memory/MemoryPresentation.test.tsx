@@ -147,7 +147,14 @@ describe("memory presentation", () => {
     expect(time).toContain("text-xs");
     expect(time).toContain("text-muted-foreground");
     expect(html).toContain('aria-label="记忆标签"');
-    expect(html).toContain("2024年7月3日 17:46");
+    // Visible text uses local time; the machine-readable timestamp stays absolute.
+    const createdAt = new Date("2024-07-03T09:46:40.000Z");
+    const expectedTimeLabel = [
+      `${createdAt.getFullYear()}年${createdAt.getMonth() + 1}月${createdAt.getDate()}日`,
+      `${String(createdAt.getHours()).padStart(2, "0")}:${String(createdAt.getMinutes()).padStart(2, "0")}`,
+    ].join(" ");
+    expect(time).toContain('dateTime="2024-07-03T09:46:40.000Z"');
+    expect(html).toContain(`>${expectedTimeLabel}</time>`);
     expect(html.indexOf('data-memory-item-metadata="true"')).toBeLessThan(
       html.indexOf('data-memory-item-actions="true"'),
     );
