@@ -12,37 +12,119 @@ const dist = path.join(root, 'dist');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function files(directory) {
+  assert(fs.lstatSync(directory).isDirectory(), `Not a real directory: ${directory}`);
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const file = path.join(directory, entry.name);
-    return entry.isDirectory() ? files(file) : [file];
+    const stat = fs.lstatSync(file);
+    assert(!stat.isSymbolicLink(), `Symbolic link in build: ${file}`);
+    assert(stat.isDirectory() || stat.isFile(), `Non-regular build file: ${file}`);
+    return stat.isDirectory() ? files(file) : [file];
   });
 }
 
-function checkBuild() {
-  const html = fs.readFileSync(path.join(dist, 'index.html'), 'utf8');
-  const entryUrls = [...html.matchAll(/(?:src|href)="([^"]+)"/g)].map(match => match[1]);
-  assert(entryUrls.some(url => url.startsWith('/penumbra/assets/') && url.endsWith('.js')));
-  assert(entryUrls.some(url => url.startsWith('/penumbra/assets/') && url.endsWith('.css')));
-  const assetUrls = [...entryUrls];
-  const builtFiles = files(dist);
-  for (const file of builtFiles) {
+function contained(directory, file) {
+  const relative = path.relative(directory, file);
+  return relative !== '' && !path.isAbsolute(relative) && relative.split(path.sep)[0] !== '..';
+}
+
+// Ordinary CI/preview keeps working without a manifest. Release packaging must
+// supply requireManifest and the exact file set it will actually copy.
+function checkBuild({ distDirectory = dist, finalFiles, requireManifest = false } = {}) {
+  const directory = path.resolve(distDirectory);
+  const builtFiles = files(directory);
+  const builtNames = new Set(builtFiles.map(file => path.relative(directory, file).split(path.sep).join('/')));
+  const published = new Set(finalFiles ?? [...builtNames].filter(file => file !== '.vite/manifest.json'));
+  for (const file of published) assert(builtNames.has(file), `Missing published file: ${file}`);
+  assert(published.has('index.html'), 'Missing published index.html');
+  const realDirectory = fs.realpathSync(directory);
+  const base = '/penumbra/';
+  const origin = 'https://penumbra-build.invalid';
+
+  function resource(reference, from = 'index.html', manifestFile = false) {
+    assert(typeof reference === 'string' && reference.length > 0, 'Empty resource reference');
+    if (!manifestFile && from.endsWith('.css') && /^data:/i.test(reference)) {
+      // Data payloads may contain percent-encoded binary bytes, not UTF-8 paths.
+      assert(!/%(?![0-9a-f]{2})/i.test(reference), 'Invalid inline CSS data encoding');
+      assert(new URL(reference).protocol === 'data:' && reference.includes(','), 'Invalid inline CSS data URL');
+      return null; // Existing inline CSS resources do not name filesystem files.
+    }
+    // Validate encoding in query/fragment too, rather than silently discarding it.
+    const decoded = decodeURIComponent(reference);
+    assert(reference === reference.trim() && !/[\\\u0000-\u001f\u007f]/.test(decoded), `Invalid resource URL: ${reference}`);
+    assert(!/^(?:[A-Za-z][\w+.-]*:|\/\/)/.test(reference), `External resource: ${reference}`);
+    if (manifestFile) assert(!/^[/?#]|[?#]/.test(reference), `Invalid manifest file: ${reference}`);
+    const rawPath = reference.split(/[?#]/, 1)[0];
+    const decodedPath = decodeURIComponent(rawPath);
+    // Reject dot segments before WHATWG URL normalization can erase evidence.
+    assert(!decodedPath.split('/').some(part => part === '..'), `Resource traversal: ${reference}`);
+    assert(!/%(?:2f|5c)/i.test(rawPath) && !/%[0-9a-f]{2}/i.test(decodedPath), `Ambiguous resource encoding: ${reference}`);
+    const url = new URL(manifestFile ? base + reference : reference, origin + base + from);
+    assert(url.origin === origin, `External resource: ${reference}`);
+    const pathname = decodeURIComponent(url.pathname);
+    assert(contained(base, pathname), `Static URL escaped application base: ${reference}`);
+    const relative = path.posix.relative(base, pathname);
+    const target = path.resolve(directory, relative);
+    assert(contained(directory, target), `Resource escaped dist: ${reference}`);
+    assert(published.has(relative), `Resource absent from final release: ${reference}`);
+    assert(fs.lstatSync(target).isFile(), `Missing regular built asset: ${reference}`);
+    assert(contained(realDirectory, fs.realpathSync(target)), `Resource real path escaped dist: ${reference}`);
+    return relative;
+  }
+
+  const html = fs.readFileSync(path.join(directory, 'index.html'), 'utf8');
+  const entryUrls = [...html.matchAll(/(?:src|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)]
+    .map(match => match[1] ?? match[2] ?? match[3]);
+  const entries = entryUrls.map(url => resource(url));
+  assert(entries.some(file => file.endsWith('.js')), 'Missing JavaScript entry');
+  assert(entries.some(file => file.endsWith('.css')), 'Missing CSS entry');
+  let staticUrls = entryUrls.length;
+  for (const relative of published) {
+    const file = path.join(directory, relative);
     if (/\.(js|css)$/.test(file)) {
       const content = fs.readFileSync(file, 'utf8');
       assert(!/AionHome API Proxy Test|Chat Markdown 开发验收|Ready to test the Vite dev proxy/.test(content), `Development page in ${path.basename(file)}`);
       if (file.endsWith('.css')) {
-        assetUrls.push(...[...content.matchAll(/url\(\s*["']?([^\s)"']+)/g)].map(match => match[1]).filter(url => !url.startsWith('data:')));
+        const css = content.replace(/\/\*[\s\S]*?\*\//g, '');
+        const urls = [...css.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^\s)]+))\s*\)/gi)]
+          .map(match => match[1] ?? match[2] ?? match[3]);
+        urls.push(...[...css.matchAll(/@import\s+(?:"([^"]*)"|'([^']*)')/gi)].map(match => match[1] ?? match[2]));
+        for (const url of urls) if (resource(url, relative) !== null) staticUrls++;
       }
     }
   }
-  for (const url of assetUrls) {
-    assert(url.startsWith('/penumbra/'), `Static URL escaped application base: ${url}`);
-    assert(fs.statSync(path.join(dist, decodeURIComponent(url.slice('/penumbra/'.length)))).isFile(), `Missing built asset: ${url}`);
+
+  const hasManifest = builtNames.has('.vite/manifest.json');
+  assert(!requireManifest || hasManifest, 'Missing Vite build manifest');
+  let manifest = null;
+  if (hasManifest) {
+    const graph = JSON.parse(fs.readFileSync(path.join(directory, '.vite/manifest.json'), 'utf8'));
+    assert(graph && typeof graph === 'object' && !Array.isArray(graph), 'Invalid Vite manifest');
+    const chunks = Object.entries(graph);
+    assert(chunks.length > 0 && chunks.some(([, chunk]) => chunk?.isEntry === true), 'Manifest has no entry');
+    manifest = { entries: chunks.length, imports: 0, dynamicImports: 0, css: 0, assets: 0 };
+    for (const [key, chunk] of chunks) {
+      assert(chunk && typeof chunk === 'object' && !Array.isArray(chunk), `Invalid manifest entry: ${key}`);
+      resource(chunk.file, 'index.html', true);
+      for (const field of ['imports', 'dynamicImports', 'css', 'assets']) {
+        if (chunk[field] === undefined) continue;
+        assert(Array.isArray(chunk[field]), `Invalid manifest ${field}: ${key}`);
+        for (const reference of chunk[field]) {
+          assert(typeof reference === 'string' && reference.length > 0, `Invalid manifest ${field} reference`);
+          if (field === 'imports' || field === 'dynamicImports') {
+            assert(Object.hasOwn(graph, reference), `Missing manifest key: ${reference}`);
+            resource(graph[reference]?.file, 'index.html', true);
+          } else resource(reference, 'index.html', true);
+          manifest[field]++;
+        }
+      }
+    }
   }
   return {
-    staticUrls: assetUrls.length,
+    staticUrls,
     developmentPagesExcluded: true,
-    fileCount: builtFiles.length,
-    sizeBytes: builtFiles.reduce((total, file) => total + fs.statSync(file).size, 0),
+    manifest,
+    fileCount: published.size,
+    sizeBytes: [...published].reduce((total, file) => total + fs.statSync(path.join(directory, file)).size, 0),
   };
 }
 
