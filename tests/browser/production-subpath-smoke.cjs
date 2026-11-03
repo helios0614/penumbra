@@ -136,6 +136,49 @@ async function freePort() {
   return port;
 }
 
+// Exercise the loaded stylesheet in a browser: source-text checks cannot catch
+// a production optimizer dropping the standard backdrop-filter declaration.
+async function checkGlassStyles(page) {
+  const results = await page.evaluate(() => {
+    const root = document.documentElement;
+    const wasDark = root.classList.contains('dark');
+    const host = document.createElement('div');
+    host.setAttribute('aria-hidden', 'true');
+    host.style.cssText = 'position:fixed;left:-10000px;top:0;pointer-events:none';
+    host.innerHTML = `<div class="mist-glass" data-probe="ordinary"></div>
+      <div class="glass-card" data-probe="alias"></div>
+      <div class="mist-glass-strong" data-probe="strong"></div>
+      <div class="chat-conversations-drawer" data-probe="drawer"></div>
+      <div class="glass-nav" data-probe="nav"></div>
+      <div class="desktop-wallpaper" data-wallpaper-mode="custom" data-wallpaper-shade="soft">
+        <div class="desktop-wallpaper-overlay" data-probe="soft-wallpaper"></div>
+        <span class="desktop-shortcut-label" data-probe="wallpaper-label"></span>
+      </div>
+      <div class="widget-card mist-glass sticker-widget-frame" data-probe="sticker"></div>
+      <div class="widget-card mist-glass signature-widget-frame" data-probe="signature"></div>`;
+    document.body.append(host);
+    try {
+      return ['light', 'dark'].flatMap(theme => {
+        root.classList.toggle('dark', theme === 'dark');
+        return [...host.querySelectorAll('[data-probe]')].map(element => ({
+          theme, material: element.dataset.probe, backdrop: getComputedStyle(element).backdropFilter,
+        }));
+      });
+    } finally {
+      host.remove();
+      root.classList.toggle('dark', wasDark);
+    }
+  });
+  const expected = {
+    ordinary: 'blur(18px) saturate(1.25)', alias: 'blur(18px) saturate(1.25)',
+    strong: 'blur(22px) saturate(1.3)', drawer: 'blur(26px) saturate(1.25)',
+    nav: 'blur(20px)', 'soft-wallpaper': 'blur(3px)', 'wallpaper-label': 'blur(8px)',
+    sticker: 'none', signature: 'none',
+  };
+  for (const result of results) assert.equal(result.backdrop, expected[result.material], JSON.stringify(result));
+  return results;
+}
+
 async function startVite(preview) {
   const port = await freePort();
   const origin = `http://127.0.0.1:${port}`;
@@ -231,6 +274,7 @@ async function exercise(browser, origin, production, width, { mockBackend = true
   };
   try {
     await page.goto(`${origin}${base}`); await classicHome();
+    const glassStyles = await checkGlassStyles(page);
     await hiddenEntries();
     for (const id of ['clock', 'sticker', 'signature']) assert.equal(await page.locator(`[data-widget-id="${id}"]`).count(), 1);
     await page.getByRole('button', { name: '编辑桌面', exact: true }).click();
@@ -319,7 +363,7 @@ async function exercise(browser, origin, production, width, { mockBackend = true
     assert(requests.some(request => request.path === '/api/conversations'));
     assert(sockets.length && sockets.every(socket => socket === '/ws'), JSON.stringify(sockets));
     assert.deepEqual(escaped, []); assert.deepEqual(errors, []); assert.deepEqual(failures, []);
-    return { mode: !mockBackend ? 'fastapi-real-dist' : production ? 'preview' : 'dev', width, navigation: 'passed', desktopCleanup: 'shortcuts, saved widgets and picker passed', legacySwitch: 'both desktops passed', apiRoot: '/api/', websocketRoot: '/ws', pageErrors: 0 };
+    return { mode: !mockBackend ? 'fastapi-real-dist' : production ? 'preview' : 'dev', width, glassStyles, navigation: 'passed', desktopCleanup: 'shortcuts, saved widgets and picker passed', legacySwitch: 'both desktops passed', apiRoot: '/api/', websocketRoot: '/ws', pageErrors: 0 };
   } finally { await context.close(); }
 }
 
