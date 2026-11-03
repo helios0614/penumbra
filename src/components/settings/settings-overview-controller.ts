@@ -1,103 +1,59 @@
-import {
-  loadSettingsOverview,
-  type SettingsOverview,
-} from "@/application/settings-overview";
-import { ApiError, type ApiRequestOptions } from "@/lib/api";
+import { loadSettingsOverview, type SettingsOverview, type SettingsOverviewSection } from "@/application/settings-overview";
+import type { ApiRequestOptions } from "@/lib/api";
 
-export type SettingsOverviewState =
-  | { readonly status: "idle"; readonly data: null; readonly error: null }
-  | { readonly status: "loading"; readonly data: null; readonly error: null }
-  | { readonly status: "success"; readonly data: SettingsOverview; readonly error: null }
+export type OverviewItemState<T> =
+  | { readonly status: "idle" | "loading"; readonly data: null; readonly error: null }
+  | { readonly status: "success"; readonly data: T; readonly error: null }
   | { readonly status: "error"; readonly data: null; readonly error: unknown };
 
-export const INITIAL_SETTINGS_OVERVIEW_STATE: SettingsOverviewState = {
-  status: "idle",
-  data: null,
-  error: null,
-};
-
-export type SettingsOverviewLoader = (
-  options?: ApiRequestOptions,
-) => Promise<SettingsOverview>;
-
+export type SettingsOverviewState = { readonly [K in SettingsOverviewSection]: OverviewItemState<SettingsOverview[K]> };
+const idle = { status: "idle", data: null, error: null } as const;
+export const INITIAL_SETTINGS_OVERVIEW_STATE: SettingsOverviewState = { session: idle, models: idle, readiness: idle };
+export type SettingsOverviewLoader = <K extends SettingsOverviewSection>(section: K, options?: ApiRequestOptions) => Promise<SettingsOverview[K]>;
 export interface SettingsOverviewController {
   getState(): SettingsOverviewState;
-  load(): Promise<void>;
+  load(section?: SettingsOverviewSection): Promise<void>;
   subscribe(listener: (state: SettingsOverviewState) => void): () => void;
   dispose(): void;
 }
 
-export function createSettingsOverviewController(
-  loader: SettingsOverviewLoader = loadSettingsOverview,
-): SettingsOverviewController {
+export function createSettingsOverviewController(loader: SettingsOverviewLoader = loadSettingsOverview): SettingsOverviewController {
   let state = INITIAL_SETTINGS_OVERVIEW_STATE;
-  let activeController: AbortController | null = null;
-  let requestSequence = 0;
   let disposed = false;
+  const active: Partial<Record<SettingsOverviewSection, AbortController>> = {};
   const listeners = new Set<(state: SettingsOverviewState) => void>();
-
-  const publish = (nextState: SettingsOverviewState) => {
+  const publish = <K extends SettingsOverviewSection>(section: K, item: OverviewItemState<SettingsOverview[K]>) => {
     if (disposed) return;
-    state = nextState;
-    listeners.forEach((listener) => listener(state));
+    state = { ...state, [section]: item };
+    listeners.forEach(listener => listener(state));
   };
-
+  const loadItem = async <K extends SettingsOverviewSection>(section: K) => {
+    if (disposed) return;
+    active[section]?.abort();
+    const controller = new AbortController();
+    active[section] = controller;
+    publish(section, { status: "loading", data: null, error: null });
+    const current = () => !disposed && !controller.signal.aborted && active[section] === controller;
+    try {
+      const data = await loader(section, { signal: controller.signal });
+      if (current()) publish(section, { status: "success", data, error: null });
+    } catch (error) {
+      if (current()) publish(section, { status: "error", data: null, error });
+    } finally {
+      if (active[section] === controller) delete active[section];
+    }
+  };
   return {
-    getState() {
-      return state;
+    getState: () => state,
+    async load(section) {
+      if (section) await loadItem(section);
+      else await Promise.all((["session", "models", "readiness"] as const).map(loadItem));
     },
-
-    async load() {
-      if (disposed) return;
-
-      const sequence = ++requestSequence;
-      activeController?.abort();
-      const controller = new AbortController();
-      activeController = controller;
-      publish({ status: "loading", data: null, error: null });
-
-      try {
-        const data = await loader({ signal: controller.signal });
-        if (disposed || controller.signal.aborted || sequence !== requestSequence) {
-          return;
-        }
-        publish({ status: "success", data, error: null });
-      } catch (error) {
-        if (
-          disposed ||
-          controller.signal.aborted ||
-          sequence !== requestSequence ||
-          isAbortError(error)
-        ) {
-          return;
-        }
-        publish({ status: "error", data: null, error });
-      } finally {
-        if (sequence === requestSequence) {
-          activeController = null;
-        }
-      }
-    },
-
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-
+    subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     dispose() {
-      if (disposed) return;
       disposed = true;
-      requestSequence += 1;
       listeners.clear();
-      activeController?.abort();
-      activeController = null;
+      Object.values(active).forEach(controller => controller.abort());
     },
   };
-}
-
-function isAbortError(error: unknown): boolean {
-  return (
-    (error instanceof ApiError && error.code === "ABORTED") ||
-    (error instanceof DOMException && error.name === "AbortError")
-  );
 }

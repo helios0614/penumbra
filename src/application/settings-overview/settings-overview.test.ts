@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadSettingsOverview } from "@/application/settings-overview";
-import { RuntimeContractError } from "@/domain/runtime";
 import { ApiError } from "@/lib/api";
 
 describe("settings overview application", () => {
@@ -25,7 +24,7 @@ describe("settings overview application", () => {
       return readiness.promise;
     });
 
-    const pending = loadSettingsOverview({ timeoutMs: 0 });
+    const pending = loadAllOverview({ timeoutMs: 0 });
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
     session.resolve(json({ authenticated: true }));
@@ -61,7 +60,7 @@ describe("settings overview application", () => {
       readiness: readinessDto("unknown_model", "future/model-key"),
     });
 
-    await expect(loadSettingsOverview({ timeoutMs: 0 })).resolves.toMatchObject({
+    await expect(loadAllOverview({ timeoutMs: 0 })).resolves.toMatchObject({
       models: [],
       readiness: {
         modelKey: "future/model-key",
@@ -74,7 +73,7 @@ describe("settings overview application", () => {
   it("shares the caller AbortSignal and preserves the aborted ApiError classification", async () => {
     fetchMock.mockImplementation((_input, init) => abortableResponse(init?.signal));
     const caller = new AbortController();
-    const pending = loadSettingsOverview({ signal: caller.signal, timeoutMs: 0 });
+    const pending = loadAllOverview({ signal: caller.signal, timeoutMs: 0 });
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
     caller.abort("fake-cookie-must-not-leak");
@@ -91,7 +90,7 @@ describe("settings overview application", () => {
       Promise.resolve(json({ error: "fake-authorization-secret" }, 401)),
     );
 
-    const error = await loadSettingsOverview({ timeoutMs: 0 }).catch(
+    const error = await loadAllOverview({ timeoutMs: 0 }).catch(
       (reason: unknown) => reason,
     );
 
@@ -103,7 +102,7 @@ describe("settings overview application", () => {
   it("preserves network and timeout error kinds with safe text", async () => {
     const secretEndpoint = "https://fake-secret-endpoint.example/v1";
     fetchMock.mockRejectedValueOnce(new TypeError(secretEndpoint));
-    const networkError = await loadSettingsOverview({ timeoutMs: 0 }).catch(
+    const networkError = await loadAllOverview({ timeoutMs: 0 }).catch(
       (reason: unknown) => reason,
     );
     expect(networkError).toMatchObject({ code: "NETWORK_ERROR", data: undefined });
@@ -112,7 +111,7 @@ describe("settings overview application", () => {
     vi.useFakeTimers();
     fetchMock.mockReset();
     fetchMock.mockImplementation((_input, init) => abortableResponse(init?.signal));
-    const pending = loadSettingsOverview({ timeoutMs: 5 }).catch(
+    const pending = loadAllOverview({ timeoutMs: 5 }).catch(
       (reason: unknown) => reason,
     );
     await vi.advanceTimersByTimeAsync(6);
@@ -120,7 +119,7 @@ describe("settings overview application", () => {
     expect(timeoutError).toMatchObject({ code: "TIMEOUT", data: undefined });
   });
 
-  it("propagates RuntimeContractError unchanged", async () => {
+  it("sanitizes contract failures", async () => {
     const secret = "fake-provider-payload-secret";
     fetchMock.mockImplementation((input) => {
       const path = String(input);
@@ -129,10 +128,10 @@ describe("settings overview application", () => {
       return Promise.resolve(json(readinessDto("ready", "model-a")));
     });
 
-    const error = await loadSettingsOverview({ timeoutMs: 0 }).catch(
+    const error = await loadAllOverview({ timeoutMs: 0 }).catch(
       (reason: unknown) => reason,
     );
-    expect(error).toBeInstanceOf(RuntimeContractError);
+    expect(error).toBeInstanceOf(Error);
     expect(String(error)).not.toContain(secret);
   });
 
@@ -164,7 +163,7 @@ describe("settings overview application", () => {
       }));
     });
 
-    const overview = await loadSettingsOverview({ timeoutMs: 0 });
+    const overview = await loadAllOverview({ timeoutMs: 0 });
     const serialized = JSON.stringify(overview);
 
     forbidden.forEach((value) => expect(serialized).not.toContain(value));
@@ -235,4 +234,11 @@ function deferred<T>() {
     reject = rej;
   });
   return { promise, resolve, reject };
+}
+
+async function loadAllOverview(options: import("@/lib/api").ApiRequestOptions) {
+  const [session, models, readiness] = await Promise.all([
+    loadSettingsOverview("session", options), loadSettingsOverview("models", options), loadSettingsOverview("readiness", options),
+  ]);
+  return { session, models, readiness };
 }

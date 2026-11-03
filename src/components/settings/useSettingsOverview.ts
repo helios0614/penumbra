@@ -1,3 +1,4 @@
+import type { SettingsOverviewSection } from "@/application/settings-overview";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -9,16 +10,17 @@ import {
 
 export interface UseSettingsOverviewResult {
   readonly state: SettingsOverviewState;
-  readonly retry: () => void;
+  readonly retry: (section?: SettingsOverviewSection) => void;
 }
 
-export function useSettingsOverview(): UseSettingsOverviewResult {
+export function useSettingsOverview(enabled = true): UseSettingsOverviewResult {
   const [state, setState] = useState<SettingsOverviewState>(
     INITIAL_SETTINGS_OVERVIEW_STATE,
   );
   const controllerRef = useRef<SettingsOverviewController | null>(null);
 
   useEffect(() => {
+    if (!enabled) return;
     const controller = createSettingsOverviewController();
     controllerRef.current = controller;
     const unsubscribe = controller.subscribe(setState);
@@ -31,10 +33,10 @@ export function useSettingsOverview(): UseSettingsOverviewResult {
         controllerRef.current = null;
       }
     };
-  }, []);
+  }, [enabled]);
 
-  const retry = useCallback(() => {
-    void controllerRef.current?.load();
+  const retry = useCallback((section?: SettingsOverviewSection) => {
+    void controllerRef.current?.load(section);
   }, []);
 
   return { state, retry };

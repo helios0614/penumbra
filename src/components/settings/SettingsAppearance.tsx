@@ -1,0 +1,484 @@
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import {
+  Check,
+  Image as ImageIcon,
+  Monitor,
+  Moon,
+  Sun,
+  Trash2,
+  Upload,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  AI_COLOR_PRESETS,
+  applyAiColor,
+  applyThemeColor,
+  applyThemeMode,
+  getStoredAiColor,
+  getStoredThemeColor,
+  getStoredThemeMode,
+  THEME_COLOR_PRESETS,
+  type ThemeMode,
+} from "@/lib/theme";
+import {
+  getCustomWallpaper,
+  getStoredWallpaperSettings,
+  removeCustomWallpaper,
+  saveCustomWallpaper,
+  saveWallpaperSettings,
+  type WallpaperSettings,
+} from "@/lib/wallpaper";
+
+const themeModeOptions = [
+  { value: "system", label: "跟随系统", description: "随设备外观自动切换", icon: Monitor },
+  { value: "light", label: "浅色", description: "保持明亮的晨雾界面", icon: Sun },
+  { value: "dark", label: "深色", description: "保持低亮度的夜间界面", icon: Moon },
+] satisfies Array<{
+  value: ThemeMode;
+  label: string;
+  description: string;
+  icon: typeof Monitor;
+}>;
+
+// Device-only appearance adapter. Storage contracts remain in lib/theme and lib/wallpaper.
+export function SettingsAppearance() {
+  const [themeColor, setThemeColor] = useState(getStoredThemeColor);
+  const [aiColor, setAiColor] = useState(getStoredAiColor);
+  const [themeMode, setThemeMode] = useState(getStoredThemeMode);
+  const [wallpaperSettings, setWallpaperSettings] = useState(getStoredWallpaperSettings);
+  const [wallpaperPreview, setWallpaperPreview] = useState<string | null>(null);
+  const [hasCustomWallpaper, setHasCustomWallpaper] = useState(false);
+  const [wallpaperError, setWallpaperError] = useState<string | null>(null);
+  const [isSavingWallpaper, setIsSavingWallpaper] = useState(false);
+  const wallpaperInputRef = useRef<HTMLInputElement>(null);
+  const wallpaperPreviewRef = useRef<string | null>(null);
+
+  const selectThemeColor = useCallback((color: string) => {
+    const applied = applyThemeColor(color);
+    if (applied) setThemeColor(applied);
+  }, []);
+
+  const selectAiColor = useCallback((color: string) => {
+    const applied = applyAiColor(color);
+    if (applied) setAiColor(applied);
+  }, []);
+
+  const selectThemeMode = useCallback((mode: ThemeMode) => {
+    setThemeMode(applyThemeMode(mode));
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+
+    getCustomWallpaper()
+      .then((wallpaper) => {
+        if (disposed || !wallpaper) return;
+        const previewUrl = URL.createObjectURL(wallpaper);
+        wallpaperPreviewRef.current = previewUrl;
+        setWallpaperPreview(previewUrl);
+        setHasCustomWallpaper(true);
+      })
+      .catch(() => { if (!disposed) setWallpaperError("无法读取已保存的壁纸"); });
+
+    return () => {
+      disposed = true;
+      if (wallpaperPreviewRef.current) URL.revokeObjectURL(wallpaperPreviewRef.current);
+    };
+  }, []);
+
+  const updateWallpaperSettings = useCallback((patch: Partial<WallpaperSettings>) => {
+    const next = { ...getStoredWallpaperSettings(), ...patch };
+    setWallpaperSettings(next);
+    saveWallpaperSettings(next);
+  }, []);
+
+  const selectWallpaperMode = useCallback((mode: WallpaperSettings["mode"]) => {
+    if (mode === "custom" && !hasCustomWallpaper) {
+      wallpaperInputRef.current?.click();
+      return;
+    }
+    updateWallpaperSettings({ mode });
+  }, [hasCustomWallpaper, updateWallpaperSettings]);
+
+  const chooseWallpaper = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setWallpaperError("请选择图片文件");
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setWallpaperError("壁纸文件请不要超过 20 MB");
+      return;
+    }
+
+    setIsSavingWallpaper(true);
+    setWallpaperError(null);
+    try {
+      await saveCustomWallpaper(file);
+      const previewUrl = URL.createObjectURL(file);
+      if (wallpaperPreviewRef.current) URL.revokeObjectURL(wallpaperPreviewRef.current);
+      wallpaperPreviewRef.current = previewUrl;
+      setWallpaperPreview(previewUrl);
+      setHasCustomWallpaper(true);
+      updateWallpaperSettings({ mode: "custom" });
+    } catch {
+      setWallpaperError("保存壁纸失败，请稍后重试");
+    } finally {
+      setIsSavingWallpaper(false);
+    }
+  }, [updateWallpaperSettings]);
+
+  const clearWallpaper = useCallback(async () => {
+    setIsSavingWallpaper(true);
+    setWallpaperError(null);
+    try {
+      await removeCustomWallpaper();
+      if (wallpaperPreviewRef.current) URL.revokeObjectURL(wallpaperPreviewRef.current);
+      wallpaperPreviewRef.current = null;
+      setWallpaperPreview(null);
+      setHasCustomWallpaper(false);
+      updateWallpaperSettings({ mode: "ambient" });
+    } catch {
+      setWallpaperError("移除壁纸失败，请稍后重试");
+    } finally {
+      setIsSavingWallpaper(false);
+    }
+  }, [updateWallpaperSettings]);
+
+  useEffect(() => {
+    if (!isSavingWallpaper) return;
+    const preventUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", preventUnload);
+    return () => window.removeEventListener("beforeunload", preventUnload);
+  }, [isSavingWallpaper]);
+
+  return (
+    <div className="space-y-4">
+      <div className="mist-glass rounded-[24px] p-4 sm:p-5">
+        <SettingsSectionHeading
+          title="界面外观"
+          description="选择固定外观，或根据设备的浅色与深色设置自动切换。"
+        />
+        <div className="mt-4 grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="界面外观">
+          {themeModeOptions.map((option) => {
+            const Icon = option.icon;
+            const isSelected = themeMode === option.value;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={isSelected}
+                onClick={() => selectThemeMode(option.value)}
+                className={cn(
+                  "flex min-h-20 items-center gap-3 rounded-2xl border p-3 text-left transition-all",
+                  isSelected
+                    ? "border-primary/45 bg-primary/12 text-foreground shadow-sm"
+                    : "border-border-strong/60 bg-background/25 text-muted-strong hover:bg-background/45",
+                )}
+              >
+                <span
+                  className={cn(
+                    "grid size-10 shrink-0 place-items-center rounded-xl",
+                    isSelected ? "bg-primary text-primary-foreground" : "bg-surface-secondary text-muted-strong",
+                  )}
+                >
+                  <Icon className="size-5" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold">{option.label}</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">{option.description}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mist-glass rounded-[24px] p-4 sm:p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <SettingsSectionHeading
+            title="桌面背景"
+            description="使用 Penumbra 氛围背景，或者选择一张保存在当前设备上的图片。"
+          />
+          <div className="inline-flex self-start rounded-full border border-border-strong/50 bg-background/25 p-1 shadow-sm">
+            <button
+              type="button"
+              onClick={() => selectWallpaperMode("ambient")}
+              className={cn(
+                "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                wallpaperSettings.mode === "ambient" ? "bg-primary text-primary-foreground" : "text-muted-strong hover:bg-white/35 dark:hover:bg-white/10",
+              )}
+            >
+              氛围背景
+            </button>
+            <button
+              type="button"
+              onClick={() => selectWallpaperMode("custom")}
+              className={cn(
+                "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                wallpaperSettings.mode === "custom" ? "bg-primary text-primary-foreground" : "text-muted-strong hover:bg-white/35 dark:hover:bg-white/10",
+              )}
+            >
+              自定义壁纸
+            </button>
+          </div>
+        </div>
+
+        <input
+          ref={wallpaperInputRef}
+          type="file"
+          accept="image/*"
+          onChange={chooseWallpaper}
+          className="hidden"
+          aria-label="选择自定义壁纸"
+        />
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(250px,0.75fr)]">
+          <div
+            className={cn(
+              "desktop-wallpaper-preview relative min-h-48 overflow-hidden rounded-[20px] border border-border-strong/60 bg-surface-secondary shadow-inner",
+              !wallpaperPreview && "desktop-wallpaper",
+            )}
+            data-wallpaper-text={wallpaperSettings.textTone}
+            style={wallpaperPreview ? {
+              backgroundImage: `url(${JSON.stringify(wallpaperPreview)})`,
+              backgroundPosition: wallpaperSettings.position,
+              backgroundSize: wallpaperSettings.fit,
+            } : undefined}
+          >
+            <div className="desktop-wallpaper-overlay absolute inset-0" data-preview-shade={wallpaperSettings.shade} />
+            <div className="absolute inset-x-4 bottom-4 flex items-end justify-between gap-3">
+              <div className="rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-3 py-2 shadow-sm backdrop-blur-xl">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary-ink">Penumbra</p>
+                <p className="desktop-on-wallpaper mt-0.5 text-sm font-semibold">桌面预览</p>
+              </div>
+              <span className="desktop-on-wallpaper grid size-11 place-items-center rounded-[15px] border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] shadow-sm backdrop-blur-xl">
+                <ImageIcon className="size-5" />
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => wallpaperInputRef.current?.click()}
+                disabled={isSavingWallpaper}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary-hover active:bg-primary-active disabled:opacity-50"
+              >
+                <Upload className="size-4" />
+                {hasCustomWallpaper ? "替换图片" : "选择图片"}
+              </button>
+              <button
+                type="button"
+                onClick={clearWallpaper}
+                disabled={!hasCustomWallpaper || isSavingWallpaper}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-border-strong/50 bg-background/35 px-3 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-background/55 disabled:opacity-40"
+              >
+                <Trash2 className="size-4" />
+                移除
+              </button>
+            </div>
+
+            <SettingChoice
+              label="显示方式"
+              value={wallpaperSettings.fit}
+              options={[{ value: "cover", label: "填充" }, { value: "contain", label: "适应" }]}
+              onChange={(value) => updateWallpaperSettings({ fit: value as WallpaperSettings["fit"] })}
+            />
+            <SettingChoice
+              label="图片位置"
+              value={wallpaperSettings.position}
+              options={[{ value: "top", label: "顶部" }, { value: "center", label: "居中" }, { value: "bottom", label: "底部" }]}
+              onChange={(value) => updateWallpaperSettings({ position: value as WallpaperSettings["position"] })}
+            />
+            <SettingChoice
+              label="界面柔和度"
+              value={wallpaperSettings.shade}
+              options={[{ value: "clear", label: "清晰" }, { value: "balanced", label: "平衡" }, { value: "soft", label: "柔和" }]}
+              onChange={(value) => updateWallpaperSettings({ shade: value as WallpaperSettings["shade"] })}
+            />
+            <SettingChoice
+              label="桌面文字"
+              value={wallpaperSettings.textTone}
+              options={[
+                { value: "auto", label: "自动" },
+                { value: "dark", label: "黑色" },
+                { value: "light", label: "白色" },
+              ]}
+              onChange={(value) => updateWallpaperSettings({ textTone: value as WallpaperSettings["textTone"] })}
+            />
+          </div>
+        </div>
+
+        {wallpaperError && <p className="mt-3 text-xs text-destructive">{wallpaperError}</p>}
+      </div>
+
+      <div className="mist-glass rounded-[24px] p-4 sm:p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <SettingsSectionHeading
+            title="主题颜色"
+            description="桌面 App 图标、按钮和强调色会一起更新。"
+          />
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            自定义
+            <input
+              type="color"
+              value={themeColor}
+              onChange={(event) => selectThemeColor(event.target.value)}
+              className="size-10 cursor-pointer rounded-xl border border-border bg-transparent p-1"
+              aria-label="自定义主题颜色"
+            />
+          </label>
+        </div>
+
+        <div className="mt-4 grid grid-cols-4 gap-3 sm:grid-cols-8">
+          {THEME_COLOR_PRESETS.map((preset) => {
+            const isSelected = preset.value.toUpperCase() === themeColor;
+
+            return (
+              <button
+                key={preset.value}
+                type="button"
+                onClick={() => selectThemeColor(preset.value)}
+                className="group flex flex-col items-center gap-1.5 text-[11px] text-muted-foreground"
+                aria-label={`使用${preset.name}主题`}
+                aria-pressed={isSelected}
+              >
+                <span
+                  className={cn(
+                    "grid size-9 place-items-center rounded-full border-2 shadow-sm transition-transform group-hover:scale-105",
+                    isSelected ? "border-foreground" : "border-white/70 dark:border-white/15",
+                  )}
+                  style={{ backgroundColor: preset.value }}
+                >
+                  {isSelected && <Check className="size-4 text-primary-foreground drop-shadow-sm" />}
+                </span>
+                <span>{preset.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mist-glass rounded-[24px] p-4 sm:p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <SettingsSectionHeading
+            title="AI 主题色"
+            description="AI 头像、名称、消息气泡和思考状态会一起更新。"
+          />
+          <div className="flex items-center gap-3">
+            <div
+              className="flex max-w-48 items-start gap-2 rounded-xl border border-ai/20 bg-ai/10 px-3 py-2 text-ai shadow-sm"
+              aria-label="AI 气泡颜色预览"
+            >
+              <span className="mt-1 size-1.5 shrink-0 rounded-full bg-current" />
+              <span className="text-xs font-medium leading-relaxed">你好，我是 Aion</span>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              自定义
+              <input
+                type="color"
+                value={aiColor}
+                onChange={(event) => selectAiColor(event.target.value)}
+                className="size-10 cursor-pointer rounded-xl border border-border bg-transparent p-1"
+                aria-label="自定义 AI 主题色"
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-4 gap-3 sm:grid-cols-8">
+          {AI_COLOR_PRESETS.map((preset) => {
+            const isSelected = preset.value.toUpperCase() === aiColor;
+
+            return (
+              <button
+                key={preset.value}
+                type="button"
+                onClick={() => selectAiColor(preset.value)}
+                className="group flex flex-col items-center gap-1.5 text-[11px] text-muted-foreground"
+                aria-label={`使用${preset.name} AI 主题`}
+                aria-pressed={isSelected}
+              >
+                <span
+                  className={cn(
+                    "grid size-9 place-items-center rounded-full border-2 shadow-sm transition-transform group-hover:scale-105",
+                    isSelected ? "border-foreground" : "border-white/70 dark:border-white/15",
+                  )}
+                  style={{ backgroundColor: preset.value }}
+                >
+                  {isSelected && <Check className="size-4 text-ai-foreground drop-shadow-sm" />}
+                </span>
+                <span>{preset.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
+function SettingsSectionHeading({
+  title,
+  description,
+  descriptionClassName,
+}: {
+  title: string;
+  description: string;
+  descriptionClassName?: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-sm font-semibold text-foreground">{title}</p>
+      <p className={cn("mt-1 text-xs text-muted-foreground", descriptionClassName)}>
+        {description}
+      </p>
+    </div>
+  );
+}
+
+function SettingChoice({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div>
+      <p className="mb-1.5 text-[11px] font-medium text-muted-strong">{label}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            className={cn(
+              "rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors",
+              value === option.value
+                ? "bg-primary/15 text-primary-ink"
+                : "bg-white/35 text-muted-strong hover:bg-white/60 dark:bg-white/5 dark:hover:bg-white/10",
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+

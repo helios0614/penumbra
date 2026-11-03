@@ -1,147 +1,90 @@
 import { describe, expect, it, vi } from "vitest";
-
-import type { SettingsOverview } from "@/application/settings-overview";
-import {
-  createSettingsOverviewController,
-  type SettingsOverviewState,
-} from "@/components/settings/settings-overview-controller";
+import type { SettingsOverview, SettingsOverviewSection } from "@/application/settings-overview";
+import { createSettingsOverviewController, type SettingsOverviewLoader } from "./settings-overview-controller";
 import { ApiError } from "@/lib/api";
 
-describe("settings overview controller", () => {
-  it("transitions from idle to loading and success", async () => {
-    const pending = deferred<SettingsOverview>();
-    const controller = createSettingsOverviewController(() => pending.promise);
-    const states: SettingsOverviewState[] = [];
-    controller.subscribe((state) => states.push(state));
+const values: SettingsOverview = {
+  session: { status: "authenticated" },
+  models: [{ key: "a", label: "a", provider: "synthetic" }],
+  readiness: { ready: true, modelKey: "a", reason: "ready", setupActionRequired: false },
+};
+const success: SettingsOverviewLoader = async key => values[key];
 
-    expect(controller.getState().status).toBe("idle");
+describe("settings overview independent requests", () => {
+  it("publishes fast items while another endpoint is pending", async () => {
+    const pending = deferred<SettingsOverview["models"]>();
+    const loader: SettingsOverviewLoader = key => key === "models" ? pending.promise as Promise<SettingsOverview[typeof key]> : success(key);
+    const controller = createSettingsOverviewController(loader);
     const load = controller.load();
-    expect(controller.getState().status).toBe("loading");
-    pending.resolve(overview("model-a"));
-    await load;
-
-    expect(controller.getState()).toEqual({
-      status: "success",
-      data: overview("model-a"),
-      error: null,
-    });
-    expect(states.map((state) => state.status)).toEqual(["loading", "success"]);
+    expect(controller.getState().models.status).toBe("loading");
+    await vi.waitFor(() => expect(controller.getState().session.status).toBe("success"));
+    expect(controller.getState().readiness.status).toBe("success");
+    expect(controller.getState().models.status).toBe("loading");
+    pending.resolve(values.models); await load;
+    expect(controller.getState().models).toMatchObject({ status: "success", data: values.models });
   });
 
-  it("publishes errors and supports retry", async () => {
-    const loader = vi
-      .fn()
-      .mockRejectedValueOnce(new ApiError("safe failure", 503))
-      .mockResolvedValueOnce(overview("model-b"));
+  it.each(["session", "models", "readiness"] as const)("isolates %s failure and retries only it", async failed => {
+    let fail = true;
+    const calls: SettingsOverviewSection[] = [];
+    const loader: SettingsOverviewLoader = async key => {
+      calls.push(key);
+      if (key === failed && fail) throw new ApiError("safe failure", 503);
+      return values[key];
+    };
     const controller = createSettingsOverviewController(loader);
-
     await controller.load();
-    expect(controller.getState()).toMatchObject({ status: "error" });
-    await controller.load();
-    expect(controller.getState()).toMatchObject({
-      status: "success",
-      data: { readiness: { modelKey: "model-b" } },
-    });
-    expect(loader).toHaveBeenCalledTimes(2);
+    for (const key of ["session", "models", "readiness"] as const) expect(controller.getState()[key].status).toBe(key === failed ? "error" : "success");
+    fail = false;
+    await controller.load(failed);
+    expect(controller.getState()[failed].status).toBe("success");
+    expect(calls).toEqual(["session", "models", "readiness", failed]);
   });
 
-  it("does not publish abort as an error and aborts on dispose", async () => {
-    let callerSignal: AbortSignal | undefined;
-    const loader = vi.fn((options) => {
-      callerSignal = options?.signal;
-      return abortableOverview(options?.signal);
-    });
+  it("blocks late success and failure from an older retry without affecting other items", async () => {
+    const first = deferred<SettingsOverview["readiness"]>(), second = deferred<SettingsOverview["readiness"]>();
+    let count = 0;
+    const signals: AbortSignal[] = [];
+    const loader: SettingsOverviewLoader = (key, options) => {
+      if (key !== "readiness") return success(key);
+      signals.push(options!.signal!);
+      return (++count === 1 ? first.promise : second.promise) as Promise<SettingsOverview[typeof key]>;
+    };
     const controller = createSettingsOverviewController(loader);
-    const listener = vi.fn();
-    controller.subscribe(listener);
-
-    const load = controller.load();
-    controller.dispose();
-    await load;
-
-    expect(callerSignal?.aborted).toBe(true);
-    expect(listener).toHaveBeenCalledTimes(1);
-    expect(listener.mock.calls[0]?.[0]).toMatchObject({ status: "loading" });
+    const one = controller.load();
+    const two = controller.load("readiness");
+    second.resolve({ ...values.readiness, modelKey: "new" }); await two;
+    first.reject(new Error("old failure")); await one;
+    expect(signals[0].aborted).toBe(true);
+    expect(controller.getState().readiness).toMatchObject({ status: "success", data: { modelKey: "new" } });
+    expect(controller.getState().session.status).toBe("success");
   });
 
-  it("prevents an older request from overwriting a newer retry", async () => {
-    const first = deferred<SettingsOverview>();
-    const second = deferred<SettingsOverview>();
-    const loader = vi
-      .fn()
-      .mockReturnValueOnce(first.promise)
-      .mockReturnValueOnce(second.promise);
+  it("prevents a late success from replacing a newer result", async () => {
+    const first = deferred<SettingsOverview["models"]>(); let count = 0;
+    const loader: SettingsOverviewLoader = key => key === "models" && ++count === 1 ? first.promise as Promise<SettingsOverview[typeof key]> : success(key);
     const controller = createSettingsOverviewController(loader);
-
-    const firstLoad = controller.load();
-    const secondLoad = controller.load();
-    second.resolve(overview("new-model"));
-    await secondLoad;
-    first.resolve(overview("old-model"));
-    await firstLoad;
-
-    expect(controller.getState()).toMatchObject({
-      status: "success",
-      data: { readiness: { modelKey: "new-model" } },
-    });
+    const old = controller.load("models"); await controller.load("models");
+    first.resolve([]); await old;
+    expect(controller.getState().models).toMatchObject({ data: values.models });
   });
 
-  it("cleans up the first Strict Mode lifecycle without leaking updates", async () => {
-    let firstSignal: AbortSignal | undefined;
-    const firstListener = vi.fn();
-    const first = createSettingsOverviewController((options) => {
-      firstSignal = options?.signal;
-      return abortableOverview(options?.signal);
-    });
-    first.subscribe(firstListener);
-    const firstLoad = first.load();
-    first.dispose();
-
-    const second = createSettingsOverviewController(() =>
-      Promise.resolve(overview("strict-mode-model")),
-    );
-    await second.load();
-    await firstLoad;
-
-    expect(firstSignal?.aborted).toBe(true);
-    expect(firstListener).toHaveBeenCalledTimes(1);
-    expect(second.getState()).toMatchObject({ status: "success" });
+  it("aborts all items on unmount, ignores late results, and permits a fresh Strict Mode lifecycle", async () => {
+    const pending = deferred<never>(), signals: AbortSignal[] = [];
+    const controller = createSettingsOverviewController((_key, options) => { signals.push(options!.signal!); return pending.promise; });
+    const listener = vi.fn(); controller.subscribe(listener);
+    const load = controller.load(); controller.dispose();
+    pending.reject(new ApiError("aborted", 0, undefined, "ABORTED")); await load;
+    expect(signals).toHaveLength(3); expect(signals.every(signal => signal.aborted)).toBe(true);
+    expect(listener).toHaveBeenCalledTimes(3);
+    await controller.load(); expect(listener).toHaveBeenCalledTimes(3);
+    const reopened = createSettingsOverviewController(success); await reopened.load();
+    expect(reopened.getState().readiness.status).toBe("success");
   });
 });
 
-function overview(modelKey: string): SettingsOverview {
-  return {
-    session: { status: "authenticated" },
-    models: [{ key: "model-a", label: "model-a", provider: "provider-a" }],
-    readiness: {
-      ready: true,
-      modelKey,
-      reason: "ready",
-      setupActionRequired: false,
-    },
-  };
-}
-
-function abortableOverview(
-  signal: AbortSignal | undefined,
-): Promise<SettingsOverview> {
-  return new Promise((_resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new ApiError("aborted", 0, undefined, "ABORTED"));
-      return;
-    }
-    signal?.addEventListener(
-      "abort",
-      () => reject(new ApiError("aborted", 0, undefined, "ABORTED")),
-      { once: true },
-    );
-  });
-}
-
 function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((res) => {
-    resolve = res;
-  });
-  return { promise, resolve };
+  let resolve!: (value: T) => void; let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
 }

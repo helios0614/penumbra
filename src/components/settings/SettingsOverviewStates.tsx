@@ -11,30 +11,11 @@ interface ErrorPresentation {
 }
 
 export function SettingsOverviewLoading() {
-  return (
-    <div className="grid gap-3 md:grid-cols-2" aria-live="polite">
-      <span className="sr-only">正在加载运行状态</span>
-      {["session", "readiness"].map((key) => (
-        <div key={key} className="mist-glass min-h-36 rounded-[22px] p-4">
-          <SkeletonLine className="w-24" />
-          <SkeletonLine className="mt-4 h-6 w-20" />
-          <SkeletonLine className="mt-4 w-full" />
-          <SkeletonLine className="mt-2 w-2/3" />
-        </div>
-      ))}
-      <div className="mist-glass min-h-44 rounded-[22px] p-4 md:col-span-2">
-        <SkeletonLine className="w-32" />
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {[0, 1, 2].map((key) => (
-            <div key={key} className="rounded-2xl bg-surface-secondary/70 p-3">
-              <SkeletonLine className="w-3/4" />
-              <SkeletonLine className="mt-2 w-1/3" />
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
+  return <div aria-live="polite">
+    <span className="sr-only">正在加载运行状态</span>
+    <SkeletonLine className="w-24" />
+    <SkeletonLine className="mt-3 w-2/3" />
+  </div>;
 }
 
 function SkeletonLine({ className }: { className?: string }) {
@@ -59,7 +40,7 @@ export function SettingsOverviewError({
 
   return (
     <div
-      className="mist-glass rounded-[22px] p-4 sm:p-5"
+      className="rounded-xl bg-destructive/5 p-3"
       role="alert"
       aria-live="assertive"
     >
@@ -97,29 +78,29 @@ export function getSettingsOverviewErrorPresentation(
   if (error instanceof ApiError) {
     if (error.status === 401 || error.status === 403) {
       return {
-        title: "Session 不可用",
-        description: "后端已响应，但当前浏览器尚未登录。登录后可重新加载安全概览。",
-        connectionLabel: "未登录",
+        title: "此项读取未获授权",
+        description: "后端已响应，但当前浏览器没有此项读取权限。请确认登录状态后重试。",
+        connectionLabel: "无读取权限",
       };
     }
     if (error.code === "TIMEOUT") {
       return {
         title: "请求超时",
-        description: "后端未在预期时间内返回安全概览，请稍后重试。",
+        description: "此项请求未在预期时间内返回，请稍后重试。",
         connectionLabel: "超时",
       };
     }
     if (error.code === "NETWORK_ERROR") {
       return {
-        title: "后端暂时不可达",
-        description: "无法连接到后端。请确认服务正在运行，然后重试。",
+        title: "此项请求连接失败",
+        description: "暂时无法读取此项状态，请稍后重试。",
         connectionLabel: "连接失败",
       };
     }
   }
 
   return {
-    title: "无法加载运行状态",
+    title: "无法读取此项状态",
     description: "后端返回了异常状态或不符合安全契约的数据，请稍后重试。",
     connectionLabel: "加载失败",
   };

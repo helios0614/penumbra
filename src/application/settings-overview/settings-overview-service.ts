@@ -7,23 +7,24 @@ import { ApiError, type ApiRequestOptions } from "@/lib/api";
 
 import type { SettingsOverview } from "@/application/settings-overview/settings-overview-types";
 
-export async function loadSettingsOverview(
+export type SettingsOverviewSection = keyof SettingsOverview;
+
+const loaders: { [K in SettingsOverviewSection]: (options?: ApiRequestOptions) => Promise<SettingsOverview[K]> } = {
+  session: getSessionStatus,
+  models: getAvailableModels,
+  readiness: options => getChatReadiness(undefined, options),
+};
+
+export async function loadSettingsOverview<K extends SettingsOverviewSection>(
+  section: K,
   options?: ApiRequestOptions,
-): Promise<SettingsOverview> {
+): Promise<SettingsOverview[K]> {
   try {
-    const [session, models, readiness] = await Promise.all([
-      getSessionStatus(options),
-      getAvailableModels(options),
-      getChatReadiness(undefined, options),
-    ]);
-
-    return { session, models, readiness };
+    return await loaders[section](options);
   } catch (error) {
-    if (error instanceof ApiError) {
-      throw sanitizeApiError(error);
-    }
-
-    throw error;
+    if (error instanceof ApiError) throw sanitizeApiError(error);
+    // Never retain arbitrary exception payloads in overview state.
+    throw new Error("Backend returned data outside the safe runtime contract");
   }
 }
 
