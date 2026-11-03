@@ -1,4 +1,4 @@
-import { CheckCircle2, CircleDashed, Database, LogIn, RefreshCw } from "lucide-react";
+import { CheckCircle2, CircleDashed, LogIn, RefreshCw } from "lucide-react";
 import type { SettingsOverviewSection } from "@/application/settings-overview";
 import type { ChatReadiness } from "@/domain/runtime";
 import type { OverviewItemState, SettingsOverviewState } from "./settings-overview-controller";
@@ -42,7 +42,6 @@ export function SettingsSafeBasics({ state, onRetry }: {
 }) {
   const loading = Object.values(state).some(item => item.status === "idle" || item.status === "loading");
   const readiness = state.readiness.status === "success" ? state.readiness.data : null;
-  const models = state.models.status === "success" ? state.models.data : null;
   return <section aria-labelledby="settings-safe-basics-title" className="space-y-3">
     <div className="mist-glass flex items-center justify-between gap-3 rounded-2xl px-3 py-2">
       <div>
@@ -58,23 +57,6 @@ export function SettingsSafeBasics({ state, onRetry }: {
       {state.session.status === "success" && <>
         <Badge variant="outline">{state.session.data.status === "authenticated" ? "Session 可达 · 已登录" : "Session 可达 · 未登录"}</Badge>
         <p className="mt-2 text-xs text-muted-foreground">仅表示当前浏览器的认证状态。</p>
-      </>}
-    </OverviewItem>
-    <OverviewItem title="模型目录" icon={Database} state={state.models} onRetry={() => onRetry("models")}>
-      {models && <>
-        <Badge variant="outline">目录可读取 · {models.length} 个模型</Badge>
-        <p className="mt-2 text-xs text-muted-foreground">内置目录，不代表远端模型全集；不会修改会话模型。</p>
-        {models.length === 0 ? <p className="mt-3 text-sm text-muted-strong">目录为空；不会补充或选择默认模型。</p> :
-          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-            {models.map(model => <li key={model.key} className="min-w-0 rounded-xl border border-border-strong/50 bg-background/25 p-3">
-              <p className="break-all font-mono text-xs font-semibold">{model.key}</p>
-              {model.label !== model.key && <p className="mt-1 break-words text-xs">{model.label}</p>}
-              <p className="mt-1 break-words text-xs text-muted-foreground">Provider：{model.provider}</p>
-              {readiness?.modelKey === model.key && <Badge variant="outline" className="mt-2">新会话默认模型</Badge>}
-            </li>)}
-          </ul>}
-        {readiness?.modelKey && !models.some(model => model.key === readiness.modelKey) &&
-          <p className="mt-3 text-xs text-muted-foreground">默认模型未列于内置目录；这不影响后端对默认配置的就绪判断。</p>}
       </>}
     </OverviewItem>
     <OverviewItem title="Chat readiness · 新会话默认配置" icon={readiness?.ready ? CheckCircle2 : CircleDashed}

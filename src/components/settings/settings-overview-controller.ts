@@ -8,7 +8,7 @@ export type OverviewItemState<T> =
 
 export type SettingsOverviewState = { readonly [K in SettingsOverviewSection]: OverviewItemState<SettingsOverview[K]> };
 const idle = { status: "idle", data: null, error: null } as const;
-export const INITIAL_SETTINGS_OVERVIEW_STATE: SettingsOverviewState = { session: idle, models: idle, readiness: idle };
+export const INITIAL_SETTINGS_OVERVIEW_STATE: SettingsOverviewState = { session: idle, readiness: idle };
 export type SettingsOverviewLoader = <K extends SettingsOverviewSection>(section: K, options?: ApiRequestOptions) => Promise<SettingsOverview[K]>;
 export interface SettingsOverviewController {
   getState(): SettingsOverviewState;
@@ -47,7 +47,7 @@ export function createSettingsOverviewController(loader: SettingsOverviewLoader 
     getState: () => state,
     async load(section) {
       if (section) await loadItem(section);
-      else await Promise.all((["session", "models", "readiness"] as const).map(loadItem));
+      else await Promise.all((["session", "readiness"] as const).map(loadItem));
     },
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     dispose() {

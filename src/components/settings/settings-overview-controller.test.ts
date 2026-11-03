@@ -5,26 +5,25 @@ import { ApiError } from "@/lib/api";
 
 const values: SettingsOverview = {
   session: { status: "authenticated" },
-  models: [{ key: "a", label: "a", provider: "synthetic" }],
   readiness: { ready: true, modelKey: "a", reason: "ready", setupActionRequired: false },
 };
 const success: SettingsOverviewLoader = async key => values[key];
 
 describe("settings overview independent requests", () => {
   it("publishes fast items while another endpoint is pending", async () => {
-    const pending = deferred<SettingsOverview["models"]>();
-    const loader: SettingsOverviewLoader = key => key === "models" ? pending.promise as Promise<SettingsOverview[typeof key]> : success(key);
+    const pending = deferred<SettingsOverview["session"]>();
+    const loader: SettingsOverviewLoader = key => key === "session" ? pending.promise as Promise<SettingsOverview[typeof key]> : success(key);
     const controller = createSettingsOverviewController(loader);
     const load = controller.load();
-    expect(controller.getState().models.status).toBe("loading");
-    await vi.waitFor(() => expect(controller.getState().session.status).toBe("success"));
+    expect(controller.getState().session.status).toBe("loading");
+    await vi.waitFor(() => expect(controller.getState().readiness.status).toBe("success"));
     expect(controller.getState().readiness.status).toBe("success");
-    expect(controller.getState().models.status).toBe("loading");
-    pending.resolve(values.models); await load;
-    expect(controller.getState().models).toMatchObject({ status: "success", data: values.models });
+    expect(controller.getState().session.status).toBe("loading");
+    pending.resolve(values.session); await load;
+    expect(controller.getState().session).toMatchObject({ status: "success", data: values.session });
   });
 
-  it.each(["session", "models", "readiness"] as const)("isolates %s failure and retries only it", async failed => {
+  it.each(["session", "readiness"] as const)("isolates %s failure and retries only it", async failed => {
     let fail = true;
     const calls: SettingsOverviewSection[] = [];
     const loader: SettingsOverviewLoader = async key => {
@@ -34,11 +33,11 @@ describe("settings overview independent requests", () => {
     };
     const controller = createSettingsOverviewController(loader);
     await controller.load();
-    for (const key of ["session", "models", "readiness"] as const) expect(controller.getState()[key].status).toBe(key === failed ? "error" : "success");
+    for (const key of ["session", "readiness"] as const) expect(controller.getState()[key].status).toBe(key === failed ? "error" : "success");
     fail = false;
     await controller.load(failed);
     expect(controller.getState()[failed].status).toBe("success");
-    expect(calls).toEqual(["session", "models", "readiness", failed]);
+    expect(calls).toEqual(["session", "readiness", failed]);
   });
 
   it("blocks late success and failure from an older retry without affecting other items", async () => {
@@ -61,12 +60,12 @@ describe("settings overview independent requests", () => {
   });
 
   it("prevents a late success from replacing a newer result", async () => {
-    const first = deferred<SettingsOverview["models"]>(); let count = 0;
-    const loader: SettingsOverviewLoader = key => key === "models" && ++count === 1 ? first.promise as Promise<SettingsOverview[typeof key]> : success(key);
+    const first = deferred<SettingsOverview["session"]>(); let count = 0;
+    const loader: SettingsOverviewLoader = key => key === "session" && ++count === 1 ? first.promise as Promise<SettingsOverview[typeof key]> : success(key);
     const controller = createSettingsOverviewController(loader);
-    const old = controller.load("models"); await controller.load("models");
-    first.resolve([]); await old;
-    expect(controller.getState().models).toMatchObject({ data: values.models });
+    const old = controller.load("session"); await controller.load("session");
+    first.resolve({ status: "unauthenticated" }); await old;
+    expect(controller.getState().session).toMatchObject({ data: values.session });
   });
 
   it("aborts all items on unmount, ignores late results, and permits a fresh Strict Mode lifecycle", async () => {
@@ -75,9 +74,9 @@ describe("settings overview independent requests", () => {
     const listener = vi.fn(); controller.subscribe(listener);
     const load = controller.load(); controller.dispose();
     pending.reject(new ApiError("aborted", 0, undefined, "ABORTED")); await load;
-    expect(signals).toHaveLength(3); expect(signals.every(signal => signal.aborted)).toBe(true);
-    expect(listener).toHaveBeenCalledTimes(3);
-    await controller.load(); expect(listener).toHaveBeenCalledTimes(3);
+    expect(signals).toHaveLength(2); expect(signals.every(signal => signal.aborted)).toBe(true);
+    expect(listener).toHaveBeenCalledTimes(2);
+    await controller.load(); expect(listener).toHaveBeenCalledTimes(2);
     const reopened = createSettingsOverviewController(success); await reopened.load();
     expect(reopened.getState().readiness.status).toBe("success");
   });

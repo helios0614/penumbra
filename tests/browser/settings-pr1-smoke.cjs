@@ -41,7 +41,6 @@ async function run(browser, origin, layout, width) {
     if (state.fail === endpoint) return json({ error: 'synthetic-private-error-must-not-render' }, 503);
     if (state.delay === endpoint) { state.pending.push({ route, code: state.code }); return; }
     if (endpoint === '/api/session') return json({ authenticated: true, cookie: 'synthetic-private-cookie-must-not-render' });
-    if (endpoint === '/api/models') return json([{ key: 'synthetic-default', provider: 'synthetic-provider', api_key: 'synthetic-private-key-must-not-render' }]);
     if (endpoint === '/api/chat/readiness') return json(readiness(state.code));
     // Background widgets use only these synthetic empty facts.
     if (endpoint === '/api/schedule/reminders' || endpoint === '/api/conversations') return json([]);
@@ -73,7 +72,7 @@ async function run(browser, origin, layout, width) {
     await open();
     assert.equal(new URL(page.url()).pathname, location);
     if (width < 768) assert.equal(await appearance().isVisible(), false);
-    assert.equal(await page.getByRole('button', { name: 'API 与连接', exact: true }).count(), 0);
+    assert.equal(await page.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: /^API 与连接/ }).count(), 1);
     assert.equal(await page.getByText('日历设置', { exact: true }).count(), 0);
     await page.screenshot({ path: path.join(output, `${layout}-${width}-categories.png`) });
     await category('外观与本机偏好').click();
@@ -99,20 +98,19 @@ async function run(browser, origin, layout, width) {
     await appearance().getByRole('button', { name: '移除', exact: true }).waitFor({ state: 'visible' });
     await back(); await category('系统状态').click();
     await item('Session').getByText('Session 可达 · 已登录', { exact: true }).waitFor();
-    await item('模型目录').getByText('目录可读取 · 1 个模型', { exact: true }).waitFor();
     await item('Chat readiness · 新会话默认配置').getByText('默认配置就绪', { exact: true }).waitFor();
     assert(!(await system().textContent()).includes('synthetic-private'));
-    for (const [endpoint, title] of [['/api/session', 'Session'], ['/api/models', '模型目录'], ['/api/chat/readiness', 'Chat readiness · 新会话默认配置']]) {
+    for (const [endpoint, title] of [['/api/session', 'Session'], ['/api/chat/readiness', 'Chat readiness · 新会话默认配置']]) {
       state.fail = endpoint;
       await system().getByRole('button', { name: '重新加载设置状态', exact: true }).click();
       await item(title).getByRole('button', { name: '重试', exact: true }).waitFor();
-      for (const other of ['Session', '模型目录', 'Chat readiness · 新会话默认配置'].filter(v => v !== title)) assert.equal(await item(other).getByRole('alert').count(), 0);
+      for (const other of ['Session', 'Chat readiness · 新会话默认配置'].filter(v => v !== title)) assert.equal(await item(other).getByRole('alert').count(), 0);
       assert(!(await system().textContent()).includes('synthetic-private'));
       await page.waitForFunction(() => !document.querySelector('[aria-label="重新加载设置状态"]')?.disabled);
       state.fail = null; const offset = requests.length;
       await item(title).getByRole('button', { name: '重试', exact: true }).click();
       await item(title).getByRole('alert').waitFor({ state: 'hidden' });
-      assert.deepEqual(requests.slice(offset).filter(path => ['/api/session', '/api/models', '/api/chat/readiness'].includes(path)), [endpoint]);
+      assert.deepEqual(requests.slice(offset).filter(path => ['/api/session', '/api/chat/readiness'].includes(path)), [endpoint]);
     }
     for (const [code, copy] of [['missing_credential', '缺少凭据'], ['disabled_profile', '已禁用'], ['invalid_main_selection', '选择无效'], ['future_safe_code', '检查连接与模型配置后重试'], ['constructor', '检查连接与模型配置后重试']]) {
       state.code = code; await system().getByRole('button', { name: '重新加载设置状态', exact: true }).click();
@@ -126,7 +124,6 @@ async function run(browser, origin, layout, width) {
     state.delay = '/api/chat/readiness'; state.code = 'missing_credential';
     await system().getByRole('button', { name: '重新加载设置状态', exact: true }).click();
     await item('Session').getByText('Session 可达 · 已登录', { exact: true }).waitFor();
-    await item('模型目录').getByText('目录可读取 · 1 个模型', { exact: true }).waitFor();
     await page.getByRole('button', { name: '返回桌面', exact: true }).click();
     state.delay = null; state.code = 'ready';
     await open(); await category('系统状态').click();
@@ -148,6 +145,7 @@ async function run(browser, origin, layout, width) {
     assert.equal(await legacy.getAttribute('href'), '/'); assert.equal(await legacy.getAttribute('target'), '_top');
     assert.equal(new URL(page.url()).pathname, location);
     assert.deepEqual(writes, []); assert.deepEqual(escaped, []); assert.deepEqual(errors, []);
+    assert(!requests.includes('/api/models'));
     assert(!requests.some(path => path.startsWith('/penumbra/api')));
     return { layout, width, navigation: 'passed', appearanceStorage: 'passed', independentOverview: 'passed', safeDiagnostics: 'passed', reopenAndLateResponse: 'passed', apiWrites: writes.length, pageErrors: errors.length };
   } finally { await context.close(); }

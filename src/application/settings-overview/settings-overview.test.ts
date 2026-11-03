@@ -13,33 +13,23 @@ describe("settings overview application", () => {
     fetchMock.mockReset();
   });
 
-  it("loads session, models, and bootstrap readiness once in parallel", async () => {
+  it("loads only session and default readiness in parallel", async () => {
     const session = deferred<Response>();
-    const models = deferred<Response>();
     const readiness = deferred<Response>();
     fetchMock.mockImplementation((input) => {
       const path = String(input);
       if (path === "/api/session") return session.promise;
-      if (path === "/api/models") return models.promise;
       return readiness.promise;
     });
 
     const pending = loadAllOverview({ timeoutMs: 0 });
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     session.resolve(json({ authenticated: true }));
-    models.resolve(json([
-      { key: "model-b", provider: "provider-b" },
-      { key: "model-a", provider: "provider-a" },
-    ]));
     readiness.resolve(json(readinessDto("ready", "model-a")));
 
     await expect(pending).resolves.toEqual({
       session: { status: "authenticated" },
-      models: [
-        { key: "model-b", label: "model-b", provider: "provider-b" },
-        { key: "model-a", label: "model-a", provider: "provider-a" },
-      ],
       readiness: {
         ready: true,
         modelKey: "model-a",
@@ -49,19 +39,18 @@ describe("settings overview application", () => {
     });
     expect(paths()).toEqual([
       "/api/session",
-      "/api/models",
       "/api/chat/readiness",
     ]);
   });
 
-  it("keeps an empty model list and an unknown readiness model without inferring the first model", async () => {
+  it("keeps an unknown readiness model without inferring a catalog default", async () => {
     mockSafeOverview({
-      models: [],
+
       readiness: readinessDto("unknown_model", "future/model-key"),
     });
 
     await expect(loadAllOverview({ timeoutMs: 0 })).resolves.toMatchObject({
-      models: [],
+
       readiness: {
         modelKey: "future/model-key",
         reason: "unknown-model",
@@ -75,7 +64,7 @@ describe("settings overview application", () => {
     const caller = new AbortController();
     const pending = loadAllOverview({ signal: caller.signal, timeoutMs: 0 });
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     caller.abort("fake-cookie-must-not-leak");
     const error = await pending.catch((reason: unknown) => reason);
 
@@ -124,7 +113,7 @@ describe("settings overview application", () => {
     fetchMock.mockImplementation((input) => {
       const path = String(input);
       if (path === "/api/session") return Promise.resolve(json({ authenticated: true }));
-      if (path === "/api/models") return Promise.resolve(json({ secret }));
+      if (path === "/api/chat/readiness") return Promise.resolve(json({ secret }));
       return Promise.resolve(json(readinessDto("ready", "model-a")));
     });
 
@@ -135,7 +124,7 @@ describe("settings overview application", () => {
     expect(String(error)).not.toContain(secret);
   });
 
-  it("drops extra secret/config fields and only calls the three safe Runtime endpoints", async () => {
+  it("drops extra secret/config fields and only calls the two safe Runtime endpoints", async () => {
     const forbidden = [
       "fake-api-key",
       "Bearer fake-authorization",
@@ -147,15 +136,6 @@ describe("settings overview application", () => {
       const path = String(input);
       if (path === "/api/session") {
         return Promise.resolve(json({ authenticated: true, cookie: forbidden[3] }));
-      }
-      if (path === "/api/models") {
-        return Promise.resolve(json([{
-          key: "model-a",
-          provider: "provider-a",
-          api_key: forbidden[0],
-          authorization: forbidden[1],
-          endpoint: forbidden[2],
-        }]));
       }
       return Promise.resolve(json({
         ...readinessDto("ready", "model-a"),
@@ -169,7 +149,6 @@ describe("settings overview application", () => {
     forbidden.forEach((value) => expect(serialized).not.toContain(value));
     expect(paths()).toEqual([
       "/api/session",
-      "/api/models",
       "/api/chat/readiness",
     ]);
     expect(paths().join(" ")).not.toMatch(
@@ -182,16 +161,13 @@ describe("settings overview application", () => {
   }
 
   function mockSafeOverview({
-    models = [{ key: "model-a", provider: "provider-a" }],
     readiness = readinessDto("ready", "model-a"),
   }: {
-    models?: unknown[];
     readiness?: Record<string, unknown>;
   } = {}) {
     fetchMock.mockImplementation((input) => {
       const path = String(input);
       if (path === "/api/session") return Promise.resolve(json({ authenticated: true }));
-      if (path === "/api/models") return Promise.resolve(json(models));
       return Promise.resolve(json(readiness));
     });
   }
@@ -237,8 +213,8 @@ function deferred<T>() {
 }
 
 async function loadAllOverview(options: import("@/lib/api").ApiRequestOptions) {
-  const [session, models, readiness] = await Promise.all([
-    loadSettingsOverview("session", options), loadSettingsOverview("models", options), loadSettingsOverview("readiness", options),
+  const [session, readiness] = await Promise.all([
+    loadSettingsOverview("session", options), loadSettingsOverview("readiness", options),
   ]);
-  return { session, models, readiness };
+  return { session, readiness };
 }

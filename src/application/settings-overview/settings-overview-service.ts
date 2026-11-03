@@ -1,5 +1,4 @@
 import {
-  getAvailableModels,
   getChatReadiness,
   getSessionStatus,
 } from "@/domain/runtime";
@@ -11,7 +10,6 @@ export type SettingsOverviewSection = keyof SettingsOverview;
 
 const loaders: { [K in SettingsOverviewSection]: (options?: ApiRequestOptions) => Promise<SettingsOverview[K]> } = {
   session: getSessionStatus,
-  models: getAvailableModels,
   readiness: options => getChatReadiness(undefined, options),
 };
 

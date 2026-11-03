@@ -16,7 +16,8 @@ describe("Settings page structure", () => {
     expect(html).not.toContain("日历设置");
     expect(html).toContain("后续开放");
     expect(html).toContain("MCP 工具（独立页面）");
-    expect(html).not.toMatch(/<button[^>]*>API 与连接/);
+    expect(html).toContain("API 与连接");
+    expect(html).not.toContain("Session、模型目录");
   });
   it("omits only desktop close when there is no host callback", () => {
     const html = renderToStaticMarkup(<SettingsView />);

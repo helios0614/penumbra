@@ -18,9 +18,10 @@ export interface SettingsPage {
   readonly render: (context: SettingsPageContext) => ReactNode;
   /** Nested pages reuse the shell and return stack without adding a category. */
   readonly nested?: boolean;
+  readonly parentId?: string;
 }
 
-const plannedCategories = ["API 与连接", "模型与任务分配", "服务集成", "MCP 工具（独立页面）", "高级设置"];
+const plannedCategories = ["模型与任务分配", "服务集成", "MCP 工具（独立页面）", "高级设置"];
 
 /** Desktop hosts keep ownership of opening/closing; category navigation never changes the URL. */
 export function SettingsShell({ pages, onClose }: {
@@ -47,7 +48,7 @@ export function SettingsShell({ pages, onClose }: {
 
   return <div className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col overflow-hidden" aria-labelledby="settings-page-title">
     <PageHeader eyebrow="Settings" title="设置" titleId="settings-page-title"
-      description="设备外观偏好与安全只读运行状态。"
+      description="本机外观、API 连接与运行状态。"
       actions={onClose && <PageHeaderAction onClick={onClose} aria-label="返回桌面"><X aria-hidden="true" /></PageHeaderAction>} />
     <div className="mt-3 flex min-h-0 flex-1 gap-4">
       <aside className={cn("mist-glass min-h-0 w-full shrink-0 rounded-[22px] md:w-52", activePage && "hidden md:block")}>
@@ -56,13 +57,13 @@ export function SettingsShell({ pages, onClose }: {
             {pages.filter(page => !page.nested).map(page => {
               const Icon = page.icon;
               return <button key={page.id} ref={element => { categoryRefs.current[page.id] = element; }} type="button"
-                aria-current={activeId === page.id ? "page" : undefined}
+                aria-current={(activeId === page.id || activePage?.parentId === page.id) ? "page" : undefined}
                 onClick={() => {
                   setPath([page.id]);
                   requestAnimationFrame(() => titleRef.current?.focus());
                 }}
                 className={cn("flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-ring",
-                  activeId === page.id ? "bg-primary/12 text-primary-ink" : "text-foreground hover:bg-background/35")}>
+                  (activeId === page.id || activePage?.parentId === page.id) ? "bg-primary/12 text-primary-ink" : "text-foreground hover:bg-background/35")}>
                 <Icon className="size-4 shrink-0" />
                 <span className="min-w-0 flex-1"><span className="block font-medium">{page.title}</span>
                   <span className="mt-0.5 block text-xs text-muted-foreground md:hidden">{page.description}</span></span>
@@ -92,7 +93,7 @@ export function SettingsShell({ pages, onClose }: {
             <p className="text-xs text-muted-foreground">{activePage?.description ?? "选择分类，查看或调整设置。"}</p>
           </div>
         </div>
-        {/* Keep page instances mounted across category switches; saves and local drafts stay scoped to Settings. */}
+        {/* Keep appearance mounted; pages with transient credentials mount only while active. */}
         {pages.map(page => <PageScrollArea key={page.id} label={page.title} topLabel={`回到${page.title}顶部`}
           hidden={activeId !== page.id} contentClassName="pb-4" resetKey={activeId === page.id ? page.id : undefined}>
           {page.render({ active: activeId === page.id, navigate, goBack })}
