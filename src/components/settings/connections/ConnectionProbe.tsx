@@ -9,7 +9,7 @@ import { PROBE_PROTOCOLS, RegistryError, validLiteral, type Connection, type Pro
 
 type Entry = { input: string; protocol: ProbeProtocol; model: string; result?: ProbeResult; error?: RegistryError };
 export function ConnectionProbe({ connection, onClose }: { connection: Connection; onClose?: () => void }) {
-  const [protocol, setProtocol] = useState<ProbeProtocol>("openai_chat_completions");
+  const [protocol, setProtocol] = useState<ProbeProtocol>("anthropic_messages");
   const [model, setModel] = useState(connection.default_model ?? "");
   const [prompt, setPrompt] = useState("你好");
   const [entries, setEntries] = useState<Entry[]>([]);

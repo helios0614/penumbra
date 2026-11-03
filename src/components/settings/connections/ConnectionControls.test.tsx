@@ -36,11 +36,11 @@ describe("Connection system controls and separated operations", () => {
     let tree = hooks.render(); hooks.commit();
     expect(testConnection).not.toHaveBeenCalled(); expect(discoverModels).not.toHaveBeenCalled();
     find(tree, Input).props.onChange!({ target: { value: "manual/keep" } } as React.ChangeEvent<HTMLInputElement>);
-    tree = hooks.render(); find(tree, AppSelect).props.onValueChange("anthropic_messages");
+    tree = hooks.render(); find(tree, AppSelect).props.onValueChange("openai_chat_completions");
     tree = hooks.render(); expect(find(tree, Input).props.value).toBe("manual/keep");
-    vi.mocked(testConnection).mockResolvedValue({ ok: true, connection_id: connection.id, protocol: "anthropic_messages", model: "manual/keep", test_type: "basic_nonstream", validates_full_chat: false });
+    vi.mocked(testConnection).mockResolvedValue({ ok: true, connection_id: connection.id, protocol: "openai_chat_completions", model: "manual/keep", test_type: "basic_nonstream", validates_full_chat: false });
     find(tree, Button, props => props.children === "发送").props.onClick!({} as never);
-    await vi.waitFor(() => expect(testConnection).toHaveBeenCalledWith(connection.id, "anthropic_messages", "manual/keep", { signal: expect.any(AbortSignal) }, "你好"));
+    await vi.waitFor(() => expect(testConnection).toHaveBeenCalledWith(connection.id, "openai_chat_completions", "manual/keep", { signal: expect.any(AbortSignal) }, "你好"));
     expect(discoverModels).not.toHaveBeenCalled(); hooks.dispose();
   });
 
