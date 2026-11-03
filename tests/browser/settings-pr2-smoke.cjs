@@ -72,9 +72,11 @@ async function run(browser, origin, layout, width, dark = width === 390) {
     }
     if (action === '/test') {
       f.tests++; const body = req.postDataJSON(); assert.equal(body.connection_id, id); assert(body.protocol && body.model);
-      if (f.fail === 'test') return fail('provider_probe_failed');
+      assert.equal(typeof body.prompt,'string');
+      if (f.delayTest) { f.pendingTests ??= []; f.pendingTests.push({route,body}); return; }
+      if (f.fail === 'test') return json({detail:{code:'provider_authentication_failed',safe_message:'合成认证说明',input:'private-synthetic-error-input'}},401);
       if (body.protocol === 'minimax_chatcompletion_v2' && f.fail === 'unsupported') return fail('unsupported_protocol');
-      return json({ ok: true, ...body, test_type: 'basic_nonstream', validates_full_chat: false });
+      return json({ ok: true, ...body, content: '实际返回：' + body.prompt, input_tokens: f.missingUsage ? null : 17, output_tokens: f.missingUsage ? null : 9, test_type: 'basic_nonstream', validates_full_chat: false });
     }
     if (action === '/fetch-models') {
       f.discovers++; const protocol = url.searchParams.get('protocol'); assert(protocol);
@@ -128,6 +130,40 @@ async function run(browser, origin, layout, width, dark = width === 390) {
   };
   const settle = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const waitPending = async name => { for (let i = 0; i < 300; i++) { if (f[name].length) return; await new Promise(resolve => setTimeout(resolve, 10)); } throw new Error('fixture delay timeout'); };
+  async function runConnectionTests() {
+    // Temporary single-turn tests: custom content, usage, clear, close and ignored abort.
+    const snapshot = JSON.stringify([...f.connections]), writesAtTest = f.writes.length;
+    await click(`测试：${f.connections.get('a').name}`);
+    const testDialog = page.getByRole('dialog', { name: '测试连接', exact: true });
+    const model = testDialog.getByLabel('测试模型', { exact: true }); await model.fill('manual/keep');
+    const prompt = testDialog.getByLabel('测试内容', {exact:true});
+    const records = () => testDialog.getByRole('region', {name:/^测试记录 /});
+    await prompt.fill('自定义你好'); await click('发送',testDialog);
+    await testDialog.getByText('实际返回：自定义你好',{exact:true}).waitFor();
+    await testDialog.getByText('Input Tokens：17',{exact:true}).waitFor();
+    await testDialog.getByText('Output Tokens：9',{exact:true}).waitFor();
+    f.missingUsage=true; await prompt.fill('第二次'+ '长文本'.repeat(200)); await click('发送',testDialog);
+    await testDialog.getByText('Input Tokens：未返回',{exact:true}).waitFor();
+    assert.equal(await records().count(),2); f.missingUsage=false;
+    f.fail='test'; await click('发送',testDialog); await testDialog.getByRole('alert').filter({hasText:'HTTP 401 · provider_authentication_failed'}).waitFor();
+    assert((await testDialog.textContent()).includes('合成认证说明'));f.fail=null;
+    await choose('本次协议','anthropic_messages',testDialog); assert.equal(await model.inputValue(),'manual/keep');
+    assert.equal(await records().count(),3);
+    await noOverflow(); await settle(); await page.screenshot({path:path.join(output,`${label}-test.png`)});
+    await click('清空',testDialog); assert.equal(await records().count(),0); assert.equal(await prompt.inputValue(),'');
+    assert.equal(await model.inputValue(),'manual/keep');
+    await prompt.fill('pending'); f.pendingTests=[]; f.delayTest=true; await click('发送',testDialog); await waitPending('pendingTests');
+    assert(await testDialog.getByRole('button',{name:'发送',exact:true}).isDisabled());
+    await click('关闭',testDialog); await testDialog.waitFor({state:'hidden'});
+    await click(`测试：${f.connections.get('a').name}`); await prompt.waitFor();
+    assert.equal(await prompt.inputValue(),'你好');assert.equal(await records().count(),0);
+    for (const pending of f.pendingTests.splice(0)) await pending.route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,...pending.body,content:'late-output',input_tokens:1,output_tokens:1,test_type:'basic_nonstream',validates_full_chat:false})}).catch(()=>{});
+    f.delayTest=false; assert.equal(await testDialog.getByText('late-output',{exact:true}).count(),0);
+    assert.equal(f.writes.length,writesAtTest); assert.equal(JSON.stringify([...f.connections]),snapshot);
+    assert(!f.requests.some(req=>/POST .*\/(send|diary|conversations)/.test(req)));
+    assert(!(await page.evaluate(()=>JSON.stringify({...localStorage}))).includes('自定义你好'));
+    await click('关闭',testDialog);
+  }
   try {
     await page.goto(origin + location);
     if (process.env.SETTINGS_PR2_VARIANT) {
@@ -140,6 +176,10 @@ async function run(browser, origin, layout, width, dark = width === 390) {
       }); await page.reload();
     }
     await open();
+    if (process.env.CONNECTION_TEST_ONLY) {
+      await runConnectionTests(); assert.deepEqual(escaped,[]); assert.deepEqual(errors,[]);
+      return {layout,width,dark,passed:true,temporaryTests:'passed',externalRequests:escaped.length,pageErrors:errors.length};
+    }
     assert.equal(await panel().locator('[data-connection-id]').count(), 30);
     assert.equal(await panel().locator('[aria-expanded="true"]').count(), 0);
     assert(!(await row('a').textContent()).match(/direct|直连|Direct/));
@@ -228,18 +268,7 @@ async function run(browser, origin, layout, width, dark = width === 390) {
     await click('读取核对', dialog()); await click('已核对，继续编辑', dialog());
     assert.equal(f.writes.length, appliedBefore + 1); assert(await dialog().getByRole('button', { name: '保存连接', exact: true }).isDisabled());
     await click('取消', dialog());
-    // Independent test dialog retains explicit protocol/model and narrow results.
-    await click(`测试：${f.connections.get('a').name}`);
-    const testDialog = page.getByRole('dialog', { name: '连接测试', exact: true });
-    assert.equal(await testDialog.locator('[data-slot="dialog-footer"]').getByRole('button',{name:'测试',exact:true}).count(),1);
-    const model = testDialog.getByLabel('测试模型', { exact: true }); await model.fill('manual/keep');
-    assert.equal(await testDialog.getByRole('button', { name: '获取模型', exact: true }).count(), 0);
-    await click('测试', testDialog); await testDialog.getByText('基础非流式测试成功 · manual/keep', { exact: true }).waitFor();
-    f.fail = 'test'; await click('测试', testDialog); await testDialog.getByRole('alert').waitFor(); f.fail = null;
-    await choose('本次协议', 'anthropic_messages', testDialog); assert.equal(await model.inputValue(), 'manual/keep');
-    f.fail = 'unsupported'; await choose('本次协议', 'minimax_chatcompletion_v2', testDialog); await click('测试', testDialog);
-    await testDialog.getByRole('alert').filter({ hasText: '不支持此操作所选的协议' }).waitFor(); f.fail = null;
-    await noOverflow(); await settle(); await page.screenshot({ path: path.join(output, `${label}-test.png`) }); await click('关闭', testDialog);
+    await runConnectionTests();
     // New discovery confirms a real create, reads back, and keeps the modal open.
     await click('新增连接'); assert(await dialog().getByRole('button',{name:'获取模型',exact:true}).isDisabled());
     await page.getByLabel('连接名称',{exact:true}).fill('发现草稿'); await page.getByLabel('Base URL',{exact:true}).fill('https://draft.synthetic.invalid/v1');
@@ -294,6 +323,6 @@ async function run(browser, origin, layout, width, dark = width === 390) {
   const origin = `http://127.0.0.1:${server.address().port}`;
   const browser = await chromium.launch({ headless: true, ...(process.argv[3] ? { executablePath: process.argv[3] } : {}) });
   try { const results = []; for (const layout of (process.env.SETTINGS_PR2_VARIANT ? ['classic'] : ['classic', 'editorial'])) { for (const width of (process.env.SETTINGS_PR2_VARIANT ? [390] : [320, 390, 1440])) results.push(await run(browser, origin, layout, width)); if(!process.env.SETTINGS_PR2_VARIANT) results.push(await run(browser, origin, layout, 1440, true)); }
-    fs.writeFileSync(path.join(output, process.env.SETTINGS_PR2_VARIANT ? 'results-wallpaper.json' : 'results-ui.json'), JSON.stringify(results, null, 2)); console.log(JSON.stringify(results, null, 2));
+    fs.writeFileSync(path.join(output, process.env.SETTINGS_PR2_VARIANT ? 'results-wallpaper.json' : process.env.CONNECTION_TEST_ONLY ? 'results-connection-tests.json' : 'results-ui.json'), JSON.stringify(results, null, 2)); console.log(JSON.stringify(results, null, 2));
   } finally { await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); server.closeAllConnections(); server.close(); process.exitCode = 1; });

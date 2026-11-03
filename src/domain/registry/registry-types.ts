@@ -41,6 +41,9 @@ export interface ProbeResult {
   readonly model: string;
   readonly test_type: "basic_nonstream";
   readonly validates_full_chat: false;
+  readonly content?: string;
+  readonly input_tokens?: number | null;
+  readonly output_tokens?: number | null;
 }
 export interface DiscoveredModels {
   readonly connection_id: string;
@@ -52,9 +55,16 @@ export interface DiscoveredModels {
 }
 // Only safe classifications survive the API boundary, never API data/input/body.
 export class RegistryError extends Error {
-  constructor(readonly code: string, readonly status = 0) { super(registryErrorCopy(code)); this.name = "RegistryError"; }
+  constructor(readonly code: string, readonly status = 0, readonly safeMessage?: string) { super(registryErrorCopy(code)); this.name = "RegistryError"; }
 }
 const errors: Readonly<Record<string, string>> = {
+  invalid_test_prompt: "测试内容须为 1–10000 个字符。",
+  provider_timeout: "上游请求超时。",
+  provider_connection_failed: "无法连接上游服务。",
+  provider_authentication_failed: "上游认证失败，请检查此连接的凭据。",
+  provider_http_error: "上游返回 HTTP 错误。",
+  provider_response_error: "上游返回错误。",
+  invalid_provider_response: "上游响应无法解析为普通文本结果。",
   stale_secret_ref: "凭据快照已过期。请重新读取连接，核对后再次明确操作。",
   invalid_secret_ref: "凭据引用不可用，请重新读取连接后核对。",
   explicit_clear_required: "空白 Key 不能提交；请使用显式清除操作。",

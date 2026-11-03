@@ -5,6 +5,7 @@ import { find, elements, hookSession } from "@/components/chat/test-utils/hook-s
 import { AppSelect } from "@/components/ui/app-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { discoverModels, testConnection } from "@/domain/registry/registry-client";
 import type { Connection, DiscoveredModels } from "@/domain/registry/registry-types";
 import { ConnectionProbe } from "./ConnectionProbe";
@@ -38,12 +39,35 @@ describe("Connection system controls and separated operations", () => {
     tree = hooks.render(); find(tree, AppSelect).props.onValueChange("anthropic_messages");
     tree = hooks.render(); expect(find(tree, Input).props.value).toBe("manual/keep");
     vi.mocked(testConnection).mockResolvedValue({ ok: true, connection_id: connection.id, protocol: "anthropic_messages", model: "manual/keep", test_type: "basic_nonstream", validates_full_chat: false });
-    find(tree, Button, props => props.children === "测试").props.onClick!({} as never);
-    await vi.waitFor(() => expect(testConnection).toHaveBeenCalledWith(connection.id, "anthropic_messages", "manual/keep", { signal: expect.any(AbortSignal) }));
+    find(tree, Button, props => props.children === "发送").props.onClick!({} as never);
+    await vi.waitFor(() => expect(testConnection).toHaveBeenCalledWith(connection.id, "anthropic_messages", "manual/keep", { signal: expect.any(AbortSignal) }, "你好"));
     expect(discoverModels).not.toHaveBeenCalled(); hooks.dispose();
   });
 
   const start = (tree: React.ReactNode) => (find(tree, PopoverTrigger).props.render as React.ReactElement<{ onClick: () => void }>).props.onClick();
+  it("aborts and isolates late results on clear and unmount, and starts empty on reopen", async () => {
+    const pending: ((value: never) => void)[] = [];
+    vi.mocked(testConnection).mockImplementation(() => new Promise(done => pending.push(done)));
+    const hooks = hookSession(() => ConnectionProbe({ connection }));
+    let tree = hooks.render(); hooks.commit();
+    find(tree, Textarea).props.onChange!({ target: { value: "custom" } } as React.ChangeEvent<HTMLTextAreaElement>);
+    tree = hooks.render(); const send = find(tree, Button, p => p.children === "发送");
+    send.props.onClick!({} as never); send.props.onClick!({} as never);
+    expect(testConnection).toHaveBeenCalledTimes(1);
+    const signal = vi.mocked(testConnection).mock.calls[0][3]!.signal!;
+    find(hooks.render(), Button, p => p.children === "清空").props.onClick!({} as never);
+    expect(signal.aborted).toBe(true); pending[0]({ content: "late" } as never);
+    await Promise.resolve(); tree = hooks.render();
+    expect(find(tree, Textarea).props.value).toBe("");
+    expect(elements(tree).filter(n => n.type === "section")).toHaveLength(0);
+    find(tree, Button, p => p.children === "发送").props.onClick!({} as never);
+    const closedSignal = vi.mocked(testConnection).mock.calls[1][3]!.signal!;
+    hooks.dispose(); expect(closedSignal.aborted).toBe(true); pending[1]({ content: "closed" } as never);
+    await Promise.resolve();
+    const reopened = hookSession(() => ConnectionProbe({ connection }));
+    expect(find(reopened.render(), Textarea).props.value).toBe("你好");
+    expect(elements(reopened.render()).filter(n => n.type === "section")).toHaveLength(0); reopened.dispose();
+  });
   it("merges two successful sources, deduplicates and only uses an explicit candidate", async () => {
     const useModel = vi.fn();
     vi.mocked(discoverModels).mockImplementation(async (_, protocol) => result(protocol as "anthropic_messages", ["remote/model"]));

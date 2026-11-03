@@ -276,3 +276,56 @@ PR2 浏览器保留原有凭据操作、stale ref、失败读回、未知写入�
 - 两份历史浏览器脚本同步适配新路径和刷新恢复行为；按用户要求未运行浏览器。没有改动其他应用的路由、后端或模型选择。
 
 验证：Settings / 路径 / Desktop 相关 **9 文件、86 条测试通过**；包含 13 条纯历史导航用例及一个 Shell popstate 集成用例，覆盖经典/Editorial × 开发/生产 base、分类返回/前进、整体关闭、直接链接回退、无效分类、监听卸载。TypeScript 与 diff --check 通过。留待人工检查手机返回键；HMR 保留旧本地打开状态时，先关闭 Settings 再重新打开即可进入新路由。
+
+## Connection 临时对话测试（2026-11-03）
+
+本轮属于 Settings PR2，范围仅为临时连接测试。保留开工前已有的 `.gitignore` 改动；未提交、推送或部署。后端修改位于相邻 `D:/Desktop/zhi/AionHome` 工作树。没有改变 Chat / Core / Memory / WebSocket / command 的运行契约。
+
+### 窄范围历史追溯与适配决定
+
+- 历史 `e8e315e`（2026-08-24「空窗 token 测试」）以及截至 2026-10-16 的 `ca71e53` 均保留旧调用链：`static/settings.html` → `POST /api/settings/api-configs/{config_id}/test`，body `{message}` → `routes/settings.py::test_api_config` → `ai_providers.run_anthropic_single_turn_test`。旧 UI 用 textContent 展示返回 content 和 input_tokens/output_tokens；请求身份用于丢弃迟到响应。
+- 旧路由校验非空和 10000 字符上限，读取旧 API Config 的 URL/Key/Model；底层单个 user message、max_tokens=1024、60 秒、无历史/stream/thinking，兼容 relay `result` envelope，读取 Anthropic usage 或 prompt_tokens/completion_tokens。缺失计数曾归 0，错误可原样返回 Provider body。
+- 当前旧 HTTP 入口返回 `409 {detail:{code:"use_connection_api"}}`，但上述底层函数及隔离测试仍在。`33fccb2`（10-20）和 `f299734`（10-21）迁移 Registry/Settings 后不应恢复旧配置权威。
+- 当前 Registry 测试原先只接受 Connection/Protocol/Model，固定 `Reply with OK.`、max_tokens=16、httpx timeout=30、trust_env=False；调用 `nonstream_llm.complete_text` 后丢弃内容与 usage，仅回 basic_nonstream 标记，异常统一 provider_probe_failed。因此仅改前端无法满足本轮目标。
+- 最小适配：继续使用 Registry v2 `_resolve_feature` 的临时 selection、冻结 RuntimeLLMBinding、安全凭据和现有 nonstream Adapter；复用旧 `_single_turn_response_text` 处理实际文本及 envelope。没有复制旧 URL 构建、模型规范化或 HTTP 调用系统。旧测试函数的「缺失即 0」、原始错误输出与旧配置读取不适合直接复用，分别改为可空 usage、脱敏诊断、Registry resolver。没有恢复旧 API Pool/Profile 写入权威。
+
+### 实际 API 契约
+
+仍使用 `POST /api/registry/connections/{id}/test`，沿用现有认证与 no-store：
+
+```json
+{"connection_id":"synthetic-id","protocol":"anthropic_messages","model":"literal-model","prompt":"你好"}
+```
+
+`prompt` 可选；不传（或 null）保留旧固定基础探测与原响应字段。传入时须为非空字符串，最多 10000 Unicode 字符；原文发送，仅包含本次 user message。路径和 body 的 Connection ID 必须一致。Protocol 始终显式提交，绝不从 URL、连接名或模型名推断，也不 fallback。测试模型预填来自既有 default_model，手改测试选择不保存。
+
+自定义测试成功在既有字段上增加：
+
+```json
+{"ok":true,"connection_id":"synthetic-id","protocol":"anthropic_messages","model":"literal-model","test_type":"basic_nonstream","validates_full_chat":false,"content":"实际返回文本","input_tokens":17,"output_tokens":9}
+```
+
+- `content` 来自实际 Provider JSON，复用旧提取器（多个文本块按换行连接），不生成替代答案、不 trim 模型正文。支持当前三种显式测试协议和旧 relay result envelope。
+- Input 只读取 input_tokens / prompt_tokens；Output 只读取 output_tokens / completion_tokens。只接受非负安全整数；缺失、布尔、字符串、负数或小数为 null，前端显示「未返回」。0 保留为 0，不估算，不用 total_tokens 倒算。
+- 自定义测试输出预算固定 1024，httpx 超时 30 秒，服务层另有 30 秒总时限，前端 35 秒；调用无 streaming、thinking、tools、cache 或历史消息。旧无 Prompt 请求仍使用 16 Token 预算及旧成功字段。
+- 错误返回 `{detail:{code,safe_message}}`。Provider HTTP 错误保留状态码；401/403 分类为 provider_authentication_failed，其他为 provider_http_error；超时 504/provider_timeout、连接失败 provider_connection_failed、Provider JSON error 为 provider_response_error，无法解析为 invalid_provider_response。前端逐条展示 HTTP、受限格式 code、可理解原因与 safe_message。仅投影 Provider error.message/detail/error_description 字段，用现有 `_redact_provider_error_text` 脱敏、限制长度，并额外覆盖短凭据；不返回原始对象、认证头、URL、异常 repr。旧无 Prompt 请求保持 provider_probe_failed 错误契约。
+
+后端仅改 `connection_registry.py`、`nonstream_llm.py`、`routes/registry.py`，另新增 `tests/contract/test_connection_single_turn.py`。Adapter 默认仍回字符串，只有 return_details=True 时返回文本和 usage，已有消费者不需改动。
+
+### UI 与临时状态
+
+使用系统 Dialog、AppSelect、Input、Textarea、Button 及现有玻璃表面。顶部为「测试连接」和连接名称，默认输入「你好」；页脚发送、清空、关闭。发送期间 Loading + 禁用按钮，并以 AbortController 引用防重复提交。下方每次完成追加输入、输出、Token 或错误卡片，并保留当次协议/模型快照；每个请求互相独立。
+
+清空会取消当前请求、清除输入与结果，保留连接/协议/模型。关闭按钮、右上角、Escape、离开页面等卸载路径 abort 并使请求身份失效，忽略不遵守 abort 的迟到响应；重开新组件使用默认输入和空结果。所有内容仅存在该弹窗 React 状态，不写 Settings、SQLite、Conversation、Diary、localStorage 或其他持久存储。取消前端请求不保证上游停止执行或计费，弹窗已提示。
+
+### 验证与限制
+
+- 后端最终相关隔离套件 **35 passed / 43 deselected**（新测试、旧单轮测试、Registry 原基础测试、已有 nonstream Adapter 消费者）。Fake httpx 验证三协议的实际 endpoint/payload、自定义输入、真实正文、usage 缺失/非法/0/envelope、HTTP/认证/超时/网络/Provider 错误、单次调用无 fallback、连续独立输入、旧请求兼容及 no-store；Settings 文件和 SQLite 字节快照保持不变。
+- 前端本轮新增/相关测试均通过：ConnectionControls 7、registry-client 31、useRegistryTask 5；覆盖显式协议、自定义正文与 usage、非法计数、认证诊断、重复点击、清空 abort、卸载 abort 和迟到结果隔离。TypeScript 与生产构建通过。
+- 专用浏览器入口沿用 `tests/browser/settings-pr2-smoke.cjs` 的 Fake API：设置 `CONNECTION_TEST_ONLY=1`。两种布局各 320 / 390 / 1440（含桌面深色）共 **8 组通过**；覆盖多次发送、缺失 usage、错误、清空、保留选择、重开、pending 时关闭、迟到响应、无写入/无真实 send/无外部请求。页面异常 0，外部请求 0；长文本换行和弹窗边界检查通过，已目视检查 320px 截图。
+- 产物：`artifacts/connection-test/browser/`（截图及 results-connection-tests.json）、build.log、frontend-all.log、frontend-all-final.log、frontend-proxy-recheck.log、chat-stability-recheck.log、browser-final.log。
+- 全量前端首次 2909/2911 通过，两条 localhost proxy 用例受沙箱网络限制，允许本机网络后单独 2/2 通过。第二次全量 2910/2911 通过，仅既有 chat-stability 的请求次数断言出现 3/2 波动（此前 PR2 文档已记录同类波动）；单独复核 7/7 通过（见日志）。未为此修改 Chat 代码或测试。
+- 扩大的后端套件曾有 4 条非本边界失败：缺少 pyncm、默认 GBK 读取 UTF-8 和临时文件替换失败；UTF-8 模式下相关单轮测试最终通过。未更改生产配置或安装依赖。原 Settings 综合浏览器脚本还在既有复制 Key Toast 的定位处停止，因此不宣称综合 Settings 回归全部通过；本轮专用对话路径最终全部通过。
+- 不调用真实 Provider，不使用真实 API Key；测试仅证明指定配置的一次普通非流式文本请求，不能证明完整 Chat / Thinking / Cache / Tools / 图片 / 长上下文能力。浏览器是桌面 Chrome 模拟，真机软键盘与 Safari 待人工验收。
+
+完成后停止，等待人工验收；不 commit、push、deploy。

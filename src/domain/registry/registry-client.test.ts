@@ -80,6 +80,24 @@ describe("Registry Connection v2 boundary", () => {
     await expect(api.discoverModels("a", "openai_chat_completions")).rejects.toMatchObject({ code: "contract" });
     await expect(api.discoverModels("a", "openai_chat_completions", "cursor")).rejects.toMatchObject({ code: "unsupported_pagination" });
   });
+  it.each([null, 0, 17])("returns actual custom content and provider usage %s", async tokens => {
+    fetchMock.mockResolvedValue(json({ ok: true, connection_id: "a", protocol: "anthropic_messages", model: "literal-x", test_type: "basic_nonstream", validates_full_chat: false,
+      content: " 实际输出\n", input_tokens: tokens, output_tokens: null }));
+    const result = await api.testConnection("a", "anthropic_messages", "literal-x", undefined, " 自定义\n");
+    expect(result).toMatchObject({ content: " 实际输出\n", input_tokens: tokens, output_tokens: null });
+    expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string).prompt).toBe(" 自定义\n");
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+  it("keeps safe provider authentication diagnostics and discards raw data", async () => {
+    fetchMock.mockResolvedValue(json({detail:{code:"provider_authentication_failed",safe_message:"安全说明",headers:"private",input:"private"}},401));
+    const error = await api.testConnection("a","anthropic_messages","literal",undefined,"你好").catch(e=>e);
+    expect(error).toMatchObject({code:"provider_authentication_failed",status:401,safeMessage:"安全说明"});
+    expect(JSON.stringify(error)).not.toContain("private");
+  });
+  it.each([-1, 1.2, "17", true])("rejects malformed usage %s", async tokens => {
+    fetchMock.mockResolvedValue(json({ok:true,connection_id:"a",protocol:"anthropic_messages",model:"literal",test_type:"basic_nonstream",validates_full_chat:false,content:"actual",input_tokens:tokens}));
+    await expect(api.testConnection("a","anthropic_messages","literal",undefined,"你好")).rejects.toMatchObject({code:"contract"});
+  });
   it.each(["Bearer synthetic-private", "constructor", "not a code!"])("never echoes arbitrary errors %s", async code => {
     fetchMock.mockResolvedValue(json({ detail: { code, error: "synthetic-private" } }, 422));
     const error = await api.getConnection("a").catch(error => error);

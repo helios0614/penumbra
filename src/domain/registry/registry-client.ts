@@ -15,9 +15,11 @@ async function request(url: string, method: string, body?: Record<string, unknow
   catch (error) {
     if (!(error instanceof ApiError)) throw new RegistryError("unknown");
     const data = record(error.data) && record(error.data.detail) ? error.data.detail : null;
-    const code = error.status === 401 || error.status === 403 ? "unauthorized" :
-      error.code === "TIMEOUT" ? "timeout" : error.code === "NETWORK_ERROR" ? "network" : diagnostic(data?.code);
-    throw new RegistryError(code, error.status);
+    const providerCode = /\/test$/.test(url) && diagnostic(data?.code).startsWith("provider_") ? diagnostic(data?.code) : null;
+    const code = providerCode ?? (error.status === 401 || error.status === 403 ? "unauthorized" :
+      error.code === "TIMEOUT" ? "timeout" : error.code === "NETWORK_ERROR" ? "network" : diagnostic(data?.code));
+    const safeMessage = /\/test$/.test(url) && text(data?.safe_message) ? data.safe_message.slice(0, 601) : undefined;
+    throw new RegistryError(code, error.status, safeMessage);
   }
 }
 export function parseConnection(value: unknown, expectedId?: string): Connection {
@@ -88,12 +90,16 @@ export async function revealCredential(id: string, secretRef: string, options?: 
 export async function clearCredential(id: string, secretRef: string, options?: ApiRequestOptions): Promise<Connection> {
   return parseConnection(await request(`${path(id)}/credential/clear`, "POST", { secret_ref: secretRef }, options), id);
 }
-export async function testConnection(id: string, protocol: ProbeProtocol, model: string, options?: ApiRequestOptions): Promise<ProbeResult> {
+export async function testConnection(id: string, protocol: ProbeProtocol, model: string, options?: ApiRequestOptions, prompt?: string): Promise<ProbeResult> {
   if (!PROBE_PROTOCOLS.includes(protocol) || !validLiteral(model)) throw new RegistryError("validation");
-  const raw = await request(`${path(id)}/test`, "POST", { connection_id: id, protocol, model: model.trim() }, { timeoutMs: 35_000, ...options });
+  if (prompt !== undefined && (!prompt.trim() || [...prompt].length > 10000)) throw new RegistryError("invalid_test_prompt");
+  const raw = await request(`${path(id)}/test`, "POST", { connection_id: id, protocol, model: model.trim(), ...(prompt === undefined ? {} : { prompt }) }, { timeoutMs: 35_000, ...options });
   if (!record(raw) || raw.connection_id !== id || raw.protocol !== protocol || raw.model !== model.trim() || raw.ok !== true ||
     raw.test_type !== "basic_nonstream" || raw.validates_full_chat !== false) return invalid();
-  return { ok: true, connection_id: id, protocol, model: raw.model as string, test_type: "basic_nonstream", validates_full_chat: false };
+  const count = (value: unknown) => value == null || (typeof value === "number" && Number.isSafeInteger(value) && value >= 0);
+  if (prompt !== undefined && (!text(raw.content) || !count(raw.input_tokens) || !count(raw.output_tokens))) return invalid();
+  return { ok: true, connection_id: id, protocol, model: raw.model as string, test_type: "basic_nonstream", validates_full_chat: false,
+    ...(prompt === undefined ? {} : { content: raw.content as string, input_tokens: raw.input_tokens as number | null ?? null, output_tokens: raw.output_tokens as number | null ?? null }) };
 }
 export async function discoverModels(id: string, protocol: ProbeProtocol, afterId?: string, options?: ApiRequestOptions): Promise<DiscoveredModels> {
   if (afterId !== undefined && protocol !== "anthropic_messages") throw new RegistryError("unsupported_pagination");
