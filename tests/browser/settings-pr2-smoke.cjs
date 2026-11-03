@@ -114,7 +114,7 @@ async function run(browser, origin, layout, width, dark = width === 390) {
     const target=root.getByRole('button',{name,exact:true});
     if(await target.count()) await target.click(); else await page.getByRole('button',{name,exact:true}).click();
   };
-  const open = async () => { await page.getByRole('button', { name: '打开设置', exact: true }).last().click(); await page.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: /^API 与连接/ }).click(); await row('a').waitFor(); };
+  const open = async () => { const launcher = page.getByRole('button', { name: '打开设置', exact: true }); if (await launcher.count()) await launcher.last().click(); if (!(await panel().isVisible())) await page.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: /^API 与连接/ }).click(); await row('a').waitFor(); };
   const edit = async id => { await click(`编辑：${f.connections.get(id).name}`); await page.getByLabel('连接名称', { exact: true }).waitFor(); };
   const dialog = () => page.getByRole('dialog', { name: /编辑连接|新增连接/ });
   const choose = async (name, value, root = dialog()) => {
@@ -280,11 +280,11 @@ async function run(browser, origin, layout, width, dark = width === 390) {
     await openAfterCategory(); assert.equal(await page.evaluate(() => window.__fakeCopies.length), copyCount);
     async function openAfterCategory() { await page.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: /^API 与连接/ }).click(); await row('a').waitFor(); }
     assert.equal(await panel().locator('[aria-expanded="true"]').count(), 0);
-    await click('返回桌面'); await open(); await page.reload(); await open();
+    await click('返回桌面'); await page.waitForURL(origin + location); await open(); await page.reload(); await open();
     assert(!f.requests.some(req => /migrate|feature-bindings|\/selections\//.test(req)));
     assert(!(await page.evaluate(() => JSON.stringify({ ...localStorage }))).includes('synthetic-new-key'));
     assert(!(await panel().textContent()).includes('private-synthetic-error-input'));
-    assert.equal(new URL(page.url()).pathname, location);
+    assert.equal(new URL(page.url()).pathname, location.replace(/\/$/, '') + '/app/settings');
     assert.deepEqual(escaped, []); assert.deepEqual(errors, []);
     return { layout, width, dark, passed: true, compactPanel: 'passed', dialogs: 'passed', credentials: 'passed', references: 'passed', probes: 'passed', discoveryAndIsolation: 'passed', pageErrors: errors.length };
   } finally { await context.close(); }

@@ -26,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import { SettingsView } from '@/components/settings/SettingsView';
+import { closeSettingsHistory, isSettingsPath, pushSettingsHistory } from '@/components/settings/settings-navigation';
 import { DesktopApps } from '@/components/desktop/DesktopApps';
 import {
   DesktopAppView,
@@ -366,7 +367,7 @@ function WidgetSkeleton() {
 export function Desktop() {
   const [layout, setLayout] = useState<DesktopLayoutItem[]>([]);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(() => typeof window !== 'undefined' && isSettingsPath(window.location.pathname, 'classic'));
   const [isEditing, setIsEditing] = useState(false);
   const [desktopPage, setDesktopPage] = useState(0);
   const [wallpaperSettings, setWallpaperSettings] = useState(getStoredWallpaperSettings);
@@ -432,7 +433,7 @@ export function Desktop() {
   useEffect(() => {
     const handlePopState = () => {
       setActiveApp(getAppFromPath(window.location.pathname));
-      setIsSettingsOpen(false);
+      setIsSettingsOpen(isSettingsPath(window.location.pathname, 'classic'));
       setIsEditing(false);
       setIsPickerOpen(false);
     };
@@ -508,6 +509,17 @@ export function Desktop() {
     setActiveApp(null);
   };
 
+  const openSettings = () => {
+    pushSettingsHistory(window, 'classic');
+    setActiveApp(null);
+    setIsSettingsOpen(true);
+    setIsEditing(false);
+    setIsPickerOpen(false);
+  };
+  const closeSettings = () => {
+    if (!closeSettingsHistory(window, 'classic')) setIsSettingsOpen(false);
+  };
+
   const toggleWallpaperTextTone = () => {
     const currentTone = resolveWallpaperTextTone(wallpaperSettings.textTone);
     const nextSettings = {
@@ -551,7 +563,7 @@ export function Desktop() {
           {activeApp ? (
             <DesktopAppView appId={activeApp} onBack={closeApp} />
           ) : isSettingsOpen ? (
-            <SettingsView onBack={() => setIsSettingsOpen(false)} />
+            <SettingsView onBack={closeSettings} />
           ) : (
             <div className="desktop-home-grid relative mx-auto h-full max-w-5xl">
               <div
@@ -607,10 +619,7 @@ export function Desktop() {
 
                   <DesktopApps
                     onLaunch={openApp}
-                    onSettings={() => {
-                      setIsSettingsOpen(true);
-                      setIsEditing(false);
-                    }}
+                    onSettings={openSettings}
                   />
                 </section>
 

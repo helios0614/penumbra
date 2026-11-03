@@ -6,6 +6,7 @@ import {
   type DesktopAppId,
 } from "@/components/apps/DesktopAppView";
 import { SettingsView } from "@/components/settings/SettingsView";
+import { closeSettingsHistory, isSettingsPath, pushSettingsHistory } from "@/components/settings/settings-navigation";
 import { cn } from "@/lib/utils";
 import { getDesktopAppId, getDesktopAppPath, getDesktopPath } from "@/lib/app-paths";
 import { EditorialDock } from "./EditorialDock";
@@ -22,7 +23,7 @@ function getEditorialAppFromPath(pathname: string): DesktopAppId | null {
 export function EditorialDesktop() {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(new Date());
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(() => typeof window !== "undefined" && isSettingsPath(window.location.pathname, "editorial"));
   const [activeApp, setActiveApp] = useState<DesktopAppId | null>(() => (
     typeof window === "undefined" ? null : getEditorialAppFromPath(window.location.pathname)
   ));
@@ -35,7 +36,7 @@ export function EditorialDesktop() {
   useEffect(() => {
     const handlePopState = () => {
       setActiveApp(getEditorialAppFromPath(window.location.pathname));
-      setIsSettingsOpen(false);
+      setIsSettingsOpen(isSettingsPath(window.location.pathname, "editorial"));
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
@@ -68,8 +69,12 @@ export function EditorialDesktop() {
   };
 
   const openSettings = () => {
+    pushSettingsHistory(window, "editorial");
     setActiveApp(null);
     setIsSettingsOpen(true);
+  };
+  const closeSettings = () => {
+    if (!closeSettingsHistory(window, "editorial")) setIsSettingsOpen(false);
   };
 
   const goHome = () => {
@@ -118,7 +123,7 @@ export function EditorialDesktop() {
             <DesktopAppView appId={activeApp} onBack={closeApp} />
           </div>
         ) : isSettingsOpen ? (
-          <SettingsView onBack={() => setIsSettingsOpen(false)} />
+          <SettingsView onBack={closeSettings} />
         ) : (
           <div className="editorial-home mx-auto max-w-6xl space-y-8 pb-4">
             <EditorialSignature />

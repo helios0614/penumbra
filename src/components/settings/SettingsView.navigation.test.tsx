@@ -20,6 +20,34 @@ vi.mock("@/lib/wallpaper", async original => ({
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("Settings version switch", () => {
+  it("updates the mounted category on browser Back/Forward and removes its history listener", () => {
+    vi.stubGlobal("requestAnimationFrame", (callback: () => void) => { callback(); return 1; });
+    const host = new EventTarget();
+    const entries: unknown[] = [{ penumbraApp: "settings", penumbraSettingsPath: [], penumbraSettingsDepth: 0 }];
+    let index = 0;
+    const history = {
+      get state() { return entries[index]; },
+      pushState(state: unknown) { entries.splice(index + 1); entries.push(state); index++; },
+      back() { index--; host.dispatchEvent(new Event("popstate")); },
+    };
+    vi.stubGlobal("window", Object.assign(host, { history, location: { pathname: "/app/settings", href: "https://test.invalid/app/settings" } }));
+    const remove = vi.spyOn(host, "removeEventListener");
+    let context!: import("./SettingsShell").SettingsPageContext;
+    const pages: SettingsPage[] = [
+      { id: "appearance", title: "外观", description: "", icon: () => null, render: value => { if (value.active) context = value; return null; } },
+      { id: "nested", title: "子页", description: "", icon: () => null, nested: true, render: value => { if (value.active) context = value; return null; } },
+    ];
+    const hooks = hookSession(() => SettingsShell({ pages }));
+    find(hooks.render(), "button", props => props.children !== undefined && props["aria-current"] === undefined).props.onClick!({} as never);
+    hooks.render(); hooks.commit(); context.navigate("nested"); hooks.render(); hooks.commit();
+    history.back();
+    expect(find(hooks.render(), "h2").props.children).toBe("外观"); hooks.commit();
+    history.back();
+    expect(find(hooks.render(), "h2").props.children).toBe("设置分类"); hooks.commit();
+    index++; host.dispatchEvent(new Event("popstate"));
+    expect(find(hooks.render(), "h2").props.children).toBe("外观");
+    hooks.dispose(); expect(remove).toHaveBeenCalledWith("popstate", expect.any(Function));
+  });
   it("uses a native legacy root link under a base path", () => {
     const hooks = hookSession(() => SettingsShell({ pages: [] }));
     const link = find(hooks.render(), "a", props => props.href === "/");

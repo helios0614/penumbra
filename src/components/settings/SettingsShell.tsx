@@ -1,8 +1,9 @@
-import { useRef, useState, type ComponentType, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { ArrowLeft, ArrowUpRight, ChevronRight, X } from "lucide-react";
 import { PageHeader, PageHeaderAction } from "@/components/ui/page-header";
 import { PageScrollArea } from "@/components/ui/page-scroll-area";
 import { cn } from "@/lib/utils";
+import { backSettingsPage, pushSettingsPage, readSettingsPath } from "./settings-navigation";
 
 export interface SettingsPageContext {
   readonly active: boolean;
@@ -25,22 +26,43 @@ export interface SettingsPage {
 
 const plannedCategories = ["模型与任务分配", "服务集成", "MCP 工具（独立页面）", "高级设置"];
 
-/** Desktop hosts keep ownership of opening/closing; category navigation never changes the URL. */
+/** Desktop hosts own the Settings route; categories use history state without storing drafts. */
 export function SettingsShell({ pages, onClose }: {
   readonly pages: readonly SettingsPage[];
   readonly onClose?: () => void;
 }) {
-  const [path, setPath] = useState<readonly string[]>([]);
+  const [path, setPath] = useState<readonly string[]>(() => typeof window === "undefined" ? [] : readSettingsPath(window.history.state, pages.map(page => page.id)));
   const titleRef = useRef<HTMLHeadingElement>(null);
   const categoryRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const activeId = path[path.length - 1];
+  const pathRef = useRef(path);
+  pathRef.current = path;
   const activePage = pages.find(page => page.id === activeId);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const pop = () => {
+      const previousId = pathRef.current[pathRef.current.length - 1];
+      const next = readSettingsPath(window.history.state, pages.map(page => page.id));
+      setPath(next);
+      requestAnimationFrame(() => {
+        if (next.length === 0 && previousId) categoryRefs.current[previousId]?.focus();
+        else titleRef.current?.focus();
+      });
+    };
+    window.addEventListener("popstate", pop);
+    return () => window.removeEventListener("popstate", pop);
+  }, [pages]);
+  const changePath = (next: readonly string[]) => {
+    if (typeof window !== "undefined") pushSettingsPage(window, next);
+    setPath(next);
+  };
   const navigate = (pageId: string) => {
     if (!pages.some(page => page.id === pageId) || pageId === activeId) return;
-    setPath(previous => [...previous, pageId]);
+    changePath([...path, pageId]);
     requestAnimationFrame(() => titleRef.current?.focus());
   };
   const goBack = () => {
+    if (typeof window !== "undefined" && backSettingsPage(window)) return;
     setPath(previous => previous.slice(0, -1));
     requestAnimationFrame(() => {
       if (path.length <= 1 && activeId) categoryRefs.current[activeId]?.focus();
@@ -61,7 +83,7 @@ export function SettingsShell({ pages, onClose }: {
               return <button key={page.id} ref={element => { categoryRefs.current[page.id] = element; }} type="button"
                 aria-current={(activeId === page.id || activePage?.parentId === page.id) ? "page" : undefined}
                 onClick={() => {
-                  setPath([page.id]);
+                  if (path.length !== 1 || activeId !== page.id) changePath([page.id]);
                   requestAnimationFrame(() => titleRef.current?.focus());
                 }}
                 className={cn("flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-ring",

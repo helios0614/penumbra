@@ -61,7 +61,7 @@ async function run(browser, origin, layout, width) {
   await page.reload();
   const preferences = () => page.evaluate(() => Object.fromEntries(['penumbra-theme-mode', 'penumbra-theme-color', 'penumbra-ai-color', 'penumbra-wallpaper-settings'].map(key => [key, localStorage.getItem(key)])));
   const before = await preferences();
-  const open = async () => { await page.getByRole('button', { name: '打开设置', exact: true }).last().click(); await page.getByRole('navigation', { name: '设置分类' }).waitFor(); };
+  const open = async () => { const launcher = page.getByRole('button', { name: '打开设置', exact: true }); if (await launcher.count()) await launcher.last().click(); await page.getByRole('navigation', { name: '设置分类' }).waitFor(); };
   const category = title => page.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: new RegExp(title) });
   const back = () => page.getByRole('button', { name: '返回设置分类', exact: true }).click();
   const appearance = () => page.getByRole('region', { name: '外观与本机偏好', exact: true });
@@ -70,7 +70,7 @@ async function run(browser, origin, layout, width) {
   const noOverflow = async () => assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && [...document.querySelectorAll('[data-page-scroll-region]')].filter(el => el.getBoundingClientRect().width).every(el => el.scrollWidth <= el.clientWidth + 1)));
   try {
     await open();
-    assert.equal(new URL(page.url()).pathname, location);
+    assert.equal(new URL(page.url()).pathname, location.replace(/\/$/, '') + '/app/settings');
     if (width < 768) assert.equal(await appearance().isVisible(), false);
     assert.equal(await page.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: /^API 与连接/ }).count(), 1);
     assert.equal(await page.getByText('日历设置', { exact: true }).count(), 0);
@@ -124,7 +124,7 @@ async function run(browser, origin, layout, width) {
     state.delay = '/api/chat/readiness'; state.code = 'missing_credential';
     await system().getByRole('button', { name: '重新加载设置状态', exact: true }).click();
     await item('Session').getByText('Session 可达 · 已登录', { exact: true }).waitFor();
-    await page.getByRole('button', { name: '返回桌面', exact: true }).click();
+    await page.getByRole('button', { name: '返回桌面', exact: true }).click(); await page.waitForURL(origin + location);
     state.delay = null; state.code = 'ready';
     await open(); await category('系统状态').click();
     await item('Chat readiness · 新会话默认配置').getByText('默认配置就绪', { exact: true }).waitFor();
@@ -143,7 +143,7 @@ async function run(browser, origin, layout, width) {
     await back();
     const legacy = page.getByRole('link', { name: '返回旧版知远', exact: true });
     assert.equal(await legacy.getAttribute('href'), '/'); assert.equal(await legacy.getAttribute('target'), '_top');
-    assert.equal(new URL(page.url()).pathname, location);
+    assert.equal(new URL(page.url()).pathname, location.replace(/\/$/, '') + '/app/settings');
     assert.deepEqual(writes, []); assert.deepEqual(escaped, []); assert.deepEqual(errors, []);
     assert(!requests.includes('/api/models'));
     assert(!requests.some(path => path.startsWith('/penumbra/api')));
