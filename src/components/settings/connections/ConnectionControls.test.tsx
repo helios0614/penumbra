@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { discoverModels, testConnection } from "@/domain/registry/registry-client";
 import type { Connection, DiscoveredModels } from "@/domain/registry/registry-types";
 import { ConnectionProbe } from "./ConnectionProbe";
-import { ModelDiscovery } from "./ModelDiscovery";
+import { PopoverTrigger } from "@/components/ui/popover";
+import { ModelDiscovery, fetchDiscovery } from "./ModelDiscovery";
 
 vi.mock("react", async original => {
   const actual = await original<typeof React>();
@@ -37,31 +38,49 @@ describe("Connection system controls and separated operations", () => {
     tree = hooks.render(); find(tree, AppSelect).props.onValueChange("anthropic_messages");
     tree = hooks.render(); expect(find(tree, Input).props.value).toBe("manual/keep");
     vi.mocked(testConnection).mockResolvedValue({ ok: true, connection_id: connection.id, protocol: "anthropic_messages", model: "manual/keep", test_type: "basic_nonstream", validates_full_chat: false });
-    find(tree, Button, props => props.children === "基础非流式测试").props.onClick!({} as never);
+    find(tree, Button, props => props.children === "测试").props.onClick!({} as never);
     await vi.waitFor(() => expect(testConnection).toHaveBeenCalledWith(connection.id, "anthropic_messages", "manual/keep", { signal: expect.any(AbortSignal) }));
     expect(discoverModels).not.toHaveBeenCalled(); hooks.dispose();
   });
-  it("discovery only supplies suggestions; filling a hint is always an explicit action", async () => {
-    const useModel = vi.fn(); vi.mocked(discoverModels).mockResolvedValue(result("openai_chat_completions", ["remote/model"]));
-    const hooks = hookSession(() => ModelDiscovery({ connection, disabled: false, unsaved: false, onUseModel: useModel }));
-    const tree = hooks.render(); hooks.commit();
-    expect(discoverModels).not.toHaveBeenCalled();
-    find(tree, Button, props => props.children === "获取远端模型").props.onClick!({} as never);
-    await vi.waitFor(() => expect(elements(hooks.render()).some(node => node.props.children === "remote/model")).toBe(true));
-    expect(useModel).not.toHaveBeenCalled();
-    find(hooks.render(), Button, props => props.children === "填入预填草稿").props.onClick!({} as never);
-    expect(useModel).toHaveBeenCalledWith("remote/model"); expect(testConnection).not.toHaveBeenCalled(); hooks.dispose();
+
+  const start = (tree: React.ReactNode) => (find(tree, PopoverTrigger).props.render as React.ReactElement<{ onClick: () => void }>).props.onClick();
+  it("merges two successful sources, deduplicates and only uses an explicit candidate", async () => {
+    const useModel = vi.fn();
+    vi.mocked(discoverModels).mockImplementation(async (_, protocol) => result(protocol as "anthropic_messages", ["remote/model"]));
+    const hooks = hookSession(() => ModelDiscovery({ connection, disabled: false, unsaved: false, value: "manual/literal", onUseModel: useModel }));
+    const tree = hooks.render(); hooks.commit(); expect(discoverModels).not.toHaveBeenCalled(); start(tree);
+    await vi.waitFor(() => expect(elements(hooks.render()).filter(n => n.type === Button && n.props.children === "remote/model")).toHaveLength(1));
+    expect(discoverModels).toHaveBeenCalledTimes(2); expect(useModel).not.toHaveBeenCalled();
+    expect(find(hooks.render(), Input, p => p["aria-label"] === "模型预填建议").props.value).toBe("manual/literal");
+    find(hooks.render(), Button, p => p.children === "remote/model").props.onClick!({} as never);
+    expect(useModel).toHaveBeenCalledWith("remote/model"); hooks.dispose();
   });
-  it("discards an older discovery after protocol changes even when the API ignores abort", async () => {
-    let resolve!: (value: DiscoveredModels) => void;
-    vi.mocked(discoverModels).mockImplementationOnce(() => new Promise(done => { resolve = done; })).mockResolvedValue(result("anthropic_messages", ["current/model"]));
+  it("shows a successful source while the other fails and preserves Anthropic pagination", async () => {
+    vi.mocked(discoverModels).mockImplementation(async (_, protocol, cursor) => {
+      if(protocol === "openai_chat_completions") throw new Error("synthetic");
+      return {...result("anthropic_messages", cursor ? ["second", "first"] : ["first"]), truncated: !cursor, next_page: cursor ? null : "cursor"};
+    });
     const hooks = hookSession(() => ModelDiscovery({ connection, disabled: false, unsaved: false, onUseModel: vi.fn() }));
-    let tree = hooks.render(); hooks.commit();
-    find(tree, Button, props => props.children === "获取远端模型").props.onClick!({} as never);
-    tree = hooks.render(); find(tree, AppSelect).props.onValueChange("anthropic_messages");
-    tree = hooks.render(); find(tree, Button, props => props.children === "获取远端模型").props.onClick!({} as never);
-    await vi.waitFor(() => expect(elements(hooks.render()).some(node => node.props.children === "current/model")).toBe(true));
-    resolve(result("openai_chat_completions", ["late/model"])); await Promise.resolve(); await Promise.resolve();
-    expect(elements(hooks.render()).some(node => node.props.children === "late/model")).toBe(false); hooks.dispose();
+    const tree=hooks.render();hooks.commit();start(tree);
+    await vi.waitFor(() => expect(elements(hooks.render()).some(n=>n.props.children === "first")).toBe(true));
+    find(hooks.render(), Button, p=>p.children === "读取下一页").props.onClick!({} as never);
+    await vi.waitFor(() => expect(elements(hooks.render()).some(n=>n.props.children === "second")).toBe(true));
+    expect(discoverModels).toHaveBeenLastCalledWith(connection.id,"anthropic_messages","cursor",{signal:expect.any(AbortSignal)});hooks.dispose();
+  });
+  it("discards stale refreshes and unmounted responses even when abort is ignored", async () => {
+    const pending: ((value: DiscoveredModels)=>void)[]=[];
+    vi.mocked(discoverModels).mockImplementation(()=>new Promise(done=>pending.push(done)));
+    const useModel=vi.fn();const hooks=hookSession(()=>ModelDiscovery({connection,disabled:false,unsaved:false,onUseModel:useModel}));
+    let tree=hooks.render();hooks.commit();start(tree);tree=hooks.render();start(tree);
+    pending[2](result("openai_chat_completions",["current"]));pending[3](result("anthropic_messages",[]));
+    await vi.waitFor(()=>expect(elements(hooks.render()).some(n=>n.props.children === "current")).toBe(true));
+    pending[0](result("openai_chat_completions",["late"]));pending[1](result("anthropic_messages",["late"]));
+    await Promise.resolve();await Promise.resolve();expect(elements(hooks.render()).some(n=>n.props.children === "late")).toBe(false);
+    start(hooks.render());hooks.dispose();pending[4](result("openai_chat_completions",["closed"]));pending[5](result("anthropic_messages",["closed"]));expect(useModel).not.toHaveBeenCalled();
+  });
+  it("bounds an unresponsive source independently", async () => {
+    vi.useFakeTimers();vi.mocked(discoverModels).mockImplementation(()=>new Promise(()=>{}));
+    const request=fetchDiscovery(connection,"openai_chat_completions",undefined,new AbortController().signal);
+    const assertion=expect(request).rejects.toMatchObject({code:"unknown"});await vi.advanceTimersByTimeAsync(15000);await assertion;vi.useRealTimers();
   });
 });

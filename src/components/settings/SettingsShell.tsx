@@ -16,6 +16,8 @@ export interface SettingsPage {
   readonly description: string;
   readonly icon: ComponentType<{ className?: string }>;
   readonly render: (context: SettingsPageContext) => ReactNode;
+  /** Fill the available height when the page owns its internal scrolling. */
+  readonly layout?: "fill";
   /** Nested pages reuse the shell and return stack without adding a category. */
   readonly nested?: boolean;
   readonly parentId?: string;
@@ -85,16 +87,19 @@ export function SettingsShell({ pages, onClose }: {
         </PageScrollArea>
       </aside>
       <section className={cn("min-h-0 min-w-0 flex-1 flex-col", activePage ? "flex" : "hidden md:flex")} aria-label="设置页面">
-        <div className="mist-glass mb-3 flex shrink-0 items-center gap-2 rounded-2xl px-3 py-2">
+        <div className={cn("mist-glass mb-3 flex shrink-0 items-center gap-2 rounded-2xl px-3 py-2", activeId === "connections" && "mb-2 px-2 py-1 md:mb-3 md:px-3 md:py-2")}>
           {activePage && <button type="button" onClick={goBack} aria-label={path.length > 1 ? "返回上级设置" : "返回设置分类"}
             className="grid size-9 shrink-0 place-items-center rounded-xl hover:bg-background/40 focus-visible:outline-2 focus-visible:outline-ring"><ArrowLeft className="size-4" aria-hidden="true" /></button>}
           <div className="min-w-0">
             <h2 ref={titleRef} tabIndex={-1} className="text-sm font-semibold text-foreground outline-none">{activePage?.title ?? "设置分类"}</h2>
-            <p className="text-xs text-muted-foreground">{activePage?.description ?? "选择分类，查看或调整设置。"}</p>
+            <p className={cn("text-xs text-muted-foreground", activeId === "connections" && "hidden md:block")}>{activePage?.description ?? "选择分类，查看或调整设置。"}</p>
           </div>
         </div>
         {/* Keep appearance mounted; pages with transient credentials mount only while active. */}
-        {pages.map(page => <PageScrollArea key={page.id} label={page.title} topLabel={`回到${page.title}顶部`}
+        {pages.map(page => page.layout === "fill" ? <div key={page.id} hidden={activeId !== page.id}
+          role="region" aria-label={page.title} className="min-h-0 min-w-0 flex-1 overflow-hidden pb-4">
+          {page.render({ active: activeId === page.id, navigate, goBack })}
+        </div> : <PageScrollArea key={page.id} label={page.title} topLabel={`回到${page.title}顶部`}
           hidden={activeId !== page.id} contentClassName="pb-4" resetKey={activeId === page.id ? page.id : undefined}>
           {page.render({ active: activeId === page.id, navigate, goBack })}
         </PageScrollArea>)}

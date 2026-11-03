@@ -5,14 +5,16 @@ import { Button } from "@/components/ui/button";
 import { ConnectionError } from "./ConnectionShared";
 import { useRegistryTask } from "./useRegistryTask";
 
-const scopes: Readonly<Record<string, string>> = { feature: "Feature Binding", main: "Main Conversation", diary: "Diary Entry",
-  theater: "Theater Conversation", theater_persona: "Theater Persona", game: "Game Session", legacy_compatibility: "Legacy compatibility" };
+const scopes: Readonly<Record<string, string>> = { feature: "功能分配", main: "聊天", diary: "日记",
+  theater: "剧场", theater_persona: "剧场角色", game: "游戏", legacy_compatibility: "旧版兼容配置" };
+const features: Readonly<Record<string, string>> = { main_chat: "聊天", memory_sentinel: "记忆哨兵", memory_digest: "记忆整理", web_compression: "Web 压缩", quick_note_compression: "速记压缩", camera_sentinel: "摄像头哨兵", location_sentinel: "位置哨兵", book_annotation: "书籍批注", game_decision: "游戏决策" };
+const label = (ref: {scope: string; id: string}) => ref.scope === "feature" && Object.prototype.hasOwnProperty.call(features, ref.id) ? features[ref.id] : `${Object.prototype.hasOwnProperty.call(scopes, ref.scope) ? scopes[ref.scope] : ref.scope} · ${ref.id}`;
 export function ConnectionReferenceFacts({ value }: { value: References }) {
   return <div className="space-y-2 text-xs">
     <p>{value.references.length} 项引用 · {value.unresolved.length} 项无法解析</p>
     <ul className="space-y-1 text-muted-strong">
-      {value.references.map((ref, index) => <li key={index} className="break-all">{Object.prototype.hasOwnProperty.call(scopes, ref.scope) ? scopes[ref.scope] : "其他引用"} · {ref.id}</li>)}
-      {value.unresolved.map((ref, index) => <li key={`u${index}`} className="break-all text-warning">无法解析 · {Object.prototype.hasOwnProperty.call(scopes, ref.scope) ? scopes[ref.scope] : "其他引用"} · {ref.id}</li>)}
+      {value.references.map((ref, index) => <li key={index} className="break-all">{label(ref)}</li>)}
+      {value.unresolved.map((ref, index) => <li key={`u${index}`} className="break-all text-warning">无法解析 · {label(ref)}</li>)}
     </ul>
   </div>;
 }

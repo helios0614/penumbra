@@ -14,12 +14,11 @@ export function ConnectionTestDialog({ id, onClose, finalFocus }: { id: string; 
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
     <DialogContent finalFocus={finalFocus} closeButtonProps={{ "aria-label": "关闭连接测试" }}>
       <DialogHeader><DialogTitle>连接测试</DialogTitle><DialogDescription>{read.state.data?.name ?? "读取已保存连接"}</DialogDescription></DialogHeader>
-      <DialogBody>
+      {read.state.data ? <ConnectionProbe key={id} connection={read.state.data} onClose={onClose} /> : <><DialogBody>
         {read.state.status === "loading" && <p role="status">正在读取连接…</p>}
         <ConnectionError error={read.state.error} onRetry={refresh} />
-        {read.state.data && <ConnectionProbe key={id} connection={read.state.data} />}
       </DialogBody>
-      <DialogFooter><Button variant="outline" onClick={onClose}>关闭</Button></DialogFooter>
+      <DialogFooter><Button variant="outline" onClick={onClose}>关闭</Button></DialogFooter></>}
     </DialogContent>
   </Dialog>;
 }

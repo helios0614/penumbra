@@ -182,3 +182,86 @@ node tests/browser/production-subpath-smoke.cjs <playwright模块路径> <Chrome
 Safari/手机真机、部署环境剪贴板权限及真实上游兼容性仍未验证；剪贴板 API 需要浏览器允许的安全上下文/权限。网络取消无法撤销已经到达后端的写入，也无法撤销已提交给系统的剪贴板操作；保留读取核对和明确重试。Registry 无通用 CAS、跨存储引用竞态、无新增幂等键等既有限制不变。
 
 未读取真实 Key、未调用真实 Provider、未写生产配置；没有 commit、push 或 deploy。完成后停止，等待人工验收。
+
+## 第二轮 UI Follow-up（2026-11-03）
+
+### 基线与范围
+
+起始分支 `main`，HEAD `0ec2cf9`，工作区干净。仅修改 Settings 前端及回归脚本；未改 Registry client、数据结构、后端、运行时协议或 Feature/Chat/Diary 选择，未调用迁移。没有 commit、push、deploy 或修改 index。当前消息没有附上最新截图，本轮以明确的交互要求、当前主题及 Chat 实际组件为依据。
+
+### 最终交互（取代本文前述历史 UI 描述）
+
+- 单一暖白半透明面板；折叠行约 44px，只保留箭头、名称、启用状态圆点、Key 状态与始终可见的编辑铅笔。长名称截断且保留 title；标题按钮与编辑按钮独立，默认全部折叠、一次单开。
+- 展开后才展示地址、可选模型建议、Cloudflare 标签/Gateway ID 和底部复制 Key、测试、删除。Direct 不展示 Transport。删除仅危险文字/轻量 hover，无大面积红底；展开强调使用主题 primary 变量，启用点使用系统 success 变量。
+- 普通列表展开不查询/展示引用或 Connection 内部 ID。编辑打开也不预取引用；保存/清 Key 确认时重新查询，查询中禁用最终确认，查询失败仍按未知影响要求明确确认。停用警告、共享影响确认和原有写入读回恢复保留。
+- 删除弹窗仍在打开与最终删除前分别查引用；有引用、无法解析、查询失败均阻止删除，后端仍做最终检查。没有级联删除或自动改绑。
+- 已知功能 ID 依据现有 Phase 0/inventory 映射为「记忆哨兵」「Web 压缩」等名称；其余引用保留 scope 的安全名称与简短标识，不推断用途。
+- 「模型预填建议（可选）」与「获取模型」同排。保留自由输入，说明为「仅用于选择连接时预填，不改变已有模型绑定。」普通 UI 不再出现 default_model 字段名。
+- 移除发现协议选择。用户主动获取后，两个独立任务分别请求现有 OpenAI/Anthropic fetch-models；每路 15 秒期限、独立成功/失败/超时，成功结果按 literal 去重。慢/失败来源不阻塞另一来源的可用候选，部分成功提示来源名称。Cloudflare 明确提示不支持，允许手填。
+- 复用系统 Popover、Input、Button：可搜索、限制可用高度、内部滚动，候选名称本身可点击，支持 Tab 和候选间方向/Home/End 导航，Escape 关闭浮层。点击只填编辑草稿，仍需保存及确认。返回结果不改用户输入、不要求内置 catalog、不推断协议或兼容性。
+- Anthropic 沿用 next_page → after_id 显式分页并跨页去重；OpenAI 截断仅提示，无伪分页。分页失败保留已有 Anthropic 候选，可重新获取整份列表。
+- 沿用 Connection ID/凭据快照挂载隔离与 useRegistryTask 请求序号/AbortSignal。重新获取取消同来源旧请求；关闭编辑卸载候选与任务，即使 API 忽略取消也不能发布迟到结果。
+- Settings 编辑和测试中的 AppSelect 直接使用 Chat ModelSelectionPanel 的 translucent / comfortable 参数；弹出层与选中/hover/focus 来自同一 Select 实现，无新依赖或独立选择器 CSS。
+- 只压缩 API 与连接分类的移动端次级标题区域；其他分类、Settings 返回导航、PR1 外观存储不变。编辑沿用 DialogBody 滚动与固定 DialogFooter。
+- Key reveal/复制/替换/显式 clear、ref 失效核对、普通 PATCH 省略 Key、结果不明先读回等原逻辑保留。复制结果仍只在剪贴板写入成功后提示。
+
+### 验证结果与验收文件
+
+全部使用合成 Connection、Fake API / Provider 响应和隔离浏览器上下文，没有真实 Key、真实上游或生产写入。
+
+| 检查 | 结果 |
+| --- | --- |
+| 相关 Settings / Registry Vitest | 7 文件、78 条通过；含双来源合并/去重、显式选取、部分失败、Anthropic 分页、重复获取与卸载迟到隔离、独立超时。 |
+| 最终全量前端测试 | **214 文件、2888 条通过**。首次沙箱运行的两条本机 HTTP 集成测试因网络访问受限失败；允许本地网络后全量重跑通过，最终交互调整后再次全量通过。 |
+| TypeScript | `npx tsc --noEmit --pretty false` 通过。 |
+| 生产构建 | `npm run build` 通过，入口约 445.36 kB / gzip 141.75 kB，沿用 /penumbra/。 |
+| PR2 浏览器 | 经典 / Editorial × 320 浅色、390 深色、1440 浅色/深色，**8 组通过**；每组 30 个合成连接，页面异常与外部网络请求均为 0。 |
+| 补充浏览器 | 经典 390 深色、自定义渐变壁纸及绿色主题 **1 组通过**；附 390×520 短视口截图。 |
+| PR1 浏览器 | 两个 Desktop × 320/390/1440，**6 组通过**，外观存储、导航与概览保持正常。 |
+| Desktop / Chat 子路径 | 开发/生产 × 390/1440，**4 组通过**，玻璃材质、旧版入口、刷新及 Chat 正常。 |
+| Git 检查 | diff --check 通过；构建 tsconfig.tsbuildinfo 恢复为当前 HEAD 内容。 |
+
+PR2 浏览器保留原有凭据操作、stale ref、失败读回、未知写入结果不重放、引用/无法解析/失败禁止删除、共享连接启停、独立基础测试等流程。新增验证折叠行高度、列表不查询引用、展开不显示内部引用、双来源部分成功/全部失败/空列表、80 个候选内部滚动/搜索、同名去重、分页、手填 literal 保留和跨弹窗迟到隔离。相关 hook 单测覆盖重复获取的乱序返回。
+
+验收文件保存在项目 `artifacts/`：
+
+- `settings-pr2-followup/results-ui.json`、`results-wallpaper.json`、`browser.log`、`wallpaper.log`。
+- `settings-pr2-followup/classic-320-panel.png`：30 个 Connection 的紧凑列表。
+- `settings-pr2-followup/classic-390-dark-editor.png`、`classic-390-dark-candidates.png`：深色编辑及候选浮层。
+- 同目录保留两个 Desktop 全部视口的 panel/editor/candidates/test 截图。
+- `settings-pr2-followup/classic-390-dark-wallpaper-short-viewport.png`：绿色主题、自定义壁纸、短视口输入与底部操作。
+- `settings-pr1-followup/results.json` 和 PR1 截图；全量测试及构建日志位于 `settings-pr2-followup/frontend-followup-*.log`。
+
+复现继续使用上文浏览器命令；本轮 Playwright 安装于临时工具目录，未加入项目依赖。设置 SETTINGS_PR2_OUTPUT / SETTINGS_PR1_OUTPUT 可指定输出目录，SETTINGS_PR2_VARIANT=wallpaper 执行额外壁纸/短视口组合。
+
+### 已知限制
+
+本轮窄屏及短视口检查使用桌面 Chrome 模拟；真机软键盘、Safari、部署环境剪贴板权限仍需人工验收。模型发现仅是编辑候选，不证明协议兼容性，不提供运行时探测/fallback；请求取消不能撤销已经到达服务端的操作。原有 CAS、跨存储引用竞态和新增幂等性限制不变。
+
+完成后停止，等待人工验收。不 commit、push 或 deploy。
+
+## 截图反馈修正（2026-11-03，第二轮后续）
+
+依据本轮提供的六张截图继续调整，保留此前未提交工作。没有改动后端、发现接口或绑定契约。
+
+- 去掉连接标题按钮展开态的实色白底，整项标题与详情使用淡主题色；列表操作文字/图标从详情左边缘开始排布。「复制 Key」改为「复制」。
+- 展开详情显示后端已有 masked Key（沿用后四位习惯）；新增「查看/隐藏」，只有明确查看才 reveal。收起、换连接、凭据 ref 改变或页面卸载清理临时明文；取消/迟到隔离继续由 useRegistryTask 处理。复制仍只在写入剪贴板成功后提示。
+- 编辑弹窗所有 Input（名称、地址、Gateway ID、Key 等）及测试模型 Input 统一使用 Chat 的 translucent / comfortable 参数，移除剩余实色白输入框。
+- 编辑 Key 查看/清除按钮去掉额外左内边距；获取模型按钮使用 comfortable 高度并随输入行拉伸。底部取消/保存继续沿用 DialogFooter。
+- 测试弹窗「基础非流式测试」按钮改名「测试」，移至固定页脚「关闭」右边；基础测试契约、说明及结果不变。
+- 新增连接也展示「获取模型」，填写有效名称/URL/Key、启用直连后可点击。**用户已明确接受创建后获取的持久化行为**：先展示创建确认，明确实际保存连接；确认后 POST 创建并 GET 读回，留在编辑弹窗发起双协议发现。点击候选仅修改预填建议草稿，仍需保存连接。取消创建确认不发创建/发现请求；失败继续遵循结果不明先核对、不盲目重放。
+- 移除页脚「请检查名称、基础地址和模型名称。」文案；保持无效表单禁用提交。
+
+本轮验收截图和日志目录为 `artifacts/settings-pr2-screenshots/`，包括每个视口的 expanded（Key 预览及操作）、editor、test、new（新增获取模型）截图。
+
+本次最终验证：全量 **214 文件 / 2888 条通过**；TypeScript、生产构建及 diff --check 通过。PR2 两种 Desktop 的 8 组视口回归，以及绿色主题/壁纸/390×520 短视口补充组全部通过，页面异常与外部网络请求为 0。新增断言覆盖掩码预览不 reveal、主动查看、收起清理、展开按钮透明背景、输入/获取按钮等高、固定测试页脚，以及确认创建后自动发现且选取候选不静默保存。
+
+并行浏览器与全量测试时，一条未改动的 chat-stability 请求次数断言曾出现 3/2 波动；该文件单独复核 7 条通过，全部浏览器退出后全量独立重跑 2888 条通过，未修改 Chat 代码/用例。失败日志保留在 frontend-test-parallel.log，最终成功日志为 frontend-test.log。构建缓存恢复为 HEAD 内容；仍未 commit、push 或 deploy，等待人工验收。真机软键盘和 Safari 的限制同前。
+
+### 字号与字段间距收尾
+
+共享 Input 默认字号统一为手机/桌面 14px。测试、新增/编辑弹窗中，将直接包含文本与 Input 的 label 改为标题 span + grid gap-1，模型预填及 Key 同样明确分组，使标题到控件间距与 Select 一致为 4px。相关 ConnectionControls 6 条测试、生产构建（含 TypeScript）通过；390px 深色/绿色主题/自定义壁纸和短视口浏览器回归通过，截图保存在 artifacts/settings-pr2-spacing/。未提交或部署。
+
+### 复制反馈与连接面板滚动
+
+复制 Key 成功改用已有作用域 Toast，移除行内成功文案；失败和凭据过期核对仍保留原提示。连接分类改为填满剩余高度的容器，连接面板标题/Registry 状态/刷新/新增固定，内部连接列表复用 PageScrollArea 独立滚动并保留回到顶部入口，其他分类继续使用原外层滚动。相关导航/滚动测试 14 条与 TypeScript 通过。按用户要求，以上小幅调整未执行浏览器验证，等待人工验收。

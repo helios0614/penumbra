@@ -26,6 +26,7 @@ async function run(browser, origin, layout, width, dark = width === 390) {
   const f = { connections: new Map([['a', wire('a')], ['b', wire('b', { default_model: null })], ['c', wire('c', { transport: 'cloudflare_rest', gateway_id: 'gateway-c' })], ['d', wire('d', { transport: 'cloudflare_anthropic', gateway_id: 'gateway-d' })]]), keys: { a: 'synthetic-old-key', b: '', c: 'synthetic-c', d: 'synthetic-d' }, revisions: { a: 1, b: 1, c: 1, d: 1 },
     references: { a: [], b: [], c: [], d: [] }, unresolved: { a: [], b: [], c: [], d: [] }, requests: [], writes: [], reveals: 0, tests: 0, discovers: 0,
     fail: null, empty: false, paginated: false, pending: [], delay: false, persisted: false, created: 0, delayReveal: false, pendingReveals: [] };
+  for (let i = 0; i < 26; i++) { const id = 'extra-' + i; f.connections.set(id, wire(id, { name: '额外合成连接 ' + i })); f.keys[id] = ''; f.revisions[id] = 1; f.references[id] = []; f.unresolved[id] = []; }
   await context.addInitScript(() => { window.__fakeCopies = []; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.__fakeCopies.push(text); } } }); });
   const errors = [], escaped = []; page.on('pageerror', error => errors.push(error.message));
   const project = id => ({ ...f.connections.get(id), credential: { configured: !!f.keys[id], masked: f.keys[id] ? '••••1234' : '', secret_ref: f.keys[id] ? `ref-${id}-${f.revisions[id]}` : null } });
@@ -77,10 +78,10 @@ async function run(browser, origin, layout, width, dark = width === 390) {
     }
     if (action === '/fetch-models') {
       f.discovers++; const protocol = url.searchParams.get('protocol'); assert(protocol);
-      if (f.fail === 'discover') return fail('provider_probe_failed');
+      if (f.fail === 'discover' || (f.fail === 'openai' && protocol === 'openai_chat_completions')) return fail('provider_probe_failed');
       if (f.delay) { f.pending.push({ route, id, protocol }); return; }
       const after = url.searchParams.get('after_id');
-      return json({ connection_id: id, protocol, operation: 'model_list', models: f.empty ? [] : after ? ['remote/second'] : ['remote/first'],
+      return json({ connection_id: id, protocol, operation: 'model_list', models: f.empty ? [] : f.long ? Array.from({length:80},(_,i)=>'synthetic/model-'+i) : after ? ['remote/second'] : ['remote/first'],
         truncated: f.paginated && !after, next_page: f.paginated && !after ? 'next/id' : null });
     }
     assert.equal(action, '');
@@ -102,17 +103,24 @@ async function run(browser, origin, layout, width, dark = width === 390) {
     return json(project(id));
   });
   const location = `/penumbra/${layout === 'editorial' ? 'editorial' : ''}`;
-  const label = `${layout}-${width}${dark ? '-dark' : ''}`;
+  const label = `${layout}-${width}${dark ? '-dark' : ''}${process.env.SETTINGS_PR2_VARIANT ? '-wallpaper' : ''}`;
   const panel = () => page.getByRole('region', { name: '连接管理面板', exact: true });
   const row = id => page.locator(`[data-connection-id="${id}"]`);
-  const click = (name, root = page) => root.getByRole('button', { name, exact: true }).click();
+  const click = async (name, root = page) => {
+    if (/^(复制|查看|测试|删除)：/.test(name) && !(await page.getByRole('button', {name,exact:true}).count())) {
+      const title=name.slice(name.indexOf('：')+1); await page.getByRole('button',{name:'展开连接：'+title,exact:true}).click();
+    }
+    if(name === '获取模型' && await page.locator('[data-slot="popover-content"][data-open]').count()) { await page.keyboard.press('Escape'); await page.locator('[data-slot="popover-content"]').waitFor({state:'hidden'}); }
+    const target=root.getByRole('button',{name,exact:true});
+    if(await target.count()) await target.click(); else await page.getByRole('button',{name,exact:true}).click();
+  };
   const open = async () => { await page.getByRole('button', { name: '打开设置', exact: true }).last().click(); await page.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: /^API 与连接/ }).click(); await row('a').waitFor(); };
   const edit = async id => { await click(`编辑：${f.connections.get(id).name}`); await page.getByLabel('连接名称', { exact: true }).waitFor(); };
   const dialog = () => page.getByRole('dialog', { name: /编辑连接|新增连接/ });
   const choose = async (name, value, root = dialog()) => {
     await root.getByRole('combobox', { name, exact: true }).click(); await page.getByRole('option', { name: value, exact: true }).click();
   };
-  const confirm = async () => { const consent = dialog().getByRole('switch', { name: '确认共享影响', exact: true }); if (await consent.count()) await consent.click(); await click('确认操作', dialog()); };
+  const confirm = async () => { await dialog().getByText('正在核对本次操作的引用影响…',{exact:true}).waitFor({state:'hidden'}); const consent = dialog().getByRole('switch', { name: '确认共享影响', exact: true }); if (await consent.count()) await consent.click(); await click('确认操作', dialog()); };
   const save = async () => { await click('保存连接', dialog()); await confirm(); await dialog().waitFor({ state: 'hidden' }); await row('a').waitFor(); };
   const noOverflow = async () => {
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
@@ -121,37 +129,59 @@ async function run(browser, origin, layout, width, dark = width === 390) {
   const settle = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const waitPending = async name => { for (let i = 0; i < 300; i++) { if (f[name].length) return; await new Promise(resolve => setTimeout(resolve, 10)); } throw new Error('fixture delay timeout'); };
   try {
-    await page.goto(origin + location); await open();
-    assert.equal(await panel().locator('[data-connection-id]').count(), 4);
+    await page.goto(origin + location);
+    if (process.env.SETTINGS_PR2_VARIANT) {
+      await page.evaluate(async () => {
+        localStorage.setItem('penumbra-theme-mode','dark'); localStorage.setItem('penumbra-theme-color','#4A8F6B');
+        localStorage.setItem('penumbra-wallpaper-settings',JSON.stringify({mode:'custom',fit:'cover',position:'center',shade:'soft',textTone:'light'}));
+        const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('penumbra-preferences',1);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('wallpapers'))r.result.createObjectStore('wallpapers');};r.onsuccess=()=>resolve(r.result);r.onerror=reject;});
+        const svg='<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900"><defs><linearGradient id="a" x2="1" y2="1"><stop stop-color="#edf5da"/><stop offset=".5" stop-color="#154d65"/><stop offset="1" stop-color="#49285d"/></linearGradient></defs><rect width="600" height="900" fill="url(#a)"/></svg>';
+        await new Promise((resolve,reject)=>{const t=db.transaction('wallpapers','readwrite');t.objectStore('wallpapers').put(new Blob([svg],{type:'image/svg+xml'}),'desktop');t.oncomplete=resolve;t.onerror=reject;});db.close();
+      }); await page.reload();
+    }
+    await open();
+    assert.equal(await panel().locator('[data-connection-id]').count(), 30);
     assert.equal(await panel().locator('[aria-expanded="true"]').count(), 0);
     assert(!(await row('a').textContent()).match(/direct|直连|Direct/));
-    assert((await row('c').textContent()).includes('Cloudflare REST'));
-    assert((await row('d').textContent()).includes('Cloudflare Anthropic'));
-    assert((await row('a').textContent()).includes('模型预填：literal-manual'));
+    assert(!(await row('c').textContent()).includes('Cloudflare REST'));
+    assert(!(await row('d').textContent()).includes('Cloudflare Anthropic'));
+    assert(!(await row('a').textContent()).includes('模型预填：literal-manual'));
+    assert(await row('a').evaluate(el => el.getBoundingClientRect().height <= 49));
+    assert(!f.requests.some(r=>r.endsWith('/references')));
     assert(!(await row('b').textContent()).includes('模型预填'));
-    assert(await row('b').getByRole('button', { name: '复制 Key：合成连接 b', exact: true }).isDisabled());
+    await click('展开连接：合成连接 b');
+    assert(await row('b').getByRole('button', { name: '复制：合成连接 b', exact: true }).isDisabled());
     assert.equal(f.reveals, 0); assert.equal(f.tests, 0); assert.equal(f.discovers, 0);
-    await click('展开连接：合成连接 a'); await row('a').getByRole('region', { name: '引用关系' }).waitFor();
+    await click('展开连接：合成连接 a'); await row('a').getByText('模型预填：literal-manual',{exact:true}).waitFor();
+    assert(!f.requests.some(r=>r.endsWith('/references')));
     await click('展开连接：合成连接 c'); await row('c').getByText('Gateway ID：gateway-c', { exact: true }).waitFor();
     assert.equal(await panel().locator('[aria-expanded="true"]').count(), 1);
     assert.equal(await row('a').getByRole('region', { name: '引用关系' }).count(), 0);
     await click('收起连接：合成连接 c');
     await noOverflow(); await settle(); await page.screenshot({ path: path.join(output, `${label}-panel.png`) });
+    await click('展开连接：合成连接 a');
+    await row('a').getByText('Key：••••1234',{exact:true}).waitFor();
+    assert.equal(f.reveals,0); await click('查看：合成连接 a'); await row('a').getByLabel('临时 Key 明文').waitFor();
+    await click('收起连接：合成连接 a'); await click('展开连接：合成连接 a'); assert.equal(await row('a').getByLabel('临时 Key 明文').count(),0);
+    assert.equal(await row('a').getByRole('button',{name:'收起连接：合成连接 a',exact:true}).evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
+    await page.screenshot({path:path.join(output,`${label}-expanded.png`)});
     // Copy is deliberate; plaintext never enters the DOM or product storage.
-    await click('复制 Key：合成连接 a'); await row('a').getByText('Key 已复制', { exact: true }).waitFor();
+    await click('复制：合成连接 a'); await page.getByRole('region', { name: '操作提示', exact: true }).getByText('Key 已复制', { exact: true }).waitFor();
     assert.deepEqual(await page.evaluate(() => window.__fakeCopies), ['synthetic-old-key']);
     assert(!(await panel().textContent()).includes('synthetic-old-key'));
     f.revisions.a++; const revealsBefore = f.reveals;
-    await click('复制 Key：合成连接 a'); await row('a').getByRole('button', { name: '已核对，允许重新复制' }).click();
-    assert.equal(f.reveals, revealsBefore + 1); await click('复制 Key：合成连接 a');
+    await click('复制：合成连接 a'); await row('a').getByRole('button', { name: '已核对，允许重新复制' }).click();
+    assert.equal(f.reveals, revealsBefore + 1); await click('复制：合成连接 a');
     await page.waitForFunction(() => window.__fakeCopies.length === 2);
-    f.revisions.a++; f.fail = 'list'; await click('复制 Key：合成连接 a');
+    f.revisions.a++; f.fail = 'list'; await click('复制：合成连接 a');
     await row('a').getByRole('button', { name: '重新读取凭据状态', exact: true }).waitFor();
     f.fail = null; await click('重新读取凭据状态', row('a')); await click('已核对，允许重新复制', row('a'));
     // Editor: existing system controls, Key preservation/replacement, reveal/clear, readback.
     await edit('a');
     assert.equal(await dialog().locator('select, input[type="checkbox"]').count(), 0);
     assert.equal(await dialog().locator('[data-slot="input"]').count(), 4);
+    assert.equal(await dialog().locator('[data-slot="input"][data-surface="solid"]').count(),0);
+    const hintBox=await dialog().getByLabel('模型预填建议',{exact:true}).boundingBox(), fetchBox=await dialog().getByRole('button',{name:'获取模型',exact:true}).boundingBox(); assert(Math.abs(hintBox.height-fetchBox.height)<=1);
     await page.getByLabel('连接名称', { exact: true }).fill('改名连接'); await save();
     assert(!f.writes.at(-1).fields.includes('credential')); assert.equal(f.keys.a, 'synthetic-old-key');
     await edit('a'); await page.getByLabel('新 API Key', { exact: true }).fill('synthetic-new-key'); await save();
@@ -159,23 +189,30 @@ async function run(browser, origin, layout, width, dark = width === 390) {
     await edit('a'); await click('显式查看 Key', dialog()); await page.getByLabel('临时 Key 明文').waitFor();
     await click('关闭明文', dialog()); assert.equal(await page.getByLabel('临时 Key 明文').count(), 0);
     // Discovery sits next to the hint, never edits a saved selection or the user's literal.
-    await page.getByLabel('default_model', { exact: true }).fill('manual/prefill-draft');
-    await click('获取远端模型', dialog()); await dialog().getByText('remote/first', { exact: true }).waitFor();
-    assert.equal(await page.getByLabel('default_model', { exact: true }).inputValue(), 'manual/prefill-draft');
+    await page.getByLabel('模型预填建议', { exact: true }).fill('manual/prefill-draft');
+    await click('获取模型', dialog()); await page.getByRole('button',{name:'remote/first',exact:true}).waitFor();
+    assert.equal(await page.getByLabel('模型预填建议', { exact: true }).inputValue(), 'manual/prefill-draft');
     const writesBefore = f.writes.length;
-    await click('填入预填草稿', dialog()); assert.equal(f.writes.length, writesBefore);
-    f.empty = true; await click('获取远端模型', dialog()); await dialog().getByText('远端返回空模型列表；保留手动输入。', { exact: true }).waitFor(); f.empty = false;
-    f.fail = 'discover'; await click('获取远端模型', dialog()); await dialog().getByRole('alert').filter({ hasText: '本次上游请求失败' }).waitFor(); f.fail = null;
-    f.paginated = true; await click('获取远端模型', dialog()); await dialog().getByText('OpenAI 当前不支持分页，请手动输入。', { exact: false }).waitFor();
-    await choose('发现协议', 'anthropic_messages'); await click('获取远端模型', dialog()); await click('读取下一页', dialog()); await dialog().getByText('remote/second', { exact: true }).waitFor(); f.paginated = false;
-    f.delay = true; await click('获取远端模型', dialog()); await waitPending('pending');
-    await choose('发现协议', 'openai_chat_completions'); f.delay = false; await click('获取远端模型', dialog());
-    await dialog().getByText('remote/first', { exact: true }).waitFor();
-    for (const pending of f.pending.splice(0)) await pending.route.fulfill({ contentType: 'application/json', body: JSON.stringify({ connection_id: pending.id, protocol: pending.protocol, operation: 'model_list', models: ['late/must-not-show'], truncated: false, next_page: null }) }).catch(() => {});
-    assert.equal(await page.getByText('late/must-not-show', { exact: true }).count(), 0);
-    await noOverflow(); await settle(); await page.screenshot({ path: path.join(output, `${label}-editor.png`) });
+    await page.getByLabel('筛选已获取的模型').fill('first');
+    await click('remote/first'); assert.equal(f.writes.length, writesBefore);
+    f.empty = true; await click('获取模型', dialog()); await page.getByText('远端返回空模型列表；保留手动输入。', { exact: true }).waitFor(); f.empty = false;
+    f.fail = 'discover'; await click('获取模型', dialog()); await page.getByText('OpenAI、Anthropic 来源未成功',{exact:false}).waitFor(); f.fail = null;
+    f.fail = 'openai'; await click('获取模型', dialog()); await page.getByRole('button',{name:'remote/first',exact:true}).waitFor();
+    await page.getByText('OpenAI 来源未成功',{exact:false}).waitFor(); f.fail = null;
+    f.long = true; await click('获取模型', dialog()); await page.getByRole('button',{name:'synthetic/model-79',exact:true}).waitFor({state:'attached'});
+    assert(await page.getByLabel('模型候选',{exact:true}).evaluate(el=>el.scrollHeight>el.clientHeight));
+    await page.getByLabel('筛选已获取的模型').fill('model-79'); assert.equal(await page.getByLabel('模型候选',{exact:true}).getByRole('button').count(),1);
+    await noOverflow(); f.long = false;
+    f.paginated = true; await click('获取模型', dialog()); await page.getByText('OpenAI 当前不支持分页，请手动输入。', { exact: true }).waitFor();
+    await click('读取下一页'); await page.getByRole('button',{name:'remote/second',exact:true}).waitFor(); f.paginated = false;
+    await noOverflow(); await settle(); await page.screenshot({ path: path.join(output, `${label}-candidates.png`) });
+    await page.keyboard.press('Escape'); await page.locator('[data-slot="popover-content"]').waitFor({state:'detached'}); await page.screenshot({ path: path.join(output, `${label}-editor.png`) });
+    if (process.env.SETTINGS_PR2_VARIANT) {
+      await page.setViewportSize({width,height:520}); await page.getByLabel('模型预填建议',{exact:true}).focus(); await settle(); await page.waitForFunction(()=>{const el=document.querySelector('[data-slot="dialog-content"]');const r=el?.getBoundingClientRect();return r && r.top>=0 && r.bottom<=innerHeight;}); await noOverflow();
+      await page.screenshot({path:path.join(output,`${label}-short-viewport.png`)}); await page.setViewportSize({width,height:900});
+    }
     // Closing drops unsaved literals, secrets, and in-flight discovery.
-    f.delay = true; await click('获取远端模型', dialog()); await waitPending('pending');
+    f.delay = true; await click('获取模型', dialog()); await waitPending('pending');
     await page.getByLabel('新 API Key', { exact: true }).fill('synthetic-unsaved'); await click('取消', dialog());
     await edit('b'); f.delay = false;
     assert.equal(await page.getByLabel('新 API Key', { exact: true }).inputValue(), '');
@@ -194,14 +231,24 @@ async function run(browser, origin, layout, width, dark = width === 390) {
     // Independent test dialog retains explicit protocol/model and narrow results.
     await click(`测试：${f.connections.get('a').name}`);
     const testDialog = page.getByRole('dialog', { name: '连接测试', exact: true });
+    assert.equal(await testDialog.locator('[data-slot="dialog-footer"]').getByRole('button',{name:'测试',exact:true}).count(),1);
     const model = testDialog.getByLabel('测试模型', { exact: true }); await model.fill('manual/keep');
-    assert.equal(await testDialog.getByRole('button', { name: '获取远端模型', exact: true }).count(), 0);
-    await click('基础非流式测试', testDialog); await testDialog.getByText('基础非流式测试成功 · manual/keep', { exact: true }).waitFor();
-    f.fail = 'test'; await click('基础非流式测试', testDialog); await testDialog.getByRole('alert').waitFor(); f.fail = null;
+    assert.equal(await testDialog.getByRole('button', { name: '获取模型', exact: true }).count(), 0);
+    await click('测试', testDialog); await testDialog.getByText('基础非流式测试成功 · manual/keep', { exact: true }).waitFor();
+    f.fail = 'test'; await click('测试', testDialog); await testDialog.getByRole('alert').waitFor(); f.fail = null;
     await choose('本次协议', 'anthropic_messages', testDialog); assert.equal(await model.inputValue(), 'manual/keep');
-    f.fail = 'unsupported'; await choose('本次协议', 'minimax_chatcompletion_v2', testDialog); await click('基础非流式测试', testDialog);
+    f.fail = 'unsupported'; await choose('本次协议', 'minimax_chatcompletion_v2', testDialog); await click('测试', testDialog);
     await testDialog.getByRole('alert').filter({ hasText: '不支持此操作所选的协议' }).waitFor(); f.fail = null;
     await noOverflow(); await settle(); await page.screenshot({ path: path.join(output, `${label}-test.png`) }); await click('关闭', testDialog);
+    // New discovery confirms a real create, reads back, and keeps the modal open.
+    await click('新增连接'); assert(await dialog().getByRole('button',{name:'获取模型',exact:true}).isDisabled());
+    await page.getByLabel('连接名称',{exact:true}).fill('发现草稿'); await page.getByLabel('Base URL',{exact:true}).fill('https://draft.synthetic.invalid/v1');
+    await page.getByLabel('新 API Key',{exact:true}).fill('synthetic-draft-key'); const beforeCreate=f.created;
+    await page.screenshot({path:path.join(output,`${label}-new.png`)});
+    await click('获取模型',dialog()); assert.equal(f.created,beforeCreate); await confirm();
+    await page.getByRole('button',{name:'remote/first',exact:true}).waitFor(); assert.equal(f.created,beforeCreate+1);
+    await click('remote/first'); assert.equal(await page.getByLabel('模型预填建议',{exact:true}).inputValue(),'remote/first');
+    assert.equal(f.connections.get('created-'+f.created).default_model,null); await click('取消',dialog());
     // New and edit share one modal; successful create must GET before closing.
     await click('新增连接'); await page.getByLabel('连接名称', { exact: true }).fill('新建连接');
     await page.getByLabel('Base URL', { exact: true }).fill('https://new.synthetic.invalid/v1'); await click('创建连接', dialog()); await confirm();
@@ -222,13 +269,13 @@ async function run(browser, origin, layout, width, dark = width === 390) {
     // Both CF modes remain fully editable; list badges hide the default transport.
     await edit('a'); await choose('Transport', 'Cloudflare REST'); await page.getByLabel('Gateway ID').fill('synthetic-gateway'); await save();
     assert.equal(f.connections.get('a').gateway_id, 'synthetic-gateway');
-    await edit('a'); assert(await dialog().getByRole('button', { name: '获取远端模型', exact: true }).isDisabled());
+    await edit('a'); assert(await dialog().getByRole('button', { name: '获取模型', exact: true }).isDisabled());
     await choose('Transport', 'Cloudflare Anthropic'); await save();
     await edit('a'); f.revisions.a++; await click('显式清除 Key', dialog()); await confirm(); await click('已核对，继续编辑', dialog()); assert(f.keys.a);
     await click('显式清除 Key', dialog()); await confirm(); await dialog().getByRole('button', { name: '显式查看 Key', exact: true }).waitFor({ state: 'hidden' }); assert.equal(f.keys.a, ''); await click('取消', dialog());
     // Leaving the category while a copy reveal is pending must not write to clipboard.
     f.delayReveal = true; const copyCount = await page.evaluate(() => window.__fakeCopies.length);
-    await click('复制 Key：合成连接 c'); await waitPending('pendingReveals'); await click('返回设置分类');
+    await click('复制：合成连接 c'); await waitPending('pendingReveals'); await click('返回设置分类');
     for (const pending of f.pendingReveals.splice(0)) await pending.route.fulfill({ contentType: 'application/json', body: JSON.stringify({ secret: f.keys[pending.id] }) }).catch(() => {});
     await openAfterCategory(); assert.equal(await page.evaluate(() => window.__fakeCopies.length), copyCount);
     async function openAfterCategory() { await page.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: /^API 与连接/ }).click(); await row('a').waitFor(); }
@@ -246,7 +293,7 @@ async function run(browser, origin, layout, width, dark = width === 390) {
   fs.mkdirSync(output, { recursive: true }); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
   const browser = await chromium.launch({ headless: true, ...(process.argv[3] ? { executablePath: process.argv[3] } : {}) });
-  try { const results = []; for (const layout of ['classic', 'editorial']) { for (const width of [320, 390, 1440]) results.push(await run(browser, origin, layout, width)); results.push(await run(browser, origin, layout, 1440, true)); }
-    fs.writeFileSync(path.join(output, 'results-ui.json'), JSON.stringify(results, null, 2)); console.log(JSON.stringify(results, null, 2));
+  try { const results = []; for (const layout of (process.env.SETTINGS_PR2_VARIANT ? ['classic'] : ['classic', 'editorial'])) { for (const width of (process.env.SETTINGS_PR2_VARIANT ? [390] : [320, 390, 1440])) results.push(await run(browser, origin, layout, width)); if(!process.env.SETTINGS_PR2_VARIANT) results.push(await run(browser, origin, layout, 1440, true)); }
+    fs.writeFileSync(path.join(output, process.env.SETTINGS_PR2_VARIANT ? 'results-wallpaper.json' : 'results-ui.json'), JSON.stringify(results, null, 2)); console.log(JSON.stringify(results, null, 2));
   } finally { await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); server.closeAllConnections(); server.close(); process.exitCode = 1; });
