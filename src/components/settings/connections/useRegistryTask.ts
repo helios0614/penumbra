@@ -13,6 +13,7 @@ export function useRegistryTask<T>() {
     if (mounted.current) setState({ status: "idle", data: null, error: null });
   }, []);
   const run = useCallback(async (work: (signal: AbortSignal) => Promise<T>): Promise<T | undefined> => {
+    if (!mounted.current) return;
     active.current?.abort();
     const controller = new AbortController(); active.current = controller;
     setState({ status: "loading", data: null, error: null });

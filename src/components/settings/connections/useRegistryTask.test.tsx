@@ -36,6 +36,12 @@ describe("Registry task request isolation", () => {
     pending.reject(new RegistryError("provider_probe_failed")); await old;
     expect(hooks.render().state.error).toBeNull();
   });
+  it("does not start another request after the owning panel unmounts", async () => {
+    const hooks = hookSession(() => useRegistryTask<boolean>());
+    const task = hooks.render(); hooks.commit(); hooks.dispose();
+    const work = vi.fn(async () => true);
+    expect(await task.run(work)).toBeUndefined(); expect(work).not.toHaveBeenCalled();
+  });
   it("drops arbitrary exception payloads and does not replay errors", async () => {
     const hooks = hookSession(() => useRegistryTask<string>());
     const work = vi.fn(async () => { throw new Error("private-raw-upstream-response"); });
