@@ -15,14 +15,14 @@ describe("Diary shared message action assembly", () => {
   it("offers edit only on user, regenerate on every saved assistant and delete on both ordinary roles", () => {
     setup(); const html = render();
     expect(html.match(/aria-label="编辑消息"/g)).toHaveLength(1); expect(html.match(/aria-label="重新生成回复"/g)).toHaveLength(2);
-    expect(html.match(/aria-label="删除消息"/g)).toHaveLength(3); expect(html).not.toContain('aria-label="放入输入框"');
+    expect(html.match(/aria-label="删除消息"/g)).toHaveLength(3); expect(html.match(/aria-label="提取正文"/g)).toHaveLength(2); expect(html).not.toContain('aria-label="放入输入框"');
   });
   it.each(["optimistic", "streaming", "unconfirmed", undefined] as const)("never offers persisted actions on %s overlays, including receipts awaiting HTTP", status => {
     setup(); state = { ...state, messages: [], overlays: [{ message: row("overlay", "assistant"), status, revision: 1 }] };
-    const html = render(); for (const label of ["编辑消息", "删除消息", "重新生成回复"]) expect(html).not.toContain(`aria-label="${label}"`);
+    const html = render(); for (const label of ["编辑消息", "删除消息", "重新生成回复", "提取正文"]) expect(html).not.toContain(`aria-label="${label}"`);
   });
   it.each(["send", "mutation"])("gates the mounted Entry's actions during %s without changing its bubbles", kind => {
     setup(); state = { ...state, sending: kind === "send", mutation: kind === "mutation" ? { kind: "edit", messageId: "user" } : null };
-    const html = render(); expect(html).toContain('data-message-id="user"'); for (const label of ["编辑消息", "删除消息", "重新生成回复"]) expect(html).not.toContain(`aria-label="${label}"`);
+    const html = render(); expect(html.match(/aria-label="提取正文"/g)).toHaveLength(2); expect(html).toContain('data-message-id="user"'); for (const label of ["编辑消息", "删除消息", "重新生成回复"]) expect(html).not.toContain(`aria-label="${label}"`);
   });
 });

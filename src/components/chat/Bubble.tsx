@@ -97,6 +97,7 @@ interface BubbleProps {
   readonly onInsert?: (text: string) => void;
   readonly onEdit?: () => void;
   readonly onDelete?: () => void;
+  readonly onExtract?: () => void;
   readonly editUnavailableReason?: string | null;
 }
 
@@ -110,6 +111,7 @@ function BubbleInner({
   onInsert,
   onEdit,
   onDelete,
+  onExtract,
   editUnavailableReason,
 }: BubbleProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -180,6 +182,7 @@ function BubbleInner({
               role={message.kind}
               content={message.content}
               onDelete={onDelete}
+              onExtract={onExtract}
               onEdit={onEdit}
               editUnavailableReason={editUnavailableReason}
               onRegenerate={message.kind === "assistant" && message.error ? undefined : onRegenerate}

@@ -14,6 +14,7 @@ import { useDiaryChatNavigation } from "./useDiaryChatNavigation";
 import { DiaryChatView } from "./DiaryChatView";
 import { useDiaryFeed } from "./useDiaryFeed";
 import { DiaryFeedAction } from "./DiaryFeedAction";
+import { DiaryQuickExtract } from "./DiaryQuickExtract";
 
 export function DiaryView({ onBack }: { readonly onBack?: () => void }) {
   const { state, controller, today } = useDiary();
@@ -33,12 +34,14 @@ export function DiaryView({ onBack }: { readonly onBack?: () => void }) {
       <PageScrollArea scrollRef={navigation.calendarRef} hidden={Boolean(state.reader)} syncKey={`${state.month}:${state.reader ? "reader" : "calendar"}`} label="日记月历与日期预览" topLabel="回到月历顶部" className="mt-3 sm:mt-4" contentClassName="pb-2">
         <DiaryCalendar state={state} controller={controller} today={today} onOpen={navigation.open} onOpenChat={chat.open} openButtonRef={navigation.openButtonRef} dateButtonRef={navigation.dateButtonRef}
           feedAction={<DiaryFeedAction date={state.selectedDate} indexedEntryId={state.calendar?.items.find(item => item.date === state.selectedDate)?.entryId}
-            state={feed.state} controller={feed.controller} onOpen={chat.openEntry} />} />
+            state={feed.state} controller={feed.controller} onOpen={chat.openEntry}>
+            <DiaryQuickExtract date={state.selectedDate} entryId={state.calendar?.items.find(item => item.date === state.selectedDate)?.entryId}
+              onSaved={entry => controller?.acceptArchive(entry)} /></DiaryFeedAction>} />
       </PageScrollArea>
       {state.reader && !state.editor && <DiaryReader reader={state.reader} readerRef={navigation.readerRef} editButtonRef={editing.editButtonRef} onEdit={() => controller?.beginEdit()} onBack={navigation.back} onRetry={() => void controller?.refresh()} />}
       {state.editor && <DiaryEditor editor={state.editor} controller={controller} editorRef={editing.editorRef} onCancel={editing.cancel} />}
       <DiaryDiscardDialog open={Boolean(editing.discard)} busy={Boolean(state.editor?.busy)} onKeep={editing.keep} onDiscard={editing.confirm} finalFocus={() => state.editor ? true : editing.editButtonRef.current ?? true} />
     </main>
-    {chat.entryId && <DiaryChatView key={chat.entryId} entryId={chat.entryId} onBack={chat.back} />}
+    {chat.entryId && <DiaryChatView key={chat.entryId} entryId={chat.entryId} onBack={chat.back} onArchived={entry => controller?.acceptArchive(entry)} />}
   </TooltipProvider>;
 }

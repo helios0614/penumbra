@@ -12,10 +12,17 @@ import { diaryDateLabel } from "@/application/diary-reader/diary-calendar";
 import { DiaryModelSelection } from "./DiaryModelSelection";
 import { useDiaryChat } from "./useDiaryChat";
 import { presentDiaryTimeline } from "./diary-chat-presenter";
+import type { ArchivedDiary } from "@/domain/diary";
+import { useDiaryExtraction } from "./useDiaryExtraction";
+import { DiaryExtractionPreview } from "./DiaryExtractionPreview";
 import "./diary-chat.css";
 
-export function DiaryChatView({ entryId, onBack }: { readonly entryId: string; readonly onBack: () => void }) {
+export function DiaryChatView({ entryId, onBack, onArchived }: { readonly entryId: string; readonly onBack: () => void; readonly onArchived?: (entry: ArchivedDiary) => void }) {
   const { state, controller, connection } = useDiaryChat(entryId);
+  const extraction = useDiaryExtraction(entry => { onArchived?.(entry); void controller?.refresh(); });
+  useLayoutEffect(() => {
+    extraction.controller?.observe(entryId, state.messages, state.status !== "missing");
+  }, [extraction.controller, entryId, state.messages, state.status]);
   const heading = useRef<HTMLHeadingElement>(null);
   const [editing, setEditing] = useState<DiaryMessage | null>(null);
   const [confirmation, setConfirmation] = useState<{ kind: "delete" | "regenerate"; message: DiaryMessage } | null>(null);
@@ -33,7 +40,7 @@ export function DiaryChatView({ entryId, onBack }: { readonly entryId: string; r
   const available = (id: string) => {
     const row = savedMessage(id);
     const persisted = !!state.entry && !!row && !state.overlays.some(overlay => overlay.message.id === id);
-    return { edit: persisted && !busy && row.role === "user", delete: persisted && !busy && ["user", "assistant"].includes(row.role), regenerate: persisted && !busy && row.role === "assistant" };
+    return { edit: persisted && !busy && row.role === "user", delete: persisted && !busy && ["user", "assistant"].includes(row.role), regenerate: persisted && !busy && row.role === "assistant", extract: persisted && row.role === "assistant" };
   };
   const confirm = (kind: "delete" | "regenerate", id: string) => {
     const message = savedMessage(id);
@@ -72,13 +79,16 @@ export function DiaryChatView({ entryId, onBack }: { readonly entryId: string; r
     {state.error && <div role="alert" className="shrink-0 px-4 py-2 text-sm leading-6"><p>{state.error.message}</p><Button type="button" variant="ghost" size="sm" disabled={state.loading} onClick={() => void controller?.refresh()}>重试读取</Button></div>}
     {state.sendError && <p role="alert" className="shrink-0 px-4 py-2 text-xs leading-5 text-muted-strong">{state.sendError}</p>}
     {actionError && !confirmation && <p role="alert" className="shrink-0 px-4 py-2 text-xs leading-5 text-muted-strong">{actionError}</p>}
+    {extraction.state.error && !extraction.state.preview && <p role="status" className="shrink-0 px-4 py-2 text-xs leading-5 text-muted-strong">{extraction.state.error}</p>}
     {(connection === "reconnecting" || connection === "blocked") && <p role="status" className="shrink-0 px-4 py-1 text-xs text-muted-strong">实时连接不可用，可手动刷新。</p>}
   </>}>
     {(state.messages !== null || messages.length > 0) && <BubbleList timelineKey={`diary:${entryId}`} messages={messages} actionsForMessage={available}
+      onExtract={id => { const message = savedMessage(id); if (message && state.entry && available(id).extract) extraction.controller?.open(message, state.entry.date); }}
       onEdit={id => { const message = savedMessage(id); if (message && available(id).edit) setEditing(message); }}
       onDelete={id => confirm("delete", id)} onRegenerate={id => confirm("regenerate", id)} regenerateEnabled={!busy} forceFollowKey={state.submissionKey} />}
     {state.status === "empty" && messages.length === 0 && <p role="status" className="pointer-events-none absolute inset-x-4 top-1/2 text-center text-sm text-muted-strong">暂无消息</p>}
   </ChatShell>
+    <DiaryExtractionPreview {...extraction} />
     {editing?.entryId === entryId && controller && <MessageEditDialog key={`${entryId}:${editing.id}`} message={editing} description={null}
       unavailableReason={!state.entry || !savedMessage(editing.id) ? "消息已不存在，编辑内容已保留。请关闭并刷新核对。" : busy ? "正在处理本次消息操作。" : null}
       onSave={(original, content) => controller.edit(original, content)} saveErrorMessage={safeError} onClose={() => setEditing(null)} />}

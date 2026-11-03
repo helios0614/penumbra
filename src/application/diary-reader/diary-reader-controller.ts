@@ -142,21 +142,29 @@ export function createDiaryReaderController(
     return loadCalendar();
   }
 
+  function acceptArchive(entry: ArchivedDiary, openReader = false) {
+    if (disposed) return;
+    cancelEntry(); ++calendarSeq; calendarRead?.abort.abort(); calendarRead = null;
+    entries.set(entry.id, entry);
+    const detail = { entryId: entry.id, date: entry.date, entry, loading: false, error: null };
+    const item = state.calendar?.items.find(row => row.entryId === entry.id && row.date === entry.date);
+    const archived = { date: entry.date, entryId: entry.id, title: entry.title, entryStatus: "done", hasDiaryMessages: item?.hasDiaryMessages ?? true, hasSavedContent: true, calendarState: "archived" as const, invalidReason: null };
+    if (!state.calendar) reloadOnReturn = true;
+    publish({
+      ...(openReader || sameEntry(state.reader, entry.id, entry.date) ? { reader: detail } : {}),
+      ...(state.selectedDate === entry.date ? { preview: detail } : {}),
+      calendarLoading: false,
+      calendar: state.calendar && entry.date.slice(0, 7) === state.month ? { ...state.calendar, items: [...state.calendar.items.filter(row => row.entryId !== entry.id && row.date !== entry.date), archived].sort((a, b) => a.date.localeCompare(b.date)) } : state.calendar,
+      notice: { text: "日记已保存并归档" },
+    });
+  }
+
   const actions = createDiaryActions({
     deps: { updateArchivedDiary, getDiaryAutoFeed, setDiaryAutoFeed, ...deps }, getState: () => state, publish,
-    onSaved(entry) {
-      cancelEntry(); ++calendarSeq; calendarRead?.abort.abort(); calendarRead = null;
-      entries.set(entry.id, entry);
-      if (!state.calendar) reloadOnReturn = true;
-      publish({
-        reader: { entryId: entry.id, date: entry.date, entry, loading: false, error: null },
-        ...(sameEntry(state.preview, entry.id, entry.date) ? { preview: { entryId: entry.id, date: entry.date, entry, loading: false, error: null } } : {}),
-        calendarLoading: false,
-        calendar: state.calendar ? { ...state.calendar, items: state.calendar.items.map((item) => item.entryId === entry.id && item.date === entry.date ? { ...item, title: entry.title } : item) } : null,
-      });
-    },
+    onSaved: entry => acceptArchive(entry, true),
   });
   return {
+    acceptArchive,
     beginEdit: actions.beginEdit, changeDraft: actions.changeDraft, cancelEdit: actions.cancelEdit,
     saveEdit: actions.saveEdit, verifyEdit: actions.verifyEdit, loadAutoFeed: actions.loadAutoFeed, toggleAutoFeed: actions.toggleAutoFeed,
     getState: () => state,

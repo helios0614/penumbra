@@ -1,5 +1,5 @@
 import { memo, useRef } from "react";
-import { Copy, Pencil, RefreshCw, TextCursorInput, Trash2 } from "lucide-react";
+import { Copy, FileText, Pencil, RefreshCw, TextCursorInput, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -15,6 +15,7 @@ interface MessageActionsProps {
   onRegenerate?: () => void;
   regenerateDisabled?: boolean;
   onDelete?: () => void;
+  onExtract?: () => void;
   onEdit?: () => void;
   editUnavailableReason?: string | null;
   className?: string;
@@ -30,6 +31,7 @@ function MessageActionsInner({
   onRegenerate,
   regenerateDisabled = false,
   onDelete,
+  onExtract,
   onEdit,
   editUnavailableReason,
   className,
@@ -112,6 +114,14 @@ function MessageActionsInner({
           <TooltipContent>重新生成</TooltipContent>
         </Tooltip>
       )}
+
+      {role === "assistant" && onExtract && <Tooltip>
+        <TooltipTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="提取正文"
+          className="text-muted-foreground hover:text-foreground" onClick={onExtract} />}>
+          <FileText className="size-3" aria-hidden="true" />
+        </TooltipTrigger>
+        <TooltipContent>提取正文</TooltipContent>
+      </Tooltip>}
 
       {/* 删除 */}
       {onDelete && (

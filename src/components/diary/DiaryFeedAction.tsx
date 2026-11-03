@@ -1,14 +1,15 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Play, MessagesSquare } from "lucide-react";
 import type { DiaryFeedController, DiaryFeedState } from "@/application/diary-chat/diary-feed-controller";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { diaryDialogViewportRef } from "./DiaryReaderDetails";
 
-export function DiaryFeedAction({ date, indexedEntryId, state, controller, onOpen }: {
+export function DiaryFeedAction({ date, indexedEntryId, state, controller, onOpen, children }: {
   readonly date: string; readonly indexedEntryId?: string;
   readonly state: DiaryFeedState; readonly controller: DiaryFeedController | null;
   readonly onOpen: (entryId: string) => void;
+  readonly children?: ReactNode;
 }) {
   const [replacement, setReplacement] = useState<{ date: string; id: string } | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -23,8 +24,8 @@ export function DiaryFeedAction({ date, indexedEntryId, state, controller, onOpe
     }
   }, [busy, date]);
   return <div className="mt-2 px-1" aria-label="手动启动日记投喂">
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <Button ref={trigger} type="button" variant="link" size="compact" className="min-h-11 gap-1.5 px-0 text-xs font-normal text-muted-strong"
+    <div className="flex flex-wrap items-center gap-3" data-diary-selection-actions>
+      <Button ref={trigger} type="button" variant="outline" size="comfortable" className="min-w-0 shrink gap-1.5 px-3 text-xs font-normal"
         disabled={!controller || busy} onClick={() => {
           const target = trigger.current;
           if (target && target === document.activeElement) restore.current = { date, target };
@@ -32,6 +33,7 @@ export function DiaryFeedAction({ date, indexedEntryId, state, controller, onOpe
         }}>
         <Play className="size-3.5" aria-hidden="true" />{state.busyDate === date ? "正在启动…" : "开始投喂"}
       </Button>
+      {children}
       {notice?.kind === "draft" && <>
         <Button type="button" variant="link" size="compact" className="min-h-11 px-0 text-xs" onClick={() => notice.entryId && onOpen(notice.entryId)}>继续原日记</Button>
         <Button type="button" variant="link" size="compact" className="min-h-11 px-0 text-xs text-muted-strong" disabled={busy}
@@ -41,7 +43,7 @@ export function DiaryFeedAction({ date, indexedEntryId, state, controller, onOpe
         <MessagesSquare className="size-3.5" aria-hidden="true" />进入本次日记对话
       </Button>}
     </div>
-    {notice && <p role={notice.kind === "uncertain" || notice.kind === "refused" ? "alert" : "status"} className="text-xs leading-5 text-muted-strong">{notice.text}</p>}
+    {notice && <p role={notice.kind === "uncertain" || notice.kind === "refused" ? "alert" : "status"} className="mt-2 text-xs leading-5 text-muted-strong">{notice.text}</p>}
     <AlertDialog open={Boolean(replacement)} onOpenChange={open => { if (!open) setReplacement(null); }}>
       <AlertDialogContent ref={diaryDialogViewportRef}>
         <AlertDialogHeader><AlertDialogTitle>替换草稿并重新投喂？</AlertDialogTitle><AlertDialogDescription>

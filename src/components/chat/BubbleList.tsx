@@ -102,7 +102,8 @@ interface BubbleListProps {
   readonly onInsert?: (text: string) => void;
   readonly onEdit?: (messageId: string) => void;
   readonly onDelete?: (messageId: string) => void;
-  readonly actionsForMessage?: (messageId: string) => { edit: boolean; delete: boolean; regenerate: boolean };
+  readonly onExtract?: (messageId: string) => void;
+  readonly actionsForMessage?: (messageId: string) => { edit: boolean; delete: boolean; regenerate: boolean; extract?: boolean };
   readonly editUnavailableReason?: (messageId: string) => string | null;
   readonly onLoadOlder?: () => void;
   readonly olderStatus?: OlderPageStatus;
@@ -123,20 +124,22 @@ interface MessageRowProps {
   readonly onInsert?: (text: string) => void;
   readonly onEdit?: (id: string) => void;
   readonly onDelete?: (id: string) => void;
+  readonly onExtract?: (id: string) => void;
   readonly editUnavailableReason?: string | null;
 }
 
 // Per-row handlers and search values stay stable when another message streams.
 const MessageRow = memo(function MessageRow({ message, userName, query, active, result,
-  showActions, onRegenerate, regenerateDisabled, regenerateUnavailableReason, onInsert, onEdit, onDelete, editUnavailableReason }: MessageRowProps) {
+  showActions, onRegenerate, regenerateDisabled, regenerateUnavailableReason, onInsert, onEdit, onDelete, onExtract, editUnavailableReason }: MessageRowProps) {
   const regenerate = useCallback(() => onRegenerate?.(message.id), [onRegenerate, message.id]);
+  const extract = useCallback(() => onExtract?.(message.id), [onExtract, message.id]);
   const remove = useCallback(() => onDelete?.(message.id), [onDelete, message.id]);
   const edit = useCallback(() => onEdit?.(message.id), [onEdit, message.id]);
   const search = useMemo(() => ({ query, active, segments: result?.snippets.map(s => s.segmentKey) }), [query, active, result]);
   return <SearchHighlightContext value={search}>
     <Bubble message={message} userName={userName} showActions={showActions} onRegenerate={onRegenerate ? regenerate : undefined}
       regenerateDisabled={regenerateDisabled} regenerateUnavailableReason={regenerateUnavailableReason}
-      onDelete={onDelete ? remove : undefined} onInsert={onInsert} onEdit={onEdit ? edit : undefined} editUnavailableReason={editUnavailableReason} />
+      onExtract={onExtract ? extract : undefined} onDelete={onDelete ? remove : undefined} onInsert={onInsert} onEdit={onEdit ? edit : undefined} editUnavailableReason={editUnavailableReason} />
     {active && result && <div className="chat-search-match mt-2 rounded-lg px-3 py-2 text-xs text-muted-strong" aria-label="当前消息匹配内容">
       {result.snippets.map((s, i) => <p key={i} className="break-words leading-6 [overflow-wrap:anywhere]">{highlightSearchText(s.text, query)}</p>)}
     </div>}
@@ -159,6 +162,7 @@ function BubbleListInner({
   onInsert,
   onEdit,
   onDelete,
+  onExtract,
   actionsForMessage,
   editUnavailableReason,
   onLoadOlder,
@@ -167,9 +171,10 @@ function BubbleListInner({
   olderError,
 }: BubbleListProps) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const actions = useRef({ onEdit, onInsert, onRegenerate, onDelete });
-  useLayoutEffect(() => { actions.current = { onEdit, onInsert, onRegenerate, onDelete }; }, [onEdit, onInsert, onRegenerate, onDelete]);
+  const actions = useRef({ onEdit, onInsert, onRegenerate, onDelete, onExtract });
+  useLayoutEffect(() => { actions.current = { onEdit, onInsert, onRegenerate, onDelete, onExtract }; }, [onEdit, onInsert, onRegenerate, onDelete, onExtract]);
   const rowActions = useMemo(() => ({
+    extract: (id: string) => actions.current.onExtract?.(id),
     delete: (id: string) => actions.current.onDelete?.(id),
     edit: (id: string) => actions.current.onEdit?.(id),
     insert: (text: string) => actions.current.onInsert?.(text),
@@ -297,6 +302,7 @@ function BubbleListInner({
                       onInsert={onInsert ? rowActions.insert : undefined}
                       onEdit={onEdit && available?.edit !== false ? rowActions.edit : undefined}
                       onDelete={onDelete && available?.delete !== false ? rowActions.delete : undefined}
+                      onExtract={onExtract && available?.extract === true ? rowActions.extract : undefined}
                       editUnavailableReason={editUnavailableReason?.(message.id)}
                     />
                   </div>
