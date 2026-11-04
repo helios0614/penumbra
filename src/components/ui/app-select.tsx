@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
 import {
   Select,
@@ -29,6 +29,8 @@ export function AppSelect<TValue extends string>({
   className,
   contentClassName,
   align = "end",
+  positionMethod,
+  alignItemWithTrigger,
 }: {
   readonly value: TValue;
   readonly options: ReadonlyArray<AppSelectOption<TValue>>;
@@ -41,6 +43,8 @@ export function AppSelect<TValue extends string>({
   readonly className?: string;
   readonly contentClassName?: string;
   readonly align?: "start" | "center" | "end";
+  readonly positionMethod?: ComponentProps<typeof SelectContent>["positionMethod"];
+  readonly alignItemWithTrigger?: boolean;
 }) {
   const selected = options.find((option) => option.value === value);
 
@@ -66,7 +70,8 @@ export function AppSelect<TValue extends string>({
       >
         <SelectValue placeholder={placeholder}>{selected && <span className="min-w-0 truncate" title={typeof selected.label === "string" ? selected.label : undefined}>{selected.label}</span>}</SelectValue>
       </SelectTrigger>
-      <SelectContent align={align} className={cn("rounded-xl p-1 text-xs", contentClassName)}>
+      <SelectContent align={align} positionMethod={positionMethod} alignItemWithTrigger={alignItemWithTrigger}
+        className={cn("rounded-xl p-1 text-xs", contentClassName)}>
         {options.map((option) => (
           <SelectItem
             key={option.value}

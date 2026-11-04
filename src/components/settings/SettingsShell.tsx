@@ -24,7 +24,7 @@ export interface SettingsPage {
   readonly parentId?: string;
 }
 
-const plannedCategories = ["模型与任务分配", "服务集成", "MCP 工具（独立页面）", "高级设置"];
+const plannedCategories = ["服务集成", "MCP 工具（独立页面）", "高级设置"];
 
 /** Desktop hosts own the Settings route; categories use history state without storing drafts. */
 export function SettingsShell({ pages, onClose }: {
@@ -72,7 +72,7 @@ export function SettingsShell({ pages, onClose }: {
 
   return <div className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col overflow-hidden" aria-labelledby="settings-page-title">
     <PageHeader eyebrow="Settings" title="设置" titleId="settings-page-title"
-      description="本机外观、API 连接与运行状态。"
+      description="本机外观、API 连接、功能分配与运行状态。"
       actions={onClose && <PageHeaderAction onClick={onClose} aria-label="返回桌面"><X aria-hidden="true" /></PageHeaderAction>} />
     <div className="mt-3 flex min-h-0 flex-1 gap-4">
       <aside className={cn("mist-glass min-h-0 w-full shrink-0 rounded-[22px] md:w-52", activePage && "hidden md:block")}>

@@ -7,10 +7,10 @@ export function ConnectionError({ error, onRetry }: { error: RegistryError | nul
     <p>{error.message}</p>{onRetry && <Button size="sm" variant="outline" onClick={onRetry}>重新读取</Button>}
   </div>;
 }
-export function RegistryVersion({ value }: { value: ConnectionList }) {
+export function RegistryVersion({ value, writeSubject = "连接" }: { value: ConnectionList; writeSubject?: string }) {
   return <div className={value.migration_required || value.diagnosticCount || value.deferredCount ? "space-y-1 rounded-xl bg-warning/10 px-3 py-2 text-xs text-muted-strong" : "text-xs text-muted-foreground"} aria-label="Registry 版本状态">
     <p>Registry v{value.schema_version} · {value.authority_state === "persisted_v2" ? "已持久化 v2" : "只读投影 v2"}</p>
-    {value.migration_required && <p>需要迁移：明确保存连接时，后端可能同时持久化 Registry v2。</p>}
+    {value.migration_required && <p>需要迁移：明确保存{writeSubject}时，后端可能同时持久化 Registry v2。</p>}
     {(value.diagnosticCount > 0 || value.deferredCount > 0) && <p>{value.diagnosticCount} 项迁移诊断 · {value.deferredCount} 项延后绑定，需另行核对。</p>}
   </div>;
 }

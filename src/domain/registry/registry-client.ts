@@ -2,6 +2,7 @@ import { apiRequest, ApiError, type ApiRequestOptions } from "@/lib/api";
 import { PROBE_PROTOCOLS, TRANSPORTS, RegistryError, validLiteral, validBaseUrl,
   type Connection, type ConnectionList, type ConnectionWrite, type ConnectionFields, type ConnectionReferences,
   type DiscoveredModels, type ProbeProtocol, type ProbeResult } from "./registry-types";
+import { FEATURE_GROUPS, type FeatureBinding, type FeatureSelection, type FeatureUsage } from "./feature-bindings";
 
 const base = "/api/registry/connections";
 const path = (id: string) => `${base}/${encodeURIComponent(id)}`;
@@ -109,4 +110,39 @@ export async function discoverModels(id: string, protocol: ProbeProtocol, afterI
     !Array.isArray(raw.models) || !raw.models.every(text) || typeof raw.truncated !== "boolean" ||
     !(raw.next_page === null || text(raw.next_page))) return invalid();
   return { connection_id: id, protocol, operation: "model_list", models: raw.models as string[], truncated: raw.truncated, next_page: raw.next_page as string | null };
+}
+
+const featureBase = "/api/registry/feature-bindings";
+function parseSelection(value: unknown): FeatureSelection {
+  // Retain recognizable invalid historical literals/protocols for repair, without normalizing.
+  if (!record(value) || !text(value.connection_id) || !text(value.protocol) || !text(value.model)) return invalid();
+  return { connection_id: value.connection_id, protocol: value.protocol, model: value.model };
+}
+export async function listFeatureBindings(options?: ApiRequestOptions): Promise<readonly FeatureBinding[]> {
+  const raw = await request(featureBase, "GET", undefined, options);
+  if (!record(raw) || !Array.isArray(raw.features)) return invalid();
+  const features = raw.features;
+  const usages = FEATURE_GROUPS.flatMap(group => [...group.usages]);
+  return usages.map(usage => {
+    const matches = features.filter(item => record(item) && item.usage === usage);
+    if (matches.length !== 1) return invalid();
+    const item = matches[0];
+    if (!record(item) || !(item.diagnostic === null || text(item.diagnostic)) ||
+      !Array.isArray(item.allowed_protocols) || !item.allowed_protocols.every(text) ||
+      new Set(item.allowed_protocols).size !== item.allowed_protocols.length || !text(item.lifecycle)) return invalid();
+    return { usage, selection: item.selection === null ? null : parseSelection(item.selection), diagnostic: item.diagnostic === null ? null : diagnostic(item.diagnostic),
+      allowed_protocols: item.allowed_protocols as string[], lifecycle: item.lifecycle };
+  });
+}
+export async function updateFeatureBinding(usage: FeatureUsage, selection: FeatureSelection, options?: ApiRequestOptions): Promise<FeatureSelection> {
+  if (!selection.connection_id || !selection.protocol || !validLiteral(selection.model)) throw new RegistryError("validation");
+  const body = { connection_id: selection.connection_id, protocol: selection.protocol, model: selection.model.trim() };
+  const raw = await request(`${featureBase}/${encodeURIComponent(usage)}`, "PUT", body, options);
+  if (!record(raw) || raw.usage !== usage) return invalid();
+  return parseSelection(raw);
+}
+export async function clearFeatureBinding(usage: FeatureUsage, options?: ApiRequestOptions): Promise<boolean> {
+  const raw = await request(`${featureBase}/${encodeURIComponent(usage)}`, "DELETE", undefined, options);
+  if (!record(raw) || raw.ok !== true) return invalid();
+  return true;
 }

@@ -83,6 +83,11 @@ const errors: Readonly<Record<string, string>> = {
   secret_signing_unavailable: "凭据安全服务暂不可用，请稍后重新读取。",
   invalid_connection: "连接字段无效，请检查输入。",
   invalid_registry_configuration: "Registry 配置暂不可读取。",
+  feature_binding_required: "尚未配置此功能的模型分配。",
+  main_default_not_selected: "尚未配置新对话的默认模型。",
+  main_selection_required: "尚未配置新对话的默认模型。",
+  invalid_feature_binding: "此功能的历史绑定无法解析，请明确修复或清除。",
+  unknown_profile: "绑定引用的连接不存在。",
   validation: "请检查名称、服务基础地址和模型名称；Key 不能提交空白或掩码。",
   unauthorized: "当前 Session 没有读取或操作权限，请确认登录状态。",
   network: "请求连接失败；写入结果可能尚未确认，请先读取核对。",
@@ -98,7 +103,7 @@ export function canDeleteConnection(refs: ConnectionReferences | null): boolean 
 }
 export function validLiteral(value: string): boolean {
   const text = value.trim();
-  return [...text].length >= 1 && [...text].length <= 256 && !/[\s\p{C}]/u.test(text);
+  return !/[\u0000-\u001f\u007f-\u009f]/u.test(value) && [...text].length >= 1 && [...text].length <= 256 && !/[\s\p{C}\p{Zl}\p{Zp}]/u.test(text);
 }
 export function validBaseUrl(value: string): boolean {
   try {
