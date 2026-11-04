@@ -1,6 +1,6 @@
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { find, hookSession } from "@/components/chat/test-utils/hook-session";
+import { elements, find, hookSession } from "@/components/chat/test-utils/hook-session";
 import { AppSelect } from "@/components/ui/app-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,26 +34,68 @@ const click = (tree: React.ReactNode, label: string) => find(tree, Button, p => 
 const change = (tree: React.ReactNode, label: string, value: string) => find(tree, AppSelect, p => p.ariaLabel === label).props.onValueChange(value);
 
 describe("Feature editor behavior with fake Registry", () => {
-  it("keeps literal and protocol when switching Connection; suggestion requires explicit use", () => {
+  it("keeps the saved literal on open, then prefills only on a different Connection selection", () => {
     const { hooks } = setup();
-    change(hooks.render(), "Connection", "b");
     expect(find(hooks.render(), Input).props.value).toBe(triple.model);
-    expect(find(hooks.render(), AppSelect, p => p.ariaLabel === "Protocol").props.value).toBe(triple.protocol);
-    click(hooks.render(), "采用建议模型"); expect(find(hooks.render(), Input).props.value).toBe("suggestion/b");
+    change(hooks.render(), "连接", "b");
+    expect(find(hooks.render(), Input).props.value).toBe("suggestion/b");
+    expect(find(hooks.render(), AppSelect, p => p.ariaLabel === "协议").props.value).toBe(triple.protocol);
+    find(hooks.render(), Input).props.onChange!({ target: { value: "manual/new-model" } } as never);
+    hooks.render(); hooks.commit();
+    change(hooks.render(), "连接", "b");
+    expect(find(hooks.render(), Input).props.value).toBe("manual/new-model");
+    change(hooks.render(), "连接", "a");
+    expect(find(hooks.render(), Input).props.value).toBe("suggestion/a");
     expect(updateFeatureBinding).not.toHaveBeenCalled(); hooks.dispose();
+  });
+  it.each([null, ""])("retains the model and permits saving when the chosen Connection has no default (%s)", defaultModel => {
+    const initial = snapshot();
+    const { hooks } = setup({ ...initial, registry: { ...initial.registry, connections: initial.registry.connections.map(item => item.id === "b" ? { ...item, default_model: defaultModel } : item) } });
+    change(hooks.render(), "连接", "b");
+    expect(find(hooks.render(), Input).props.value).toBe(triple.model);
+    expect(find(hooks.render(), "p", p => p.role === "status").props.children).toContain("未设置默认模型");
+    expect(find(hooks.render(), Button, p => p.children === "保存分配").props.disabled).toBe(false);
+    change(hooks.render(), "连接", "a");
+    expect(elements(hooks.render()).some(item => item.props.role === "status")).toBe(false);
+    hooks.dispose();
+  });
+  it("does not show summaries or suggestions in the normal editor; diagnostics remain visible", () => {
+    const { hooks } = setup();
+    expect(elements(hooks.render()).some(item => ["当前后端状态", "最终分配预览", "绑定诊断"].includes(item.props["aria-label"] as string))).toBe(false);
+    expect(elements(hooks.render()).some(item => item.props.children === "采用建议模型")).toBe(false);
+    hooks.dispose();
+    const initial = snapshot();
+    const diagnostic = setup({ ...initial, features: initial.features.map(item => item.usage === "memory_digest" ? { ...item, diagnostic: "missing_credential" } : item) });
+    expect(find(diagnostic.hooks.render(), "div", p => p["aria-label"] === "绑定诊断").props.role).toBe("alert");
+    diagnostic.hooks.dispose();
+  });
+  it("preserves manually edited model and protocol after asynchronous readback changes Connection defaults", async () => {
+    const refreshed = snapshot();
+
+    vi.mocked(updateFeatureBinding).mockRejectedValue(new RegistryError("network"));
+    vi.mocked(readFeatureSnapshot).mockResolvedValue({ ...refreshed, registry: { ...refreshed.registry, connections: refreshed.registry.connections.map(item => ({ ...item, default_model: "new-default-from-readback" })) } });
+    const { hooks, props } = setup();
+    change(hooks.render(), "连接", "b");
+    find(hooks.render(), Input).props.onChange!({ target: { value: "manual/after-switch" } } as never);
+    click(hooks.render(), "保存分配");
+    await vi.waitFor(() => expect(props.onObserved).toHaveBeenCalled());
+    expect(find(hooks.render(), Input).props.value).toBe("manual/after-switch");
+    expect(find(hooks.render(), AppSelect, p => p.ariaLabel === "协议").props.value).toBe(triple.protocol);
+    expect(find(hooks.render(), "div", p => p["aria-label"] === "读回的已保存分配")).toBeDefined();
+    hooks.dispose();
   });
   it("prefills an empty literal only on deliberate Connection change, without choosing a protocol", () => {
     const { hooks } = setup(snapshot(null));
     expect(find(hooks.render(), Input).props.value).toBe("");
-    change(hooks.render(), "Connection", "b");
+    change(hooks.render(), "连接", "b");
     expect(find(hooks.render(), Input).props.value).toBe("suggestion/b");
-    expect(find(hooks.render(), AppSelect, p => p.ariaLabel === "Protocol").props.value).toBe(""); hooks.dispose();
+    expect(find(hooks.render(), AppSelect, p => p.ariaLabel === "协议").props.value).toBe(""); hooks.dispose();
   });
   it("uses backend allowed protocols and retains disallowed historical values for repair", () => {
     const { hooks } = setup(snapshot({ ...triple, protocol: "historical" }), "memory_sentinel");
-    const select = find(hooks.render(), AppSelect, p => p.ariaLabel === "Protocol");
+    const select = find(hooks.render(), AppSelect, p => p.ariaLabel === "协议");
     expect(select.props.value).toBe("historical");
-    expect(select.props.options).toEqual([{ value: "historical", label: "historical（历史值，当前不允许）", disabled: true }, { value: "openai_chat_completions", label: "OpenAI Chat Completions", disabled: false }]);
+    expect(select.props.options).toEqual([{ value: "historical", label: "historical（历史值，当前不允许）", disabled: true }, { value: "openai_chat_completions", label: "OpenAI 对话补全", disabled: false }]);
     expect(find(hooks.render(), Button, p => p.children === "保存分配").props.disabled).toBe(true); hooks.dispose();
   });
   it("prevents duplicate PUT and reports success only after authoritative readback", async () => {

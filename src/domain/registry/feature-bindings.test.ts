@@ -49,6 +49,12 @@ describe("Feature Binding boundary", () => {
     await expect(updateFeatureBinding("main_chat", { ...triple, model })).rejects.toMatchObject({ code: "validation" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
+  it("localizes protocol labels without changing enum values or unknown historical labels", () => {
+    expect(protocolName("openai_chat_completions")).toBe("OpenAI 对话补全");
+    expect(protocolName("anthropic_messages")).toBe("Anthropic 消息接口");
+    expect(protocolName("minimax_chatcompletion_v2")).toBe("MiniMax 对话接口 v2");
+    expect(protocolName("historical_protocol")).toBe("historical_protocol");
+  });
   it("uses backend diagnostics rather than the presence of a triple", () => {
     const feature = wire().features[0];
     for (const diagnostic of ["disabled_profile", "missing_credential", "missing_profile", "incompatible_protocol", "arbitrary_diagnostic"]) {

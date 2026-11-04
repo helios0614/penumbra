@@ -31,10 +31,14 @@ async function run(browser, origin, layout, width, dark, wallpaper = false) {
   const errors = [], external = [], requests = [], writes = [], pending = [];
   let mode = '', reads = 0;
   const connections = [connection('a'), connection('b'), connection('disabled', { enabled: false }), connection('nokey', { credential: { configured: false, masked: '', secret_ref: null } })];
+  if (!selectLayout) connections.push(connection('no-default', { default_model: null }));
   if (selectLayout) connections.push(...Array.from({ length: 26 }, (_, i) => connection('extra-' + i, i === 25 ? { name: '合成超长连接名称'.repeat(24) } : {})));
   const features = usages.map((usage, i) => ({ usage, selection: { connection_id: 'a', protocol: A, model: 'literal/' + usage }, diagnostic: null,
     allowed_protocols: [1, 3].includes(i) ? [O] : [5, 6].includes(i) ? [O, A, M] : [O, A],
     lifecycle: [0, 8].includes(i) ? 'new_session_default' : i === 7 ? 'request_default' : 'feature' }));
+  features[0].selection.model = 'gpt-5.6-sol';
+  features[7].selection.model = 'x'.repeat(256);
+  features[8].selection.model = 'vendor/' + 'very-long-model-token'.repeat(10);
   features[1].selection = null; features[1].diagnostic = 'feature_binding_required';
   features[2].selection.connection_id = 'disabled'; features[2].diagnostic = 'disabled_profile';
   features[3].selection.connection_id = 'nokey'; features[3].selection.protocol = O; features[3].diagnostic = 'missing_credential';
@@ -82,7 +86,7 @@ async function run(browser, origin, layout, width, dark, wallpaper = false) {
   const edit = async usage => { await row(usage).getByRole('button', { name: '编辑：' + names[usages.indexOf(usage)], exact: true }).click(); await dialog().waitFor(); };
   const choose = async (name, label) => { await dialog().getByRole('combobox', { name, exact: true }).click(); await openOptions().filter({ hasText: label }).filter({ visible: true }).getByText(label, { exact: true }).click(); };
   const enter = async () => { await page.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: /^模型与任务分配/ }).click(); await row('main_chat').waitFor(); };
-  const close = async () => { await dialog().locator('[data-slot="dialog-footer"]').getByRole('button', { name: '关闭', exact: true }).click(); await dialog().waitFor({ state: 'hidden' }); await row('main_chat').getByRole('button').waitFor({state:'visible'}); };
+  const close = async () => { await dialog().locator('[data-slot="dialog-footer"]').getByRole('button', { name: '取消', exact: true }).click(); await dialog().waitFor({ state: 'hidden' }); await row('main_chat').getByRole('button').waitFor({state:'visible'}); };
   const bounds = async () => {
     const viewport = page.viewportSize();
     // Compare against the physical test viewport: mobile innerWidth itself can grow on overflow.
@@ -91,11 +95,11 @@ async function run(browser, origin, layout, width, dark, wallpaper = false) {
   };
   async function runSelectLayout(label) {
     await edit('main_chat'); await page.waitForTimeout(200);
-    const trigger = () => dialog().getByRole('combobox', { name: 'Connection', exact: true });
+    const trigger = () => dialog().getByRole('combobox', { name: '连接', exact: true });
     const popup = () => page.locator('[data-slot="select-content"][data-open]');
     const original = await dialog().boundingBox();
     const literal = await dialog().getByLabel('模型名称', { exact: true }).inputValue();
-    const protocol = await dialog().getByRole('combobox', { name: 'Protocol', exact: true }).textContent();
+    const protocol = await dialog().getByRole('combobox', { name: '协议', exact: true }).textContent();
     const openList = async target => {
       // Sample the opening frames, including the initial positioning pass.
       await page.evaluate(() => {
@@ -119,8 +123,9 @@ async function run(browser, origin, layout, width, dark, wallpaper = false) {
     await last.scrollIntoViewIfNeeded(); await bounds();
     if (touch) await last.tap(); else await last.click();
     await popup().waitFor({ state: 'hidden' });
-    assert.equal(await dialog().getByLabel('模型名称', { exact: true }).inputValue(), literal);
-    assert.equal(await dialog().getByRole('combobox', { name: 'Protocol', exact: true }).textContent(), protocol);
+    assert.notEqual(await dialog().getByLabel('模型名称', { exact: true }).inputValue(), literal);
+    assert.equal(await dialog().getByLabel('模型名称', { exact: true }).inputValue(), 'suggestion/extra-25');
+    assert.equal(await dialog().getByRole('combobox', { name: '协议', exact: true }).textContent(), protocol);
     await openList(trigger()); await bounds();
     await page.getByRole('option', { name: '合成连接 a · 已启用', exact: true }).scrollIntoViewIfNeeded();
     if (touch) await page.getByRole('option', { name: '合成连接 a · 已启用', exact: true }).tap();
@@ -130,7 +135,7 @@ async function run(browser, origin, layout, width, dark, wallpaper = false) {
       await trigger().focus(); await page.keyboard.press('ArrowDown'); await popup().waitFor();
       await page.keyboard.press('End'); await page.keyboard.press('Escape'); await popup().waitFor({ state: 'hidden' }); await dialog().waitFor(); await bounds();
     }
-    await openList(dialog().getByRole('combobox', { name: 'Protocol', exact: true }));
+    await openList(dialog().getByRole('combobox', { name: '协议', exact: true }));
     assert.equal(await page.getByRole('option').count(), 2);
     await page.keyboard.press('Escape'); await popup().waitFor({ state: 'hidden' });
     await close();
@@ -161,26 +166,76 @@ async function run(browser, origin, layout, width, dark, wallpaper = false) {
     assert.deepEqual(await panel().locator('[data-feature-usage]').evaluateAll(nodes => nodes.map(node => node.dataset.featureUsage)), usages);
     for (const [usage, text] of [['main_chat', '当前可用'], ['memory_sentinel', '未配置'], ['memory_digest', '已停用'], ['web_compression', '缺少凭据'], ['quick_note_compression', '不存在'], ['camera_sentinel', '协议不兼容'], ['location_sentinel', '绑定无法解析']]) assert((await row(usage).textContent()).includes(text));
     assert(!(await panel().textContent()).includes('wrong-snapshot'));
+    assert.deepEqual(await panel().locator('h4').allTextContents(), ['主对话', '记忆与联网', '速记与感知', '独立任务']);
+    for (const [usage, tone] of [['main_chat', 'available'], ['memory_sentinel', 'unconfigured'], ['memory_digest', 'warning'], ['web_compression', 'warning'], ['camera_sentinel', 'warning'], ['location_sentinel', 'warning']])
+      assert.equal(await row(usage).locator('[data-feature-status]').getAttribute('data-feature-status'), tone);
+    const colors = await Promise.all(['main_chat', 'memory_sentinel', 'memory_digest'].map(usage => row(usage).locator('[data-feature-status]').evaluate(node => getComputedStyle(node).color)));
+    assert.equal(new Set(colors).size, 3, 'available, unconfigured and warning must have distinct colors');
+    for (const usage of ['main_chat', 'book_annotation', 'game_decision']) {
+      const literal = row(usage).locator('[data-model-literal]');
+      assert.equal(await literal.textContent(), features[usages.indexOf(usage)].selection.model);
+      assert.equal(await literal.getAttribute('title'), features[usages.indexOf(usage)].selection.model);
+      assert(await literal.evaluate(node => { return node.clientWidth > 0 && node.scrollWidth <= node.clientWidth && [...node.querySelectorAll('span > span')].every(token => getComputedStyle(token).whiteSpace === 'nowrap' && getComputedStyle(token).textOverflow === 'ellipsis'); }));
+      const modelBox = await literal.boundingBox(), headingBox = await row(usage).locator('[data-feature-heading]').boundingBox();
+      assert(modelBox.y >= headingBox.y + headingBox.height, 'model must stay below the heading and edit button');
+      if (usage === 'book_annotation' && width < 768) assert(await literal.locator('span > span').evaluateAll(tokens => tokens.some(token => token.scrollWidth > token.clientWidth)), 'oversized single token needs ellipsis');
+      if (usage === 'main_chat') assert(await literal.evaluate(node => node.scrollWidth <= node.clientWidth), 'short model must remain fully visible');
+    }
+    for (const usage of usages) {
+      const heading = row(usage).locator('[data-feature-heading]');
+      const title = await heading.locator('h5').boundingBox(), status = await heading.locator('[data-feature-status]').boundingBox(), button = await heading.getByRole('button').boundingBox();
+      assert(Math.abs(title.y + title.height / 2 - button.y - button.height / 2) < 1, 'name and edit button must be vertically centered');
+      assert(Math.abs(status.y + status.height / 2 - button.y - button.height / 2) < 1, 'status and edit button must be vertically centered');
+      assert(title.x + title.width <= status.x && status.x + status.width <= button.x, 'status belongs on the right, before the edit button');
+    }
+    // Cancel edits without mutation; management in the field header uses existing Settings navigation.
+    await edit('game_decision'); await bounds(); await page.screenshot({ path: path.join(output, `${layout}-${width}-${dark ? 'dark' : 'light'}-long-model.png`), animations: 'disabled' }); await close();
+    await edit('main_chat');
+    assert.equal(await dialog().getByLabel('当前后端状态').count(), 0);
+    assert.equal(await dialog().getByLabel('最终分配预览').count(), 0);
+    assert.equal(await dialog().getByRole('alert').count(), 0);
+    assert.equal(await dialog().getByRole('button', { name: '采用建议模型', exact: true }).count(), 0);
+    assert.equal(await dialog().getByLabel('模型名称', { exact: true }).inputValue(), 'gpt-5.6-sol');
+    await choose('连接', '合成连接 b · 已启用');
+    assert.equal(await dialog().getByLabel('模型名称', { exact: true }).inputValue(), 'suggestion/b');
+    await dialog().getByLabel('模型名称', { exact: true }).fill('cancelled-draft');
+    await choose('连接', '合成连接 b · 已启用');
+    assert.equal(await dialog().getByLabel('模型名称', { exact: true }).inputValue(), 'cancelled-draft');
+    await choose('连接', '合成连接 no-default · 已启用');
+    assert.equal(await dialog().getByLabel('模型名称', { exact: true }).inputValue(), 'cancelled-draft');
+    assert((await dialog().textContent()).includes('此连接未设置默认模型'));
+    assert(!(await dialog().getByRole('button', { name: '保存分配', exact: true }).isDisabled()));
+    assert((await dialog().getByRole('combobox', { name: '协议', exact: true }).textContent()).includes('Anthropic 消息接口'));
+    await choose('连接', '合成连接 a · 已启用');
+    assert.equal(await dialog().getByLabel('模型名称', { exact: true }).inputValue(), 'suggestion/a');
+    assert(!(await dialog().textContent()).includes('此连接未设置默认模型'));
+    await close(); assert.equal(writes.length, 0);
+    await edit('memory_digest'); assert((await dialog().getByLabel('绑定诊断').textContent()).includes('memory_digest · 诊断：disabled_profile')); await close();
+    await edit('main_chat'); await click('管理连接', dialog());
+    await page.getByRole('region', { name: '连接管理面板', exact: true }).waitFor();
+    await page.goBack(); await row('main_chat').waitFor();
+
     await bounds(); const label = `${layout}-${width}-${dark ? 'dark' : 'light'}${wallpaper ? '-wallpaper' : ''}`;
     await page.screenshot({ path: path.join(output, label + '-panel.png') });
     await edit('main_chat'); assert((await dialog().textContent()).includes('不修改已有会话'));
     await dialog().getByLabel('模型名称', { exact: true }).fill('catalog外/manual-v99');
-    await choose('Connection', '合成连接 b · 已启用');
-    assert.equal(await dialog().getByLabel('模型名称', { exact: true }).inputValue(), 'catalog外/manual-v99');
-    assert((await dialog().getByRole('combobox', { name: 'Protocol', exact: true }).textContent()).includes('Anthropic'));
-    await bounds(); await page.screenshot({ path: path.join(output, label + '-editor.png') });
+    await choose('连接', '合成连接 b · 已启用');
+    assert.equal(await dialog().getByLabel('模型名称', { exact: true }).inputValue(), 'suggestion/b');
+    await dialog().getByLabel('模型名称', { exact: true }).fill('catalog外/manual-v99');
+    assert((await dialog().getByRole('combobox', { name: '协议', exact: true }).textContent()).includes('Anthropic'));
+    await bounds(); await page.waitForTimeout(200); await page.screenshot({ path: path.join(output, label + '-editor.png'), animations: 'disabled' });
     await click('保存分配', dialog()); await dialog().waitFor({ state: 'hidden' }); assert.equal(features[0].selection.model, 'catalog外/manual-v99');
     await edit('main_chat'); assert.equal(await dialog().getByLabel('模型名称', { exact: true }).inputValue(), 'catalog外/manual-v99'); await close();
-    await edit('memory_sentinel'); await choose('Connection', '合成连接 b · 已启用'); assert.equal(await dialog().getByLabel('模型名称', { exact: true }).inputValue(), 'suggestion/b');
-    assert((await dialog().getByRole('combobox', { name: 'Protocol', exact: true }).textContent()).includes('选择协议'));
-    await dialog().getByRole('combobox', { name: 'Protocol', exact: true }).click(); await openOptions().first().waitFor(); assert.equal(await openOptions().count(), 1); await openOptions().getByText('OpenAI Chat Completions', { exact: true }).click();
+    await edit('memory_sentinel'); await choose('连接', '合成连接 b · 已启用'); assert.equal(await dialog().getByLabel('模型名称', { exact: true }).inputValue(), 'suggestion/b');
+    assert((await dialog().getByRole('combobox', { name: '协议', exact: true }).textContent()).includes('选择协议'));
+    await dialog().getByRole('combobox', { name: '协议', exact: true }).click(); await openOptions().first().waitFor(); assert.equal(await openOptions().count(), 1); await openOptions().getByText('OpenAI 对话补全', { exact: true }).click();
     await click('保存分配', dialog()); await dialog().waitFor({ state: 'hidden' });
     await edit('camera_sentinel'); assert((await dialog().textContent()).includes('historical_protocol'));
-    await dialog().getByRole('combobox', { name: 'Protocol', exact: true }).click(); await openOptions().first().waitFor(); assert.equal(await openOptions().count(), 4);
-    assert(await openOptions().filter({ hasText: 'historical_protocol' }).isDisabled()); await openOptions().getByText('MiniMax Chatcompletion v2', { exact: true }).click();
+    await dialog().getByRole('combobox', { name: '协议', exact: true }).click(); await openOptions().first().waitFor(); assert.equal(await openOptions().count(), 4);
+    assert(await openOptions().filter({ hasText: 'historical_protocol' }).isDisabled()); await openOptions().getByText('MiniMax 对话接口 v2', { exact: true }).click();
     await click('保存分配', dialog()); await dialog().waitFor({ state: 'hidden' });
-    await edit('quick_note_compression'); assert((await dialog().textContent()).includes('missing /?连接')); await choose('Connection', '合成连接 a · 已启用');
-    await click('采用建议模型', dialog()); await click('保存分配', dialog()); await dialog().waitFor({ state: 'hidden' });
+    await edit('quick_note_compression'); assert((await dialog().textContent()).includes('missing /?连接')); await choose('连接', '合成连接 a · 已启用');
+    assert.equal(await dialog().getByLabel('模型名称', { exact: true }).inputValue(), 'suggestion/a'); await click('保存分配', dialog()); await dialog().waitFor({ state: 'hidden' });
     await edit('game_decision'); assert((await dialog().textContent()).includes('不修改已有 Session'));
     const beforeClear = writes.length; await click('清除当前分配', dialog()); await click('取消清除', dialog()); assert.equal(writes.length, beforeClear);
     await click('清除当前分配', dialog()); assert((await dialog().textContent()).includes('不会恢复历史兼容绑定'));
@@ -190,7 +245,7 @@ async function run(browser, origin, layout, width, dark, wallpaper = false) {
     assert(await dialog().getByRole('button', { name: '保存分配', exact: true }).isDisabled()); await click('已核对，继续编辑', dialog());
     mode = 'unknown'; await dialog().getByLabel('模型名称', { exact: true }).fill('unknown-result'); const unknownCount = writes.length;
     await click('保存分配', dialog()); await dialog().getByRole('button', { name: '已核对，继续编辑', exact: true }).waitFor();
-    assert.equal(writes.length, unknownCount + 1); assert((await dialog().getByLabel('当前后端状态').textContent()).includes('unknown-result'));
+    assert.equal(writes.length, unknownCount + 1); assert((await dialog().getByLabel('读回的已保存分配').textContent()).includes('unknown-result'));
     await click('已核对，继续编辑', dialog()); mode = 'read-after-write-fail'; await click('保存分配', dialog());
     await dialog().getByRole('alert').waitFor(); assert(await dialog().getByRole('button', { name: '已核对，继续编辑', exact: true }).isDisabled());
     mode = ''; await click('重新读取当前状态', dialog()); await dialog().getByRole('button', { name: '已核对，继续编辑', exact: true }).waitFor();

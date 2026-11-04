@@ -19,8 +19,8 @@ export interface FeatureBinding {
   readonly lifecycle: string;
 }
 const protocolNames: Readonly<Record<string, string>> = {
-  openai_chat_completions: "OpenAI Chat Completions", anthropic_messages: "Anthropic Messages",
-  minimax_chatcompletion_v2: "MiniMax Chatcompletion v2",
+  openai_chat_completions: "OpenAI 对话补全", anthropic_messages: "Anthropic 消息接口",
+  minimax_chatcompletion_v2: "MiniMax 对话接口 v2",
 };
 const statusNames: Readonly<Record<string, string>> = {
   feature_binding_required: "未配置", main_default_not_selected: "未配置", main_selection_required: "未配置",

@@ -121,3 +121,80 @@ PR3 覆盖九项精确展示、features 权威、六类异常、单/多协议限
 新增 Select 布局回归 **9 组通过**：经典 / Editorial 各 320 浅色触屏、390 深色触屏、1440 浅色 / 深色鼠标与键盘，另 390 深色触屏 + 自定义合成壁纸；移动端均包含 520px 短视口。每组均无写入、外部请求或页面异常。已目视检查 320px 浅色展开及壁纸深色短视口截图，弹窗保持在屏幕内、列表正常内部滚动。结果为 `results-select.json`，脚本使用 `SETTINGS_PR3_VARIANT=select SETTINGS_PR3_OUTPUT=artifacts/settings-pr3-select-fix` 执行。
 
 原 PR3 功能浏览器回归另 **9 组通过**，保存、清除、读回、异常恢复、返回导航和壁纸布局保持正常，结果在 `feature-regression/results.json`。由于此次采用普通锚定弹出动画，脚本的选项断言限定于 `[data-open]` 浮层，避免关闭动画中的旧列表被计入下一份协议选项；没有减少协议数量或禁用历史值的断言。
+
+## UI Follow-up：列表与编辑弹窗（2026-11-04）
+
+本轮仅调整展示层，按本次文字需求实施；消息未附带所述两张最新截图，因此没有进行截图逐像素对照。保留统一玻璃面板、Settings 导航、九项功能、四个分组和系统 Dialog / AppSelect / Input / Button。
+
+- 列表：分组标题提升至 `text-sm / semibold`，增加细主题色竖线；统一组间距和行内留白。顶部依次为数量及操作、用途及生效范围说明、Registry 版本及持久化状态，异常和迁移提示继续保留。
+- 功能行：名称及状态、Connection / Protocol、Model 三层展示。模型字号从原 `text-xs` 提升至 `text-sm`，编辑按钮不收缩。模型仅在 `/`、`-`、`_` 分隔边界换行；只有单个超宽 token 使用省略号，完整文本保留在 DOM 和 `title`，编辑输入仍可查看完整 literal。没有使用 `break-all` 拆模型 token。
+- 状态：`FeatureBindingSummary.tsx` 统一列表及弹窗展示。当前可用为淡绿色点及文字；三个未配置 diagnostic 为中性灰；其余诊断及缺少后端选择的异常为柔和橙色。判断继续使用 Feature API 的 diagnostic / selection，不读取 Connection 启用或凭据字段推断可用性，原 diagnostic 原文仍可见。
+- 弹窗：轻量「当前分配」区域显示后端保存值；正常时不突出 usage ID，存在 diagnostic 时显示 usage 与 code。「管理连接 ↗」移到 Connection 标题右侧，沿用原 Settings 导航。「保存以下分配」以浅主题暖色背景区分草稿，继续展示三元组。底部按钮改为「取消」；保存主按钮、清除危险操作及二次确认保持原组件和流程。
+- 边界：没有修改领域/API 文件、后端 AionHome、allowed_protocols、literal 校验、Connection 切换与建议行为、保存/读回/异常核对、清除语义、lifecycle 或 Registry 迁移逻辑。没有改动其他 Settings 分类。
+
+### 验证
+
+全部使用现有 Fake API、合成连接和合成壁纸；没有读取真实凭据或业务配置。
+
+| 检查 | 结果 |
+| --- | --- |
+| 全量前端测试 | 217 文件、2937 条通过，含 PR3 编辑/写入/清除/恢复及原有 PR1 / PR2 回归。 |
+| TypeScript / 生产构建 | `npx tsc --noEmit --pretty false`、`npm run build` 通过。 |
+| PR3 功能浏览器回归 | 9 组通过：两种 Desktop 各 320 浅色、390 深色、1440 浅色/深色，另 390 深色自定义合成壁纸及 520px 短视口。 |
+| PR3 触屏下拉回归 | `SETTINGS_PR3_VARIANT=select` 9 组通过：30 连接、超长名称、触屏/鼠标/键盘、短视口，0 写入。 |
+| 新增 UI 断言 | 九功能/四分组、诊断状态及三种颜色区分；`gpt-5.6-sol` 完整显示；带分隔符超长模型的边界换行、256 字符无分隔符 token 的必要省略、完整 title 及编辑按钮空间；当前值与草稿独立、正常隐藏 usage / 异常保留 code、取消不写入、弹窗内管理连接及返回。 |
+| 交互与边界 | 原保存、建议、清除确认、失败/未知写入、重新读取、迟到响应和导航回归保留。所有浏览器组页面异常及外部请求均为 0。 |
+| 视觉检查 | 已目视检查 320 浅色列表/长模型编辑、390 深色壁纸编辑及 Editorial 桌面列表；真机 Safari 和实际壁纸效果留待人工验收。 |
+
+日志、JSON 及截图：`artifacts/settings-pr3-ui-followup/`，触屏回归在其 `select/` 子目录。复现沿用原脚本，设置 `SETTINGS_PR3_OUTPUT=artifacts/settings-pr3-ui-followup`；触屏组另设置 `SETTINGS_PR3_VARIANT=select` 和独立输出子目录。浏览器工具临时安装于 `/private/tmp/penumbra-ui-followup-tools`，未增加项目依赖。TypeScript 生成的 `tsconfig.tsbuildinfo` 已恢复开工内容，`git diff --check` 通过。
+
+本轮完成后停止，等待人工验收；未 commit、push 或 deploy。
+
+### 截图跟进：功能标题行对齐（2026-11-04）
+
+收到补充截图后，将功能名称、状态、编辑按钮整理为同一标题行，三者垂直居中；名称在左，状态靠右，编辑按钮位于最右侧。Connection / Protocol 与模型仍在下面独立展示。标题列允许长名称自然换行，状态与编辑按钮保留操作空间，不改字号和业务行为。
+
+浏览器脚本增加九项功能标题/状态/按钮中心线及左右顺序断言，模型改为校验位于标题行下方。全量 217 文件 / 2937 条测试及含 TypeScript 的生产构建通过。标题行调整后的 9 组浏览器回归通过（两种 Desktop、320/390/1440px、浅深色及合成壁纸），页面异常和外部请求均为 0。浏览器日志和截图位于 `artifacts/settings-pr3-ui-followup/alignment/` 与 `alignment-browser.log`；已目视检查 320px 浅色列表。未 commit、push 或 deploy。
+
+## UI Follow-up：简化编辑与切换连接自动预填（2026-11-04）
+
+本节替代前文「保留非空模型、点击采用建议」及正常状态显示两份摘要的交互规则。依据本次补充截图与明确需求，仅调整 UI、草稿交互及显示文案；保留前次列表标题/状态/编辑按钮同排居中布局、玻璃面板、四组九项功能和状态来源。
+
+### 修改文件与职责
+
+| 文件 | 本次职责 |
+| --- | --- |
+| `src/components/settings/features/FeatureBindingDialog.tsx` | 删除正常状态的「当前分配」「保存以下分配」和独立建议区域；中文字段；切换连接自动预填及无默认模型提示；保留异常诊断、写入核对和原清除确认。 |
+| `src/domain/registry/feature-bindings.ts` | 只修改三个协议的 UI 显示映射，不修改枚举、API 或权限。列表同步采用相同中文协议名称。 |
+| `src/components/settings/features/FeatureBindingDialog.test.tsx` | Fake Registry 覆盖首次打开、主动切换、同值重选、无默认模型、手动修改及异步读回后的草稿保护；回归保存/清除/异常恢复。 |
+| `src/domain/registry/feature-bindings.test.ts` | 补充中文映射与未知历史值原样展示的断言，保留 HTTP 契约测试。 |
+| `tests/browser/settings-pr3-smoke.cjs` | 更新中文控件定位及预填断言；保留原有列表布局、触屏下拉、写入、读回、清除、诊断及导航回归。 |
+
+### 弹窗结构与草稿规则
+
+正常弹窗按「标题及生效范围 → 连接（右侧管理连接）→ 协议 → 模型名称及 literal 说明 → 清除当前分配 → 取消/保存分配」组织。正常状态没有诊断卡片、配置摘要或「采用建议模型」按钮。
+
+仅当后端返回 diagnostic 时显示轻量警告，保留 usage ID、原始 code 和修复提示；缺失连接仍展示原连接 ID。正常表单只展示草稿，不能作为已保存值的依据，因此写入失败、结果未知或读回不一致时，仍在原「写入结果核对」流程内显示读回的已保存三元组（或无分配），避免移除摘要后无法核对并发变化。该信息不出现在正常编辑状态；保存、重新读取、确认继续和防自动重发逻辑未改变。
+
+- 初次打开：草稿来自后端 selection，不按连接默认模型替换已保存 literal。
+- 用户主动选择另一连接：从当前安全 Registry 快照取其 `default_model`；有非空值即替换模型草稿，允许随后手动改写。
+- 无默认模型：保留模型草稿并显示「此连接未设置默认模型，已保留当前模型名称，请确认是否适用」，不额外阻止填写或保存；原有凭据、协议、literal 校验继续生效。
+- 重复选择当前连接：直接返回，不预填，不覆盖手动输入。
+- 普通重渲染和异步读回：不触发预填。只有下一次主动选择另一连接才采用该连接的默认值。选择有默认值的连接后，前一条无默认模型提示消失。
+- 协议始终独立；不修改连接自身默认值、不推断协议、不调用模型目录、连接测试或真实 Provider、不自动保存。
+
+| 协议原值（不变） | 中文显示 |
+| --- | --- |
+| `openai_chat_completions` | OpenAI 对话补全 |
+| `anthropic_messages` | Anthropic 消息接口 |
+| `minimax_chatcompletion_v2` | MiniMax 对话接口 v2 |
+
+未知/历史协议继续显示原始值；允许的未知枚举仍可选择，不再允许的历史值保留为待修复选项。`allowed_protocols` 来源仍为 Feature API。
+
+### 验证与限制
+
+相关 2 文件 / 31 条测试通过；全量前端 **217 文件 / 2942 条测试通过**。`npx tsc --noEmit --pretty false` 和 `npm run build` 通过。所有数据为 Fake API 与合成配置。功能浏览器回归 9 组通过（经典/Editorial 各 320 浅色、390 深色、1440 浅色/深色，另 390 深色合成壁纸及短视口），覆盖自动预填、同值重选、无默认模型提示、协议保持、摘要删除、保存/读回/清除/异常恢复及管理连接导航；页面异常和外部请求均为 0。触屏下拉回归 9 组通过（30 个连接，触屏/鼠标/键盘、短视口和壁纸），0 写入、0 页面异常、0 外部请求。
+
+日志与截图位于 `artifacts/settings-pr3-dialog-simplify/`，触屏组位于 `select/`。已目视检查 320px 浅色与 390px 深色三字段弹窗。默认模型取自当前已读取的安全连接快照，不保证选择瞬间与其他客户端改动同步；不会为预填新增 API。真机 Safari、实际软键盘及用户壁纸效果仍需人工验收。本轮不修改 AionHome、Feature GET/PUT/DELETE、九个 usage、三元组、协议权限、lifecycle、Main/Game 新会话默认语义或 Registry 迁移行为。
+
+未 commit、push 或 deploy；完成后停止，等待人工验收。

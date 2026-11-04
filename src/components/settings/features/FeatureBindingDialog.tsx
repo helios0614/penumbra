@@ -1,3 +1,4 @@
+import { ArrowUpRight } from "lucide-react";
 import { useRef, useState } from "react";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,7 @@ import { FEATURE_NAMES, featureScope, featureStatus, protocolName, sameSelection
 import { RegistryError, validLiteral } from "@/domain/registry/registry-types";
 import { ConnectionError } from "../connections/ConnectionShared";
 import { useRegistryTask } from "../connections/useRegistryTask";
+import { FeatureSelectionSummary } from "./FeatureBindingSummary";
 import { readFeatureSnapshot, type FeatureSnapshot } from "./feature-snapshot";
 
 interface Outcome { snapshot: FeatureSnapshot; error: RegistryError | null }
@@ -18,7 +20,7 @@ export function FeatureBindingDialog({ initial, usage, onObserved, onSaved, onCl
   const [snapshot, setSnapshot] = useState(initial);
   const feature = snapshot.features.find(item => item.usage === usage)!;
   const [draft, setDraft] = useState<FeatureSelection>(() => feature.selection ?? { connection_id: "", protocol: "", model: "" });
-  const [suggestion, setSuggestion] = useState<string | null>(null);
+  const [confirmModel, setConfirmModel] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [review, setReview] = useState(false), [checked, setChecked] = useState(false);
   const [notice, setNotice] = useState("");
@@ -67,22 +69,24 @@ export function FeatureBindingDialog({ initial, usage, onObserved, onSaved, onCl
       <DialogHeader><DialogTitle>编辑{FEATURE_NAMES[usage]}</DialogTitle>
         <DialogDescription>{featureScope(feature)}</DialogDescription></DialogHeader>
       <DialogBody className="space-y-4">
-        <div className="space-y-1 text-xs text-muted-strong" aria-label="当前后端状态">
-          <p>{usage} · {featureStatus(feature)}</p>
-          {feature.selection && <p className="break-all">当前：{snapshot.registry.connections.find(item => item.id === feature.selection!.connection_id)?.name ?? feature.selection.connection_id} · {protocolName(feature.selection.protocol)} · {feature.selection.model}</p>}
-          {feature.diagnostic && <p className="break-all">诊断：{feature.diagnostic}</p>}
-        </div>
-        <div className="grid gap-1"><span className="text-xs font-medium">Connection</span>
-          <AppSelect ariaLabel="Connection" surface="translucent" controlSize="comfortable" placeholder="选择连接" value={draft.connection_id} options={connections}
+        {feature.diagnostic && <div role="alert" aria-label="绑定诊断" className="space-y-1 rounded-xl bg-warning/10 p-3 text-xs leading-5 text-warning-foreground">
+          <p>{featureStatus(feature)}。请核对连接、协议和模型名称后修复分配。</p>
+          <p className="[overflow-wrap:anywhere]">{usage} · 诊断：{feature.diagnostic}</p>
+          {feature.selection && !snapshot.registry.connections.some(item => item.id === feature.selection!.connection_id) && <p className="[overflow-wrap:anywhere]">连接不存在：{feature.selection.connection_id}</p>}
+        </div>}
+        <div className="grid gap-1"><div className="flex items-center justify-between gap-2"><span className="text-xs font-medium">连接</span>
+          <Button variant="ghost" size="compact" className="h-7 px-0 text-xs text-primary-ink" onClick={onManageConnections} disabled={busy}>管理连接<ArrowUpRight aria-hidden="true" className="size-3.5" /></Button></div>
+          <AppSelect ariaLabel="连接" surface="translucent" controlSize="comfortable" placeholder="选择连接" value={draft.connection_id} options={connections}
             positionMethod="fixed" alignItemWithTrigger={false} contentClassName="max-h-[min(20rem,var(--available-height))]"
             disabled={busy || review} onValueChange={id => {
+              if (id === draft.connection_id) return;
               const model = snapshot.registry.connections.find(item => item.id === id)?.default_model ?? null;
-              setSuggestion(model); setDraft(previous => ({ ...previous, connection_id: id, model: previous.model.trim() ? previous.model : model ?? previous.model }));
+              setConfirmModel(!model);
+              setDraft(previous => ({ ...previous, connection_id: id, model: model || previous.model }));
             }} />
-          <Button variant="ghost" size="compact" className="justify-self-start px-0" onClick={onManageConnections} disabled={busy}>管理连接</Button>
         </div>
-        <div className="grid gap-1"><span className="text-xs font-medium">Protocol</span>
-          <AppSelect ariaLabel="Protocol" surface="translucent" controlSize="comfortable" placeholder="选择协议" value={draft.protocol} options={protocols}
+        <div className="grid gap-1"><span className="text-xs font-medium">协议</span>
+          <AppSelect ariaLabel="协议" surface="translucent" controlSize="comfortable" placeholder="选择协议" value={draft.protocol} options={protocols}
             positionMethod="fixed" alignItemWithTrigger={false}
             disabled={busy || review} onValueChange={protocol => setDraft(previous => ({ ...previous, protocol }))} />
           {draft.protocol && !feature.allowed_protocols.includes(draft.protocol) && <p className="text-xs text-warning">历史协议已不符合当前功能约束，请主动选择允许的协议。</p>}
@@ -92,15 +96,15 @@ export function FeatureBindingDialog({ initial, usage, onObserved, onSaved, onCl
             onChange={event => setDraft(previous => ({ ...previous, model: event.target.value }))} />
         </label>
         <p className="text-xs leading-5 text-muted-foreground">可手动填写目录外模型；1–256 个字符，内部不能含空白或不可打印字符。不根据模型名推断协议。</p>
-        {suggestion && <div className="space-y-1 text-xs"><p className="break-all text-muted-strong">新连接的模型建议：{suggestion}</p>
-          <Button variant="outline" size="compact" disabled={busy || review} onClick={() => setDraft(previous => ({ ...previous, model: suggestion }))}>采用建议模型</Button></div>}
-        <div aria-label="最终分配预览" className="space-y-1 border-t border-border/60 pt-3 text-xs leading-5">
-          <p className="font-medium">保存以下分配</p><p className="break-all">{connection?.name ?? (draft.connection_id || "尚未选择连接")} · {protocolName(draft.protocol) || "尚未选择协议"} · {draft.model.trim() || "尚未填写模型"}</p>
-        </div>
+        {confirmModel && <p role="status" className="text-xs leading-5 text-muted-strong">此连接未设置默认模型，已保留当前模型名称，请确认是否适用。</p>}
         <ConnectionError error={task.state.error} />
         {notice && <p role="status" className="text-xs leading-5 text-muted-strong">{notice}</p>}
         {review && <div className="space-y-2 text-xs leading-5" aria-label="写入结果核对">
           <p>写入后须核对当前后端状态，不会自动重发。草稿不会替换读回结果。</p>
+          {checked && !busy && <div aria-label="读回的已保存分配" className="min-w-0 space-y-1">
+            <p className="font-medium">读回的已保存分配</p>
+            {feature.selection ? <FeatureSelectionSummary selection={feature.selection} connectionName={snapshot.registry.connections.find(item => item.id === feature.selection!.connection_id)?.name ?? feature.selection.connection_id} /> : <p>未返回已保存的分配。</p>}
+          </div>}
           {!busy && <div className="flex flex-wrap gap-2"><Button variant="outline" size="compact" onClick={() => { void reread(); }}>重新读取当前状态</Button>
             <Button variant="outline" size="compact" disabled={!checked} onClick={() => { setReview(false); setConfirmClear(false); setNotice(""); task.reset(); }}>已核对，继续编辑</Button></div>}
         </div>}
@@ -112,7 +116,7 @@ export function FeatureBindingDialog({ initial, usage, onObserved, onSaved, onCl
               <Button variant="destructive" size="compact" disabled={busy || review} onClick={() => { void write(true); }}>确认清除</Button></div>
           </div>}
       </DialogBody>
-      <DialogFooter><Button variant="outline" onClick={onClose}>关闭</Button>
+      <DialogFooter><Button variant="outline" onClick={onClose}>取消</Button>
         <Button loading={busy} disabled={busy || review || confirmClear || !valid} onClick={() => { void write(false); }}>保存分配</Button></DialogFooter>
     </DialogContent>
   </Dialog>;
