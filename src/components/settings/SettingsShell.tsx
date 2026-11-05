@@ -24,7 +24,7 @@ export interface SettingsPage {
   readonly parentId?: string;
 }
 
-const plannedCategories = ["服务集成", "MCP 工具（独立页面）", "高级设置"];
+const plannedCategories = ["服务集成", "高级设置"];
 
 /** Desktop hosts own the Settings route; categories use history state without storing drafts. */
 export function SettingsShell({ pages, onClose }: {
