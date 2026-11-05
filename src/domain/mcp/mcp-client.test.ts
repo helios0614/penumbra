@@ -71,6 +71,6 @@ describe("server drafts and preserved credentials", () => {
     const unknown = serverDraft(parseServer(fixture({ credentialMode: "unknown" }))); expect(unknown.mode).toBe("unknown"); expect(() => serverBody(unknown)).toThrow(MCPError);
   });
   it("interprets Unix seconds and distinguishes untouched offline servers", () => {
-    expect(verification({ status: "offline", lastConnected: 0 })).toBe("尚未验证"); expect(verification({ status: "online", lastConnected: 1700000000 })).toBe("最近验证成功"); expect(verification({ status: "offline", lastConnected: 1700000000 })).toBe("最近验证失败");
+    expect(verification({ status: "offline", lastConnected: 0 })).toBe("尚未验证"); expect(verification({ status: "online", lastConnected: 1700000000 })).toBe("上次验证成功"); expect(verification({ status: "offline", lastConnected: 1700000000 })).toBe("上次验证失败");
   });
 });

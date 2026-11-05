@@ -117,5 +117,7 @@ export async function saveDepth(value: string, signal?: AbortSignal) {
 }
 export function verification(server: Pick<MCPServer, "status" | "lastConnected">) {
   if (server.lastConnected <= 0 && server.status !== "online") return "尚未验证";
-  return server.status === "online" ? "最近验证成功" : server.status === "offline" ? "最近验证失败" : "验证状态未知";
+  return server.status === "online" ? "上次验证成功" : server.status === "offline" ? "上次验证失败" : "验证状态未知";
 }
+
+export const credentialModeLabel = (mode: string) => mode === "query_token" ? "查询参数" : mode === "path_segment" ? "路径段" : "不支持的凭据模式";
