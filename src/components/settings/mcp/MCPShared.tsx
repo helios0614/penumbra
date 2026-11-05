@@ -5,13 +5,13 @@ import type { MCPError } from "@/domain/mcp/mcp-client";
 export function MCPFailure({ error, retry }: { error: MCPError | null; retry?: () => void }) {
   return error && <div role="alert" className="rounded-xl bg-warning/10 p-3 text-xs leading-relaxed"><p>{error.message}{error.status > 0 && `（HTTP ${error.status}）`}</p>{retry && <Button variant="outline" size="sm" onClick={retry}>重新读取</Button>}</div>;
 }
-export function MCPDialog({ title, description, children, footer, close, busy = false }: {
-  title: string; description: string; children: ReactNode; footer?: ReactNode; close: () => void; busy?: boolean;
+export function MCPDialog({ title, description, children, footer, close, busy = false, bodyAsForm = false }: {
+  title: string; description: string; children: ReactNode; footer?: ReactNode; close: () => void; busy?: boolean; bodyAsForm?: boolean;
 }) {
   return <Dialog open onOpenChange={(open, event) => { if (!open && busy) event.cancel(); else if (!open) close(); }}>
     <DialogContent className="sm:max-w-lg" closeButtonProps={{ disabled: busy }}>
       <DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription>{description}</DialogDescription></DialogHeader>
-      <DialogBody className="space-y-4">{children}</DialogBody>
+      <DialogBody className="space-y-4" render={bodyAsForm ? <form autoComplete="off" onSubmit={event => event.preventDefault()} /> : undefined}>{children}</DialogBody>
       <DialogFooter>{footer ?? <Button variant="outline" onClick={close}>关闭</Button>}</DialogFooter>
     </DialogContent>
   </Dialog>;

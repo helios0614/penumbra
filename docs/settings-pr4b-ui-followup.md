@@ -111,3 +111,7 @@ SETTINGS_PR4B_OUTPUT=/private/tmp/penumbra-pr4b-ui2-browser node tests/browser/s
 ```
 
 继续只使用隔离浏览器上下文、Fake API 和合成配置。验收需关注真机 Safari/软键盘、生产主题/壁纸下的实际观感和触控；既有 PR4-B 契约限制与前轮已记录的 PR2 Toast 测试限制不变。本轮不据合成回归宣称生产服务联调通过。完成后停止，等待人工验收。
+
+## API / MCP 资源列表统一（2026-11-05）
+
+后续轮次在已提交的 MCP 收尾基础上，与 API Connection 共用展示层列表骨架。MCP 保留独立 Switch 和专属全局/工具/高级设置；验证信息纳入展开字段，操作统一图标与间距。具体变更、复用边界、验证结果和人工验收限制见 [统一交付记录](./settings-resources-ui-followup.md)。

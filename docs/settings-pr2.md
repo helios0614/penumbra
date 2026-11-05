@@ -329,3 +329,7 @@ PR2 浏览器保留原有凭据操作、stale ref、失败读回、未知写入�
 - 不调用真实 Provider，不使用真实 API Key；测试仅证明指定配置的一次普通非流式文本请求，不能证明完整 Chat / Thinking / Cache / Tools / 图片 / 长上下文能力。浏览器是桌面 Chrome 模拟，真机软键盘与 Safari 待人工验收。
 
 完成后停止，等待人工验收；不 commit、push、deploy。
+
+## 资源列表统一 UI Follow-up（2026-11-05）
+
+API 与 MCP 共同列表骨架、左标签/右值信息排版及图标操作已在后续 UI 轮次接入，API 保留紧凑行、编辑入口和 Cloudflare 差异。修改范围、验证结果及旧 PR2 Toast 测试限制见 [统一交付记录](./settings-resources-ui-followup.md)。

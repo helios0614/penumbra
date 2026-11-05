@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Plus, RefreshCw } from "lucide-react";
+import { Copy, Eye, EyeOff, FlaskConical, Pencil, Plus, RefreshCw, Trash2, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { PageScrollArea } from "@/components/ui/page-scroll-area";
@@ -8,6 +8,7 @@ import { copyWithFeedback } from "@/components/ui/copy-feedback";
 import { getMCPEnabled, listServers, setMCPEnabled, updateServer, revealSecret, revealedKind, verification, credentialModeLabel, type MCPServer, type MCPTool } from "@/domain/mcp/mcp-client";
 import { useMCPTask } from "./useMCPTask";
 import { MCPFailure } from "./MCPShared";
+import { ResourceRow, ResourceField, ResourceStatus, ResourceAction, ResourceActions } from "../ResourceList";
 import { MCPAdvanced } from "./MCPAdvanced";
 import { MCPToolsDialog } from "./MCPTools";
 import { MCPConfirmDialog } from "./MCPConfirmDialog";
@@ -68,22 +69,25 @@ function ServerRow({ server, expanded, expand, busy, count, dialogOpen, refresh,
   refresh: () => Promise<MCPServer[] | undefined>; open: (modal: Modal) => void; toggle: (enabled: boolean) => void;
 }) {
   const status = verification(server);
-  return <article data-mcp-server={server.name} className="min-w-0 px-3 py-2 text-xs sm:px-4">
-    <div data-mcp-server-heading className={`-mx-3 flex items-start gap-2 px-3 py-1 sm:-mx-4 sm:px-4 ${expanded ? "bg-background/15" : ""}`}><button type="button" aria-expanded={expanded} aria-label={`详情 ${server.displayName}`} className="flex min-h-11 min-w-0 flex-1 items-start gap-2 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-ring" onClick={expand}>
-      <ChevronDown aria-hidden="true" className={`mt-1 size-4 shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} /><span className="min-w-0 space-y-1"><span className="block break-all text-sm font-semibold">{server.displayName}</span><span className="block text-muted-foreground">{server.enabled ? "服务器已启用" : "服务器已停用"} · 凭据{server.credential.configured ? "已配置" : "未配置"}</span></span></button>
-      <Switch aria-label={`启用服务器 ${server.displayName}`} checked={server.enabled} disabled={busy || (server.credential.configured && !server.credential.secret_ref)} onCheckedChange={toggle} /></div>
-    <div data-mcp-verification className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2 leading-relaxed"><span className={status === "上次验证成功" ? "text-success" : status === "上次验证失败" ? "text-destructive" : "text-muted-foreground"}>{status}</span>{server.lastConnected > 0 && <span className="text-muted-foreground">{new Date(server.lastConnected * 1000).toLocaleString()}</span>}</div>
-    {count && <p className="pb-2 text-muted-foreground">已启用 {count.filter(tool => tool.enabled).length} / 共 {count.length} 项工具</p>}
-    {expanded && <div data-mcp-details className="space-y-2 border-t border-border/60 pt-2">
-      <dl className="space-y-1.5"><div className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-2 leading-relaxed"><dt className="text-muted-foreground">公开 URL</dt><dd className="min-w-0 text-right [overflow-wrap:anywhere]">{server.url || (server.url_diagnostic ? "地址已安全隐藏，请手动修正" : "未提供公开地址")}</dd></div><div className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-2 leading-relaxed"><dt className="text-muted-foreground">凭据模式</dt><dd className="min-w-0 text-right">{credentialModeLabel(server.credentialMode)}</dd></div></dl>
+  return <ResourceRow data-mcp-server={server.name} title={server.displayName} expanded={expanded} onToggle={expand}
+    toggleLabel={`详情 ${server.displayName}`} detailsLabel={`${server.displayName}的详情`}
+    description={<><ResourceStatus active={server.enabled} stateLabel={server.enabled ? "已启用" : "已停用"} label={server.enabled ? "服务器已启用" : "服务器已停用"} /> · 凭据{server.credential.configured ? "已配置" : "未配置"}</>}
+    controls={<Switch aria-label={`启用服务器 ${server.displayName}`} checked={server.enabled} disabled={busy || (server.credential.configured && !server.credential.secret_ref)} onCheckedChange={toggle} />}>
+      <dl className="space-y-1.5">
+        <ResourceField label="验证状态"><span data-mcp-verification className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1"><span className={status === "上次验证成功" ? "text-success" : status === "上次验证失败" ? "text-destructive" : "text-muted-foreground"}>{status}</span>{server.lastConnected > 0 && <span className="text-muted-foreground">{new Date(server.lastConnected * 1000).toLocaleString()}</span>}</span></ResourceField>
+        <ResourceField label="公开 URL">{server.url || (server.url_diagnostic ? "地址已安全隐藏，请手动修正" : "未提供公开地址")}</ResourceField>
+        <ResourceField label="凭据模式">{credentialModeLabel(server.credentialMode)}</ResourceField>
+        {count && <ResourceField label="工具">已启用 {count.filter(tool => tool.enabled).length} / 共 {count.length} 项工具</ResourceField>}
+      </dl>
       {server.url_diagnostic && <p role="alert" className="break-words rounded-xl bg-warning/10 p-3">{server.url_diagnostic}。请编辑并手动修正地址；不会猜测或截断 URL。</p>}
       <SecretDetails key={`${server.name}:${dialogOpen}`} server={server} refresh={refresh} clear={() => open({ kind: "clear", server })} />
-      <div data-mcp-server-actions className="flex flex-wrap items-start justify-between gap-2 border-t border-border/60 pt-2">
-        <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={busy} onClick={() => open({ kind: "edit", server })}>编辑</Button><Button size="sm" variant="outline" disabled={busy || !!server.url_diagnostic} onClick={() => open({ kind: "test", input: { id: server.name, body: {} } })}>测试连接</Button><Button size="sm" variant="outline" disabled={busy} onClick={() => open({ kind: "tools", id: server.name })}>管理工具</Button></div>
-        <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/8 hover:text-destructive" disabled={busy} onClick={() => open({ kind: "delete", server })}>删除</Button>
-      </div>
-    </div>}
-  </article>;
+      <ResourceActions data-mcp-server-actions aria-label={`${server.displayName}的操作`}>
+        <ResourceAction icon={Pencil} label="编辑" disabled={busy} onClick={() => open({ kind: "edit", server })} />
+        <ResourceAction icon={FlaskConical} label="测试连接" disabled={busy || !!server.url_diagnostic} onClick={() => open({ kind: "test", input: { id: server.name, body: {} } })} />
+        <ResourceAction icon={Wrench} label="管理工具" disabled={busy} onClick={() => open({ kind: "tools", id: server.name })} />
+        <ResourceAction icon={Trash2} label="删除" danger disabled={busy} onClick={() => open({ kind: "delete", server })} />
+      </ResourceActions>
+  </ResourceRow>;
 }
 function SecretDetails({ server, refresh, clear }: { server: MCPServer; refresh: () => Promise<unknown>; clear: () => void }) {
   const [notice, setNotice] = useState("");
@@ -93,14 +97,13 @@ function SecretDetails({ server, refresh, clear }: { server: MCPServer; refresh:
   useEffect(() => { if (task.state.error?.code === "stale_secret_ref") { setNotice("凭据引用已过期，请核对刷新后的状态，再次确认操作。"); void refresh(); } }, [task.state.error]);
   const secret = task.state.data?.ref === ref ? task.state.data.secret : null;
   return <div className="space-y-2">
-    <dl><div className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-2 leading-relaxed"><dt className="text-muted-foreground">凭据</dt><dd className="min-w-0 text-right [overflow-wrap:anywhere]">{server.credential.configured ? `已配置 · ${server.credential.masked}` : "未配置"}</dd></div></dl>
+    <dl><ResourceField label="凭据" actions={<ResourceActions separated={false} className="shrink-0 gap-x-1.5 gap-y-0" aria-label={`${server.displayName}的凭据操作`}>
+      {secret === null ? <ResourceAction icon={Eye} label="查看凭据" iconOnly compactIcon disabled={!ref || task.state.busy} onClick={() => { setNotice(""); if (ref) void task.run(async signal => ({ secret: await revealSecret(ref, signal), ref })); }} /> : <><ResourceAction icon={EyeOff} label="隐藏凭据" iconOnly compactIcon onClick={task.reset} /><ResourceAction icon={Copy} label="复制凭据" iconOnly compactIcon onClick={() => { void copyWithFeedback(secret, async value => { if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable"); await navigator.clipboard.writeText(value); }, toast.show); }} /></>}
+      <ResourceAction icon={Trash2} label="清除凭据" iconOnly compactIcon danger disabled={!server.credential.configured || !ref || task.state.busy} onClick={() => { task.reset(); clear(); }} />
+    </ResourceActions>}>{server.credential.configured ? `已配置 · ${server.credential.masked}` : "未配置"}</ResourceField></dl>
     <MCPFailure error={task.state.error} />
     {notice && <p role="status">{notice}</p>}
     {secret !== null && <div><p className="text-muted-foreground">{revealedKind(secret)}</p><pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all select-text">{secret}</pre></div>}
     {!ref && server.credential.configured && <p className="text-muted-foreground">当前无可用凭据引用，请刷新后再操作。</p>}
-    <div className="flex flex-wrap gap-x-4 gap-y-1">
-      {secret === null ? <Button size="sm" variant="ghost" className="px-0" disabled={!ref || task.state.busy} onClick={() => { setNotice(""); if (ref) void task.run(async signal => ({ secret: await revealSecret(ref, signal), ref })); }}>查看凭据</Button> : <><Button size="sm" variant="ghost" className="px-0" onClick={task.reset}>隐藏凭据</Button><Button size="sm" variant="ghost" className="px-0" onClick={() => { void copyWithFeedback(secret, async value => { if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable"); await navigator.clipboard.writeText(value); }, toast.show); }}>复制凭据</Button></>}
-      <Button size="sm" variant="ghost" className="px-0 text-destructive hover:bg-destructive/8 hover:text-destructive" disabled={!server.credential.configured || !ref || task.state.busy} onClick={() => { task.reset(); clear(); }}>清除凭据</Button>
-    </div>
   </div>;
 }

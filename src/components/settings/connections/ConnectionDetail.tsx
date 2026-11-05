@@ -124,7 +124,7 @@ export function ConnectionDetail({ id: initialId, onSaved, onUpdated, onClose, f
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
     <DialogContent className="max-w-2xl" finalFocus={finalFocus} closeButtonProps={{ "aria-label": "关闭连接编辑" }}>
       <DialogHeader><DialogTitle>{id ? "编辑连接" : "新增连接"}</DialogTitle><DialogDescription>共享连接配置；模型预填建议不改变已有绑定。</DialogDescription></DialogHeader>
-      <DialogBody className="space-y-4">
+      <DialogBody className="space-y-4" render={<form autoComplete="off" onSubmit={event => event.preventDefault()} />}>
         <ConnectionError error={version.state.error} onRetry={() => { void version.run(signal => registry.listConnections({ signal })); }} />
         {version.state.data && (version.state.data.migration_required || version.state.data.diagnosticCount > 0 || version.state.data.deferredCount > 0) && <RegistryVersion value={version.state.data} />}
         <ConnectionError error={read.state.error} onRetry={() => { void refresh(snapshot !== null); }} />
@@ -141,25 +141,25 @@ export function ConnectionDetail({ id: initialId, onSaved, onUpdated, onClose, f
         </section>}
         {(!id || snapshot) && <>
           <fieldset disabled={busy} className="grid min-w-0 gap-3 sm:grid-cols-2">
-            <label className="grid gap-1 text-xs"><span>连接名称</span><Input surface="translucent" controlSize="comfortable" aria-label="连接名称" value={draft.name} onChange={event => change("name", event.target.value)} /></label>
-            <label className="grid gap-1 text-xs"><span>Base URL</span><Input surface="translucent" controlSize="comfortable" aria-label="Base URL" value={draft.base_url} placeholder="https://relay.example/v1" onChange={event => change("base_url", event.target.value)} /></label>
-            <div className="space-y-1"><p className="text-xs">接入方式</p><AppSelect surface="translucent" controlSize="comfortable" ariaLabel="Transport" value={draft.transport} disabled={busy}
+            <label className="grid gap-2 text-xs"><span>连接名称</span><Input surface="translucent" controlSize="comfortable" aria-label="连接名称" value={draft.name} onChange={event => change("name", event.target.value)} /></label>
+            <label className="grid gap-2 text-xs"><span>Base URL</span><Input surface="translucent" controlSize="comfortable" aria-label="Base URL" value={draft.base_url} placeholder="https://relay.example/v1" onChange={event => change("base_url", event.target.value)} /></label>
+            <div className="grid gap-2"><p className="text-xs">接入方式</p><AppSelect surface="translucent" controlSize="comfortable" ariaLabel="Transport" value={draft.transport} disabled={busy}
               options={TRANSPORTS.map(value => ({ value, label: value === "direct" ? "Direct" : value === "cloudflare_rest" ? "Cloudflare REST" : "Cloudflare Anthropic" }))}
               onValueChange={value => change("transport", value as Transport)} /></div>
-            {draft.transport !== "direct" && <label className="grid gap-1 text-xs"><span>Gateway ID（可选）</span><Input surface="translucent" controlSize="comfortable" aria-label="Gateway ID" value={draft.gateway_id ?? ""} onChange={event => change("gateway_id", event.target.value || null)} /></label>}
+            {draft.transport !== "direct" && <label className="grid gap-2 text-xs"><span>Gateway ID（可选）</span><Input surface="translucent" controlSize="comfortable" aria-label="Gateway ID" value={draft.gateway_id ?? ""} onChange={event => change("gateway_id", event.target.value || null)} /></label>}
             <div className="flex items-center justify-between gap-3"><span className="text-xs">启用此连接</span><Switch aria-label="启用此连接" checked={draft.enabled} onCheckedChange={value => change("enabled", value)} disabled={busy} /></div>
           </fieldset>
           {snapshot?.enabled && !draft.enabled && <p className="text-xs leading-relaxed text-warning">停用后引用此连接的调用可能失败，不会自动切换到其他连接。</p>}
           <section aria-label="模型预填配置" className="space-y-3 border-t border-border/60 pt-3">
             {snapshot ? <ModelDiscovery key={`${snapshot.id}:${snapshot.credential.secret_ref}:${snapshot.base_url}:${snapshot.transport}:${snapshot.enabled}`}
               connection={snapshot} autoFetch={autoDiscover} onAutoFetch={() => setAutoDiscover(false)} disabled={controlsDisabled} unsaved={probeUnsaved} value={draft.default_model ?? ""} onUseModel={model => change("default_model", model || null)} /> :
-              <div className="space-y-1"><p className="text-xs">模型预填建议（可选）</p><div className="flex min-w-0 items-stretch gap-2"><Input surface="translucent" controlSize="comfortable" className="min-w-0 flex-1" aria-label="模型预填建议" disabled={busy} value={draft.default_model ?? ""} onChange={event => change("default_model", event.target.value || null)} />
+              <div className="grid gap-2"><p className="text-xs">模型预填建议（可选）</p><div className="flex min-w-0 items-stretch gap-2"><Input surface="translucent" controlSize="comfortable" className="min-w-0 flex-1" aria-label="模型预填建议" disabled={busy} value={draft.default_model ?? ""} onChange={event => change("default_model", event.target.value || null)} />
                 <Button size="comfortable" className="self-stretch px-3" variant="outline" disabled={controlsDisabled || !valid || !key.trim() || !draft.enabled || draft.transport !== "direct"} onClick={() => { setCreatingForDiscovery(true); begin("save"); }}>获取模型</Button></div></div>}
             <p className="text-xs text-muted-foreground">仅用于选择连接时预填，不改变已有模型绑定。</p>
             {!snapshot && <p className="text-xs text-muted-foreground">填写名称、地址和 Key 后可获取模型；需先确认创建连接。</p>}
           </section>
           <section aria-label="API Key" className="space-y-2 border-t border-border/60 pt-3">
-            <div className="grid gap-1"><div className="flex flex-wrap items-center justify-between gap-1 text-xs"><h3 className="font-medium">API Key</h3><span className="text-muted-strong">{snapshot?.credential.configured ? `已配置 · ${snapshot.credential.masked}` : "未配置"}</span></div>
+            <div className="grid gap-2"><div className="flex flex-wrap items-center justify-between gap-1 text-xs"><h3 className="font-medium">API Key</h3><span className="text-muted-strong">{snapshot?.credential.configured ? `已配置 · ${snapshot.credential.masked}` : "未配置"}</span></div>
             <Input surface="translucent" controlSize="comfortable" aria-label="新 API Key" type="password" autoComplete="new-password" value={key} disabled={controlsDisabled}
               placeholder={snapshot?.credential.configured ? "输入新 Key，留空保留" : "输入 Key，可稍后配置"} onChange={event => { setKey(event.target.value); setConfirm(null); }} /></div>
             {snapshot?.credential.configured && <div className="flex flex-wrap gap-x-5 gap-y-2">

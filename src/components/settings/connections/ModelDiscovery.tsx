@@ -46,7 +46,7 @@ export function ModelDiscovery({ connection, disabled, unsaved, value = "", auto
   const succeeded = openai.state.status === "success" || anthropic.state.status === "success" || anthropicModels.length > 0;
   const page = anthropic.state.data;
   return <section aria-label="模型发现" className="space-y-2">
-    <div className="grid gap-1"><p className="text-xs">模型预填建议（可选）</p>
+    <div className="grid gap-2"><p className="text-xs">模型预填建议（可选）</p>
     <div className="flex min-w-0 items-stretch gap-2">
       <Input surface="translucent" controlSize="comfortable" aria-label="模型预填建议" className="min-w-0 flex-1" value={value} disabled={disabled} onChange={event => onUseModel(event.target.value)} />
       <Popover open={open} onOpenChange={setOpen}>

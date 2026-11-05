@@ -1,7 +1,6 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { ChevronDown, Copy, Eye, FlaskConical, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Copy, Eye, FlaskConical, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { PageScrollArea } from "@/components/ui/page-scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -10,6 +9,7 @@ import { displayBaseUrl, RegistryError, type Connection, type ConnectionList } f
 import { useRegistryTask } from "./useRegistryTask";
 import { ConnectionError, RegistryVersion } from "./ConnectionShared";
 
+import { ResourceRow, ResourceField, ResourceStatus, ResourceAction, ResourceActions } from "../ResourceList";
 import { ConnectionDetail } from "./ConnectionDetail";
 import { ConnectionTestDialog } from "./ConnectionTestDialog";
 import { ConnectionDeleteDialog } from "./ConnectionDeleteDialog";
@@ -65,7 +65,6 @@ function ConnectionRow({ connection, expanded, onExpand, onAction, onRefresh, ac
   connection: Connection; expanded: boolean; onExpand: () => void; onAction: (kind: "edit" | "delete" | "test") => void;
   onRefresh: () => Promise<ConnectionList | undefined>; actionRefs: Record<string, HTMLButtonElement | null>;
 }) {
-  const detailsId = useId();
   const toast = useToast("connection-copy");
   const copy = useRegistryTask<boolean>();
   const reveal = useRegistryTask<string>();
@@ -95,43 +94,40 @@ function ConnectionRow({ connection, expanded, onExpand, onAction, onRefresh, ac
     if (result) toast.show({ type: "success", text: "Key 已复制" });
   };
   const actions = [
-    { kind: "copy", label: "复制", icon: Copy, action: () => { void copyKey(); }, disabled: !connection.credential.configured || review || copy.state.status === "loading" },
     { kind: "reveal", label: reveal.state.data !== null || reveal.state.status === "loading" ? "隐藏" : "查看", icon: Eye, action: () => {
       if (reveal.state.data !== null || reveal.state.status === "loading") reveal.reset();
       else if (connection.credential.secret_ref) void reveal.run(signal => revealCredential(connection.id, connection.credential.secret_ref!, { signal }));
     }, disabled: !connection.credential.configured || review },
+    { kind: "copy", label: "复制", icon: Copy, action: () => { void copyKey(); }, disabled: !connection.credential.configured || review || copy.state.status === "loading" },
     { kind: "test", label: "测试", icon: FlaskConical, action: () => onAction("test"), disabled: false },
     { kind: "delete", label: "删除", icon: Trash2, action: () => onAction("delete"), disabled: false },
   ];
-  return <article data-connection-id={connection.id} className="min-w-0">
-    <div className={`flex items-center gap-1 px-2 sm:px-3 ${expanded ? "bg-primary/8" : ""}`}>
-      <Button variant="ghost" onClick={onExpand} aria-expanded={expanded} aria-controls={detailsId} aria-label={`${expanded ? "收起" : "展开"}连接：${connection.name}`}
-        className="min-h-11 min-w-0 flex-1 justify-start gap-2 rounded-none px-1 py-1 text-left hover:bg-transparent aria-expanded:bg-transparent dark:hover:bg-transparent">
-        <ChevronDown className={`size-3.5 shrink-0 ${expanded ? "rotate-180 text-primary-ink" : "text-muted-foreground"}`} aria-hidden="true" />
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold" title={connection.name}>{connection.name}</span>
-        <span aria-label={connection.enabled ? "已启用" : "已停用"} title={connection.enabled ? "已启用" : "已停用"} className={`size-1.5 shrink-0 rounded-full ${connection.enabled ? "bg-success" : "bg-muted-foreground/50"}`} />
-        <span className="shrink-0 text-[10px] font-normal text-muted-strong">{connection.credential.configured ? "Key 已配置" : "Key 未配置"}</span>
-      </Button>
-      <Tooltip><TooltipTrigger render={<Button ref={element => { actionRefs[`${connection.id}:edit`] = element; }} variant="ghost" size="icon-lg"
-        aria-label={`编辑：${connection.name}`} onClick={() => onAction("edit")} />}><Pencil className="size-4" aria-hidden="true" /></TooltipTrigger><TooltipContent>编辑</TooltipContent></Tooltip>
-    </div>
-    {expanded && <div id={detailsId} className="space-y-3 border-t border-primary/15 bg-primary/8 px-4 py-3" aria-label={`${connection.name}的只读详情`}>
-      <p className="break-all text-xs text-muted-strong">API 地址：{displayBaseUrl(connection.base_url) || "未填写基础地址"}</p>
-      {connection.default_model && <p className="break-all text-xs text-muted-strong">模型预填：{connection.default_model}</p>}
-      {connection.transport !== "direct" && <div className="space-y-2"><Badge variant="outline">{connection.transport === "cloudflare_rest" ? "Cloudflare REST" : "Cloudflare Anthropic"}</Badge><p className="break-all text-xs">Gateway ID：{connection.gateway_id || "未填写"}</p></div>}
-      <p className="break-all text-xs text-muted-strong">Key：{connection.credential.configured ? connection.credential.masked : "未配置"}</p>
-      {reveal.state.data !== null && <p aria-label="临时 Key 明文" className="break-all font-mono text-xs">{reveal.state.data}</p>}
-      <div role="group" aria-label={`${connection.name}的操作`} className="flex flex-wrap gap-x-4 gap-y-1">
-        {actions.map(({ kind, label, icon: Icon, action, disabled }) => <Button key={kind} ref={element => { actionRefs[`${connection.id}:${kind}`] = element; }} variant="ghost" size="compact"
-          className={`min-h-9 px-0 ${kind === "delete" ? "text-destructive hover:bg-destructive/8 hover:text-destructive" : ""}`}
-          aria-label={`${label}：${connection.name}`} disabled={disabled} onClick={action}><Icon className="size-3.5" aria-hidden="true" />{label}</Button>)}
-      </div>
-    </div>}
-    {(copyNotice || copy.state.error || reveal.state.error) && <div className="space-y-2 px-4 pb-2">
+  return <ResourceRow data-connection-id={connection.id} title={connection.name} expanded={expanded} onToggle={onExpand}
+    toggleLabel={`${expanded ? "收起" : "展开"}连接：${connection.name}`} detailsLabel={`${connection.name}的只读详情`}
+    status={<ResourceStatus active={connection.enabled} stateLabel={connection.enabled ? "已启用" : "已停用"} label={connection.credential.configured ? "Key 已配置" : "Key 未配置"} />}
+    feedback={(copyNotice || copy.state.error || reveal.state.error) ? <div className="space-y-2">
       {copyNotice && <p role="status" className="text-xs text-muted-strong">{copyNotice}</p>}
       <ConnectionError error={copy.state.error ?? reveal.state.error} />
       {review && !checked && <Button size="sm" variant="outline" onClick={() => { void onRefresh().then(result => { if (result) setChecked(true); }); }}>重新读取凭据状态</Button>}
       {review && <Button size="sm" variant="outline" disabled={!checked} onClick={() => { setReview(false); copy.reset(); reveal.reset(); setCopyNotice("已核对，可再次明确点击复制。"); }}>已核对，允许重新复制</Button>}
-    </div>}
-  </article>;
+    </div> : null}
+    controls={<Tooltip><TooltipTrigger render={<ResourceAction ref={element => { actionRefs[`${connection.id}:edit`] = element; }} icon={Pencil} iconOnly label="编辑" aria-label={`编辑：${connection.name}`} onClick={() => onAction("edit")} />} /><TooltipContent>编辑</TooltipContent></Tooltip>}>
+      <dl className="space-y-1.5">
+        <ResourceField label="API 地址">{displayBaseUrl(connection.base_url) || "未填写基础地址"}</ResourceField>
+        {connection.default_model && <ResourceField label="模型预填">{connection.default_model}</ResourceField>}
+        {connection.transport !== "direct" && <>
+          <ResourceField label="接入方式">{connection.transport === "cloudflare_rest" ? "Cloudflare REST" : "Cloudflare Anthropic"}</ResourceField>
+          <ResourceField label="Gateway ID">{connection.gateway_id || "未填写"}</ResourceField>
+        </>}
+        <ResourceField label="凭据" actions={<ResourceActions separated={false} className="shrink-0 gap-x-1.5 gap-y-0" aria-label={`${connection.name}的凭据操作`}>
+          {actions.filter(({ kind }) => kind === "copy" || kind === "reveal").map(({ kind, label, icon: Icon, action, disabled }) => <ResourceAction key={kind} ref={element => { actionRefs[`${connection.id}:${kind}`] = element; }}
+            icon={Icon} label={label} iconOnly compactIcon aria-label={`${label}：${connection.name}`} disabled={disabled} onClick={action} />)}
+        </ResourceActions>}>{connection.credential.configured ? `已配置 · ${connection.credential.masked}` : "未配置"}</ResourceField>
+      </dl>
+      {reveal.state.data !== null && <p aria-label="临时 Key 明文" className="break-all font-mono text-xs">{reveal.state.data}</p>}
+      <ResourceActions aria-label={`${connection.name}的操作`}>
+        {actions.filter(({ kind }) => kind === "test" || kind === "delete").map(({ kind, label, icon: Icon, action, disabled }) => <ResourceAction key={kind} ref={element => { actionRefs[`${connection.id}:${kind}`] = element; }}
+          icon={Icon} label={label} danger={kind === "delete"} aria-label={`${label}：${connection.name}`} disabled={disabled} onClick={action} />)}
+      </ResourceActions>
+  </ResourceRow>;
 }

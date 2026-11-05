@@ -25,14 +25,14 @@ export function MCPToolsDialog({ server, refresh, count, close }: {
   };
   return <Dialog open onOpenChange={open => { if (!open) close(); }}>
     <DialogContent data-mcp-tools-dialog={id} className="h-[min(48rem,var(--dialog-available-height))] sm:max-w-2xl" closeButtonProps={{ "aria-label": "关闭工具管理" }}>
-      <DialogHeader className="gap-2">
+      <DialogHeader className="gap-2 border-b-0 pb-2 sm:pb-2">
         <DialogTitle>工具管理</DialogTitle>
         <DialogDescription className="break-words">{server.displayName}</DialogDescription>
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-          <p role="status">{tools ? `已启用 ${tools.filter(tool => tool.enabled).length} / 共 ${tools.length} 项` : "工具数量待加载"}</p>
-          <Button size="sm" variant="outline" disabled={read.state.busy || write.state.busy} onClick={() => { void load(); }}>刷新工具列表</Button>
-        </div>
       </DialogHeader>
+        <div data-mcp-tools-toolbar className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border/60 px-5 pb-3 text-xs sm:px-6">
+          <p role="status">{tools ? `已启用 ${tools.filter(tool => tool.enabled).length} / 共 ${tools.length} 项` : "工具数量待加载"}</p>
+          <Button size="sm" variant="outline" className="ml-auto" aria-label="刷新工具列表" disabled={read.state.busy || write.state.busy} onClick={() => { void load(); }}>刷新</Button>
+        </div>
       <DialogBody aria-label={`工具管理 ${id}`} className="min-w-0 text-xs">
         <div className="space-y-3 pb-3">
           <p className="leading-relaxed text-muted-foreground">加载可能连接服务器并发现工具。{!enabled && "当前服务器已停用，后端可能拒绝重新加载；已知工具配置仍保留。"}</p>
