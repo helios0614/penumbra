@@ -1,5 +1,6 @@
 import { createElement, Fragment, type ReactNode } from "react";
 import { unified } from "unified";
+import { useAiName } from "@/components/identity/AiNameContext";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
 import type { Message } from "@/domain/message/message-types";
@@ -54,10 +55,11 @@ export function ReadonlyPublicBody({ message, target = false }: { message: Messa
 export function ReadonlyConversation({ messages, targetId }: {
   messages: readonly Message[]; targetId: string;
 }) {
+  const aiName = useAiName();
   return <ol className="space-y-2" aria-label="原文对话消息">
     {messages.filter(m => ["user", "assistant", "system"].includes(m.roleKind)).map(message =>
       <ReadonlyMessageBubble key={message.id} messageId={message.id} role={message.roleKind as "user" | "assistant" | "system"}
-        name={message.roleKind === "user" ? "你" : "知远"} createdAt={message.createdAt} target={message.id === targetId}>
+        name={message.roleKind === "user" ? "你" : aiName} createdAt={message.createdAt} target={message.id === targetId}>
         {message.roleKind === "system" ? <ReadonlyEvent message={message} target={message.id === targetId} />
           : <ReadonlyPublicBody message={message} target={message.id === targetId} />}
       </ReadonlyMessageBubble>)}

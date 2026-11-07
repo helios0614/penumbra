@@ -9,6 +9,7 @@ import {
   searchTextRanges,
 } from "./search-highlight";
 import { memo, useContext, useMemo } from "react";
+import { useAiName } from "@/components/identity/AiNameContext";
 import type { SearchHighlight } from "./search-highlight";
 import { insertableBody } from "./insertable-body";
 
@@ -80,6 +81,7 @@ function BubbleSegmentInner({
   readonly content: string;
   readonly reaction?: MessageReaction | null;
 }) {
+  const aiName = useAiName();
   const user = kind === "user";
   const sticker = user ? reaction : null;
   const surface = user ? "body" : markdownSurface(content);
@@ -114,7 +116,7 @@ function BubbleSegmentInner({
           role="img"
           data-reaction-target={sticker.targetMessageId}
           data-reaction-source={sticker.sourceMessageId ?? undefined}
-          aria-label={`知远的表情回应 ${sticker.emoji}`}
+          aria-label={`${aiName}的表情回应 ${sticker.emoji}`}
           className={cn("chat-reaction-sticker border", AI_BUBBLE_SURFACE)}
         >
           {sticker.emoji}

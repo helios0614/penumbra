@@ -1,4 +1,5 @@
 import type { ChatSetupViewModel } from "@/application/chat-setup";
+import { useAiName } from "@/components/identity/AiNameContext";
 import type { MainSelection } from "@/domain/runtime";
 import { mainDiagnosticMessage } from "@/components/chat-workspace/chat-sender-policy";
 import { useMainModelSelectionDraft } from "./useMainModelSelectionDraft";
@@ -14,6 +15,7 @@ type Props = {
 };
 /** Main retains its existing automatic save and execution policy. */
 export function MainModelSelection(props: Props) {
+  const aiName = useAiName();
   const editor = useMainModelSelectionDraft(props);
   const { setup, onSave, onRefresh } = props;
   const configuration = setup.configuration;
@@ -23,5 +25,5 @@ export function MainModelSelection(props: Props) {
     : setup.readiness.value.ready ? "请核对模型选择。" : mainDiagnosticMessage(setup.readiness.value.reason);
   return <ModelSelectionPanel configuration={configuration} ownerId={setup.conversationId} editor={editor}
     canSave={!!onSave} canRefresh={!!onRefresh} diagnostic={diagnostic} needsRecovery={needsRecovery} recoveryMessage={modelStatus}
-    description="切换模型也可能影响知远之后的主动消息与提醒。" />;
+    description={`切换模型也可能影响${aiName}之后的主动消息与提醒。`} />;
 }

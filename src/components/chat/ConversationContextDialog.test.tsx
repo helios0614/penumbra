@@ -5,6 +5,7 @@ import { hookSession, find } from "./test-utils/hook-session";
 import { ConversationContextDialog } from "./ConversationContextDialog";
 import { ReadonlyConversationDialog } from "./ReadonlyConversationDialog";
 import { ReadonlyConversation, ReadonlyPublicBody } from "./ReadonlyConversation";
+import { AiNameContext } from "@/components/identity/AiNameContext";
 import type { ConversationContext, ConversationContextAnchor, ConversationContextReader } from "./conversation-context";
 import { mapMessage } from "@/domain/message/message-mappers";
 import { ApiError } from "@/lib/api";
@@ -30,8 +31,10 @@ it("uses only public segments, preserves verified Markdown, removes remote media
   for (const text of ["SECRET", "PRIVATE", "href=", "src=", "button", "audio", "img", "iframe"]) expect(html).not.toContain(text);
   const fallback = renderToStaticMarkup(<ReadonlyPublicBody message={message("a", "公开 CREDENTIAL [THINKING_START]PRIVATE", "公开 [REDACTED]")} />);
   expect(fallback).toContain("[REDACTED]"); expect(fallback).not.toContain("PRIVATE"); expect(fallback).not.toContain("CREDENTIAL");
-  const conversation = renderToStaticMarkup(<ReadonlyConversation messages={[message()]} targetId="a" />);
-  expect(conversation).toContain('aria-current="true"'); expect(conversation).toContain("知远"); expect(conversation).not.toContain("<button");
+  const conversation = renderToStaticMarkup(<AiNameContext.Provider value="合成助手">
+    <ReadonlyConversation messages={[message()]} targetId="a" />
+  </AiNameContext.Provider>);
+  expect(conversation).toContain('aria-current="true"'); expect(conversation).toContain("合成助手"); expect(conversation).not.toContain("<button");
 });
 
 it("isolates consecutive anchors, cancels on close, and hides old data when reopening the same source", async () => {

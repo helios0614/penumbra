@@ -20,7 +20,8 @@ import {
 } from "@/components/chat-workspace/presentation";
 import { useChatWorkspace } from "@/components/chat-workspace/useChatWorkspace";
 import { pendingChatConversationId } from "@/components/chat-workspace/useChatSend";
-import { useChatUserName } from "@/components/chat-workspace/useChatUserName";
+import { AiNameContext } from "@/components/identity/AiNameContext";
+import { useDisplayNames } from "@/components/identity/useDisplayNames";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -72,7 +73,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
   const toast = useToast("chat-conversations");
   const workspace = useChatWorkspace({ preferredConversationId: recoveryConversation.current });
   const editSaving = useRef(false);
-  const userName = useChatUserName(workspace.state.status === "ready");
+  const { aiName, userName } = useDisplayNames(workspace.state.status === "ready");
   const send = useChatSend(workspace.reloadSelectedConversationHistory,
     workspace.state.status === "ready" ? workspace.state.workspace.selectedConversationId : null,
     workspace.state.status === "ready" ? workspace.state.workspace.history?.messages : undefined);
@@ -174,7 +175,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
     try { await workspace.refreshConversationList(); } catch { /* Retain current safe setup state. */ }
   };
 
-  return (
+  const content = (
     <ChatWorkspaceView
       state={workspace.state}
       userName={userName}
@@ -212,6 +213,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       onRefreshConversationList={workspace.refreshConversationList}
     />
   );
+  return <AiNameContext.Provider value={aiName}>{content}</AiNameContext.Provider>;
 }
 
 export interface ChatWorkspaceViewProps {

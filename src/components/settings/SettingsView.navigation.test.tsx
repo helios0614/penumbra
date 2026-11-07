@@ -20,6 +20,24 @@ vi.mock("@/lib/wallpaper", async original => ({
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("Settings version switch", () => {
+  it("labels the legacy link with the configured AI name", async () => {
+    const fetch = vi.fn(async () => Response.json({ ai_name: " 合成助手 ", user_name: "合成用户" }));
+    vi.stubGlobal("fetch", fetch);
+    const hooks = hookSession(() => SettingsShell({ pages: [] }));
+    try {
+      hooks.render();
+      hooks.commit();
+      await vi.waitFor(() => {
+        const link = find(hooks.render(), "a", props => props.target === "_top");
+        expect(React.Children.toArray(link.props.children)[0]).toBe("返回旧版合成助手");
+        expect(link.props.href).toBe("/");
+      });
+      expect(fetch).toHaveBeenCalledWith(expect.stringMatching(/\/api\/worldbook$/), expect.objectContaining({ method: "GET" }));
+    } finally {
+      hooks.dispose();
+    }
+  });
+
   it("updates the mounted category on browser Back/Forward and removes its history listener", () => {
     vi.stubGlobal("requestAnimationFrame", (callback: () => void) => { callback(); return 1; });
     const host = new EventTarget();

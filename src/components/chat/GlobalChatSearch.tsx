@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useAiName } from "@/components/identity/AiNameContext";
 import { BookOpen, Search, Square } from "lucide-react";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,7 @@ function GlobalSearchContent({ conversations, inputRef }: {
   conversations: readonly ChatConversationItemViewModel[];
   inputRef: React.RefObject<HTMLInputElement | null>;
 }) {
+  const aiName = useAiName();
   const search = useGlobalChatSearch();
   const { state } = search;
   const [anchor, setAnchor] = useState<ConversationContextAnchor | null>(null);
@@ -82,7 +84,7 @@ function GlobalSearchContent({ conversations, inputRef }: {
           <p className="truncate text-sm font-medium text-muted-strong" title={title(item.conversationId, item.conversationTitle)}>{title(item.conversationId, item.conversationTitle)}</p>
           <div data-global-result-meta className="mt-1 flex min-w-0 items-center justify-between gap-2 text-xs leading-5 text-muted-foreground">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
-              <span className="shrink-0">{item.role === "user" ? "你" : item.role === "assistant" ? "知远" : "系统通知"}</span>
+              <span className="shrink-0">{item.role === "user" ? "你" : item.role === "assistant" ? aiName : "系统通知"}</span>
               <time className="min-w-0 [overflow-wrap:anywhere]">{contextTime(item.createdAt)}</time>
             </div>
             <Button type="button" variant="ghost" className="min-h-11 shrink-0 gap-1 whitespace-nowrap rounded-md px-1 text-xs text-primary-ink hover:bg-primary/8 hover:text-primary-ink active:bg-primary/12" onClick={() => openSource(item)}>

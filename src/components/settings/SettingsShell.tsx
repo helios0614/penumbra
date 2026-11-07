@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { useDisplayNames } from "@/components/identity/useDisplayNames";
 import { ArrowLeft, ArrowUpRight, ChevronRight, X } from "lucide-react";
 import { PageHeader, PageHeaderAction } from "@/components/ui/page-header";
 import { PageScrollArea } from "@/components/ui/page-scroll-area";
@@ -31,6 +32,7 @@ export function SettingsShell({ pages, onClose }: {
   readonly pages: readonly SettingsPage[];
   readonly onClose?: () => void;
 }) {
+  const { aiName } = useDisplayNames();
   const [path, setPath] = useState<readonly string[]>(() => typeof window === "undefined" ? [] : readSettingsPath(window.history.state, pages.map(page => page.id)));
   const titleRef = useRef<HTMLHeadingElement>(null);
   const categoryRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -102,7 +104,7 @@ export function SettingsShell({ pages, onClose }: {
           <section className="border-t border-border px-3 pt-3" aria-label="其他版本">
             <a href="/" target="_top" aria-describedby="frontend-version-note"
               className="inline-flex min-h-11 items-center gap-1 text-xs font-medium text-primary-ink focus-visible:outline-2 focus-visible:outline-ring">
-              返回旧版知远<ArrowUpRight className="size-3.5" aria-hidden="true" />
+              {`返回旧版${aiName}`}<ArrowUpRight className="size-3.5" aria-hidden="true" />
             </a>
             <p id="frontend-version-note" className="text-xs leading-relaxed text-muted-foreground">已保存的数据可继续读取；草稿与未保存内容不跨版本保留，生成中的任务可能继续执行。</p>
           </section>

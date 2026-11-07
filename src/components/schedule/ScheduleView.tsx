@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useDisplayNames } from "@/components/identity/useDisplayNames";
 import { Menu } from "@base-ui/react/menu";
 import { Check, ChevronDown, Plus, RefreshCw, X } from "lucide-react";
 import type { ScheduleController, ScheduleState } from "@/application/schedule/schedule-controller";
@@ -36,6 +37,7 @@ export function SchedulePage({ kind, state, controller, realtime, onBack, onCloc
   readonly onClockKindChange?: (kind: "alarm" | "monitor") => void;
   readonly focusClockKind?: boolean;
 }) {
+  const { aiName } = useDisplayNames(kind !== "todo");
   const [creating, setCreating] = useState(false), [cancel, setCancel] = useState<Schedule | null>(null), [view, setView] = useState<"active" | "history">("active");
   const listScrollRef = useRef<HTMLDivElement>(null), cancelTrigger = useRef<HTMLButtonElement | null>(null);
   const clockKindRef = useRef<HTMLButtonElement>(null);
@@ -59,7 +61,7 @@ export function SchedulePage({ kind, state, controller, realtime, onBack, onCloc
   return <TooltipProvider><main className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col overflow-hidden px-4 pb-4 pt-5 sm:px-0 sm:pb-8 sm:pt-8" aria-labelledby={`${kind}-page-title`}>
     <PageHeader eyebrow={meta.eyebrow} title={onClockKindChange && (kind === "alarm" || kind === "monitor")
       ? <ScheduleKindMenu kind={kind} disabled={busy || Boolean(state.issue)} triggerRef={clockKindRef} onChange={(value) => { controller?.changeScope(); onClockKindChange(value); }} />
-      : meta.title} titleId={`${kind}-page-title`} description={meta.description} actions={<>
+      : meta.title} titleId={`${kind}-page-title`} description={meta.description(aiName)} actions={<>
       <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label={meta.create} disabled={busy || !controller || Boolean(state.issue)} onClick={() => { controller?.changeScope(); setCreating(true); }} />}><Plus aria-hidden="true" /></TooltipTrigger><TooltipContent>{meta.create}</TooltipContent></Tooltip>
       <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label={`刷新${meta.title}`} disabled={busy || state.loading} onClick={() => void controller?.refresh()} />}><RefreshCw aria-hidden="true" /></TooltipTrigger><TooltipContent>重新读取</TooltipContent></Tooltip>
       {onBack && <Tooltip><TooltipTrigger render={<PageHeaderAction aria-label="返回桌面" disabled={busy} onClick={onBack} />}><X aria-hidden="true" /></TooltipTrigger><TooltipContent>返回桌面</TooltipContent></Tooltip>}
@@ -84,7 +86,7 @@ export function SchedulePage({ kind, state, controller, realtime, onBack, onCloc
         {state.unsupported > 0 && <p className="px-1 text-xs leading-5 text-muted-strong">有 {state.unsupported} 条记录的类型、状态或字段无法识别，已保留服务端数据，未提供操作。</p>}
       </div>
     </section>
-    <ScheduleCreateDialog open={creating} kind={kind} state={state} controller={controller} onClose={() => setCreating(false)} />
+    <ScheduleCreateDialog open={creating} kind={kind} aiName={aiName} state={state} controller={controller} onClose={() => setCreating(false)} />
     <ScheduleCancelDialog item={cancel} state={state} controller={controller} onClose={() => setCancel(null)} finalFocus={() => {
       const trigger = cancelTrigger.current;
       return trigger?.isConnected && !trigger.disabled ? trigger : listScrollRef.current;

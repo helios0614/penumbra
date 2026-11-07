@@ -16,6 +16,7 @@ import { createChatWorkspaceController } from "@/components/chat-workspace/chat-
 import { getChatSenderAvailability } from "@/components/chat-workspace/chat-sender-policy";
 import { messageWire } from "@/test-fixtures/main-chat-wire";
 
+vi.mock("@/components/identity/AiNameContext", () => ({ useAiName: () => "合成助手" }));
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof React>();
   return { ...actual, ...Object.fromEntries(["useState", "useRef", "useCallback", "useId", "useEffect", "useLayoutEffect"].map((key) => [key, vi.fn(actual[key as keyof typeof actual] as never)])) };

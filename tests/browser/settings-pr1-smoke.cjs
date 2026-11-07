@@ -41,6 +41,7 @@ async function run(browser, origin, layout, width) {
     if (state.fail === endpoint) return json({ error: 'synthetic-private-error-must-not-render' }, 503);
     if (state.delay === endpoint) { state.pending.push({ route, code: state.code }); return; }
     if (endpoint === '/api/session') return json({ authenticated: true, cookie: 'synthetic-private-cookie-must-not-render' });
+    if (endpoint === '/api/worldbook') return json({ ai_name: '合成助手' });
     if (endpoint === '/api/chat/readiness') return json(readiness(state.code));
     // Background widgets use only these synthetic empty facts.
     if (endpoint === '/api/schedule/reminders' || endpoint === '/api/conversations') return json([]);
@@ -141,7 +142,7 @@ async function run(browser, origin, layout, width) {
     await appearance().getByRole('radio', { name: /^跟随系统/ }).click();
     await appearance().getByRole('radio', { name: /^深色/ }).click();
     await back();
-    const legacy = page.getByRole('link', { name: '返回旧版知远', exact: true });
+    const legacy = page.getByRole('link', { name: '返回旧版合成助手', exact: true });
     assert.equal(await legacy.getAttribute('href'), '/'); assert.equal(await legacy.getAttribute('target'), '_top');
     assert.equal(new URL(page.url()).pathname, location.replace(/\/$/, '') + '/app/settings');
     assert.deepEqual(writes, []); assert.deepEqual(escaped, []); assert.deepEqual(errors, []);

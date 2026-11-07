@@ -23,6 +23,6 @@ describe("Settings page structure", () => {
   it("omits only desktop close when there is no host callback", () => {
     const html = renderToStaticMarkup(<SettingsView />);
     expect(html).not.toContain('aria-label="返回桌面"');
-    expect(html).toContain("返回旧版知远");
+    expect(html).toContain("返回旧版AI");
   });
 });

@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { useAiName } from "@/components/identity/AiNameContext";
 import { ChevronDown, ChevronUp, LoaderCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,7 @@ export function ChatSearchPanel({
   pending?: boolean;
   error?: string | null;
 }) {
+  const aiName = useAiName();
   const { state } = search,
     index = state.items.findIndex((m) => m.messageId === state.selected);
   const busy = state.status === "loading" || state.status === "scanning";
@@ -226,7 +228,7 @@ export function ChatSearchPanel({
                   {item.role === "user"
                     ? "用户"
                     : item.role === "assistant"
-                      ? "知远"
+                      ? aiName
                       : "系统"}
                 </span>{" "}
                 ·{" "}

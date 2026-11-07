@@ -1,7 +1,7 @@
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ArrowLeft, Menu } from "lucide-react";
-import { ChatView, ChatWorkspaceView, type ChatWorkspaceViewProps } from "./ChatView";
+import { ChatView, ChatWorkspaceView } from "./ChatView";
 import type { ChatWorkspaceControllerState } from "@/components/chat-workspace";
 import { ChatShell } from "./ChatShell";
 import { ConversationsList } from "./ConversationsList";
@@ -90,7 +90,7 @@ describe("Chat home and conversation navigation are independent", () => {
     };
     live.state = selected("A");
     const hooks = hookSession(() => ChatView({}));
-    const oldCallback = (hooks.render() as React.ReactElement<ChatWorkspaceViewProps>).props.onSend!;
+    const oldCallback = find(hooks.render(), ChatWorkspaceView).props.onSend!;
     live.state = selected("B");
     expect(await oldCallback("", ["/uploads/1700000000000.png"], "A")).toBe(false); expect(live.send).not.toHaveBeenCalled();
     expect(await oldCallback("", ["/uploads/1700000000000.png"], "B")).toBe(true);
@@ -128,7 +128,7 @@ describe("Chat home and conversation navigation are independent", () => {
   });
   it("does not turn navigation into execution cancellation or a mutation lock", () => {
     const home = vi.fn(), hooks = hookSession(() => ChatView({ onBack: home }));
-    const view = hooks.render() as React.ReactElement<ChatWorkspaceViewProps>;
+    const view = find(hooks.render(), ChatWorkspaceView);
     const back = view.props.onBack!;
     live.active = true; back(); expect(home).toHaveBeenCalledTimes(1);
     live.active = false; live.state = { ...ready(), conversationMutation: "delete" }; back(); expect(home).toHaveBeenCalledTimes(2);

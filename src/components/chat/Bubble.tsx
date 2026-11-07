@@ -2,6 +2,7 @@ import { useChatRenderTrace } from "./useChatRenderTrace";
 import { format } from "date-fns";
 import { Bot, CircleHelp, User } from "lucide-react";
 import { ChatAttachments } from "@/components/media/ChatAttachments";
+import { useAiName } from "@/components/identity/AiNameContext";
 import { memo, useMemo, useRef } from "react";
 import { readMessageSelection } from "./message-selection";
 import { insertableBody } from "./insertable-body";
@@ -114,6 +115,7 @@ function BubbleInner({
   onExtract,
   editUnavailableReason,
 }: BubbleProps) {
+  const aiName = useAiName();
   const bodyRef = useRef<HTMLDivElement>(null);
   useChatRenderTrace(message);
   const chunks = useMemo(() => message.kind === "user" ? splitUserBubbles(message.content)
@@ -166,7 +168,7 @@ function BubbleInner({
         )}
       >
         <MessageAvatar kind={message.kind} />
-        <span className="text-xs font-medium">{isUser ? userName : "知远"}</span>
+        <span className="text-xs font-medium">{isUser ? userName : aiName}</span>
         <span className="text-xs opacity-60">{time}</span>
         {executionLabel && (
           <span

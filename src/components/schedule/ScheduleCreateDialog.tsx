@@ -12,8 +12,8 @@ import { ScheduleIssue } from "./ScheduleFeedback";
 import { scheduleMeta } from "./schedule-presentation";
 import { ScheduleCameraStatus } from "./ScheduleCameraStatus";
 
-export function ScheduleCreateDialog({ open, kind, state, controller, onClose }: {
-  readonly open: boolean; readonly kind: ManagedScheduleKind; readonly state: ScheduleState; readonly controller: ScheduleController | null; readonly onClose: () => void;
+export function ScheduleCreateDialog({ open, kind, aiName, state, controller, onClose }: {
+  readonly open: boolean; readonly kind: ManagedScheduleKind; readonly aiName: string; readonly state: ScheduleState; readonly controller: ScheduleController | null; readonly onClose: () => void;
 }) {
   const [content, setContent] = useState(""), [date, setDate] = useState(""), [time, setTime] = useState("");
   const [error, setError] = useState<string | null>(null), [discard, setDiscard] = useState(false);
@@ -44,11 +44,11 @@ export function ScheduleCreateDialog({ open, kind, state, controller, onClose }:
     <DialogContent closeButtonProps={{ disabled: busy, "aria-label": `关闭${meta.create}` }}>
       <form className="flex min-h-0 flex-1 flex-col" noValidate onSubmit={(event) => { event.preventDefault(); void submit(); }}>
         <DialogHeader><DialogTitle>{meta.create}</DialogTitle><DialogDescription>
-          {kind === "reminder" ? "留下一件想持续关注的事情。" : kind === "todo" ? "每条记录一件要做的事情。" : kind === "monitor" ? "到指定时间，知远会尝试查看一次摄像头。" : "填写需要知远在指定时间提醒的内容。"}
+          {kind === "reminder" ? "留下一件想持续关注的事情。" : kind === "todo" ? "每条记录一件要做的事情。" : kind === "monitor" ? meta.description(aiName) : `填写需要${aiName}在指定时间提醒的内容。`}
         </DialogDescription></DialogHeader>
         <DialogBody className="space-y-4">
           <div><label htmlFor={`${kind}-content`} className="mb-2 block text-xs font-medium text-muted-strong">内容</label>
-            <Textarea id={`${kind}-content`} rows={4} value={content} disabled={busy} placeholder={kind === "todo" ? "需要处理的事情…" : kind === "reminder" ? "想持续放在心上的事情…" : kind === "monitor" ? "希望知远查看的内容…" : "需要提醒的内容…"}
+            <Textarea id={`${kind}-content`} rows={4} value={content} disabled={busy} placeholder={kind === "todo" ? "需要处理的事情…" : kind === "reminder" ? "想持续放在心上的事情…" : kind === "monitor" ? `希望${aiName}查看的内容…` : "需要提醒的内容…"}
               aria-invalid={Boolean(error)} aria-describedby={error ? `${kind}-form-error` : undefined} onChange={(event) => { setContent(event.target.value); edit(); }} className="text-sm" />
           </div>
           {kind !== "todo" && <fieldset disabled={busy} aria-describedby={timed ? `${kind}-time-zone` : undefined}>

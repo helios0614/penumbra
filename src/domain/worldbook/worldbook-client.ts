@@ -1,9 +1,18 @@
 import { apiGet } from "@/lib/api";
 
-/** Read only the display name; persona contents stay outside the chat UI. */
-export async function getUserDisplayName(signal?: AbortSignal): Promise<string> {
-  const worldbook = await apiGet<unknown>("/api/worldbook", { signal });
-  if (!worldbook || typeof worldbook !== "object" || !("user_name" in worldbook)) return "你";
-  const name = worldbook.user_name;
-  return typeof name === "string" && name.trim() ? name.trim() : "你";
+export const DEFAULT_DISPLAY_NAMES = { aiName: "AI", userName: "你" } as const;
+
+function displayName(value: unknown, fallback: string): string {
+  return typeof value === "string" ? value.trim() || fallback : fallback;
+}
+
+/** Project only the display names from the worldbook response. */
+export async function getDisplayNames(signal?: AbortSignal) {
+  const worldbook = await apiGet<unknown>("/api/worldbook", { signal, cache: "no-store" });
+  if (!worldbook || typeof worldbook !== "object") return DEFAULT_DISPLAY_NAMES;
+  const fields = worldbook as Record<string, unknown>;
+  return {
+    aiName: displayName(fields.ai_name, DEFAULT_DISPLAY_NAMES.aiName),
+    userName: displayName(fields.user_name, DEFAULT_DISPLAY_NAMES.userName),
+  };
 }

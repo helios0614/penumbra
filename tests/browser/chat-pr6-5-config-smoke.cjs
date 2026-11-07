@@ -25,7 +25,7 @@ async function fixture(browser, width, prepare) {
     const req = route.request(), url = new URL(req.url()), method = req.method();
     state.requests.push({ method, path: url.pathname + url.search, body: req.postData() });
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
-    if (url.pathname === '/api/worldbook') return json({ user_name: '合成用户' });
+    if (url.pathname === '/api/worldbook') return json({ ai_name: '合成助手', user_name: '合成用户' });
     if (url.pathname === '/api/conversations') return json(state.list);
     const conv = url.searchParams.get('conv_id') || 'a';
     const defaults = protocol => ({ revision: state.defaults.revision, protocol,
@@ -87,7 +87,7 @@ async function fixture(browser, width, prepare) {
   });
   if (prepare) await prepare(page, state);
   await page.goto(`${origin}/tests/browser/chat-pr3.html`);
-  await page.locator('[data-message-id="a-initial"]').waitFor();
+  await page.locator('[data-message-id="a-initial"]').getByText('合成助手', { exact: true }).waitFor();
   return { page, state, errors, context };
 }
 

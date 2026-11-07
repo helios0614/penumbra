@@ -6,7 +6,7 @@ import type { ManagedScheduleKind } from "@/domain/schedule";
 import { Button } from "@/components/ui/button";
 import { LocationTimeField } from "@/components/location/LocationTimeField";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogBody } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { ScheduleCreateDialog } from "./ScheduleCreateDialog";
 import { ScheduleDateField } from "./ScheduleDateField";
@@ -39,7 +39,7 @@ function setup(kind: ManagedScheduleKind) {
     cursor = 0;
     const stateSpy = vi.spyOn(React, "useState").mockImplementation(useState);
     const effectSpy = vi.spyOn(React, "useEffect").mockImplementation((fn) => { effects.push(fn); });
-    try { return ScheduleCreateDialog({ open: true, kind, state, controller, onClose }); } finally { stateSpy.mockRestore(); effectSpy.mockRestore(); }
+    try { return ScheduleCreateDialog({ open: true, kind, aiName: "合成助手", state, controller, onClose }); } finally { stateSpy.mockRestore(); effectSpy.mockRestore(); }
   };
   const fill = (value: string) => find(render(), Textarea).props.onChange?.({ target: { value } } as never);
   const time = (part: "date" | "time", value: string) => {
@@ -57,6 +57,8 @@ describe("compact schedule create forms", () => {
     const s = setup("monitor"); s.render(); s.effects[0](); expect(s.loadZone).toHaveBeenCalledOnce();
     s.fill("看看小猫"); s.time("date", "2026-10-19"); s.time("time", "22:00");
     expect(find(s.render(), ScheduleCameraStatus).props.open).toBe(true);
+    expect(find(s.render(), DialogDescription).props.children).toBe("到指定时间，合成助手会尝试查看一次摄像头。");
+    expect(find(s.render(), Textarea).props.placeholder).toBe("希望合成助手查看的内容…");
     expect(find(s.render(), ScheduleDateField).props.label).toBe("执行日期");
     expect(find(s.render(), LocationTimeField).props.label).toBe("执行时间");
     expect(s.body()).toContain("服务器时间 · America/New_York"); expect(s.body()).not.toMatch(/type="date"|type="time"|自动开启|静默时段/);

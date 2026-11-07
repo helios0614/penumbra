@@ -20,6 +20,7 @@ vi.mock("react", async (importOriginal) => {
   return { ...actual, useState: vi.fn(actual.useState), useRef: vi.fn(actual.useRef), useEffect: vi.fn(actual.useEffect), useLayoutEffect: vi.fn(actual.useLayoutEffect) };
 });
 vi.mock("@/components/ui/toast", async (importOriginal) => ({ ...await importOriginal<object>(), useFeedbackToast: vi.fn() }));
+vi.mock("@/components/identity/useDisplayNames", () => ({ useDisplayNames: () => ({ aiName: "合成助手" }) }));
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 function elements(node: React.ReactNode): React.ReactElement<Record<string, unknown>>[] {
   return React.Children.toArray(node).flatMap((child) => React.isValidElement<Record<string, unknown>>(child) ? [child, ...elements(child.props.children as React.ReactNode)] : []);
@@ -147,10 +148,11 @@ describe("schedule workspace interaction", () => {
     const state = { ...initialScheduleState, loaded: true, items };
     const render = session(() => SchedulePage({ kind, state, controller, realtime, onClockKindChange }));
     const tree = render(), header = find(tree, PageHeader), meta = scheduleMeta[kind];
-    expect(header.props).toMatchObject({ eyebrow: meta.eyebrow, description: meta.description, titleId: `${kind}-page-title` });
+    expect(header.props).toMatchObject({ eyebrow: meta.eyebrow, titleId: `${kind}-page-title` });
+    expect(header.props.description).toContain("合成助手");
     expect(titleMenu(tree).props.kind).toBe(kind);
     expect(find(tree, ScheduleRows).props.items.every((row) => row.kind === kind && row.status === "active")).toBe(true);
-    expect(find(tree, ScheduleCreateDialog).props.kind).toBe(kind);
+    expect(find(tree, ScheduleCreateDialog).props).toMatchObject({ kind, aiName: "合成助手" });
     const controls = elements(header.props.actions);
     const createControl = controls.find((node) => node.props.render && (node.props.render as React.ReactElement<{ "aria-label": string }>).props["aria-label"] === meta.create)?.props.render as React.ReactElement<React.ComponentProps<typeof PageHeaderAction>>;
     expect(createControl).toBeDefined(); createControl.props.onClick?.({} as never);

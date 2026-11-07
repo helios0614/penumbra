@@ -8,6 +8,7 @@ import { ChatSearchPanel } from "./ChatSearchPanel";
 import type { useChatSearch } from "./useChatSearch";
 import { elements, find } from "./test-utils/hook-session";
 
+vi.mock("@/components/identity/AiNameContext", () => ({ useAiName: () => "合成助手" }));
 vi.mock("./useSearchResultScroll", () => ({
   useSearchResultScroll: () => ({ current: null }),
 }));

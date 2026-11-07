@@ -253,6 +253,7 @@ async function exercise(browser, origin, production, width, { mockBackend = true
       if (!mockBackend) return route.continue();
       const fixtures = {
         '/api/session': { authenticated: true }, '/api/conversations': [], '/api/models': [],
+        '/api/worldbook': { ai_name: '合成助手' },
         '/api/main/configuration': { connections: [], allowed_protocols: [], profiles: [], models: [], selection: null, connection_selection: null, diagnostic: null },
         '/api/chat/readiness': { ready: false, model_key: '', reason_code: 'provider_not_configured', setup_action_required: true },
         '/api/auth/logout': { ok: true },
@@ -327,7 +328,7 @@ async function exercise(browser, origin, production, width, { mockBackend = true
     for (const desktop of ['', 'editorial']) {
       await page.goto(`${origin}${base}${desktop}`);
       await page.getByRole('button', { name: '打开设置', exact: true }).last().click();
-      const link = page.getByRole('link', { name: '返回旧版知远', exact: true });
+      const link = page.getByRole('link', { name: mockBackend ? '返回旧版合成助手' : /^返回旧版/ });
       await link.scrollIntoViewIfNeeded();
       assert.equal(await link.getAttribute('href'), '/');
       assert.equal(await link.getAttribute('target'), '_top');
