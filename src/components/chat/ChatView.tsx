@@ -594,12 +594,13 @@ export function ChatWorkspaceView({
             } catch { preserve(); return "retained"; }
             finally { snapshot.release(); }
           } : undefined}
-          toolsLabel={`会话模型：${workspace.setup.configuration?.selection?.model ?? "尚未选择"}`}
+          toolsLabel={`会话模型：${state.configurationPending === "loading" ? "正在读取" : workspace.setup.configuration?.selection?.model ?? "尚未选择"}`}
           tools={<><AttachmentPicker disabled={!draftEditable} onFiles={receiveFiles} /><MainModelSelection
             key={workspace.selectedConversationId}
             setup={workspace.setup}
             disabled={navigationLocked || pendingConversationId !== null}
             configurationPending={!!state.configurationPending}
+            configurationLoading={state.configurationPending === "loading"}
             onPendingChange={setModelSelectionPending}
             onSave={onSaveMainSelection}
             onRefresh={onRefreshState}

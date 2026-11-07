@@ -61,7 +61,7 @@ export type ChatWorkspaceControllerState =
       readonly workspace: ChatWorkspaceSnapshot;
       readonly pendingConversationId: string | null;
       readonly switchError: ChatWorkspaceSafeUiError | null;
-      readonly configurationPending?: boolean;
+      readonly configurationPending?: boolean | "loading";
       readonly conversationMutation?: "create" | "rename" | "delete";
       readonly conversationListError?: ChatWorkspaceSafeUiError | null;
       readonly olderHistoryPending?: boolean;
@@ -83,6 +83,7 @@ export const INITIAL_CHAT_WORKSPACE_CONTROLLER_STATE: ChatWorkspaceControllerSta
 export type ChatWorkspaceBootstrapLoader = (
   input?: ChatWorkspaceLoadInput,
   options?: ApiRequestOptions,
+  onReadable?: (workspace: ChatWorkspaceSnapshot) => void,
 ) => Promise<ChatWorkspaceSnapshot>;
 
 export type ChatWorkspaceConversationLoader = (
@@ -203,6 +204,12 @@ export function createChatWorkspaceController(
     listeners.forEach((listener) => listener(state));
   };
 
+  const cancelSwitch = () => {
+    switchSequence += 1;
+    switchController?.abort();
+    switchController = null;
+  };
+
   const load = async () => {
     if (disposed || mutation || dependencies.canNavigate?.() === false) return;
     windowGeneration += 1;
@@ -220,9 +227,7 @@ export function createChatWorkspaceController(
     bootstrapController = new AbortController();
     const controller = bootstrapController;
 
-    switchSequence += 1;
-    switchController?.abort();
-    switchController = null;
+    cancelSwitch();
     historySequence += 1;
     historyController?.abort();
     historyController = null;
@@ -236,30 +241,30 @@ export function createChatWorkspaceController(
 
     publish({ status: "loading" });
 
+    const current = () => !disposed && !controller.signal.aborted && sequence === bootstrapSequence;
+    let pendingSetup: ChatWorkspaceSnapshot["setup"] | undefined;
+    const stillOwnsSetup = () => state.status === "ready" && state.workspace.setup === pendingSetup;
     try {
       const workspace = await bootstrapLoader(
         { ...input, currentConversationId },
         { signal: controller.signal },
+        readable => {
+          if (!current()) return;
+          pendingSetup = readable.setup;
+          publish({ ...readyState(readable), configurationPending: "loading" });
+        },
       );
-      if (
-        disposed ||
-        controller.signal.aborted ||
-        sequence !== bootstrapSequence
-      ) {
-        return;
+      if (!current()) return;
+      if (!pendingSetup) {
+        publish(readyState(workspace));
+      } else if (state.status === "ready" && stillOwnsSetup()) {
+        // A history read or page navigation may have already updated the visible snapshot.
+        publish({ ...state, configurationPending: false, workspace: { ...state.workspace, setup: workspace.setup } });
       }
-
-      publish(readyState(workspace));
     } catch (error) {
-      if (
-        disposed ||
-        controller.signal.aborted ||
-        sequence !== bootstrapSequence ||
-        isAbortError(error)
-      ) {
-        return;
-      }
+      if (!current() || isAbortError(error) || (pendingSetup && !stillOwnsSetup())) return;
 
+      if (pendingSetup) cancelSwitch();
       publish({ status: "error", error: toSafeUiError(error) });
     } finally {
       if (sequence === bootstrapSequence && bootstrapController === controller) {
@@ -279,12 +284,12 @@ export function createChatWorkspaceController(
     configurationController?.abort();
 
     // Aborting an in-flight PUT cannot undo it. If a switch fails, keep its old owner blocked until reread.
-    const workspace: ChatWorkspaceSnapshot = state.configurationPending
+    const setupLoading = state.configurationPending === "loading";
+    const workspace: ChatWorkspaceSnapshot = state.configurationPending === true
       ? { ...state.workspace, setup: { ...state.workspace.setup, readiness: { kind: "unavailable", reason: "unknown" } } }
       : state.workspace;
-    const sequence = ++switchSequence;
-    switchController?.abort();
-    switchController = null;
+    cancelSwitch();
+    const sequence = switchSequence;
     historySequence += 1;
     historyController?.abort();
     historyController = null;
@@ -294,7 +299,7 @@ export function createChatWorkspaceController(
     lastFailedConversationId = null;
 
     if (conversationId === workspace.selectedConversationId) {
-      publish(readyState(workspace));
+      publish({ ...readyState(workspace), configurationPending: setupLoading ? "loading" : undefined });
       return;
     }
 
@@ -305,6 +310,7 @@ export function createChatWorkspaceController(
       workspace,
       pendingConversationId: conversationId,
       switchError: null,
+      configurationPending: setupLoading ? "loading" : undefined,
     });
 
     try {
@@ -333,11 +339,13 @@ export function createChatWorkspaceController(
       }
 
       lastFailedConversationId = conversationId;
+      const latest = state.status === "ready" ? state : null;
       publish({
         status: "ready",
-        workspace,
+        workspace: latest?.workspace ?? workspace,
         pendingConversationId: null,
         switchError: toSafeUiError(error),
+        configurationPending: latest?.configurationPending,
       });
     } finally {
       if (sequence === switchSequence && switchController === controller) {
@@ -920,7 +928,7 @@ export function toSafeUiError(error: unknown): ChatWorkspaceSafeUiError {
 
 function readyState(
   workspace: ChatWorkspaceSnapshot,
-): ChatWorkspaceControllerState {
+): Extract<ChatWorkspaceControllerState, { status: "ready" }> {
   return {
     status: "ready",
     workspace,

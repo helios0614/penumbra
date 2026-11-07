@@ -4,6 +4,7 @@ import {
   loadChatSetupForConversationWithModels,
   type ChatSetupViewModel,
 } from "@/application/chat-setup";
+import { createUnavailableChatSetupViewModel } from "@/application/chat-setup/chat-setup-view-model";
 import {
   DEFAULT_MESSAGE_HISTORY_PAGE_SIZE,
   loadInitialMessageHistory,
@@ -28,6 +29,7 @@ import type { ApiRequestOptions } from "@/lib/api";
 export async function loadChatWorkspace(
   input: ChatWorkspaceLoadInput = {},
   options?: ApiRequestOptions,
+  onReadable?: (workspace: ChatWorkspaceSnapshot) => void,
 ): Promise<ChatWorkspaceSnapshot> {
   assertLoadInput(input);
 
@@ -37,30 +39,31 @@ export async function loadChatWorkspace(
     input,
   );
 
-  if (selectedConversation === null) {
-    const setup = await loadBootstrapChatSetup(options);
-    return createChatWorkspaceSnapshot({
-      setup,
-      conversations,
-      selectedConversation: null,
-      history: null,
-    });
-  }
-
-  const [setup, history] = await Promise.all([
-    loadChatSetupForConversation(selectedConversation, options),
-    loadInitialMessageHistory(selectedConversation.id, {
+  const snapshot = (setup: ChatSetupViewModel, history: MessageHistoryState | null) =>
+    createChatWorkspaceSnapshot({ setup, conversations, selectedConversation, history });
+  let setupSettled = false;
+  const setupRead = (selectedConversation
+    ? loadChatSetupForConversation(selectedConversation, options)
+    : loadBootstrapChatSetup(options)).finally(() => { setupSettled = true; });
+  const historyRead = selectedConversation
+    ? loadInitialMessageHistory(selectedConversation.id, {
       pageSize: input.historyPageSize,
       request: options,
-    }),
-  ]);
+    })
+    : Promise.resolve(null);
+  const [setup, history] = await Promise.all([setupRead, historyRead.then(history => {
+    if (onReadable && !setupSettled) {
+      onReadable(snapshot(createUnavailableChatSetupViewModel({
+        conversation: selectedConversation,
+        availableModels: [],
+        configuration: null,
+        reason: "unknown",
+      }), history));
+    }
+    return history;
+  })]);
 
-  return createChatWorkspaceSnapshot({
-    setup,
-    conversations,
-    selectedConversation,
-    history,
-  });
+  return snapshot(setup, history);
 }
 
 export async function loadChatWorkspaceConversation(

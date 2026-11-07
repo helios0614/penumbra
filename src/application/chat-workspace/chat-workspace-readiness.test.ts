@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadChatWorkspace } from "@/application/chat-workspace";
 import { createChatWorkspaceController } from "@/components/chat-workspace";
+import { getChatSenderAvailability } from "@/components/chat-workspace/chat-sender-policy";
+import { INITIAL_CHAT_SEND_STATE } from "@/application/chat-send";
 import { ApiError } from "@/lib/api";
 
 describe("chat workspace readiness degradation", () => {
@@ -13,6 +15,52 @@ describe("chat workspace readiness degradation", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     fetchMock.mockReset();
+  });
+
+  it("publishes history while model configuration is pending and enables sending only after validation", async () => {
+    let resolveSetup!: (response: Response) => void;
+    const setup = new Promise<Response>(resolve => { resolveSetup = resolve; });
+    fetchMock.mockImplementation(input => String(input) === "/api/main/configuration?conv_id=conv_a"
+      ? setup : successfulReadResponse(String(input)));
+    const controller = createChatWorkspaceController();
+    try {
+      const loading = controller.load();
+      await vi.waitFor(() => expect(controller.getState()).toMatchObject({
+        status: "ready",
+        configurationPending: "loading",
+        workspace: { history: { messages: [expect.objectContaining({ content: "history-conv_a" })] } },
+      }));
+      expect(getChatSenderAvailability(controller.getState(), INITIAL_CHAT_SEND_STATE)).toMatchObject({
+        enabled: false, statusMessage: "正在读取模型配置…",
+      });
+      resolveSetup(json(mainConfigurationWire("conversation-model")));
+      await loading;
+      expect(getChatSenderAvailability(controller.getState(), INITIAL_CHAT_SEND_STATE).enabled).toBe(true);
+    } finally {
+      controller.dispose();
+    }
+  });
+
+  it("ignores the initial setup after the user switches to another conversation", async () => {
+    let resolveSetup!: (response: Response) => void;
+    const setup = new Promise<Response>(resolve => { resolveSetup = resolve; });
+    fetchMock.mockImplementation(input => String(input) === "/api/main/configuration?conv_id=conv_a"
+      ? setup : successfulReadResponse(String(input)));
+    const controller = createChatWorkspaceController();
+    try {
+      const loading = controller.load();
+      await vi.waitFor(() => expect(controller.getState()).toMatchObject({
+        status: "ready", configurationPending: "loading",
+      }));
+      await controller.selectConversation("conv_b");
+      resolveSetup(json({ error: "unauthorized" }, 401));
+      await loading;
+      expect(controller.getState()).toMatchObject({
+        status: "ready", workspace: { selectedConversationId: "conv_b", setup: { conversationId: "conv_b" } },
+      });
+    } finally {
+      controller.dispose();
+    }
   });
 
   it("keeps real conversations and initial history ready when readiness returns 404", async () => {

@@ -52,6 +52,7 @@ export function getChatSenderAvailability(
   if (workspaceState.pendingConversationId !== null) {
     return unavailable("正在切换会话。");
   }
+  if (workspaceState.configurationPending === "loading") return unavailable("正在读取模型配置…");
   if (workspaceState.configurationPending) return unavailable("正在保存并确认模型选择。");
   if (workspaceState.conversationMutation) return unavailable("正在更新会话。");
 
