@@ -3,9 +3,11 @@ import { mapUploadResponse } from "./media-mappers";
 import { musicCover } from "./media-resources";
 import type { UploadedMedia } from "./media-types";
 
+const UPLOAD_TIMEOUT_MS = 300_000;
+
 export async function uploadMedia(file: File, signal: AbortSignal): Promise<UploadedMedia> {
   const form = new FormData(); form.append("file", file);
-  const result = mapUploadResponse(await apiPost<unknown>(UPLOAD_URL, form, { signal }));
+  const result = mapUploadResponse(await apiPost<unknown>(UPLOAD_URL, form, { signal, timeoutMs: UPLOAD_TIMEOUT_MS }));
   if (result.type !== file.type) throw new Error("上传响应的类型无法确认，文件已保留。");
   return result;
 }
