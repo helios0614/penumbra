@@ -66,6 +66,15 @@ async function run(browser, origin, layout, width) {
   const category = title => page.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: new RegExp(title) });
   const back = () => page.getByRole('button', { name: '返回设置分类', exact: true }).click();
   const appearance = () => page.getByRole('region', { name: '外观与本机偏好', exact: true });
+  const openColor = async title => {
+    await appearance().getByRole('button', { name: title, exact: true }).click();
+    return page.getByRole('dialog', { name: title, exact: true });
+  };
+  const assertColor = async (title, expected) => {
+    const dialog = await openColor(title);
+    assert.equal(await dialog.getByLabel('色值', { exact: true }).inputValue(), expected);
+    await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  };
   const system = () => page.getByRole('region', { name: '系统状态', exact: true });
   const item = title => system().getByRole('region', { name: title, exact: true });
   const noOverflow = async () => assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && [...document.querySelectorAll('[data-page-scroll-region]')].filter(el => el.getBoundingClientRect().width).every(el => el.scrollWidth <= el.clientWidth + 1)));
@@ -79,16 +88,32 @@ async function run(browser, origin, layout, width) {
     await category('外观与本机偏好').click();
     await appearance().locator('.desktop-wallpaper-preview').waitFor();
     await page.waitForFunction(() => document.querySelector('.desktop-wallpaper-preview')?.style.backgroundImage.includes('blob:'));
-    assert.equal(await appearance().getByLabel('自定义主题颜色', { exact: true }).inputValue(), '#4a8f6b');
-    assert.equal(await appearance().getByLabel('自定义 AI 主题色', { exact: true }).inputValue(), '#7d73b5');
+    await assertColor('自定义主题颜色', '#4A8F6B');
+    await assertColor('自定义 AI 主题色', '#7D73B5');
     assert.deepEqual(await preferences(), before); await noOverflow();
     await page.screenshot({ path: path.join(output, `${layout}-${width}-appearance.png`) });
     if (layout === 'classic') assert.equal(await page.locator('.desktop-wallpaper').first().getAttribute('data-wallpaper-mode'), 'custom');
     await appearance().getByRole('radio', { name: /^浅色/ }).click();
     await appearance().getByRole('button', { name: '使用海蓝主题', exact: true }).click();
     await appearance().getByRole('button', { name: '使用青瓷 AI 主题', exact: true }).click();
-    await appearance().getByLabel('自定义主题颜色', { exact: true }).fill('#aabbcc');
-    await appearance().getByLabel('自定义 AI 主题色', { exact: true }).fill('#bbaacc');
+    const themeDialog = await openColor('自定义主题颜色');
+    const themeInput = themeDialog.getByLabel('色值', { exact: true });
+    await themeInput.fill('256 187 204');
+    await themeDialog.getByRole('button', { name: '应用', exact: true }).click();
+    assert.equal(await themeInput.getAttribute('aria-invalid'), 'true');
+    await themeInput.fill('170 187 204');
+    await themeDialog.getByRole('button', { name: '应用', exact: true }).click();
+
+    const aiDialog = await openColor('自定义 AI 主题色');
+    const aiInput = aiDialog.getByLabel('色值', { exact: true });
+    await aiDialog.getByRole('slider', { name: '亮度', exact: true }).press('End');
+    assert.equal(await aiInput.inputValue(), '#FFFFFF');
+    await aiDialog.getByRole('button', { name: '取消', exact: true }).click();
+    await assertColor('自定义 AI 主题色', '#5F9E91');
+    await openColor('自定义 AI 主题色');
+    await aiInput.fill('#bbaacc');
+    await page.screenshot({ path: path.join(output, `${layout}-${width}-color-dialog.png`) });
+    await aiDialog.getByRole('button', { name: '应用', exact: true }).click();
     for (const name of ['填充', '顶部', '平衡', '黑色']) await appearance().getByRole('button', { name, exact: true }).click();
     let changed = await preferences();
     assert.equal(changed['penumbra-theme-mode'], 'light');
@@ -132,12 +157,12 @@ async function run(browser, origin, layout, width) {
     for (const pending of state.pending.splice(0)) await pending.route.fulfill({ contentType: 'application/json', body: JSON.stringify(readiness(pending.code)) }).catch(() => {});
     assert(await item('Chat readiness · 新会话默认配置').getByText('默认配置就绪', { exact: true }).isVisible());
     await back(); await category('外观与本机偏好').click();
-    assert.equal(await appearance().getByLabel('自定义主题颜色', { exact: true }).inputValue(), '#aabbcc');
+    await assertColor('自定义主题颜色', '#AABBCC');
     await appearance().getByRole('button', { name: '移除', exact: true }).click();
     await page.waitForFunction(() => JSON.parse(localStorage.getItem('penumbra-wallpaper-settings')).mode === 'ambient');
     await page.getByRole('button', { name: '返回桌面', exact: true }).click();
     await page.reload(); await open(); await category('外观与本机偏好').click();
-    assert.equal(await appearance().getByLabel('自定义 AI 主题色', { exact: true }).inputValue(), '#bbaacc');
+    await assertColor('自定义 AI 主题色', '#BBAACC');
     assert.equal(await appearance().getByRole('button', { name: '移除', exact: true }).isDisabled(), true);
     await appearance().getByRole('radio', { name: /^跟随系统/ }).click();
     await appearance().getByRole('radio', { name: /^深色/ }).click();

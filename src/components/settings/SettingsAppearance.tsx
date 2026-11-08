@@ -28,6 +28,7 @@ import {
   saveWallpaperSettings,
   type WallpaperSettings,
 } from "@/lib/wallpaper";
+import { ThemeColorDialog } from "./ThemeColorDialog";
 
 const themeModeOptions = [
   { value: "system", label: "跟随系统", description: "随设备外观自动切换", icon: Monitor },
@@ -327,16 +328,7 @@ export function SettingsAppearance() {
             title="主题颜色"
             description="桌面 App 图标、按钮和强调色会一起更新。"
           />
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            自定义
-            <input
-              type="color"
-              value={themeColor}
-              onChange={(event) => selectThemeColor(event.target.value)}
-              className="size-10 cursor-pointer rounded-xl border border-border bg-transparent p-1"
-              aria-label="自定义主题颜色"
-            />
-          </label>
+          <ThemeColorDialog title="自定义主题颜色" value={themeColor} onApply={selectThemeColor} />
         </div>
 
         <div className="mt-4 grid grid-cols-4 gap-3 sm:grid-cols-8">
@@ -382,16 +374,7 @@ export function SettingsAppearance() {
               <span className="mt-1 size-1.5 shrink-0 rounded-full bg-current" />
               <span className="text-xs font-medium leading-relaxed">你好，我是 Aion</span>
             </div>
-            <label className="flex items-center gap-2 text-xs text-muted-foreground">
-              自定义
-              <input
-                type="color"
-                value={aiColor}
-                onChange={(event) => selectAiColor(event.target.value)}
-                className="size-10 cursor-pointer rounded-xl border border-border bg-transparent p-1"
-                aria-label="自定义 AI 主题色"
-              />
-            </label>
+            <ThemeColorDialog title="自定义 AI 主题色" value={aiColor} onApply={selectAiColor} />
           </div>
         </div>
 
