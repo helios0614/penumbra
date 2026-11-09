@@ -8,7 +8,7 @@ import { useRegistryTask } from "../connections/useRegistryTask";
 import { FeatureSelectionSummary, FeatureStatus } from "./FeatureBindingSummary";
 import { FeatureBindingDialog } from "./FeatureBindingDialog";
 import { readFeatureSnapshot, type FeatureSnapshot } from "./feature-snapshot";
-export function FeatureBindingsPage({ onManageConnections }: { onManageConnections: () => void }) {
+export function FeatureBindingsPage({ onManageConnections, focusUsage }: { onManageConnections: () => void; focusUsage?: FeatureUsage }) {
   const read = useRegistryTask<FeatureSnapshot>();
   const [snapshot, setSnapshot] = useState<FeatureSnapshot | null>(null);
   const [editing, setEditing] = useState<FeatureUsage | null>(null);
@@ -16,6 +16,14 @@ export function FeatureBindingsPage({ onManageConnections }: { onManageConnectio
   const actions = useRef<Record<string, HTMLButtonElement | null>>({});
   const refresh = async () => { const value = await read.run(readFeatureSnapshot); if (value) setSnapshot(value); };
   useEffect(() => { void refresh(); }, []);
+  const focusRow = useRef<HTMLElement>(null);
+  const ready = snapshot !== null;
+  useEffect(() => {
+    if (!ready || !focusUsage || !focusRow.current) return;
+    focusRow.current.focus({ preventScroll: true });
+    focusRow.current.scrollIntoView({ block: "nearest" });
+  }, [ready, focusUsage]);
+
   const feature = snapshot?.features.find(item => item.usage === editing);
   return <>
     <section aria-label="模型与任务分配面板" className="mist-glass flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[22px] bg-background/70! dark:bg-background/50!">
@@ -41,7 +49,9 @@ export function FeatureBindingsPage({ onManageConnections }: { onManageConnectio
             const item = snapshot.features.find(value => value.usage === usage)!;
             const selection = item.selection;
             const connection = snapshot.registry.connections.find(value => value.id === selection?.connection_id);
-            return <article key={usage} data-feature-usage={usage} className="min-w-0 space-y-1.5 py-4">
+            return <article key={usage} data-feature-usage={usage} ref={usage === focusUsage ? focusRow : undefined}
+              tabIndex={usage === focusUsage ? -1 : undefined} aria-label={usage === focusUsage ? FEATURE_NAMES[usage] : undefined}
+              className="min-w-0 space-y-1.5 py-4 focus:outline-2 focus:-outline-offset-2 focus:outline-ring">
               <div data-feature-heading className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
                 <h5 className="min-w-0 text-sm font-semibold">{FEATURE_NAMES[usage]}</h5>
                 <FeatureStatus feature={item} />

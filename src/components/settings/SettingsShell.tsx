@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { useDisplayNames } from "@/components/identity/useDisplayNames";
 import { ArrowLeft, ArrowUpRight, ChevronRight, X } from "lucide-react";
 import { PageHeader, PageHeaderAction } from "@/components/ui/page-header";
@@ -8,6 +8,7 @@ import { backSettingsPage, pushSettingsPage, readSettingsPath } from "./settings
 
 export interface SettingsPageContext {
   readonly active: boolean;
+  readonly previousPageId?: string;
   readonly navigate: (pageId: string) => void;
   readonly goBack: () => void;
 }
@@ -20,12 +21,11 @@ export interface SettingsPage {
   readonly render: (context: SettingsPageContext) => ReactNode;
   /** Fill the available height when the page owns its internal scrolling. */
   readonly layout?: "fill";
-  /** Nested pages reuse the shell and return stack without adding a category. */
-  readonly nested?: boolean;
-  readonly parentId?: string;
+  /** Adjacent pages with the same group share a heading in the category list. */
+  readonly group?: string;
 }
 
-const plannedCategories = ["服务集成", "高级设置"];
+const plannedCategories = ["高级设置"];
 
 /** Desktop hosts own the Settings route; categories use history state without storing drafts. */
 export function SettingsShell({ pages, onClose }: {
@@ -37,6 +37,7 @@ export function SettingsShell({ pages, onClose }: {
   const titleRef = useRef<HTMLHeadingElement>(null);
   const categoryRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const activeId = path[path.length - 1];
+  const previousPageId = path[path.length - 2];
   const pathRef = useRef(path);
   pathRef.current = path;
   const activePage = pages.find(page => page.id === activeId);
@@ -80,21 +81,25 @@ export function SettingsShell({ pages, onClose }: {
       <aside className={cn("mist-glass min-h-0 w-full shrink-0 rounded-[22px] md:w-52", activePage && "hidden md:block")}>
         <PageScrollArea label="设置分类" topLabel="回到分类顶部" className="h-full" contentClassName="space-y-4 pb-4">
           <nav aria-label="设置分类" className="space-y-1 p-2">
-            {pages.filter(page => !page.nested).map(page => {
+            {pages.map((page, index) => {
               const Icon = page.icon;
-              return <button key={page.id} ref={element => { categoryRefs.current[page.id] = element; }} type="button"
-                aria-current={(activeId === page.id || activePage?.parentId === page.id) ? "page" : undefined}
-                onClick={() => {
-                  if (path.length !== 1 || activeId !== page.id) changePath([page.id]);
-                  requestAnimationFrame(() => titleRef.current?.focus());
-                }}
-                className={cn("flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-ring",
-                  (activeId === page.id || activePage?.parentId === page.id) ? "bg-primary/12 text-primary-ink" : "text-foreground hover:bg-background/35")}>
-                <Icon className="size-4 shrink-0" />
-                <span className="min-w-0 flex-1"><span className="block font-medium">{page.title}</span>
-                  <span className="mt-0.5 block text-xs text-muted-foreground md:hidden">{page.description}</span></span>
-                <ChevronRight className="size-4 shrink-0 md:hidden" aria-hidden="true" />
-              </button>;
+              return <Fragment key={page.id}>
+                {page.group && page.group !== pages[index - 1]?.group &&
+                  <h3 className="px-3 pb-1 pt-3 text-xs font-medium text-muted-foreground">{page.group}</h3>}
+                <button ref={element => { categoryRefs.current[page.id] = element; }} type="button"
+                  aria-current={activeId === page.id ? "page" : undefined}
+                  onClick={() => {
+                    if (path.length !== 1 || activeId !== page.id) changePath([page.id]);
+                    requestAnimationFrame(() => titleRef.current?.focus());
+                  }}
+                  className={cn("flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+                    activeId === page.id ? "bg-primary/12 text-primary-ink" : "text-foreground hover:bg-background/35")}>
+                  <Icon className="size-4 shrink-0" />
+                  <span className="min-w-0 flex-1"><span className="block font-medium">{page.title}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground md:hidden">{page.description}</span></span>
+                  <ChevronRight className="size-4 shrink-0 md:hidden" aria-hidden="true" />
+                </button>
+              </Fragment>;
             })}
           </nav>
           <section className="px-3" aria-label="后续分类规划">
@@ -122,10 +127,10 @@ export function SettingsShell({ pages, onClose }: {
         {/* Keep appearance mounted; pages with transient credentials mount only while active. */}
         {pages.map(page => page.layout === "fill" ? <div key={page.id} hidden={activeId !== page.id}
           role="region" aria-label={page.title} className="min-h-0 min-w-0 flex-1 overflow-hidden pb-4">
-          {page.render({ active: activeId === page.id, navigate, goBack })}
+          {page.render({ active: activeId === page.id, previousPageId, navigate, goBack })}
         </div> : <PageScrollArea key={page.id} label={page.title} topLabel={`回到${page.title}顶部`}
           hidden={activeId !== page.id} contentClassName="pb-4" resetKey={activeId === page.id ? page.id : undefined}>
-          {page.render({ active: activeId === page.id, navigate, goBack })}
+          {page.render({ active: activeId === page.id, previousPageId, navigate, goBack })}
         </PageScrollArea>)}
       </section>
     </div>
