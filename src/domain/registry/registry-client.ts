@@ -41,12 +41,8 @@ export async function listConnections(options?: ApiRequestOptions): Promise<Conn
     typeof raw.migration_required !== "boolean" || !Array.isArray(raw.connections) || !Array.isArray(raw.diagnostics) || !Array.isArray(raw.deferred_usages)) return invalid();
   const connections = raw.connections.map(item => parseConnection(item));
   if (new Set(connections.map(item => item.id)).size !== connections.length) return invalid();
-  const alias = record(raw.profile_aliases) ? raw.profile_aliases["legacy:siliconflow"] : null;
-  const siliconflowConnectionId = record(alias) && text(alias.connection_id) &&
-    connections.some(item => item.id === alias.connection_id) ? alias.connection_id : undefined;
   return { schema_version: 2, authority_state: raw.authority_state as ConnectionList["authority_state"], migration_required: raw.migration_required,
-    connections, diagnosticCount: raw.diagnostics.length, deferredCount: raw.deferred_usages.length,
-    ...(siliconflowConnectionId ? { siliconflowConnectionId } : {}) };
+    connections, diagnosticCount: raw.diagnostics.length, deferredCount: raw.deferred_usages.length };
 }
 export async function getConnection(id: string, options?: ApiRequestOptions): Promise<Connection> {
   return parseConnection(await request(path(id), "GET", undefined, options), id);

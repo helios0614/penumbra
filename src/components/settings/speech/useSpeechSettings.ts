@@ -3,21 +3,22 @@ import { useToast } from "@/components/ui/toast";
 import { SettingsError, clearSettingsSecret, revealSettingsSecret } from "@/domain/service-settings/settings-client";
 import {
   readSpeechSettings, replaceSpeechKey, saveSpeechConfig, speechConfigs,
-  type SpeechKeyTarget, type SpeechPatch, type SpeechSettings, type SpeechTarget,
+  type SpeechPatch, type SpeechSettings, type SpeechTarget,
 } from "@/domain/speech-settings/speech-settings";
 
-export type SpeechScope = "page" | "provider" | SpeechTarget | `${SpeechKeyTarget}-key`;
+type SaveScope = "provider" | SpeechTarget | "siliconflow-address";
+export type SpeechScope = "page" | SaveScope | `${SpeechTarget}-key`;
 type Operation = { scope: SpeechScope; kind: "read" | "save" | "reveal" | "replace" | "clear" };
-type Write = { kind: "save"; scope: "provider" | SpeechTarget; patch: SpeechPatch }
-  | { kind: "replace"; target: SpeechKeyTarget; key: string }
-  | { kind: "clear"; target: SpeechKeyTarget; ref: string };
+type Write = { kind: "save"; scope: SaveScope; patch: SpeechPatch }
+  | { kind: "replace"; target: SpeechTarget; key: string }
+  | { kind: "clear"; target: SpeechTarget; ref: string };
 
 export function useSpeechSettings() {
   const [snapshot, setSnapshot] = useState<SpeechSettings | null>(null);
   const [current, setCurrent] = useState(false);
   const [pending, setPending] = useState<Operation | null>(null);
   const [error, setError] = useState<{ scope: SpeechScope; text: string } | null>(null);
-  const [secret, setSecret] = useState<{ target: SpeechKeyTarget; value: string } | null>(null);
+  const [secret, setSecret] = useState<{ target: SpeechTarget; value: string } | null>(null);
   const active = useRef<AbortController | null>(null);
   const toast = useToast("speech-settings");
 
@@ -61,7 +62,7 @@ export function useSpeechSettings() {
     };
   }, []);
 
-  function hide(target: SpeechKeyTarget) {
+  function hide(target: SpeechTarget) {
     setSecret(previous => previous?.target === target ? null : previous);
     if (pending?.kind !== "reveal" || pending.scope !== `${target}-key`) return;
     active.current?.abort();
@@ -69,7 +70,7 @@ export function useSpeechSettings() {
     setPending(null);
   }
 
-  function reveal(target: SpeechKeyTarget) {
+  function reveal(target: SpeechTarget) {
     const ref = snapshot?.configs[target].credential?.secret_ref;
     if (!current || !ref) return;
     const scope = `${target}-key` as const;
@@ -129,8 +130,10 @@ export function useSpeechSettings() {
         return;
       }
       if (change.kind === "save") onSuccess?.();
-      const label = change.kind === "save" ? (change.scope === "provider" ? "语音合成 Provider" : speechConfigs[change.scope].name + " 配置")
-        : speechConfigs[change.target].name + " Key";
+      const label = change.kind !== "save" ? speechConfigs[change.target].name + " Key"
+        : change.scope === "provider" ? "语音合成 Provider"
+        : change.scope === "siliconflow-address" ? "SiliconFlow TTS API 地址"
+        : speechConfigs[change.scope].name + " 配置";
       toast.show({ type: "success", text: label + (change.kind === "clear" ? " 已清除" : " 已保存") });
     });
   }

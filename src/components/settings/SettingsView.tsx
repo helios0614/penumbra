@@ -16,8 +16,8 @@ export function SettingsView({ onBack }: { onBack?: () => void }) {
     { id: "appearance", title: "外观与本机偏好", description: "界面、主题色与桌面壁纸", icon: Palette,
       render: () => <SettingsAppearance /> },
     { id: "connections", title: "API 与连接", description: "连接、凭据与单次测试", icon: Cable, layout: "fill",
-      render: ({ active, previousPageId }) => active ? <Suspense fallback={<p role="status" className="text-xs">正在读取连接…</p>}>
-        <ConnectionsList locateSiliconFlow={previousPageId === "speech"} />
+      render: ({ active }) => active ? <Suspense fallback={<p role="status" className="text-xs">正在读取连接…</p>}>
+        <ConnectionsList />
       </Suspense> : null },
     { id: "features", title: "模型与任务分配", description: "九项功能的模型分配与生效范围", icon: Workflow, layout: "fill",
       render: ({ active, navigate, previousPageId }) => active ? <Suspense fallback={<p role="status" className="text-xs">正在读取功能分配…</p>}><FeatureBindingsPage onManageConnections={() => navigate("connections")} focusUsage={previousPageId === "web" ? "web_compression" : undefined} /></Suspense> : null },
@@ -30,8 +30,8 @@ export function SettingsView({ onBack }: { onBack?: () => void }) {
         <WebSettingsPage onManageCompression={() => navigate("features")} />
       </Suspense> : null },
     { id: "speech", title: "语音服务", description: "语音合成与语音识别配置", icon: Mic, group: "服务集成",
-      render: ({ active, navigate }) => active ? <Suspense fallback={<p role="status" className="text-xs">正在打开语音服务…</p>}>
-        <SpeechSettingsPage onManageSharedConnection={() => navigate("connections")} />
+      render: ({ active }) => active ? <Suspense fallback={<p role="status" className="text-xs">正在打开语音服务…</p>}>
+        <SpeechSettingsPage />
       </Suspense> : null },
   ];
   return <SettingsShell pages={pages} onClose={onBack} />;

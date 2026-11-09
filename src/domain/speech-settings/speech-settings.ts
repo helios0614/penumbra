@@ -7,7 +7,8 @@ const miniMaxAddress = "https://api.minimax.chat/v1";
 export const speechConfigs = {
   minimax: { name: "MiniMax TTS", model: "minimax_tts_model", defaultModel: "MiniMaxAI/MiniMax-User",
     url: "minimax_tts_url", defaultUrl: miniMaxAddress, key: "minimax_tts_key" },
-  siliconflow: { name: "SiliconFlow TTS", model: "siliconflow_tts_model", defaultModel: "FunAudioLLM/CosyVoice2-0.5B" },
+  siliconflow: { name: "SiliconFlow TTS", model: "siliconflow_tts_model", defaultModel: "FunAudioLLM/CosyVoice2-0.5B",
+    url: "siliconflow_tts_url", defaultUrl: "https://api.siliconflow.cn/v1", key: "siliconflow_tts_key" },
   elevenlabs: { name: "ElevenLabs TTS", model: "elevenlabs_tts_model", defaultModel: "eleven_multilingual_v2",
     url: "elevenlabs_tts_url", defaultUrl: "https://api.elevenlabs.io", key: "elevenlabs_tts_key" },
   asr: { name: "MiniMax ASR", model: "minimax_asr_model", defaultModel: "MiniMaxAI/Speech-01",
@@ -22,17 +23,15 @@ export const ttsProviders = [
 
 export type SpeechTarget = keyof typeof speechConfigs;
 export type TtsProvider = Exclude<SpeechTarget, "asr">;
-export type SpeechKeyTarget = Exclude<SpeechTarget, "siliconflow">;
 type Config = (typeof speechConfigs)[SpeechTarget];
-type CredentialConfig = (typeof speechConfigs)[SpeechKeyTarget];
-type ConfigPatch = Partial<Record<Config["model"] | CredentialConfig["url"], string>>;
+type ConfigPatch = Partial<Record<Config["model"] | Config["url"], string>>;
 export type SpeechPatch = ConfigPatch & { tts_provider?: TtsProvider };
 export type SpeechDraft = { model?: string; url?: string };
 
 interface SpeechConfig {
   readonly model: string;
   readonly customAddress: boolean;
-  readonly credential: SettingsCredential | null;
+  readonly credential: SettingsCredential;
 }
 
 export interface SpeechSettings {
@@ -45,6 +44,8 @@ export async function readSpeechSettings(signal: AbortSignal, expected: SpeechPa
   const raw = await readSettings(signal);
   const credentials = raw.credentials;
   if (!settingsRecord(credentials)) throw invalidSettings();
+  const siliconFlowCustomAddress = raw.siliconflow_tts_custom_url;
+  if (typeof siliconFlowCustomAddress !== "boolean") throw invalidSettings();
   const value = (field: string) => {
     const item = raw[field];
     if (typeof item !== "string") throw invalidSettings();
@@ -52,10 +53,10 @@ export async function readSpeechSettings(signal: AbortSignal, expected: SpeechPa
   };
   const config = (fields: Config): SpeechConfig => {
     const model = value(fields.model);
-    if (!("url" in fields)) return { model, customAddress: false, credential: null };
-    const address = value(fields.url).trim();
     // Even an ordinary-looking path may carry credentials. Never retain the GET URL.
-    return { model, customAddress: !!address && address.replace(/\/+$/, "") !== fields.defaultUrl, credential: parseSettingsCredential(credentials[fields.key]) };
+    const customAddress = fields.url === "siliconflow_tts_url" ? siliconFlowCustomAddress
+      : isCustomAddress(value(fields.url), fields.defaultUrl);
+    return { model, customAddress, credential: parseSettingsCredential(credentials[fields.key]) };
   };
   const provider = value("tts_provider");
   const snapshot: SpeechSettings = {
@@ -64,7 +65,15 @@ export async function readSpeechSettings(signal: AbortSignal, expected: SpeechPa
       elevenlabs: config(speechConfigs.elevenlabs), asr: config(speechConfigs.asr) },
     outputFormat: value("elevenlabs_tts_output_format") || "mp3_44100_128",
   };
-  return { snapshot, matches: Object.entries(expected).every(([field, input]) => raw[field] === input) };
+  // C1 exposes only the address mode, so an acknowledged write can confirm that mode.
+  return { snapshot, matches: Object.entries(expected).every(([field, input]) => field === "siliconflow_tts_url"
+    ? siliconFlowCustomAddress === isCustomAddress(input, speechConfigs.siliconflow.defaultUrl)
+    : raw[field] === input) };
+}
+
+function isCustomAddress(input: string, defaultUrl: string): boolean {
+  const address = input.trim();
+  return !!address && address.replace(/\/+$/, "") !== defaultUrl;
 }
 
 /** Only an explicit replacement can change a stored URL. Blank preserves it. */
@@ -78,12 +87,16 @@ export function validSpeechAddress(input: string): boolean {
   }
 }
 
+export function validSiliconFlowAddress(input: string): boolean {
+  return validSpeechAddress(input) && new URL(input).port !== "0";
+}
+
 export function speechPatch(target: SpeechTarget, saved: SpeechConfig, draft: SpeechDraft): ConfigPatch {
   const fields = speechConfigs[target];
   const patch: ConfigPatch = {};
   if (draft.model !== undefined && draft.model.trim() !== saved.model) patch[fields.model] = draft.model.trim();
   const address = draft.url?.trim();
-  if ("url" in fields && address && (saved.customAddress || address.replace(/\/+$/, "") !== fields.defaultUrl)) {
+  if (target !== "siliconflow" && address && (saved.customAddress || isCustomAddress(address, fields.defaultUrl))) {
     if (!validSpeechAddress(address)) throw invalidSettings();
     patch[fields.url] = address;
   }
@@ -94,7 +107,7 @@ export function saveSpeechConfig(patch: SpeechPatch, signal: AbortSignal) {
   return writeSettings(patch, signal);
 }
 
-export function replaceSpeechKey(target: SpeechKeyTarget, input: string, masked: string, signal: AbortSignal) {
+export function replaceSpeechKey(target: SpeechTarget, input: string, masked: string, signal: AbortSignal) {
   if (!validSettingsKey(input, masked)) throw invalidSettings();
   return writeSettings({ [speechConfigs[target].key]: input.trim() }, signal);
 }

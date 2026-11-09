@@ -20,15 +20,15 @@ const server = http.createServer((req, res) => {
   fs.createReadStream(file).pipe(res);
 });
 const empty = { configured: false, masked: "", secret_ref: null };
-const opaqueId = "shared-opaque-832";
-const decoyId = "connection-legacy-siliconflow";
 const historical = [
   "https://legacy-user:legacy-password@fixture.invalid/v1",
   "https://fixture.invalid/legacy-path-token/v1",
   "https://fixture.invalid/v1?key=legacy-query-token",
+  "https://fixture.invalid/legacy-speech-token/v1",
 ];
 const address = "https://relay.fixture.invalid/voice/v1";
-const keyFields = ["minimax_tts_key", "elevenlabs_tts_key", "minimax_asr_key"];
+const siliconFlowDefault = "https://api.siliconflow.cn/v1";
+const keyFields = ["minimax_tts_key", "siliconflow_tts_key", "elevenlabs_tts_key", "minimax_asr_key"];
 
 async function verify(browser, origin, layout, width) {
   const height = 850;
@@ -47,20 +47,19 @@ async function verify(browser, origin, layout, width) {
     tts_provider: "", minimax_tts_url: historical[0], minimax_tts_model: "fixture/minimax",
     siliconflow_tts_model: "", elevenlabs_tts_url: historical[1], elevenlabs_tts_model: "fixture/elevenlabs",
     elevenlabs_tts_output_format: "", minimax_asr_url: historical[2], minimax_asr_model: "fixture/asr",
-    embedding_model: "preserve-embedding",
+    siliconflow_url: historical[3], embedding_url: "https://embedding.fixture.invalid/v1", embedding_model: "preserve-embedding",
   };
-  const keys = { minimax_tts_key: "fake-initial-minimax-key", elevenlabs_tts_key: "fake-initial-elevenlabs-key", minimax_asr_key: "" };
-  const versions = { minimax_tts_key: 1, elevenlabs_tts_key: 1, minimax_asr_key: 1 };
-  let alias = opaqueId, mode = "", releaseSave, releaseReveal;
+  const keys = { minimax_tts_key: "fake-initial-minimax-key", siliconflow_tts_key: "",
+    elevenlabs_tts_key: "fake-initial-elevenlabs-key", minimax_asr_key: "", embedding_key: "fake-independent-embedding-key" };
+  const versions = Object.fromEntries(Object.keys(keys).map(name => [name, 1]));
+  const embedding = { url: fields.embedding_url, key: keys.embedding_key, model: fields.embedding_model };
+  let siliconFlowUrl = "", mode = "", failReadback = false, releaseSave, releaseReveal;
   const credential = name => keys[name]
     ? { configured: true, masked: "••••••••" + keys[name].slice(-4), secret_ref: name + "-fixture-ref-" + versions[name] }
     : empty;
-  const connection = (id, name) => ({
-    id, name, base_url: "https://shared.fixture.invalid/v1", enabled: false, transport: "direct", credential: empty,
-  });
   page.on("pageerror", error => errors.push(error.message));
   page.on("console", message => {
-    if (/legacy-password|legacy-path-token|legacy-query-token|fake-replacement|Password field is not contained/.test(message.text())) errors.push("unsafe console output");
+    if (/legacy-password|legacy-path-token|legacy-query-token|legacy-speech-token|fake-replacement|Password field is not contained/.test(message.text())) errors.push("unsafe console output");
   });
   await context.route("**/*", route => {
     if (new URL(route.request().url()).origin === origin) return route.continue();
@@ -76,13 +75,17 @@ async function verify(browser, origin, layout, width) {
     calls.push(method + " " + endpoint);
     assert(!/^\/api\/(tts|voice)(\/|$)/.test(endpoint), "settings must not invoke synthesis, voices, or transcriptions");
     if (endpoint === "/api/settings" && method === "GET") {
-      return json({ ...fields, credentials: Object.fromEntries(keyFields.map(name => [name, credential(name)])) });
+      if (failReadback) { failReadback = false; return json({ detail: "fixture read failure" }, 503); }
+      const { embedding_url, ...projection } = fields;
+      return json({ ...projection, embedding_custom_url: !!embedding_url, siliconflow_tts_custom_url: !!siliconFlowUrl && siliconFlowUrl !== siliconFlowDefault,
+        credentials: Object.fromEntries(Object.keys(keys).map(name => [name, credential(name)])) });
     }
     if (endpoint === "/api/settings" && method === "PUT") {
       writes.push(body);
       const names = Object.keys(body);
       assert(names.length > 0);
-      assert(names.every(name => !["embedding_model", "elevenlabs_tts_output_format", "siliconflow_key", "siliconflow_url", "secret_ref"].includes(name)));
+      assert(names.every(name => !name.startsWith("embedding_") &&
+        !["elevenlabs_tts_output_format", "siliconflow_key", "siliconflow_url", "secret_ref"].includes(name)));
       if (mode === "fail") { mode = ""; return json({ detail: { code: "persistence_failed", value: historical[0] } }, 503); }
       if (mode === "lost") { mode = ""; return route.abort("failed"); }
       if (mode === "pending") { mode = ""; await new Promise(resolve => { releaseSave = resolve; }); }
@@ -91,11 +94,16 @@ async function verify(browser, origin, layout, width) {
           assert(value.startsWith("fake-replacement"));
           keys[name] = value;
           versions[name]++;
+        } else if (name === "siliconflow_tts_url") {
+          assert.equal(names.length, 1);
+          siliconFlowUrl = value.replace(/\/+$/, "");
         } else {
           assert(Object.hasOwn(fields, name));
           fields[name] = value;
         }
       }
+      if (mode === "lost-after") { mode = ""; return route.abort("failed"); }
+      if (mode === "readback") { mode = ""; failReadback = true; }
       return json({ ok: true });
     }
     if (endpoint === "/api/settings/secrets/reveal" || endpoint === "/api/settings/secrets/clear") {
@@ -110,17 +118,13 @@ async function verify(browser, origin, layout, width) {
         versions[name]++;
         return json({ detail: "Secret reference is invalid or stale" }, 422);
       }
+      if (mode === "fail-clear" && clearing) { mode = ""; return json({ detail: { code: "persistence_failed" } }, 503); }
       if (clearing) { keys[name] = ""; versions[name]++; return json({ ok: true }); }
       const secret = keys[name];
       if (mode === "late") { mode = ""; await new Promise(resolve => { releaseReveal = resolve; }); }
       return json({ secret });
     }
     assert.equal(method, "GET", "unexpected write to " + endpoint);
-    if (endpoint === "/api/registry/connections") return json({
-      schema_version: 2, authority_state: "persisted_v2", migration_required: false, diagnostics: [], deferred_usages: [],
-      profile_aliases: { "legacy:siliconflow": { connection_id: alias } },
-      connections: [connection(decoyId, "SiliconFlow"), connection(opaqueId, "合成共享代理")],
-    });
     if (endpoint === "/api/session") return json({ authenticated: true });
     if (endpoint === "/api/conversations") return json([]);
     return json({});
@@ -139,7 +143,7 @@ async function verify(browser, origin, layout, width) {
   const noSecrets = async () => {
     const html = await panel.evaluate(node => node.outerHTML);
     for (const value of historical) assert(!html.includes(value));
-    for (const value of ["legacy-password", "legacy-path-token", "legacy-query-token"]) assert(!html.includes(value));
+    for (const value of ["legacy-password", "legacy-path-token", "legacy-query-token", "legacy-speech-token"]) assert(!html.includes(value));
   };
   const layoutBounds = async () => {
     const { width, scroll, height, bounds } = await page.evaluate(() => ({
@@ -191,6 +195,16 @@ async function verify(browser, origin, layout, width) {
     await save.and(page.locator(":disabled")).waitFor();
     const replacement = "fake-replacement-" + keyField;
     await field.fill(replacement);
+    if (keyField === "siliconflow_tts_key") {
+      mode = "fail";
+      const beforeFailure = writes.length;
+      const oldKey = keys[keyField];
+      await save.click();
+      await dialog.getByRole("alert").filter({ hasText: "保存失败" }).waitFor();
+      assertWrite(beforeFailure, { [keyField]: replacement });
+      assert.equal(keys[keyField], oldKey);
+      assert.equal(await field.inputValue(), replacement);
+    }
     if (stale && width < 768) {
       await page.setViewportSize({ width, height: 460 });
       await field.focus();
@@ -222,6 +236,16 @@ async function verify(browser, origin, layout, width) {
       assertWrite(beforeClear, { clear: keyField });
       assert.equal(keys[keyField], replacement);
       assert(await clear.getByRole("button", { name: "确认清除" }).isDisabled());
+      await click("取消", clear);
+      await click("清除凭据", area);
+    }
+    if (keyField === "siliconflow_tts_key") {
+      mode = "fail-clear";
+      const beforeFailure = writes.length;
+      await click("确认清除", clear);
+      await clear.getByRole("alert").filter({ hasText: "保存失败" }).waitFor();
+      assertWrite(beforeFailure, { clear: keyField });
+      assert.equal(keys[keyField], replacement);
       await click("取消", clear);
       await click("清除凭据", area);
     }
@@ -258,16 +282,126 @@ async function verify(browser, origin, layout, width) {
     await model("ElevenLabs TTS").fill("retained/elevenlabs");
     await choose("SiliconFlow", "siliconflow");
     const sf = group("SiliconFlow TTS");
+    const sfSecret = sf.getByLabel("临时 SiliconFlow TTS Key 明文");
     assert.equal(await model("SiliconFlow TTS").getAttribute("placeholder"), "FunAudioLLM/CosyVoice2-0.5B");
     assert.equal(await sf.getByRole("textbox").count(), 1);
-    await sf.getByRole("heading", { name: "与 Embedding 共用连接" }).waitFor();
+    assert.equal(await sf.getByRole("button", { name: /共享连接/ }).count(), 0);
+    assert.equal(await sf.getByRole("link").count(), 0);
+    await sf.getByText("未配置", { exact: true }).waitFor();
+    const sfDefault = sf.getByText("使用默认地址 · " + siliconFlowDefault, { exact: true });
+    const sfCustom = sf.getByText("已配置自定义地址", { exact: true });
+    const sfEdit = page.getByRole("dialog", { name: "修改 SiliconFlow TTS API 地址" });
+    const sfReset = page.getByRole("alertdialog", { name: "恢复默认 API 地址" });
+    const sfInput = sfEdit.getByRole("textbox", { name: "新 API 地址" });
+    const sfSave = sfEdit.getByRole("button", { name: "确认保存地址" });
+    await sfDefault.waitFor();
     await screenshot("siliconflow");
-    await model("SiliconFlow TTS").fill("fixture/cosy");
+    siliconFlowUrl = historical[3];
+    keys.siliconflow_tts_key = embedding.key;
+    await choose("ElevenLabs", "elevenlabs");
+    await choose("SiliconFlow", "siliconflow");
+    await sfCustom.waitFor();
+    await sf.getByLabel("SiliconFlow TTS Key 掩码").waitFor();
+    await noSecrets();
+    assert(!calls.some(call => /reveal|registry/.test(call)));
+
     let index = writes.length;
+    await click("修改 API 地址", sf);
+    await sfEdit.getByText(/当前自定义地址不会回显/).waitFor();
+    await sfEdit.getByText("修改 API 地址后，现有 API Key 将用于新的目标地址。", { exact: true }).waitFor();
+    await page.locator(".penumbra-toast-list").filter({ hasText: "语音合成 Provider 已保存" }).waitFor({ state: "attached" });
+    await page.locator(".penumbra-toast-list").filter({ hasText: "语音合成 Provider 已保存" }).waitFor({ state: "hidden" });
+    assert.equal(await sfInput.inputValue(), "");
+    assert(await sfSave.isDisabled());
+    for (const value of ["http://relay.fixture.invalid", "https://user:key@relay.fixture.invalid/v1",
+      address + "?key=fixture", address + "#", "https://relay.fixture.invalid:0/v1"]) {
+      await sfInput.fill(value);
+      assert(await sfSave.isDisabled());
+    }
+    await sfInput.fill(address);
+    await sfInput.press("Enter");
+    assert.equal(writes.length, index, "editing must not submit before explicit confirmation");
+    if (width < 768) {
+      await page.setViewportSize({ width, height: 460 });
+      await sfInput.focus();
+      assert(await sfInput.evaluate(node => node === document.activeElement));
+      await layoutBounds();
+      await screenshot("short-address-editor");
+      await page.setViewportSize({ width, height });
+    }
+    await click("关闭", sfEdit);
+    await model("SiliconFlow TTS").fill("fixture/cosy");
+    await choose("MiniMax", "minimax");
+    assert.equal(await model("MiniMax TTS").inputValue(), "retained/minimax");
+    await choose("SiliconFlow", "siliconflow");
+    assert.equal(await model("SiliconFlow TTS").inputValue(), "fixture/cosy");
+    await click("修改 API 地址", sf);
+    assert.equal(await sfInput.inputValue(), address);
+    mode = "fail";
+    index = writes.length;
+    await sfSave.click();
+    await sfEdit.getByRole("alert").filter({ hasText: "保存失败" }).waitFor();
+    assertWrite(index, { siliconflow_tts_url: address });
+    assert.equal(await sfInput.inputValue(), address);
+    assert.equal(siliconFlowUrl, historical[3]);
+
+    mode = "lost-after";
+    index = writes.length;
+    await sfSave.click();
+    await sfEdit.getByRole("alert").filter({ hasText: "保存结果未确认" }).waitFor();
+    assertWrite(index, { siliconflow_tts_url: address });
+    assert.equal(siliconFlowUrl, address);
+    assert.equal(await sfInput.inputValue(), address);
+    assert.equal(keys.siliconflow_tts_key, embedding.key);
+
+    const nextAddress = address + "/next";
+    await sfInput.fill(nextAddress);
+    mode = "readback";
+    index = writes.length;
+    await sfSave.click();
+    await sfEdit.getByRole("alert").filter({ hasText: "当前状态读回失败" }).waitFor();
+    assertWrite(index, { siliconflow_tts_url: nextAddress });
+    assert.equal(await sfInput.inputValue(), nextAddress);
+    assert(await sfSave.isDisabled());
+    await click("重新读取", sfEdit);
+    await sfSave.and(page.locator(":enabled")).waitFor();
+    assertWrite(index, { siliconflow_tts_url: nextAddress });
+    await sfInput.fill(address + "/");
+    mode = "pending";
+    index = writes.length;
+    await sfSave.evaluate(node => { node.click(); node.click(); });
+    await sfSave.and(page.locator(":disabled")).waitFor();
+    assert(await page.locator('[aria-label="SiliconFlow TTS Key 操作"] button[aria-label="编辑凭据"]').isDisabled());
+    for (let attempt = 0; !releaseSave && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 10));
+    assert(releaseSave);
+    assertWrite(index, { siliconflow_tts_url: address + "/" });
+    releaseSave();
+    releaseSave = undefined;
+    await sfEdit.waitFor({ state: "hidden" });
+    await ready();
+    await sfCustom.waitFor();
+    assert.equal(await model("SiliconFlow TTS").inputValue(), "fixture/cosy");
+
+    index = writes.length;
+    await click("恢复默认地址", sf);
+    await sfReset.getByText(/现有 API Key 会保留/).waitFor();
+    await click("取消", sfReset);
+    assert.equal(writes.length, index);
+    await click("恢复默认地址", sf);
+    await click("确认恢复默认", sfReset);
+    await sfReset.waitFor({ state: "hidden" });
+    await ready();
+    await sfDefault.waitFor();
+    assertWrite(index, { siliconflow_tts_url: "" });
+    assert.equal(keys.siliconflow_tts_key, embedding.key);
+    assert.equal(await sf.getByRole("button", { name: "恢复默认地址" }).count(), 0);
+
+    index = writes.length;
     await click("保存合成配置", sf);
     await ready();
     assertWrite(index, { siliconflow_tts_model: "fixture/cosy" });
-    assert.equal(fields.embedding_model, "preserve-embedding");
+    await lifecycle("SiliconFlow TTS", "siliconflow_tts_key", true);
+    assert.deepEqual({ url: fields.embedding_url, key: keys.embedding_key, model: fields.embedding_model }, embedding);
     await choose("MiniMax", "minimax");
     assert.equal(await model("MiniMax TTS").inputValue(), "retained/minimax");
 
@@ -314,36 +448,28 @@ async function verify(browser, origin, layout, width) {
     await page.reload();
     await ready();
     assert((await provider.textContent()).includes("SiliconFlow"));
-    await click("管理共享连接", sf);
-    const shared = page.locator("[data-connection-id='" + opaqueId + "']");
-    const decoy = page.locator("[data-connection-id='" + decoyId + "']");
-    await shared.getByText("API 地址", { exact: true }).waitFor();
-    assert.equal(await decoy.getByText("API 地址", { exact: true }).count(), 0);
-    assert.equal(await page.getByRole("dialog").count(), 0);
-    await click("返回上级设置");
-    await ready();
-    alias = "missing-row";
-    await click("管理共享连接", sf);
-    await page.getByText("尚未确认共享连接", { exact: true }).waitFor();
-    assert.equal(await decoy.getByText("API 地址", { exact: true }).count(), 0);
-    await click("返回上级设置");
-    await ready();
-
-    await choose("MiniMax", "minimax");
-    keys.minimax_tts_key = "fake-initial-new-minimax";
-    versions.minimax_tts_key++;
+    await sfDefault.waitFor();
+    assert.equal(await model("SiliconFlow TTS").inputValue(), "fixture/cosy");
+    keys.siliconflow_tts_key = "fake-initial-new-siliconflow";
+    versions.siliconflow_tts_key++;
     await click("返回设置分类");
     await enter();
+    await click("查看凭据", sf);
+    await sfSecret.waitFor();
+    await click("返回设置分类");
+    await enter();
+    assert.equal(await sfSecret.count(), 0);
     mode = "late";
-    await click("查看凭据", group("MiniMax TTS"));
-    await group("MiniMax TTS").getByText("正在查看凭据…", { exact: true }).waitFor();
+    await click("查看凭据", sf);
+    await sf.getByText("正在查看凭据…", { exact: true }).waitFor();
     await click("返回设置分类");
     releaseReveal?.();
     await enter();
-    assert.equal(await panel.locator("[aria-label='临时 MiniMax TTS Key 明文']").count(), 0);
+    assert.equal(await sfSecret.count(), 0);
+    assert(!calls.some(call => /\/api\/registry/.test(call)));
     await layoutBounds();
     const storage = await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage }, history: history.state }));
-    assert(!/fixture-ref|fake-replacement|legacy-password|legacy-path-token|legacy-query-token/.test(storage));
+    assert(!/fixture-ref|fake-replacement|legacy-password|legacy-path-token|legacy-query-token|legacy-speech-token|fake-initial-new-siliconflow/.test(storage));
     assert.deepEqual(errors, []);
     assert.deepEqual(external, []);
     return { layout, width, writes: writes.length, external: 0, errors: 0 };

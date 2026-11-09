@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { ChevronRight, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { AppSelect } from "@/components/ui/app-select";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -13,16 +13,16 @@ import {
 } from "@/domain/speech-settings/speech-settings";
 import { ResourceStatus } from "../ResourceList";
 import { SettingsCredentialActions } from "../SettingsCredentialActions";
+import { SiliconFlowAddress } from "./SiliconFlowAddress";
 import { useSpeechSettings, type SpeechScope } from "./useSpeechSettings";
 
-type PageProps = { onManageSharedConnection: () => void };
 type AddressConfirmation = { target: Exclude<SpeechTarget, "siliconflow">; patch: SpeechPatch; origin: string };
 
-export function SpeechSettingsPage(props: PageProps) {
-  return <ToastProvider mobileClearance={16}><SpeechSettingsPanel {...props} /></ToastProvider>;
+export function SpeechSettingsPage() {
+  return <ToastProvider mobileClearance={16}><SpeechSettingsPanel /></ToastProvider>;
 }
 
-function SpeechSettingsPanel({ onManageSharedConnection }: PageProps) {
+function SpeechSettingsPanel() {
   const speech = useSpeechSettings();
   const { snapshot, current, pending, error } = speech;
   const [drafts, setDrafts] = useState<Partial<Record<SpeechTarget, SpeechDraft>>>({});
@@ -36,7 +36,10 @@ function SpeechSettingsPanel({ onManageSharedConnection }: PageProps) {
 
   function save(target: SpeechTarget, patch: SpeechPatch) {
     setConfirm(null);
-    void speech.write({ kind: "save", scope: target, patch }, () => setDrafts(previous => ({ ...previous, [target]: undefined })));
+    void speech.write({ kind: "save", scope: target, patch }, () => {
+      if (target === "siliconflow") edit(target, { model: undefined });
+      else setDrafts(previous => ({ ...previous, [target]: undefined }));
+    });
   }
 
   function feedback(scope: SpeechScope): ReactNode {
@@ -54,7 +57,7 @@ function SpeechSettingsPanel({ onManageSharedConnection }: PageProps) {
     const saved = snapshot.configs[target];
     const draft = drafts[target] ?? {};
     const url = draft.url?.trim() ?? "";
-    const badAddress = !!url && !validSpeechAddress(url);
+    const badAddress = target !== "siliconflow" && !!url && !validSpeechAddress(url);
     const patch = badAddress ? {} : speechPatch(target, saved, draft);
     const label = fields.name;
     const credentialScope = `${target}-key` as const;
@@ -62,7 +65,15 @@ function SpeechSettingsPanel({ onManageSharedConnection }: PageProps) {
 
     return <div key={target} aria-label={label + " 配置"} role="group" className="min-w-0 space-y-3">
       <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-        {"url" in fields && <label className="grid min-w-0 gap-1.5 text-xs">
+        {target === "siliconflow" ? <SiliconFlowAddress customAddress={saved.customAddress}
+          draft={draft.url ?? ""} disabled={disabled} busy={busy} saving={pending?.scope === "siliconflow-address" && pending.kind === "save"}
+          feedback={feedback("siliconflow-address")} onEdit={value => edit(target, { url: value })} onOpen={() => speech.hide(target)}
+          onSave={(value, done) => {
+            void speech.write({ kind: "save", scope: "siliconflow-address", patch: { siliconflow_tts_url: value } }, () => {
+              edit(target, { url: undefined });
+              done();
+            });
+          }} /> : <label className="grid min-w-0 gap-1.5 text-xs">
           <span>API 地址</span>
           <span className="break-all text-muted-foreground">{saved.customAddress ? "已配置自定义地址" : "使用默认地址 · " + fields.defaultUrl}</span>
           <Input aria-label={label + " API 地址"} surface="translucent" controlSize="comfortable" autoComplete="off" autoCapitalize="none"
@@ -82,19 +93,10 @@ function SpeechSettingsPanel({ onManageSharedConnection }: PageProps) {
         <p>输出格式 <span className="ml-2 break-all font-mono text-muted-strong">{snapshot.outputFormat}</span></p>
         <p className="text-muted-foreground">当前音频响应、缓存及分段合成都固定使用 MP3，暂不开放格式修改。</p>
       </div>}
-      {target === "siliconflow" && <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
-        <div className="min-w-0 space-y-1">
-          <h4 className="text-xs font-semibold">与 Embedding 共用连接</h4>
-          <p className="text-xs text-muted-foreground">语音合成与向量生成共用同一连接的 API 地址和凭据。</p>
-        </div>
-        <Button variant="ghost" size="compact" disabled={busy} onClick={onManageSharedConnection}>
-          管理共享连接 <ChevronRight aria-hidden="true" />
-        </Button>
-      </div>}
       <Button size="compact" disabled={disabled || badAddress || Object.keys(patch).length === 0}
         loading={pending?.scope === target && pending.kind === "save"} onClick={() => {
           if (disabled || badAddress) return;
-          if (target !== "siliconflow" && "url" in fields && patch[fields.url] !== undefined) {
+          if (target !== "siliconflow" && patch[fields.url] !== undefined) {
             setConfirm({ target, patch, origin: new URL(url).origin });
           } else save(target, patch);
         }}>{target === "asr" ? "保存识别配置" : "保存合成配置"}</Button>
@@ -102,7 +104,7 @@ function SpeechSettingsPanel({ onManageSharedConnection }: PageProps) {
       {error?.scope === target && <p className="break-all text-xs text-muted-foreground">
         {current ? "已保存模型" : "上次读取的模型"} · {saved.model || fields.defaultModel}
       </p>}
-      {target !== "siliconflow" && saved.credential && <div className="space-y-1.5 border-t border-border/60 pt-3">
+      <div className="space-y-1.5 border-t border-border/60 pt-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h4 className="text-xs font-semibold">API Key</h4>
           <ResourceStatus active={saved.credential.configured} label={saved.credential.configured ? "已配置" : "未配置"} stateLabel={label + " Key 状态"} />
@@ -114,7 +116,7 @@ function SpeechSettingsPanel({ onManageSharedConnection }: PageProps) {
           onHide={() => speech.hide(target)} onReveal={() => { void speech.reveal(target); }}
           onReplace={(key, done) => { void speech.write({ kind: "replace", target, key }, done); }}
           onClear={(ref, done) => { void speech.write({ kind: "clear", target, ref }, done); }} />
-      </div>}
+      </div>
     </div>;
   }
 
