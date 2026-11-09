@@ -15,7 +15,7 @@ import { ConnectionTestDialog } from "./ConnectionTestDialog";
 import { ConnectionDeleteDialog } from "./ConnectionDeleteDialog";
 
 type Modal = { kind: "edit"; id: string | null } | { kind: "test" | "delete"; id: string };
-export function ConnectionsList() {
+export function ConnectionsList({ locateSiliconFlow = false }: { locateSiliconFlow?: boolean }) {
   const task = useRegistryTask<ConnectionList>();
   const [value, setValue] = useState<ConnectionList | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -29,6 +29,14 @@ export function ConnectionsList() {
     return result;
   };
   useEffect(() => { void refresh(); }, []);
+  const sharedId = locateSiliconFlow ? value?.siliconflowConnectionId : undefined;
+  useEffect(() => {
+    if (!sharedId) return;
+    setExpanded(sharedId);
+    const action = actionRefs.current[`${sharedId}:edit`];
+    action?.focus({ preventScroll: true });
+    action?.scrollIntoView({ block: "nearest" });
+  }, [sharedId]);
   const close = () => setModal(null);
   const finalFocus = () => modal ? actionRefs.current[`${modal.id}:${modal.kind}`] ?? heading.current : heading.current;
   const changed = () => { void refresh(); };
@@ -43,6 +51,8 @@ export function ConnectionsList() {
             <Button size="compact" onClick={() => setModal({ kind: "edit", id: null })}><Plus aria-hidden="true" />新增连接</Button></div>
         </div>
         {value && <RegistryVersion value={value} />}
+        {locateSiliconFlow && !sharedId && (value || task.state.error) &&
+          <p role="status" className="text-xs text-muted-foreground">尚未确认共享连接</p>}
         <ConnectionError error={task.state.error} onRetry={() => { void refresh(); }} />
         {notice && <p role="status" className="text-xs text-muted-strong">{notice}</p>}
       </header>

@@ -18,6 +18,7 @@ export interface ConnectionList {
   readonly authority_state: "projected_v2" | "persisted_v2";
   readonly migration_required: boolean;
   readonly connections: readonly Connection[];
+  readonly siliconflowConnectionId?: string;
   readonly diagnosticCount: number;
   readonly deferredCount: number;
 }

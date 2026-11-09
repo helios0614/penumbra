@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Activity, Cable, Globe, Palette, Workflow, Plug } from "lucide-react";
+import { Activity, Cable, Globe, Mic, Palette, Workflow, Plug } from "lucide-react";
 import { SettingsAppearance } from "./SettingsAppearance";
 import { SettingsShell, type SettingsPage } from "./SettingsShell";
 import { SettingsSafeBasics } from "./SettingsSafeBasics";
@@ -8,6 +8,7 @@ const ConnectionsList = lazy(() => import("./connections/ConnectionsList").then(
 const FeatureBindingsPage = lazy(() => import("./features/FeatureBindingsPage").then(module => ({ default: module.FeatureBindingsPage })));
 
 const WebSettingsPage = lazy(() => import("./web/WebSettingsPage").then(module => ({ default: module.WebSettingsPage })));
+const SpeechSettingsPage = lazy(() => import("./speech/SpeechSettingsPage").then(module => ({ default: module.SpeechSettingsPage })));
 const MCPPage = lazy(() => import("./mcp/MCPPage").then(module => ({ default: module.MCPPage })));
 
 export function SettingsView({ onBack }: { onBack?: () => void }) {
@@ -15,7 +16,9 @@ export function SettingsView({ onBack }: { onBack?: () => void }) {
     { id: "appearance", title: "外观与本机偏好", description: "界面、主题色与桌面壁纸", icon: Palette,
       render: () => <SettingsAppearance /> },
     { id: "connections", title: "API 与连接", description: "连接、凭据与单次测试", icon: Cable, layout: "fill",
-      render: ({ active }) => active ? <Suspense fallback={<p role="status" className="text-xs">正在读取连接…</p>}><ConnectionsList /></Suspense> : null },
+      render: ({ active, previousPageId }) => active ? <Suspense fallback={<p role="status" className="text-xs">正在读取连接…</p>}>
+        <ConnectionsList locateSiliconFlow={previousPageId === "speech"} />
+      </Suspense> : null },
     { id: "features", title: "模型与任务分配", description: "九项功能的模型分配与生效范围", icon: Workflow, layout: "fill",
       render: ({ active, navigate, previousPageId }) => active ? <Suspense fallback={<p role="status" className="text-xs">正在读取功能分配…</p>}><FeatureBindingsPage onManageConnections={() => navigate("connections")} focusUsage={previousPageId === "web" ? "web_compression" : undefined} /></Suspense> : null },
     { id: "mcp", title: "MCP 服务", description: "服务器、凭据、工具与高级设置", icon: Plug, layout: "fill",
@@ -25,6 +28,10 @@ export function SettingsView({ onBack }: { onBack?: () => void }) {
     { id: "web", title: "Web 服务", description: "联网访问、搜索凭据与网页内容压缩", icon: Globe, group: "服务集成",
       render: ({ active, navigate }) => active ? <Suspense fallback={<p role="status" className="text-xs">正在打开 Web 服务…</p>}>
         <WebSettingsPage onManageCompression={() => navigate("features")} />
+      </Suspense> : null },
+    { id: "speech", title: "语音服务", description: "语音合成与语音识别配置", icon: Mic, group: "服务集成",
+      render: ({ active, navigate }) => active ? <Suspense fallback={<p role="status" className="text-xs">正在打开语音服务…</p>}>
+        <SpeechSettingsPage onManageSharedConnection={() => navigate("connections")} />
       </Suspense> : null },
   ];
   return <SettingsShell pages={pages} onClose={onBack} />;
