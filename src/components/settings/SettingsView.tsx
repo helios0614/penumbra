@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Activity, Cable, Globe, Mic, Palette, Workflow, Plug } from "lucide-react";
+import { Activity, Cable, Globe, Mic, Music, Palette, Workflow, Plug } from "lucide-react";
 import { SettingsAppearance } from "./SettingsAppearance";
 import { SettingsShell, type SettingsPage } from "./SettingsShell";
 import { SettingsSafeBasics } from "./SettingsSafeBasics";
@@ -9,6 +9,7 @@ const FeatureBindingsPage = lazy(() => import("./features/FeatureBindingsPage").
 
 const WebSettingsPage = lazy(() => import("./web/WebSettingsPage").then(module => ({ default: module.WebSettingsPage })));
 const SpeechSettingsPage = lazy(() => import("./speech/SpeechSettingsPage").then(module => ({ default: module.SpeechSettingsPage })));
+const MusicSettingsPage = lazy(() => import("./music/MusicSettingsPage").then(module => ({ default: module.MusicSettingsPage })));
 const MCPPage = lazy(() => import("./mcp/MCPPage").then(module => ({ default: module.MCPPage })));
 
 export function SettingsView({ onBack }: { onBack?: () => void }) {
@@ -32,6 +33,10 @@ export function SettingsView({ onBack }: { onBack?: () => void }) {
     { id: "speech", title: "语音服务", description: "语音合成与语音识别配置", icon: Mic, group: "服务集成",
       render: ({ active }) => active ? <Suspense fallback={<p role="status" className="text-xs">正在打开语音服务…</p>}>
         <SpeechSettingsPage />
+      </Suspense> : null },
+    { id: "music", title: "Music 服务", description: "网易云音乐凭据与最近登录结果", icon: Music, group: "服务集成",
+      render: ({ active }) => active ? <Suspense fallback={<p role="status" className="text-xs">正在打开 Music 服务…</p>}>
+        <MusicSettingsPage />
       </Suspense> : null },
   ];
   return <SettingsShell pages={pages} onClose={onBack} />;

@@ -18,6 +18,7 @@ type CredentialDialog = { kind: "replace" } | { kind: "clear"; ref: string; atte
 
 export function SettingsCredentialActions({
   label, credential, secret, disabled, busy, pending, feedback, clearDescription, onReveal, onHide, onReplace, onClear, onDialogChange,
+  replaceCopy = { description: "输入新 Key 以替换当前凭据。", action: "保存 Key" },
 }: {
   label: string;
   credential: SettingsCredential;
@@ -27,6 +28,7 @@ export function SettingsCredentialActions({
   pending?: "reveal" | "replace" | "clear";
   feedback?: ReactNode;
   clearDescription: string;
+  replaceCopy?: { description: string; action: string };
   onReveal: () => void;
   onHide: () => void;
   onReplace: (key: string, acknowledged: () => void) => void;
@@ -76,10 +78,10 @@ export function SettingsCredentialActions({
     {secret !== null && <p aria-label={`临时 ${label} 明文`} className="select-text break-all rounded-xl border border-border/60 px-3 py-2 font-mono text-xs">{secret}</p>}
 
     {dialog?.kind === "replace" && <Dialog open onOpenChange={open => { if (!open && !busy) closeDialog(); }}>
-      <DialogContent finalFocus={() => editButton.current} closeButtonProps={{ disabled: busy, "aria-label": "关闭编辑凭据" }}>
+      <DialogContent aria-modal="true" finalFocus={() => editButton.current} closeButtonProps={{ disabled: busy, "aria-label": "关闭编辑凭据" }}>
         <DialogHeader>
           <DialogTitle>编辑 {label}</DialogTitle>
-          <DialogDescription>输入新 Key 以替换当前凭据。</DialogDescription>
+          <DialogDescription>{replaceCopy.description}</DialogDescription>
         </DialogHeader>
         <DialogBody className="space-y-3" render={<form id={formId} autoComplete="off" onSubmit={event => {
           event.preventDefault();
@@ -96,14 +98,14 @@ export function SettingsCredentialActions({
         <DialogFooter>
           <Button variant="outline" disabled={busy} onClick={closeDialog}>取消</Button>
           <Button type="submit" form={formId} disabled={!valid || disabled} loading={pending === "replace"}>
-            {pending === "replace" ? "正在保存…" : "保存 Key"}
+            {pending === "replace" ? "正在保存…" : replaceCopy.action}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>}
 
     {dialog?.kind === "clear" && <AlertDialog open onOpenChange={open => { if (!open && !busy) closeDialog(); }}>
-      <AlertDialogContent finalFocus={() => clearButton.current ?? editButton.current}>
+      <AlertDialogContent aria-modal="true" finalFocus={() => clearButton.current ?? editButton.current}>
         <AlertDialogHeader className="space-y-2">
           <AlertDialogTitle>清除 {label}</AlertDialogTitle>
           <AlertDialogDescription>{clearDescription}</AlertDialogDescription>
