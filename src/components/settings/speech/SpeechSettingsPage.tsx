@@ -8,12 +8,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ToastProvider } from "@/components/ui/toast";
+import { validHttpsBaseAddress } from "@/domain/service-settings/service-address";
 import {
-  speechConfigs, speechPatch, ttsProviders, validSpeechAddress, type SpeechDraft, type SpeechPatch, type SpeechTarget,
+  speechConfigs, speechPatch, ttsProviders, type SpeechDraft, type SpeechPatch, type SpeechTarget,
 } from "@/domain/speech-settings/speech-settings";
 import { ResourceStatus } from "../ResourceList";
 import { SettingsCredentialActions } from "../SettingsCredentialActions";
-import { SiliconFlowAddress } from "./SiliconFlowAddress";
+import { SettingsServiceAddress } from "../SettingsServiceAddress";
 import { useSpeechSettings, type SpeechScope } from "./useSpeechSettings";
 
 type AddressConfirmation = { target: Exclude<SpeechTarget, "siliconflow">; patch: SpeechPatch; origin: string };
@@ -57,7 +58,7 @@ function SpeechSettingsPanel() {
     const saved = snapshot.configs[target];
     const draft = drafts[target] ?? {};
     const url = draft.url?.trim() ?? "";
-    const badAddress = target !== "siliconflow" && !!url && !validSpeechAddress(url);
+    const badAddress = target !== "siliconflow" && !!url && !validHttpsBaseAddress(url);
     const patch = badAddress ? {} : speechPatch(target, saved, draft);
     const label = fields.name;
     const credentialScope = `${target}-key` as const;
@@ -65,7 +66,8 @@ function SpeechSettingsPanel() {
 
     return <div key={target} aria-label={label + " 配置"} role="group" className="min-w-0 space-y-3">
       <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-        {target === "siliconflow" ? <SiliconFlowAddress customAddress={saved.customAddress}
+        {target === "siliconflow" ? <SettingsServiceAddress service={label} resetSubject="语音合成"
+          defaultUrl={fields.defaultUrl} customAddress={saved.customAddress}
           draft={draft.url ?? ""} disabled={disabled} busy={busy} saving={pending?.scope === "siliconflow-address" && pending.kind === "save"}
           feedback={feedback("siliconflow-address")} onEdit={value => edit(target, { url: value })} onOpen={() => speech.hide(target)}
           onSave={(value, done) => {

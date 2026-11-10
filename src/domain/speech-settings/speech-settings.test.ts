@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  readSpeechSettings, replaceSpeechKey, saveSpeechConfig, speechPatch, validSiliconFlowAddress, validSpeechAddress,
+  readSpeechSettings, replaceSpeechKey, saveSpeechConfig, speechPatch,
 } from "./speech-settings";
+import { validServiceAddress as validSiliconFlowAddress, validHttpsBaseAddress as validSpeechAddress } from "@/domain/service-settings/service-address";
 
 const signal = new AbortController().signal;
 const set = { configured: true, masked: "••••••••1234", secret_ref: "fake-minimax" };
