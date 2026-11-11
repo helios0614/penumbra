@@ -27,7 +27,14 @@ async function run(browser, origin, layout, width) {
   const errors = [], requests = [], writes = [], escaped = [];
   const page = await context.newPage(); page.setDefaultTimeout(10000);
   page.on('pageerror', error => errors.push(error.message));
-  const state = { fail: null, code: 'ready', delay: null, pending: [] };
+  const state = {
+    fail: null, code: 'ready', delay: null, pending: [],
+    appearance: {
+      themeMode: 'dark', themeColor: '#4A8F6B', aiColor: '#7D73B5',
+      wallpaper: { mode: 'custom', fit: 'contain', position: 'bottom', shade: 'soft', textTone: 'light', image: 'a'.repeat(32) + '.png' },
+      avatars: { user: null, assistant: null }, stickerImage: null, stickers: [],
+    },
+  };
   await context.route('**/*', route => {
     if (new URL(route.request().url()).origin === origin) return route.continue();
     escaped.push(route.request().url()); return route.abort();
@@ -40,6 +47,19 @@ async function run(browser, origin, layout, width) {
     const json = (value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) }).catch(() => {});
     if (state.fail === endpoint) return json({ error: 'synthetic-private-error-must-not-render' }, 503);
     if (state.delay === endpoint) { state.pending.push({ route, code: state.code }); return; }
+    if (endpoint === '/api/appearance') {
+      if (req.method() === 'PATCH') {
+        const { wallpaper, ...fields } = req.postDataJSON();
+        state.appearance = { ...state.appearance, ...fields, wallpaper: { ...state.appearance.wallpaper, ...wallpaper } };
+      }
+      return json(state.appearance);
+    }
+    if (endpoint === '/api/appearance/images/wallpaper') {
+      if (req.method() === 'PUT') Object.assign(state.appearance.wallpaper, { mode: 'custom', image: 'b'.repeat(32) + '.png' });
+      if (req.method() === 'DELETE') Object.assign(state.appearance.wallpaper, { mode: 'ambient', image: null });
+      return json(state.appearance);
+    }
+    if (endpoint.startsWith('/api/appearance/images/wallpaper/')) return route.fulfill({ contentType: 'image/png', body: png });
     if (endpoint === '/api/session') return json({ authenticated: true, cookie: 'synthetic-private-cookie-must-not-render' });
     if (endpoint === '/api/worldbook') return json({ ai_name: '合成助手' });
     if (endpoint === '/api/chat/readiness') return json(readiness(state.code));
@@ -52,10 +72,10 @@ async function run(browser, origin, layout, width) {
   // Seed legacy device preferences and an existing Blob before the application is loaded.
   await page.goto(origin + location);
   await page.evaluate(async bytes => {
-    localStorage.setItem('penumbra-theme-mode', 'dark');
-    localStorage.setItem('penumbra-theme-color', '#4A8F6B');
-    localStorage.setItem('penumbra-ai-color', '#7D73B5');
-    localStorage.setItem('penumbra-wallpaper-settings', JSON.stringify({ mode: 'custom', fit: 'contain', position: 'bottom', shade: 'soft', textTone: 'light' }));
+    localStorage.setItem('penumbra-theme-mode', 'light');
+    localStorage.setItem('penumbra-theme-color', '#AABBCC');
+    localStorage.setItem('penumbra-ai-color', '#BBAACC');
+    localStorage.setItem('penumbra-wallpaper-settings', JSON.stringify({ mode: 'ambient' }));
     const db = await new Promise((resolve, reject) => { const r = indexedDB.open('penumbra-preferences', 1); r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains('wallpapers')) r.result.createObjectStore('wallpapers'); }; r.onsuccess = () => resolve(r.result); r.onerror = reject; });
     await new Promise((resolve, reject) => { const t = db.transaction('wallpapers', 'readwrite'); t.objectStore('wallpapers').put(new Blob([new Uint8Array(bytes)], { type: 'image/png' }), 'desktop'); t.oncomplete = resolve; t.onerror = reject; }); db.close();
   }, [...png]);
@@ -65,7 +85,7 @@ async function run(browser, origin, layout, width) {
   const open = async () => { const launcher = page.getByRole('button', { name: '打开设置', exact: true }); if (await launcher.count()) await launcher.last().click(); await page.getByRole('navigation', { name: '设置分类' }).waitFor(); };
   const category = title => page.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: new RegExp(title) });
   const back = () => page.getByRole('button', { name: '返回设置分类', exact: true }).click();
-  const appearance = () => page.getByRole('region', { name: '外观与本机偏好', exact: true });
+  const appearance = () => page.getByRole('region', { name: '外观', exact: true });
   const openColor = async title => {
     await appearance().getByRole('button', { name: title, exact: true }).click();
     return page.getByRole('dialog', { name: title, exact: true });
@@ -85,12 +105,12 @@ async function run(browser, origin, layout, width) {
     assert.equal(await page.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: /^API 与连接/ }).count(), 1);
     assert.equal(await page.getByText('日历设置', { exact: true }).count(), 0);
     await page.screenshot({ path: path.join(output, `${layout}-${width}-categories.png`) });
-    await category('外观与本机偏好').click();
+    await category('外观').click();
     await appearance().locator('.desktop-wallpaper-preview').waitFor();
-    await page.waitForFunction(() => document.querySelector('.desktop-wallpaper-preview')?.style.backgroundImage.includes('blob:'));
+    await page.waitForFunction(() => document.querySelector('.desktop-wallpaper-preview')?.style.backgroundImage.includes('/api/appearance/images/wallpaper/'));
     await assertColor('自定义主题颜色', '#4A8F6B');
     await assertColor('自定义 AI 主题色', '#7D73B5');
-    assert.deepEqual(await preferences(), before); await noOverflow();
+    assert.deepEqual(await preferences(), before); assert.deepEqual(writes, []); await noOverflow();
     await page.screenshot({ path: path.join(output, `${layout}-${width}-appearance.png`) });
     if (layout === 'classic') assert.equal(await page.locator('.desktop-wallpaper').first().getAttribute('data-wallpaper-mode'), 'custom');
     await appearance().getByRole('radio', { name: /^浅色/ }).click();
@@ -115,13 +135,13 @@ async function run(browser, origin, layout, width) {
     await page.screenshot({ path: path.join(output, `${layout}-${width}-color-dialog.png`) });
     await aiDialog.getByRole('button', { name: '应用', exact: true }).click();
     for (const name of ['填充', '顶部', '平衡', '黑色']) await appearance().getByRole('button', { name, exact: true }).click();
-    let changed = await preferences();
-    assert.equal(changed['penumbra-theme-mode'], 'light');
-    assert.equal(changed['penumbra-theme-color'], '#AABBCC'); assert.equal(changed['penumbra-ai-color'], '#BBAACC');
-    assert.deepEqual(JSON.parse(changed['penumbra-wallpaper-settings']), { mode: 'custom', fit: 'cover', position: 'top', shade: 'balanced', textTone: 'dark' });
-    // Upload and remove use the original IndexedDB object store contract.
+    await page.waitForFunction(() => document.querySelector('.desktop-wallpaper-preview')?.getAttribute('data-wallpaper-text') === 'dark');
+    const { themeMode, themeColor, aiColor, wallpaper } = state.appearance;
+    assert.equal(themeMode, 'light');
+    assert.equal(themeColor, '#AABBCC'); assert.equal(aiColor, '#BBAACC');
+    assert.deepEqual(wallpaper, { mode: 'custom', fit: 'cover', position: 'top', shade: 'balanced', textTone: 'dark', image: 'a'.repeat(32) + '.png' });
     await appearance().getByLabel('选择自定义壁纸').setInputFiles({ name: 'synthetic.png', mimeType: 'image/png', buffer: png });
-    await appearance().getByRole('button', { name: '移除', exact: true }).waitFor({ state: 'visible' });
+    await page.waitForFunction(() => document.querySelector('.desktop-wallpaper-preview')?.style.backgroundImage.includes('bbbbbb'));
     await back(); await category('系统状态').click();
     await item('Session').getByText('Session 可达 · 已登录', { exact: true }).waitFor();
     await item('Chat readiness · 新会话默认配置').getByText('默认配置就绪', { exact: true }).waitFor();
@@ -156,12 +176,12 @@ async function run(browser, origin, layout, width) {
     await item('Chat readiness · 新会话默认配置').getByText('默认配置就绪', { exact: true }).waitFor();
     for (const pending of state.pending.splice(0)) await pending.route.fulfill({ contentType: 'application/json', body: JSON.stringify(readiness(pending.code)) }).catch(() => {});
     assert(await item('Chat readiness · 新会话默认配置').getByText('默认配置就绪', { exact: true }).isVisible());
-    await back(); await category('外观与本机偏好').click();
+    await back(); await category('外观').click();
     await assertColor('自定义主题颜色', '#AABBCC');
     await appearance().getByRole('button', { name: '移除', exact: true }).click();
-    await page.waitForFunction(() => JSON.parse(localStorage.getItem('penumbra-wallpaper-settings')).mode === 'ambient');
+    await page.waitForFunction(() => document.querySelector('.desktop-wallpaper-preview')?.style.backgroundImage === '');
     await page.getByRole('button', { name: '返回桌面', exact: true }).click();
-    await page.reload(); await open(); await category('外观与本机偏好').click();
+    await page.reload(); await open(); await category('外观').click();
     await assertColor('自定义 AI 主题色', '#BBAACC');
     assert.equal(await appearance().getByRole('button', { name: '移除', exact: true }).isDisabled(), true);
     await appearance().getByRole('radio', { name: /^跟随系统/ }).click();
@@ -170,7 +190,9 @@ async function run(browser, origin, layout, width) {
     const legacy = page.getByRole('link', { name: '返回旧版合成助手', exact: true });
     assert.equal(await legacy.getAttribute('href'), '/'); assert.equal(await legacy.getAttribute('target'), '_top');
     assert.equal(new URL(page.url()).pathname, location.replace(/\/$/, '') + '/app/settings');
-    assert.deepEqual(writes, []); assert.deepEqual(escaped, []); assert.deepEqual(errors, []);
+    assert(writes.length > 0 && writes.every(write => write.includes(' /api/appearance')));
+    assert.deepEqual(await preferences(), before);
+    assert.deepEqual(escaped, []); assert.deepEqual(errors, []);
     assert(!requests.includes('/api/models'));
     assert(!requests.some(path => path.startsWith('/penumbra/api')));
     return { layout, width, navigation: 'passed', appearanceStorage: 'passed', independentOverview: 'passed', safeDiagnostics: 'passed', reopenAndLateResponse: 'passed', apiWrites: writes.length, pageErrors: errors.length };

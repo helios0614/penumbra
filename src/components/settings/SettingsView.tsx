@@ -15,7 +15,7 @@ const MCPPage = lazy(() => import("./mcp/MCPPage").then(module => ({ default: mo
 
 export function SettingsView({ onBack }: { onBack?: () => void }) {
   const pages: readonly SettingsPage[] = [
-    { id: "appearance", title: "外观与本机偏好", description: "界面、主题色与桌面壁纸", icon: Palette,
+    { id: "appearance", title: "外观", description: "主题、头像与桌面壁纸", icon: Palette,
       render: () => <SettingsAppearance /> },
     { id: "connections", title: "API 与连接", description: "连接、凭据与单次测试", icon: Cable, layout: "fill",
       render: ({ active }) => active ? <Suspense fallback={<p role="status" className="text-xs">正在读取连接…</p>}>

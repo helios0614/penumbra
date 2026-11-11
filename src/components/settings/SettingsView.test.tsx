@@ -8,7 +8,7 @@ describe("Settings page structure", () => {
     expect(html).toContain('data-slot="page-header"');
     expect(html).toContain('aria-label="返回桌面"');
     expect(html).toContain('aria-label="设置分类"');
-    expect(html).toContain("外观与本机偏好");
+    expect(html).toContain("主题、头像与桌面壁纸");
     expect(html).toContain("系统状态");
     expect(html).toContain("界面外观");
     expect(html).toContain("桌面背景");

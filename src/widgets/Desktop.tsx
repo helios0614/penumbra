@@ -37,21 +37,21 @@ import { getAllWidgets, widgetRegistry } from './registry';
 import {
   addWidgetToLayout,
   loadDesktopLayout,
+  placeDesktopSticker,
   removeWidgetFromLayout,
   resetDesktopLayout,
+  withDesktopStickers,
   type DesktopLayoutItem,
 } from './storage';
 import { cn } from '@/lib/utils';
 import { getDesktopAppId, getDesktopAppPath, getDesktopPath } from '@/lib/app-paths';
 import { isDesktopWidgetVisible } from '@/lib/desktop-entry-visibility';
+import { resolveWallpaperTextTone, type WallpaperTextTone } from '@/lib/wallpaper';
 import {
-  getCustomWallpaper,
-  getStoredWallpaperSettings,
-  resolveWallpaperTextTone,
-  saveWallpaperSettings,
-  WALLPAPER_CHANGE_EVENT,
-  type WallpaperTextTone,
-} from '@/lib/wallpaper';
+  appearanceImageUrl, appearanceSaveError, deleteSticker, patchAppearance,
+  putSticker, resetStickers, type AppearanceConfig,
+} from '@/domain/appearance/appearance-client';
+import { saveAppearance, useAppearance } from '@/domain/appearance/appearance-store';
 
 // 网格配置
 const GRID_GAP = 12;
@@ -365,13 +365,16 @@ function WidgetSkeleton() {
  * 桌面主组件
  */
 export function Desktop() {
-  const [layout, setLayout] = useState<DesktopLayoutItem[]>([]);
+  const [localLayout, setLocalLayout] = useState<DesktopLayoutItem[]>([]);
+  const { config, status: appearanceStatus, saving: savingAppearance } = useAppearance();
+  const layout = useMemo(() => withDesktopStickers(localLayout, config.stickers), [localLayout, config.stickers]);
+  const [appearanceError, setAppearanceError] = useState<string | null>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(() => typeof window !== 'undefined' && isSettingsPath(window.location.pathname, 'classic'));
   const [isEditing, setIsEditing] = useState(false);
   const [desktopPage, setDesktopPage] = useState(0);
-  const [wallpaperSettings, setWallpaperSettings] = useState(getStoredWallpaperSettings);
-  const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
+  const wallpaperSettings = config.wallpaper;
+  const wallpaperUrl = wallpaperSettings.mode === 'custom' ? appearanceImageUrl('wallpaper', wallpaperSettings.image) : null;
   const desktopPagerRef = useRef<HTMLDivElement>(null);
   const [activeApp, setActiveApp] = useState<DesktopAppId | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -384,50 +387,8 @@ export function Desktop() {
     return 'desktop';
   });
 
-  // 加载布局
   useEffect(() => {
-    setLayout(loadDesktopLayout());
-  }, []);
-
-  useEffect(() => {
-    let disposed = false;
-    let currentUrl: string | null = null;
-    let loadId = 0;
-
-    const loadWallpaper = async () => {
-      const requestId = ++loadId;
-      const settings = getStoredWallpaperSettings();
-      setWallpaperSettings(settings);
-
-      let nextUrl: string | null = null;
-      if (settings.mode === 'custom') {
-        try {
-          const wallpaper = await getCustomWallpaper();
-          if (wallpaper) nextUrl = URL.createObjectURL(wallpaper);
-        } catch {
-          nextUrl = null;
-        }
-      }
-
-      if (disposed || requestId !== loadId) {
-        if (nextUrl) URL.revokeObjectURL(nextUrl);
-        return;
-      }
-
-      if (currentUrl) URL.revokeObjectURL(currentUrl);
-      currentUrl = nextUrl;
-      setWallpaperUrl(nextUrl);
-    };
-
-    const handleWallpaperChange = () => void loadWallpaper();
-    void loadWallpaper();
-    window.addEventListener(WALLPAPER_CHANGE_EVENT, handleWallpaperChange);
-
-    return () => {
-      disposed = true;
-      window.removeEventListener(WALLPAPER_CHANGE_EVENT, handleWallpaperChange);
-      if (currentUrl) URL.revokeObjectURL(currentUrl);
-    };
+    setLocalLayout(loadDesktopLayout());
   }, []);
 
   useEffect(() => {
@@ -520,15 +481,46 @@ export function Desktop() {
     if (!closeSettingsHistory(window, 'classic')) setIsSettingsOpen(false);
   };
 
-  const toggleWallpaperTextTone = () => {
-    const currentTone = resolveWallpaperTextTone(wallpaperSettings.textTone);
-    const nextSettings = {
-      ...getStoredWallpaperSettings(),
-      textTone: currentTone === 'light' ? 'dark' : 'light',
-    } satisfies typeof wallpaperSettings;
-    setWallpaperSettings(nextSettings);
-    saveWallpaperSettings(nextSettings);
-  };
+  async function saveDesktopAppearance(action: () => Promise<AppearanceConfig>, fallback: string): Promise<boolean> {
+    setAppearanceError(null);
+    try {
+      await saveAppearance(action);
+      return true;
+    } catch (error) {
+      setAppearanceError(appearanceSaveError(error, fallback));
+      return false;
+    }
+  }
+
+  function removeWidget(item: DesktopLayoutItem, instanceId: string) {
+    if (item.widgetId === 'sticker') {
+      void saveDesktopAppearance(() => deleteSticker(instanceId), '移除贴纸失败，请稍后重试');
+    } else {
+      setLocalLayout(removeWidgetFromLayout(instanceId));
+    }
+  }
+
+  async function addDesktopWidget(widgetId: string) {
+    const targetPage = desktopPage === HOME_PAGE ? HOME_PAGE : WIDGETS_PAGE;
+    if (widgetId === 'sticker') {
+      const { id, ...placement } = placeDesktopSticker(layout, targetPage);
+      if (!await saveDesktopAppearance(() => putSticker(id, placement), '添加贴纸失败，请稍后重试')) return;
+    } else {
+      setLocalLayout(addWidgetToLayout(widgetId, undefined, targetPage, config.stickers));
+    }
+    setIsPickerOpen(false);
+    requestAnimationFrame(() => goToDesktopPage(targetPage));
+  }
+
+  function resetLayout() {
+    setLocalLayout(resetDesktopLayout());
+    void saveDesktopAppearance(resetStickers, '重置贴纸失败，请稍后重试');
+  }
+
+  function toggleWallpaperTextTone() {
+    const textTone = resolveWallpaperTextTone(wallpaperSettings.textTone) === 'light' ? 'dark' : 'light';
+    void saveDesktopAppearance(() => patchAppearance({ wallpaper: { textTone } }), '保存桌面文字颜色失败，请稍后重试');
+  }
 
   return (
     <div
@@ -602,7 +594,7 @@ export function Desktop() {
                             <WidgetCard
                               isEditing={isEditing}
                               onOpen={appId ? () => openApp(appId) : undefined}
-                              onRemove={() => setLayout(removeWidgetFromLayout(instanceId))}
+                              onRemove={() => removeWidget(item, instanceId)}
                               widgetId={item.widgetId}
                               widgetInstanceId={instanceId}
                               widgetName={widget.name}
@@ -656,7 +648,7 @@ export function Desktop() {
                             <WidgetCard
                               isEditing={isEditing}
                               onOpen={appId ? () => openApp(appId) : undefined}
-                              onRemove={() => setLayout(removeWidgetFromLayout(instanceId))}
+                              onRemove={() => removeWidget(item, instanceId)}
                               widgetId={item.widgetId}
                               widgetInstanceId={instanceId}
                               widgetName={widget.name}
@@ -729,9 +721,10 @@ export function Desktop() {
                   : null;
                 const homeCountReached = isHomePicker && primaryLayout.length >= HOME_MAX_WIDGETS;
                 const exceedsHomeRows = isHomePicker && candidateMeasure?.fits === false;
-                const isDisabled = isAlreadyOnHome || homeCountReached || exceedsHomeRows;
+                const stickerUnavailable = widget.id === 'sticker' && (appearanceStatus !== 'ready' || savingAppearance);
+                const isDisabled = isAlreadyOnHome || homeCountReached || exceedsHomeRows || stickerUnavailable;
                 const sizeLabel = `${Math.min(widget.size.cols, HOME_GRID_COLUMNS)}×${widget.size.rows}`;
-                const statusLabel = isAlreadyOnHome
+                const statusLabel = stickerUnavailable ? '外观配置暂不可编辑' : isAlreadyOnHome
                   ? '已在首页'
                   : homeCountReached
                     ? '首页最多 3 个'
@@ -746,14 +739,7 @@ export function Desktop() {
                     key={widget.id}
                     type="button"
                     disabled={isDisabled}
-                    onClick={() => {
-                      if (isDisabled) return;
-
-                      const targetPage = desktopPage === HOME_PAGE ? HOME_PAGE : WIDGETS_PAGE;
-                      setLayout(addWidgetToLayout(widget.id, undefined, targetPage));
-                      setIsPickerOpen(false);
-                      requestAnimationFrame(() => goToDesktopPage(targetPage));
-                    }}
+                    onClick={() => void addDesktopWidget(widget.id)}
                     className={cn(
                       'mist-solid flex min-h-20 items-center gap-3 rounded-2xl p-3 text-left',
                       'transition hover:-translate-y-0.5 hover:bg-white/95 dark:hover:bg-white/10',
@@ -777,13 +763,21 @@ export function Desktop() {
         </div>
       )}
 
+      {appearanceError && !activeApp && !isSettingsOpen && (
+        <div role="alert" className="mist-solid absolute inset-x-4 bottom-24 z-50 mx-auto flex max-w-sm items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm text-destructive">
+          <span>{appearanceError}</span>
+          <button type="button" aria-label="关闭外观提示" onClick={() => setAppearanceError(null)} className="grid size-8 shrink-0 place-items-center rounded-md hover:bg-background/55">
+            <X className="size-4" aria-hidden="true" />
+          </button>
+        </div>
+      )}
       {!activeApp && !isSettingsOpen && !isPickerOpen && (
         <AppDock
           isEditing={isEditing}
           onAddWidget={() => setIsPickerOpen(true)}
           onLaunch={openApp}
           onOpenEditorial={() => window.location.assign(getDesktopPath('editorial'))}
-          onResetLayout={() => setLayout(resetDesktopLayout())}
+          onResetLayout={resetLayout}
           onToggleWallpaperText={toggleWallpaperTextTone}
           onToggleEditing={() => setIsEditing((editing) => !editing)}
           wallpaperTextTone={resolveWallpaperTextTone(wallpaperSettings.textTone)}

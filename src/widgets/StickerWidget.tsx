@@ -1,50 +1,24 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useState, type ChangeEvent } from 'react';
 import { Flower2, ImagePlus } from 'lucide-react';
-import { getStickerImage, saveStickerImage } from './sticker-storage';
+import {
+  APPEARANCE_IMAGE_ACCEPT, appearanceImageUrl, appearanceSaveError, uploadAppearanceImage,
+} from '@/domain/appearance/appearance-client';
+import { saveAppearance, useAppearance } from '@/domain/appearance/appearance-store';
 
 export function StickerWidget() {
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const objectUrlRef = useRef<string | null>(null);
-
-  const showImage = (image: Blob) => {
-    const nextUrl = URL.createObjectURL(image);
-    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-    objectUrlRef.current = nextUrl;
-    setImageUrl(nextUrl);
-  };
-
-  useEffect(() => {
-    let isMounted = true;
-
-    void getStickerImage()
-      .then((image) => {
-        if (image && isMounted) showImage(image);
-      })
-      .catch(() => {
-        // 无法读取本地图片时使用默认贴纸。
-      });
-
-    return () => {
-      isMounted = false;
-      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-    };
-  }, []);
+  const { config, status, saving } = useAppearance();
+  const imageUrl = appearanceImageUrl('sticker', config.stickerImage);
+  const [error, setError] = useState<string | null>(null);
 
   const handleImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const input = event.currentTarget;
-    const file = input.files?.[0];
-    if (!file || !file.type.startsWith('image/')) return;
-
-    showImage(file);
-    setIsSaving(true);
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (!file) return;
+    setError(null);
     try {
-      await saveStickerImage(file);
-    } catch {
-      // 存储受限时仍保留本次页面内的预览。
-    } finally {
-      setIsSaving(false);
-      input.value = '';
+      await saveAppearance(() => uploadAppearanceImage('sticker', file));
+    } catch (error) {
+      setError(appearanceSaveError(error, '保存贴纸失败，请稍后重试'));
     }
   };
 
@@ -56,7 +30,8 @@ export function StickerWidget() {
       >
         <input
           type="file"
-          accept="image/*"
+          accept={APPEARANCE_IMAGE_ACCEPT}
+          disabled={status !== 'ready' || saving}
           onChange={handleImageChange}
           className="sr-only"
           aria-label="更换贴纸图片"
@@ -78,8 +53,9 @@ export function StickerWidget() {
 
         <span className="absolute inset-x-2 bottom-2 flex min-h-7 items-center justify-center gap-1.5 rounded-full bg-background/78 px-2 text-[10px] font-medium text-foreground opacity-0 shadow-sm backdrop-blur-md transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
           <ImagePlus className="size-3.5" strokeWidth={1.8} aria-hidden="true" />
-          {isSaving ? '保存中…' : '换图'}
+          换图
         </span>
+        {error && <span role="alert" className="absolute inset-x-1 bottom-1 rounded-lg bg-background/95 px-1.5 py-1 text-center text-[10px] text-destructive">{error}</span>}
       </label>
     </div>
   );

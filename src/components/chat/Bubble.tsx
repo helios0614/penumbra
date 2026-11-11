@@ -1,6 +1,6 @@
 import { useChatRenderTrace } from "./useChatRenderTrace";
 import { format } from "date-fns";
-import { Bot, CircleHelp, User } from "lucide-react";
+import { CircleHelp } from "lucide-react";
 import { ChatAttachments } from "@/components/media/ChatAttachments";
 import { useAiName } from "@/components/identity/AiNameContext";
 import { memo, useMemo, useRef } from "react";
@@ -8,10 +8,8 @@ import { readMessageSelection } from "./message-selection";
 import { insertableBody } from "./insertable-body";
 import { splitAssistantBubbles, splitUserBubbles } from "./bubble-chunks";
 
-import aiAvatarPlaceholder from "@/assets/chat/avatar-ai-placeholder.png";
-import userAvatarPlaceholder from "@/assets/chat/avatar-user-placeholder.png";
 import type { ChatMessageViewModel } from "./chat-ui-types";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { AppearanceAvatar } from "@/components/identity/AppearanceAvatar";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -24,36 +22,6 @@ import { SimpleThink, ThinkingBlock } from "./system-command/InlineIndicator";
 import { CapabilityMessage } from "./capabilities/CapabilityMessage";
 import { ToolResult } from "./capabilities/ToolResult";
 import { HeartMarker } from "./capabilities/HeartMarker";
-
-// Temporary visual-only sources. Replace these imports when avatar settings land.
-const temporaryAvatarImages = {
-  assistant: aiAvatarPlaceholder,
-  user: userAvatarPlaceholder,
-} as const;
-
-function MessageAvatar({ kind }: { kind: "user" | "assistant" }) {
-  const isUser = kind === "user";
-
-  return (
-    <Avatar
-      size="sm"
-      className="size-7 overflow-hidden bg-transparent shadow-none after:border-border/55 after:mix-blend-normal sm:size-8 dark:after:mix-blend-normal"
-    >
-      <AvatarImage
-        src={temporaryAvatarImages[kind]}
-        alt=""
-        className="object-cover"
-      />
-      <AvatarFallback className="bg-surface-secondary/45">
-        {isUser ? (
-          <User className="size-3.5 text-muted-foreground" aria-hidden="true" />
-        ) : (
-          <Bot className="size-3.5 text-ai" aria-hidden="true" />
-        )}
-      </AvatarFallback>
-    </Avatar>
-  );
-}
 
 function NeutralMessage({
   message,
@@ -167,7 +135,7 @@ function BubbleInner({
           isUser ? "chat-user-meta flex-row-reverse" : "chat-ai-meta flex-row",
         )}
       >
-        <MessageAvatar kind={message.kind} />
+        <AppearanceAvatar kind={message.kind} className="size-7 sm:size-8" />
         <span className="text-xs font-medium">{isUser ? userName : aiName}</span>
         <span className="text-xs opacity-60">{time}</span>
         {executionLabel && (

@@ -5,6 +5,7 @@
 import type { DesktopLayout, DesktopLayoutItem } from './types';
 import { DESKTOP_LAYOUT_KEY } from './types';
 import { widgetRegistry } from './registry';
+import type { DesktopSticker } from '@/domain/appearance/appearance-client';
 
 // 重新导出类型，供外部使用
 export type { DesktopLayout, DesktopLayoutItem };
@@ -15,7 +16,6 @@ export type { DesktopLayout, DesktopLayoutItem };
 const DEFAULT_LAYOUT: DesktopLayout = [
   { instanceId: 'clock-default', widgetId: 'clock', page: 0, position: { col: 0, row: 0 } },
   { instanceId: 'weather-default', widgetId: 'weather', page: 0, position: { col: 1, row: 0 } },
-  { instanceId: 'sticker-default', widgetId: 'sticker', page: 1, position: { col: 0, row: 0 } },
   { instanceId: 'music-default', widgetId: 'music', page: 1, position: { col: 2, row: 0 } },
   { instanceId: 'signature-default', widgetId: 'signature', page: 1, position: { col: 0, row: 1 } },
   { instanceId: 'calendar-default', widgetId: 'calendar', page: 1, position: { col: 0, row: 2 } },
@@ -91,9 +91,8 @@ function findNextPosition(
   layout: DesktopLayout,
   widgetId: string,
   page: 0 | 1 = 1,
+  size = widgetRegistry[widgetId]?.size || { cols: 1, rows: 1 },
 ): { col: number; row: number } {
-  const widget = widgetRegistry[widgetId];
-  const size = widget?.size || { cols: 1, rows: 1 };
   const maxCol = Math.max(0, DESKTOP_COLUMNS - size.cols);
 
   for (let row = 0; row < 48; row += 1) {
@@ -103,6 +102,7 @@ function findNextPosition(
         widgetId,
         page,
         position: { col, row },
+        size,
       };
 
       if (!layout.some((item) => rectsOverlap(candidate, item))) {
@@ -129,7 +129,7 @@ export function loadDesktopLayout(): DesktopLayout {
       const parsed = JSON.parse(stored);
       // 简单校验格式
       if (Array.isArray(parsed)) {
-        const normalized = normalizeLayout(parsed as DesktopLayout);
+        const normalized = normalizeLayout((parsed as DesktopLayout).filter(item => item.widgetId !== 'sticker'));
         const storedVersion = Number(localStorage.getItem(DESKTOP_LAYOUT_VERSION_KEY) || 1);
 
         if (storedVersion < DESKTOP_LAYOUT_VERSION) {
@@ -173,17 +173,48 @@ export function addWidgetToLayout(
   widgetId: string,
   position?: { col: number; row: number },
   page: 0 | 1 = 1,
+  stickers: DesktopSticker[] = [],
 ): DesktopLayout {
   const layout = loadDesktopLayout();
   const newItem: DesktopLayoutItem = {
     instanceId: createInstanceId(widgetId),
     widgetId,
     page,
-    position: position || findNextPosition(layout, widgetId, page),
+    position: position || findNextPosition(withDesktopStickers(layout, stickers), widgetId, page),
   };
   layout.push(newItem);
   saveDesktopLayout(layout);
   return layout;
+}
+
+export function placeDesktopSticker(layout: DesktopLayout, page: 0 | 1): DesktopSticker {
+  return {
+    id: createInstanceId('sticker'),
+    page,
+    position: findNextPosition(layout, 'sticker', page),
+    size: widgetRegistry.sticker.size,
+  };
+}
+
+export function withDesktopStickers(layout: DesktopLayout, stickers: DesktopSticker[]): DesktopLayout {
+  const combined = [...layout];
+  for (const { id, page, position, size } of stickers) {
+    const sticker = {
+      instanceId: id, widgetId: 'sticker', page, size,
+      position: { col: Math.min(position.col, DESKTOP_COLUMNS - size.cols), row: position.row },
+    };
+    if (combined.some(item => rectsOverlap(sticker, item))) {
+      sticker.position = findNextPosition(combined, 'sticker', page, size);
+    }
+    // Responsive grids flow in source order. Keep the order of local widgets
+    // and insert each sticker at its effective grid position.
+    const next = combined.findIndex(item => (item.page ?? 1) === page && (
+      item.position.row > sticker.position.row ||
+      (item.position.row === sticker.position.row && item.position.col > sticker.position.col)
+    ));
+    combined.splice(next < 0 ? combined.length : next, 0, sticker);
+  }
+  return combined;
 }
 
 /**

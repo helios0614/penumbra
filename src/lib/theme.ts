@@ -1,8 +1,3 @@
-export const THEME_COLOR_KEY = "penumbra-theme-color";
-export const AI_COLOR_KEY = "penumbra-ai-color";
-export const THEME_MODE_KEY = "penumbra-theme-mode";
-export const THEME_MODE_CHANGE_EVENT = "penumbra-theme-mode-change";
-
 export type ThemeMode = "light" | "dark" | "system";
 export type ResolvedThemeMode = Exclude<ThemeMode, "system">;
 
@@ -37,65 +32,19 @@ export const DEFAULT_THEME_COLOR = THEME_COLOR_PRESETS[0].value;
 export const DEFAULT_AI_COLOR = AI_COLOR_PRESETS[0].value;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
 
-export function normalizeThemeMode(value: string | null): ThemeMode | null {
-  return value === "light" || value === "dark" || value === "system" ? value : null;
-}
-
-export function getStoredThemeMode(): ThemeMode {
-  if (typeof window === "undefined") return DEFAULT_THEME_MODE;
-  try {
-    return normalizeThemeMode(localStorage.getItem(THEME_MODE_KEY)) ?? DEFAULT_THEME_MODE;
-  } catch {
-    return DEFAULT_THEME_MODE;
-  }
-}
-
 export function resolveThemeMode(mode: ThemeMode): ResolvedThemeMode {
   if (mode !== "system") return mode;
   if (typeof window === "undefined") return "light";
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-export function syncThemeMode(mode: ThemeMode = getStoredThemeMode()): ResolvedThemeMode {
+export function syncThemeMode(mode: ThemeMode): ResolvedThemeMode {
   const resolvedMode = resolveThemeMode(mode);
   if (typeof document === "undefined") return resolvedMode;
 
   document.documentElement.classList.toggle("dark", resolvedMode === "dark");
   document.documentElement.style.colorScheme = resolvedMode;
   return resolvedMode;
-}
-
-export function applyThemeMode(value: ThemeMode): ThemeMode {
-  const mode = normalizeThemeMode(value) ?? DEFAULT_THEME_MODE;
-  try {
-    localStorage.setItem(THEME_MODE_KEY, mode);
-  } catch {
-    // 存储受限时仍保留本次页面内的模式预览。
-  }
-  syncThemeMode(mode);
-  window.dispatchEvent(new Event(THEME_MODE_CHANGE_EVENT));
-  return mode;
-}
-
-export function startThemeModeSync(): () => void {
-  if (typeof window === "undefined") return () => undefined;
-
-  const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
-  const refresh = () => syncThemeMode();
-  const handleStorage = (event: StorageEvent) => {
-    if (event.key === THEME_MODE_KEY) refresh();
-  };
-
-  systemTheme.addEventListener("change", refresh);
-  window.addEventListener("storage", handleStorage);
-  window.addEventListener(THEME_MODE_CHANGE_EVENT, refresh);
-  refresh();
-
-  return () => {
-    systemTheme.removeEventListener("change", refresh);
-    window.removeEventListener("storage", handleStorage);
-    window.removeEventListener(THEME_MODE_CHANGE_EVENT, refresh);
-  };
 }
 
 export function normalizeThemeColor(value: string): string | null {
@@ -174,55 +123,29 @@ function applyThemeInk(color: string): void {
   );
 }
 
-export function applyThemeColor(value: string): string | null {
-  const color = normalizeThemeColor(value);
-  if (!color || typeof document === "undefined") return null;
+export function applyThemeColor(color: string | null): void {
+  const style = document.documentElement.style;
+  if (color === null) {
+    style.removeProperty("--color-theme");
+    style.removeProperty("--color-primary-foreground");
+    style.removeProperty("--theme-primary-ink-light");
+    style.removeProperty("--theme-primary-ink-dark");
+    return;
+  }
 
-  document.documentElement.style.setProperty("--color-theme", color);
-  document.documentElement.style.setProperty(
-    "--color-primary-foreground",
-    getThemeForeground(color),
-  );
+  style.setProperty("--color-theme", color);
+  style.setProperty("--color-primary-foreground", getThemeForeground(color));
   applyThemeInk(color);
-  try {
-    localStorage.setItem(THEME_COLOR_KEY, color);
-  } catch {
-    // 存储受限时仍保留本次页面内的主题预览。
-  }
-  return color;
 }
 
-export function applyAiColor(value: string): string | null {
-  const color = normalizeThemeColor(value);
-  if (!color || typeof document === "undefined") return null;
-
-  document.documentElement.style.setProperty("--ai-theme-color", color);
-  document.documentElement.style.setProperty(
-    "--ai-theme-foreground",
-    getHighContrastForeground(color),
-  );
-  try {
-    localStorage.setItem(AI_COLOR_KEY, color);
-  } catch {
-    // 存储受限时仍保留本次页面内的 AI 颜色预览。
+export function applyAiColor(color: string | null): void {
+  const style = document.documentElement.style;
+  if (color === null) {
+    style.removeProperty("--ai-theme-color");
+    style.removeProperty("--ai-theme-foreground");
+    return;
   }
-  return color;
-}
 
-export function getStoredThemeColor(): string {
-  if (typeof window === "undefined") return DEFAULT_THEME_COLOR;
-  try {
-    return normalizeThemeColor(localStorage.getItem(THEME_COLOR_KEY) ?? "") ?? DEFAULT_THEME_COLOR;
-  } catch {
-    return DEFAULT_THEME_COLOR;
-  }
-}
-
-export function getStoredAiColor(): string {
-  if (typeof window === "undefined") return DEFAULT_AI_COLOR;
-  try {
-    return normalizeThemeColor(localStorage.getItem(AI_COLOR_KEY) ?? "") ?? DEFAULT_AI_COLOR;
-  } catch {
-    return DEFAULT_AI_COLOR;
-  }
+  style.setProperty("--ai-theme-color", color);
+  style.setProperty("--ai-theme-foreground", getHighContrastForeground(color));
 }

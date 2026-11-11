@@ -5,17 +5,19 @@ import { SettingsShell, type SettingsPage } from "./SettingsShell";
 import { PageHeader, PageHeaderAction } from "@/components/ui/page-header";
 import { INITIAL_SETTINGS_OVERVIEW_STATE } from "./settings-overview-controller";
 import { find, hookSession } from "@/components/chat/test-utils/hook-session";
-import { saveCustomWallpaper } from "@/lib/wallpaper";
+import { AppearanceWallpaper } from "./AppearanceWallpaper";
+import { uploadAppearanceImage, type AppearanceConfig } from "@/domain/appearance/appearance-client";
+import { loadAppearance } from "@/domain/appearance/appearance-store";
+import { DEFAULT_WALLPAPER_SETTINGS } from "@/lib/wallpaper";
 
 vi.mock("react", async original => {
   const actual = await original<typeof React>();
   return { ...actual, ...Object.fromEntries(["useState", "useRef", "useCallback", "useId", "useEffect", "useLayoutEffect", "useSyncExternalStore"].map(key => [key, vi.fn(actual[key as keyof typeof actual] as never)])) };
 });
 vi.mock("./useSettingsOverview", () => ({ useSettingsOverview: () => ({ state: INITIAL_SETTINGS_OVERVIEW_STATE, retry: vi.fn() }) }));
-vi.mock("@/lib/wallpaper", async original => ({
-  ...await original<typeof import("@/lib/wallpaper")>(),
-  getCustomWallpaper: vi.fn(async () => null),
-  saveCustomWallpaper: vi.fn(async () => {}),
+vi.mock("@/domain/appearance/appearance-client", async original => ({
+  ...await original<typeof import("@/domain/appearance/appearance-client")>(),
+  uploadAppearanceImage: vi.fn(),
 }));
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
@@ -108,20 +110,26 @@ describe("Settings version switch", () => {
   it("protects an in-flight wallpaper save, then removes the leave guard", async () => {
     const host = new EventTarget();
     vi.stubGlobal("window", host);
-    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:synthetic-wallpaper");
-    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-    let finish!: () => void;
-    vi.mocked(saveCustomWallpaper).mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+    const config: AppearanceConfig = {
+      themeMode: "system", themeColor: null, aiColor: null,
+      wallpaper: { ...DEFAULT_WALLPAPER_SETTINGS, image: null },
+      avatars: { user: null, assistant: null }, stickerImage: null, stickers: [],
+    };
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json(config)));
+    await loadAppearance();
+    let finish!: (config: AppearanceConfig) => void;
+    vi.mocked(uploadAppearanceImage).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
     const hooks = hookSession(() => SettingsAppearance());
-    const input = find(hooks.render(), "input", props => props.type === "file");
+    const wallpaper = find(hooks.render(), AppearanceWallpaper);
     hooks.commit();
     const idle = new Event("beforeunload", { cancelable: true }); host.dispatchEvent(idle);
     expect(idle.defaultPrevented).toBe(false);
-    const saving = input.props.onChange!({ target: { files: [{ type: "image/png", size: 10 }], value: "" } } as unknown as React.ChangeEvent<HTMLInputElement>);
+    const saving = wallpaper.props.onUpload(new File(["image"], "wallpaper.png", { type: "image/png" }));
     hooks.render(); hooks.commit();
     const busy = new Event("beforeunload", { cancelable: true }); host.dispatchEvent(busy);
     expect(busy.defaultPrevented).toBe(true);
-    finish(); await saving;
+    await Promise.resolve();
+    finish(config); await saving;
     hooks.render(); hooks.commit();
     const saved = new Event("beforeunload", { cancelable: true }); host.dispatchEvent(saved);
     expect(saved.defaultPrevented).toBe(false);

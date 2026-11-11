@@ -54,15 +54,17 @@ function hslToHex({ hue, saturation, lightness }: Hsl): string {
   return rgbToHex(channels);
 }
 
-export function ThemeColorDialog({ title, value, onApply }: {
+export function ThemeColorDialog({ title, value, onApply, disabled }: {
   title: string;
   value: string;
-  onApply: (value: string) => void;
+  onApply: (value: string) => Promise<boolean>;
+  disabled: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState(value);
   const [hsl, setHsl] = useState(() => hexToHsl(value));
   const [showError, setShowError] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const inputId = useId();
   const hintId = useId();
   const color = parseColor(input);
@@ -91,19 +93,22 @@ export function ThemeColorDialog({ title, value, onApply }: {
         setInput(value);
         setHsl(hexToHsl(value));
         setShowError(false);
+        setSaveFailed(false);
       }
       setOpen(nextOpen);
     }}>
-      <DialogTrigger aria-label={title} render={<Button type="button" variant="outline" size="lg" className="self-start" />}>
+      <DialogTrigger aria-label={title} disabled={disabled} render={<Button type="button" variant="outline" size="lg" className="self-start" />}>
         <span className="size-5 rounded-full border border-border-strong/60" style={{ backgroundColor: value }} />
         自定义
       </DialogTrigger>
       <DialogContent className="max-w-sm">
-        <form className="flex min-h-0 flex-1 flex-col" onSubmit={event => {
+        <form className="flex min-h-0 flex-1 flex-col" onSubmit={async event => {
           event.preventDefault();
+          if (disabled) return;
           if (!color) { setShowError(true); return; }
-          onApply(color);
-          setOpen(false);
+          setSaveFailed(false);
+          if (await onApply(color)) setOpen(false);
+          else setSaveFailed(true);
         }}>
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
@@ -146,10 +151,11 @@ export function ThemeColorDialog({ title, value, onApply }: {
                 </div>
               ))}
             </div>
+            {saveFailed && <p className="text-xs text-destructive" role="alert">保存颜色失败，请稍后重试。</p>}
           </DialogBody>
           <DialogFooter>
             <DialogClose render={<Button type="button" variant="ghost" size="comfortable" />}>取消</DialogClose>
-            <Button type="submit" size="comfortable">应用</Button>
+            <Button type="submit" size="comfortable" disabled={disabled}>应用</Button>
           </DialogFooter>
         </form>
       </DialogContent>
