@@ -1,24 +1,37 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearFeatureBinding, listFeatureBindings, updateFeatureBinding } from "./registry-client";
-import { FEATURE_GROUPS, featureScope, featureStatus, protocolName, type FeatureBinding, type FeatureUsage } from "./feature-bindings";
+import { FEATURE_GROUPS, FEATURE_NAMES, featureScope, featureStatus, protocolName, type FeatureBinding, type FeatureUsage } from "./feature-bindings";
 import { validLiteral } from "./registry-types";
 
 const usages = FEATURE_GROUPS.flatMap(group => [...group.usages]);
 const triple = { connection_id: "synthetic /?连接", protocol: "anthropic_messages", model: "catalog外/model-v99" };
 const wire = (): { features: FeatureBinding[] } => ({ features: usages.map(usage => ({ usage, selection: { ...triple }, diagnostic: null,
   allowed_protocols: usage === "memory_sentinel" ? ["openai_chat_completions"] : ["anthropic_messages", "openai_chat_completions"],
-  lifecycle: usage === "main_chat" || usage === "game_decision" ? "new_session_default" : usage === "book_annotation" ? "request_default" : "feature" })) });
+  lifecycle: usage === "main_chat" || usage === "game_decision" || usage === "diary_chat" ? "new_session_default" : usage === "book_annotation" ? "request_default" : "feature" })) });
 describe("Feature Binding boundary", () => {
   const fetchMock = vi.fn<typeof fetch>();
   const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
   beforeEach(() => vi.stubGlobal("fetch", (...args: Parameters<typeof fetch>) => fetchMock(...args).then(value => value.clone())));
   afterEach(() => { vi.unstubAllGlobals(); fetchMock.mockReset(); });
-  it("reads exactly nine features from features[], preserving invalid selections, diagnostics, permissions and lifecycle", async () => {
+  it("reads exactly ten features from features[], preserving invalid selections, diagnostics, permissions and lifecycle", async () => {
     const raw = wire(); raw.features[0] = { ...raw.features[0], selection: { ...triple, protocol: "historical_protocol" }, diagnostic: "incompatible_protocol" };
     fetchMock.mockResolvedValue(json({ ...raw, feature_bindings: [], features: [...raw.features, { usage: "camera_core" }] }));
     expect(await listFeatureBindings()).toEqual(raw.features);
     expect(fetchMock.mock.calls[0]).toMatchObject(["/api/registry/feature-bindings", { method: "GET", cache: "no-store", credentials: "include" }]);
     expect(fetchMock).toHaveBeenCalledOnce();
+  });
+  it("reads and saves Diary Chat as an independent task using the existing contract", async () => {
+    expect(FEATURE_NAMES.diary_chat).toBe("日记生成（Diary Chat）");
+    expect(FEATURE_NAMES.memory_digest).toBe("记忆总结（Memory Digest）");
+    const raw = wire();
+    const diary = raw.features.find(item => item.usage === "diary_chat")!;
+    expect(featureScope(diary)).toContain("已有草稿");
+    fetchMock.mockResolvedValueOnce(json({ usage: "diary_chat", ...triple })).mockResolvedValueOnce(json(raw));
+    await expect(updateFeatureBinding("diary_chat", triple)).resolves.toEqual(triple);
+    const saved = await listFeatureBindings();
+    expect(saved.find(item => item.usage === "diary_chat")?.selection).toEqual(triple);
+    expect(fetchMock.mock.calls[0]).toMatchObject(["/api/registry/feature-bindings/diary_chat", { method: "PUT" }]);
+    expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual(triple);
   });
   it.each(["missing", "duplicate", "permissions", "selection"])("rejects malformed %s instead of inventing defaults", async kind => {
     const raw = wire();

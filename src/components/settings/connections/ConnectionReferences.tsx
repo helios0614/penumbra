@@ -7,7 +7,7 @@ import { useRegistryTask } from "./useRegistryTask";
 
 const scopes: Readonly<Record<string, string>> = { feature: "功能分配", main: "聊天", diary: "日记",
   theater: "剧场", theater_persona: "剧场角色", game: "游戏", legacy_compatibility: "旧版兼容配置" };
-const features: Readonly<Record<string, string>> = { main_chat: "聊天", memory_sentinel: "记忆哨兵", memory_digest: "记忆整理", web_compression: "Web 压缩", quick_note_compression: "速记压缩", camera_sentinel: "摄像头哨兵", location_sentinel: "位置哨兵", book_annotation: "书籍批注", game_decision: "游戏决策" };
+const features: Readonly<Record<string, string>> = { main_chat: "聊天", memory_sentinel: "记忆哨兵", memory_digest: "记忆整理", web_compression: "Web 压缩", quick_note_compression: "速记压缩", camera_sentinel: "摄像头哨兵", location_sentinel: "位置哨兵", book_annotation: "书籍批注", game_decision: "游戏决策", diary_chat: "日记生成（Diary Chat）" };
 const label = (ref: {scope: string; id: string}) => ref.scope === "feature" && Object.prototype.hasOwnProperty.call(features, ref.id) ? features[ref.id] : `${Object.prototype.hasOwnProperty.call(scopes, ref.scope) ? scopes[ref.scope] : ref.scope} · ${ref.id}`;
 export function ConnectionReferenceFacts({ value }: { value: References }) {
   return <div className="space-y-2 text-xs">

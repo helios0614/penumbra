@@ -29,7 +29,7 @@ export function FeatureBindingsPage({ onManageConnections, focusUsage }: { onMan
     <section aria-label="模型与任务分配面板" className="mist-glass flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[22px] bg-background/70! dark:bg-background/50!">
       <header className="shrink-0 space-y-2.5 border-b border-border/60 px-4 py-4 sm:px-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold">功能分配 <span className="font-normal text-muted-foreground">9</span></h3>
+          <h3 className="text-sm font-semibold">功能分配 {snapshot && <span className="font-normal text-muted-foreground">{snapshot.features.length}</span>}</h3>
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="icon" aria-label="刷新功能分配" disabled={read.state.status === "loading"} onClick={() => { void refresh(); }}><RefreshCw aria-hidden="true" /></Button>
             <Button variant="ghost" size="compact" onClick={onManageConnections}><Cable aria-hidden="true" />管理连接</Button>
