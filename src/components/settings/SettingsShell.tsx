@@ -25,8 +25,6 @@ export interface SettingsPage {
   readonly group?: string;
 }
 
-const plannedCategories = ["高级设置"];
-
 /** Desktop hosts own the Settings route; categories use history state without storing drafts. */
 export function SettingsShell({ pages, onClose }: {
   readonly pages: readonly SettingsPage[];
@@ -75,7 +73,7 @@ export function SettingsShell({ pages, onClose }: {
 
   return <div className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col overflow-hidden" aria-labelledby="settings-page-title">
     <PageHeader eyebrow="Settings" title="设置" titleId="settings-page-title"
-      description="本机外观、API 连接、功能分配与运行状态。"
+      description="外观、API 连接、功能分配与服务配置。"
       actions={onClose && <PageHeaderAction onClick={onClose} aria-label="返回桌面"><X aria-hidden="true" /></PageHeaderAction>} />
     <div className="mt-3 flex min-h-0 flex-1 gap-4">
       <aside className={cn("mist-glass min-h-0 w-full shrink-0 rounded-[22px] md:w-52", activePage && "hidden md:block")}>
@@ -102,10 +100,6 @@ export function SettingsShell({ pages, onClose }: {
               </Fragment>;
             })}
           </nav>
-          <section className="px-3" aria-label="后续分类规划">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">后续开放</p>
-            <ul className="space-y-2 text-xs text-muted-foreground">{plannedCategories.map(label => <li key={label}>{label}</li>)}</ul>
-          </section>
           <section className="border-t border-border px-3 pt-3" aria-label="其他版本">
             <a href="/" target="_top" aria-describedby="frontend-version-note"
               className="inline-flex min-h-11 items-center gap-1 text-xs font-medium text-primary-ink focus-visible:outline-2 focus-visible:outline-ring">

@@ -1,9 +1,8 @@
 import { lazy, Suspense } from "react";
-import { Activity, Cable, Database, Globe, Mic, Music, Palette, Workflow, Plug } from "lucide-react";
+import { Cable, Database, Globe, Mic, Music, Palette, SlidersHorizontal, Workflow, Plug } from "lucide-react";
+import { SettingsAdvanced } from "./SettingsAdvanced";
 import { SettingsAppearance } from "./SettingsAppearance";
 import { SettingsShell, type SettingsPage } from "./SettingsShell";
-import { SettingsSafeBasics } from "./SettingsSafeBasics";
-import { useSettingsOverview } from "./useSettingsOverview";
 const ConnectionsList = lazy(() => import("./connections/ConnectionsList").then(module => ({ default: module.ConnectionsList })));
 const FeatureBindingsPage = lazy(() => import("./features/FeatureBindingsPage").then(module => ({ default: module.FeatureBindingsPage })));
 
@@ -25,8 +24,8 @@ export function SettingsView({ onBack }: { onBack?: () => void }) {
       render: ({ active, navigate, previousPageId }) => active ? <Suspense fallback={<p role="status" className="text-xs">正在读取功能分配…</p>}><FeatureBindingsPage onManageConnections={() => navigate("connections")} focusUsage={previousPageId === "web" ? "web_compression" : undefined} /></Suspense> : null },
     { id: "mcp", title: "MCP 服务", description: "服务器、凭据、工具与高级设置", icon: Plug, layout: "fill",
       render: ({ active }) => active ? <Suspense fallback={<p role="status" className="text-xs">正在读取 MCP…</p>}><MCPPage /></Suspense> : null },
-    { id: "system", title: "系统状态", description: "Session 与新会话默认配置", icon: Activity,
-      render: ({ active }) => <SettingsSystemPage active={active} /> },
+    { id: "advanced", title: "高级设置", description: "缓存配置与服务端保活", icon: SlidersHorizontal,
+      render: ({ active }) => active ? <SettingsAdvanced /> : null },
     { id: "web", title: "Web 服务", description: "联网访问、搜索凭据与网页内容压缩", icon: Globe, group: "服务集成",
       render: ({ active, navigate }) => active ? <Suspense fallback={<p role="status" className="text-xs">正在打开 Web 服务…</p>}>
         <WebSettingsPage onManageCompression={() => navigate("features")} />
@@ -45,11 +44,6 @@ export function SettingsView({ onBack }: { onBack?: () => void }) {
       </Suspense> : null },
   ];
   return <SettingsShell pages={pages} onClose={onBack} />;
-}
-
-function SettingsSystemPage({ active }: { active: boolean }) {
-  const { state, retry } = useSettingsOverview(active);
-  return <SettingsSafeBasics state={state} onRetry={retry} />;
 }
 
 export default SettingsView;

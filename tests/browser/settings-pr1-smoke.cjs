@@ -20,15 +20,15 @@ const server = http.createServer((req, res) => {
   const mime = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.woff2': 'font/woff2', '.png': 'image/png', '.svg': 'image/svg+xml' };
   res.writeHead(200, { 'Content-Type': mime[path.extname(file)] || 'application/octet-stream' }); fs.createReadStream(file).pipe(res);
 });
-const readiness = code => ({ ready: code === 'ready', model_key: 'synthetic-default', reason_code: code, setup_action_required: code !== 'ready' });
-
 async function run(browser, origin, layout, width) {
   const context = await browser.newContext({ viewport: { width, height: 800 }, colorScheme: width === 390 ? 'dark' : 'light' });
   const errors = [], requests = [], writes = [], escaped = [];
   const page = await context.newPage(); page.setDefaultTimeout(10000);
   page.on('pageerror', error => errors.push(error.message));
   const state = {
-    fail: null, code: 'ready', delay: null, pending: [],
+    fail: null,
+    cache: { cache_enabled: true, anthropic_system_cache_ttl: '1h', cache_freeze_size: 20, cache_slide_max: 10 },
+    keepalive: { cache_keepalive_enabled: true, cache_keepalive_threshold_min: 50 },
     appearance: {
       themeMode: 'dark', themeColor: '#4A8F6B', aiColor: '#7D73B5',
       wallpaper: { mode: 'custom', fit: 'contain', position: 'bottom', shade: 'soft', textTone: 'light', image: 'a'.repeat(32) + '.png' },
@@ -45,8 +45,28 @@ async function run(browser, origin, layout, width) {
     requests.push(endpoint);
     if (req.method() !== 'GET') writes.push(`${req.method()} ${endpoint}`);
     const json = (value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) }).catch(() => {});
-    if (state.fail === endpoint) return json({ error: 'synthetic-private-error-must-not-render' }, 503);
-    if (state.delay === endpoint) { state.pending.push({ route, code: state.code }); return; }
+    if (state.fail === endpoint) return json({ detail: 'synthetic save failed' }, 503);
+    if (endpoint === '/api/settings') return json(state.cache);
+    if (endpoint === '/api/settings/cache-toggle') {
+      const body = req.postDataJSON();
+      assert.deepEqual(Object.keys(body), ['cache_enabled']);
+      state.cache.cache_enabled = body.cache_enabled;
+      return json({ ok: true, ...body });
+    }
+    if (endpoint === '/api/settings/anthropic-system-cache-ttl') {
+      const body = req.postDataJSON();
+      assert.deepEqual(Object.keys(body), ['ttl']);
+      state.cache.anthropic_system_cache_ttl = body.ttl;
+      return json({ ok: true, ...body });
+    }
+    if (endpoint === '/api/settings/keepalive') {
+      if (req.method() === 'GET') return json(state.keepalive);
+      const body = req.postDataJSON();
+      assert.equal(Object.keys(body).length, 1);
+      assert(Object.keys(body)[0] in state.keepalive);
+      Object.assign(state.keepalive, body);
+      return json({ ok: true });
+    }
     if (endpoint === '/api/appearance') {
       if (req.method() === 'PATCH') {
         const { wallpaper, ...fields } = req.postDataJSON();
@@ -62,7 +82,6 @@ async function run(browser, origin, layout, width) {
     if (endpoint.startsWith('/api/appearance/images/wallpaper/')) return route.fulfill({ contentType: 'image/png', body: png });
     if (endpoint === '/api/session') return json({ authenticated: true, cookie: 'synthetic-private-cookie-must-not-render' });
     if (endpoint === '/api/worldbook') return json({ ai_name: '合成助手' });
-    if (endpoint === '/api/chat/readiness') return json(readiness(state.code));
     // Background widgets use only these synthetic empty facts.
     if (endpoint === '/api/schedule/reminders' || endpoint === '/api/conversations') return json([]);
     if (endpoint === '/api/settings/user-info') return json({ user_name: '合成用户' });
@@ -83,7 +102,7 @@ async function run(browser, origin, layout, width) {
   const preferences = () => page.evaluate(() => Object.fromEntries(['penumbra-theme-mode', 'penumbra-theme-color', 'penumbra-ai-color', 'penumbra-wallpaper-settings'].map(key => [key, localStorage.getItem(key)])));
   const before = await preferences();
   const open = async () => { const launcher = page.getByRole('button', { name: '打开设置', exact: true }); if (await launcher.count()) await launcher.last().click(); await page.getByRole('navigation', { name: '设置分类' }).waitFor(); };
-  const category = title => page.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: new RegExp(title) });
+  const category = title => page.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: new RegExp(`^${title}`) });
   const back = () => page.getByRole('button', { name: '返回设置分类', exact: true }).click();
   const appearance = () => page.getByRole('region', { name: '外观', exact: true });
   const openColor = async title => {
@@ -95,8 +114,12 @@ async function run(browser, origin, layout, width) {
     assert.equal(await dialog.getByLabel('色值', { exact: true }).inputValue(), expected);
     await dialog.getByRole('button', { name: '取消', exact: true }).click();
   };
-  const system = () => page.getByRole('region', { name: '系统状态', exact: true });
-  const item = title => system().getByRole('region', { name: title, exact: true });
+  const advanced = page.getByRole('region', { name: '高级设置', exact: true });
+  const cache = advanced.getByRole('switch', { name: '缓存总开关', exact: true });
+  const ttl = advanced.getByRole('combobox', { name: 'Anthropic System Cache TTL', exact: true });
+  const keepalive = advanced.getByRole('switch', { name: '服务端缓存保活', exact: true });
+  const threshold = advanced.getByRole('spinbutton', { name: '回复间隔阈值（分钟）', exact: true });
+  const expectSwitch = (control, checked) => control.and(page.locator(`[aria-checked="${checked}"]:enabled`)).waitFor();
   const noOverflow = async () => assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && [...document.querySelectorAll('[data-page-scroll-region]')].filter(el => el.getBoundingClientRect().width).every(el => el.scrollWidth <= el.clientWidth + 1)));
   try {
     await open();
@@ -142,40 +165,36 @@ async function run(browser, origin, layout, width) {
     assert.deepEqual(wallpaper, { mode: 'custom', fit: 'cover', position: 'top', shade: 'balanced', textTone: 'dark', image: 'a'.repeat(32) + '.png' });
     await appearance().getByLabel('选择自定义壁纸').setInputFiles({ name: 'synthetic.png', mimeType: 'image/png', buffer: png });
     await page.waitForFunction(() => document.querySelector('.desktop-wallpaper-preview')?.style.backgroundImage.includes('bbbbbb'));
-    await back(); await category('系统状态').click();
-    await item('Session').getByText('Session 可达 · 已登录', { exact: true }).waitFor();
-    await item('Chat readiness · 新会话默认配置').getByText('默认配置就绪', { exact: true }).waitFor();
-    assert(!(await system().textContent()).includes('synthetic-private'));
-    for (const [endpoint, title] of [['/api/session', 'Session'], ['/api/chat/readiness', 'Chat readiness · 新会话默认配置']]) {
-      state.fail = endpoint;
-      await system().getByRole('button', { name: '重新加载设置状态', exact: true }).click();
-      await item(title).getByRole('button', { name: '重试', exact: true }).waitFor();
-      for (const other of ['Session', 'Chat readiness · 新会话默认配置'].filter(v => v !== title)) assert.equal(await item(other).getByRole('alert').count(), 0);
-      assert(!(await system().textContent()).includes('synthetic-private'));
-      await page.waitForFunction(() => !document.querySelector('[aria-label="重新加载设置状态"]')?.disabled);
-      state.fail = null; const offset = requests.length;
-      await item(title).getByRole('button', { name: '重试', exact: true }).click();
-      await item(title).getByRole('alert').waitFor({ state: 'hidden' });
-      assert.deepEqual(requests.slice(offset).filter(path => ['/api/session', '/api/chat/readiness'].includes(path)), [endpoint]);
-    }
-    for (const [code, copy] of [['missing_credential', '缺少凭据'], ['disabled_profile', '已禁用'], ['invalid_main_selection', '选择无效'], ['future_safe_code', '检查连接与模型配置后重试'], ['constructor', '检查连接与模型配置后重试']]) {
-      state.code = code; await system().getByRole('button', { name: '重新加载设置状态', exact: true }).click();
-      await page.waitForFunction(() => !document.querySelector('[aria-label="重新加载设置状态"]')?.disabled);
-      await item('Chat readiness · 新会话默认配置').getByText(copy, { exact: false }).waitFor();
-      assert(!(await system().textContent()).includes('后端离线'));
-    }
+    await back();
+    assert.equal(await category('系统状态').count(), 0);
+    await category('高级设置').click();
+    await expectSwitch(cache, true);
+    assert.equal(await ttl.locator('[data-slot="select-value"]').textContent(), '1 小时');
+    assert.equal(await threshold.inputValue(), '50');
+    state.fail = '/api/settings/cache-toggle';
+    await cache.click();
+    await advanced.getByRole('alert').filter({ hasText: 'synthetic save failed' }).waitFor();
+    await expectSwitch(cache, true);
+    state.fail = null;
+    await cache.click(); await expectSwitch(cache, false);
+    await ttl.click(); await page.getByRole('option', { name: '5 分钟' }).click();
+    await ttl.getByText('5 分钟').waitFor();
+    await keepalive.click(); await expectSwitch(keepalive, false);
+    assert.equal(await threshold.count(), 0);
+    await keepalive.click(); await expectSwitch(keepalive, true);
+    await threshold.fill('37');
+    await advanced.getByRole('button', { name: '保存', exact: true }).click();
+    await expectSwitch(keepalive, true);
+    assert.equal(state.keepalive.cache_keepalive_threshold_min, 37);
+    assert.equal(requests.filter(endpoint => endpoint === '/api/settings').length, 6);
+    assert.equal(requests.filter(endpoint => endpoint === '/api/settings/keepalive').length, 9);
     await noOverflow();
-    await page.screenshot({ path: path.join(output, `${layout}-${width}-system.png`) });
-    // Slow readiness must not hide the successful Session/catalog. Closing discards the late response.
-    state.delay = '/api/chat/readiness'; state.code = 'missing_credential';
-    await system().getByRole('button', { name: '重新加载设置状态', exact: true }).click();
-    await item('Session').getByText('Session 可达 · 已登录', { exact: true }).waitFor();
-    await page.getByRole('button', { name: '返回桌面', exact: true }).click(); await page.waitForURL(origin + location);
-    state.delay = null; state.code = 'ready';
-    await open(); await category('系统状态').click();
-    await item('Chat readiness · 新会话默认配置').getByText('默认配置就绪', { exact: true }).waitFor();
-    for (const pending of state.pending.splice(0)) await pending.route.fulfill({ contentType: 'application/json', body: JSON.stringify(readiness(pending.code)) }).catch(() => {});
-    assert(await item('Chat readiness · 新会话默认配置').getByText('默认配置就绪', { exact: true }).isVisible());
+    await page.screenshot({ path: path.join(output, `${layout}-${width}-advanced.png`) });
+    await page.reload();
+    await expectSwitch(cache, false);
+    assert.equal(await ttl.locator('[data-slot="select-value"]').textContent(), '5 分钟');
+    await expectSwitch(keepalive, true);
+    assert.equal(await threshold.inputValue(), '37');
     await back(); await category('外观').click();
     await assertColor('自定义主题颜色', '#AABBCC');
     await appearance().getByRole('button', { name: '移除', exact: true }).click();
@@ -190,12 +209,14 @@ async function run(browser, origin, layout, width) {
     const legacy = page.getByRole('link', { name: '返回旧版合成助手', exact: true });
     assert.equal(await legacy.getAttribute('href'), '/'); assert.equal(await legacy.getAttribute('target'), '_top');
     assert.equal(new URL(page.url()).pathname, location.replace(/\/$/, '') + '/app/settings');
-    assert(writes.length > 0 && writes.every(write => write.includes(' /api/appearance')));
+    assert(writes.length > 0 && writes.every(write => / \/api\/(appearance|settings\/(cache-toggle|anthropic-system-cache-ttl|keepalive))/.test(write)));
+    assert(!requests.includes('/api/settings/cache-config'));
+    assert(!requests.includes('/api/chat/readiness'));
     assert.deepEqual(await preferences(), before);
     assert.deepEqual(escaped, []); assert.deepEqual(errors, []);
     assert(!requests.includes('/api/models'));
     assert(!requests.some(path => path.startsWith('/penumbra/api')));
-    return { layout, width, navigation: 'passed', appearanceStorage: 'passed', independentOverview: 'passed', safeDiagnostics: 'passed', reopenAndLateResponse: 'passed', apiWrites: writes.length, pageErrors: errors.length };
+    return { layout, width, navigation: 'passed', appearanceStorage: 'passed', cacheReadback: 'passed', apiWrites: writes.length, pageErrors: errors.length };
   } finally { await context.close(); }
 }
 

@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { SegmentedControlItem } from "@/components/ui/selection-control";
 import { AppSelect } from "@/components/ui/app-select";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
+import { ChatAdvancedSettings } from "./ChatAdvancedSettings";
 import { setSendShortcut, useSendShortcut, type SendShortcut } from "./send-shortcut-preference";
 
 const sliderKeys = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"]);
@@ -46,6 +47,7 @@ export function ChatRequestParametersMenu({ settings, disabled }: { readonly set
           <ChatSettingSlider settings={settings} field="carryover_count" label="新会话携带历史" metadata={ready.carryover_count} disabled={disabled} unit="条" />
         </div>
       </div>}
+      <ChatAdvancedSettings disabled={disabled} />
     </PopoverContent>
   </Popover>;
 }

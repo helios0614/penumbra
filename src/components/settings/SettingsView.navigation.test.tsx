@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsAppearance } from "./SettingsAppearance";
 import { SettingsShell, type SettingsPage } from "./SettingsShell";
 import { PageHeader, PageHeaderAction } from "@/components/ui/page-header";
-import { INITIAL_SETTINGS_OVERVIEW_STATE } from "./settings-overview-controller";
 import { find, hookSession } from "@/components/chat/test-utils/hook-session";
 import { AppearanceWallpaper } from "./AppearanceWallpaper";
 import { uploadAppearanceImage, type AppearanceConfig } from "@/domain/appearance/appearance-client";
@@ -14,7 +13,6 @@ vi.mock("react", async original => {
   const actual = await original<typeof React>();
   return { ...actual, ...Object.fromEntries(["useState", "useRef", "useCallback", "useId", "useEffect", "useLayoutEffect", "useSyncExternalStore"].map(key => [key, vi.fn(actual[key as keyof typeof actual] as never)])) };
 });
-vi.mock("./useSettingsOverview", () => ({ useSettingsOverview: () => ({ state: INITIAL_SETTINGS_OVERVIEW_STATE, retry: vi.fn() }) }));
 vi.mock("@/domain/appearance/appearance-client", async original => ({
   ...await original<typeof import("@/domain/appearance/appearance-client")>(),
   uploadAppearanceImage: vi.fn(),

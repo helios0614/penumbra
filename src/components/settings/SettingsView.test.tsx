@@ -9,12 +9,13 @@ describe("Settings page structure", () => {
     expect(html).toContain('aria-label="返回桌面"');
     expect(html).toContain('aria-label="设置分类"');
     expect(html).toContain("主题、头像与桌面壁纸");
-    expect(html).toContain("系统状态");
+    expect(html).toContain("高级设置");
+    expect(html).not.toContain("系统状态");
     expect(html).toContain("界面外观");
     expect(html).toContain("桌面背景");
-    expect(html).toContain("运行状态概览");
+    expect(html).not.toContain("运行状态概览");
     expect(html).not.toContain("日历设置");
-    expect(html).toContain("后续开放");
+    expect(html).not.toContain("后续开放");
     expect(html).toContain("MCP 服务");
     expect(html).not.toContain("MCP 工具（独立页面）");
     expect(html).toContain("API 与连接");
