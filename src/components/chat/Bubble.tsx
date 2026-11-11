@@ -182,8 +182,8 @@ function BubbleInner({
           ref={bodyRef}
           data-message-body
           className={cn(
-            "flex min-w-0 flex-col gap-1",
-            isUser ? "items-end" : "items-start gap-0.5",
+            "flex min-w-0 flex-col gap-0.5",
+            isUser ? "items-end" : "items-start",
           )}
         >
           <SearchableBubbleSegments identity={message.id} chunks={chunks}

@@ -30,7 +30,7 @@ describe("Settings version switch", () => {
       await vi.waitFor(() => {
         const link = find(hooks.render(), "a", props => props.target === "_top");
         expect(React.Children.toArray(link.props.children)[0]).toBe("返回旧版合成助手");
-        expect(link.props.href).toBe("/");
+        expect(link.props.href).toBe("/legacy");
       });
       expect(fetch).toHaveBeenCalledWith(expect.stringMatching(/\/api\/worldbook$/), expect.objectContaining({ method: "GET" }));
     } finally {
@@ -71,9 +71,9 @@ describe("Settings version switch", () => {
     expect(context.previousPageId).toBe("web");
     hooks.dispose(); expect(remove).toHaveBeenCalledWith("popstate", expect.any(Function));
   });
-  it("uses a native legacy root link under a base path", () => {
+  it("uses a native link to the legacy home under a base path", () => {
     const hooks = hookSession(() => SettingsShell({ pages: [] }));
-    const link = find(hooks.render(), "a", props => props.href === "/");
+    const link = find(hooks.render(), "a", props => props.href === "/legacy");
     expect(link.props.target).toBe("_top");
     expect(link.props.onClick).toBeUndefined();
     hooks.dispose();

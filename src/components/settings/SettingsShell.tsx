@@ -101,7 +101,7 @@ export function SettingsShell({ pages, onClose }: {
             })}
           </nav>
           <section className="border-t border-border px-3 pt-3" aria-label="其他版本">
-            <a href="/" target="_top" aria-describedby="frontend-version-note"
+            <a href="/legacy" target="_top" aria-describedby="frontend-version-note"
               className="inline-flex min-h-11 items-center gap-1 text-xs font-medium text-primary-ink focus-visible:outline-2 focus-visible:outline-ring">
               {`返回旧版${aiName}`}<ArrowUpRight className="size-3.5" aria-hidden="true" />
             </a>

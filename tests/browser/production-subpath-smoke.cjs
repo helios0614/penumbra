@@ -72,7 +72,9 @@ function checkBuild({ distDirectory = dist, finalFiles, requireManifest = false 
   }
 
   const html = fs.readFileSync(path.join(directory, 'index.html'), 'utf8');
-  const entryUrls = [...html.matchAll(/(?:src|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)]
+  // AionHome serves its shared PWA manifest outside the Penumbra artifact.
+  const buildHtml = html.replace('<link rel="manifest" href="/manifest.json" />', '');
+  const entryUrls = [...buildHtml.matchAll(/(?:src|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)]
     .map(match => match[1] ?? match[2] ?? match[3]);
   const entries = entryUrls.map(url => resource(url));
   assert(entries.some(file => file.endsWith('.js')), 'Missing JavaScript entry');
@@ -243,7 +245,10 @@ async function exercise(browser, origin, production, width, { mockBackend = true
   await context.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url());
     if (url.origin !== origin) { escaped.push(url.origin); return route.abort('blockedbyclient'); }
-    if (mockBackend && legacyDestination && url.pathname === '/' && request.isNavigationRequest()) {
+    if (mockBackend && url.pathname === '/manifest.json') {
+      return route.fulfill({ json: { id: '/chat', start_url: `${base}app/chat`, scope: '/' } });
+    }
+    if (mockBackend && legacyDestination && url.pathname === '/legacy' && request.isNavigationRequest()) {
       assert.equal(request.frame(), page.mainFrame());
       assert((await request.allHeaders()).cookie.includes('aion_session=synthetic-switch-session'));
       return route.fulfill({ contentType: 'text/html', body: '<h1>Synthetic legacy home</h1>' });
@@ -323,20 +328,20 @@ async function exercise(browser, origin, production, width, { mockBackend = true
     await page.getByRole('button', { name: '返回经典桌面', exact: true }).click(); await classicHome();
     assert.equal(pathname(), base);
 
-    // The shared Settings link must leave either Penumbra desktop for the root,
+    // The shared Settings link must leave either Penumbra desktop for the legacy home,
     // even in a production build whose internal base is /penumbra/.
     for (const desktop of ['', 'editorial']) {
       await page.goto(`${origin}${base}${desktop}`);
       await page.getByRole('button', { name: '打开设置', exact: true }).last().click();
       const link = page.getByRole('link', { name: mockBackend ? '返回旧版合成助手' : /^返回旧版/ });
       await link.scrollIntoViewIfNeeded();
-      assert.equal(await link.getAttribute('href'), '/');
+      assert.equal(await link.getAttribute('href'), '/legacy');
       assert.equal(await link.getAttribute('target'), '_top');
       assert(await page.locator('#frontend-version-note').isVisible());
       legacyDestination = true;
       await link.click();
       await page.getByRole('heading', { name: 'Synthetic legacy home', exact: true }).waitFor();
-      assert.equal(pathname(), '/');
+      assert.equal(pathname(), '/legacy');
       assert(await page.evaluate(() => window === window.top));
       assert.equal(page.frames().length, 1);
       const cookies = await context.cookies(origin);
