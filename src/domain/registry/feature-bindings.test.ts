@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearFeatureBinding, listFeatureBindings, updateFeatureBinding } from "./registry-client";
+import { clearFeatureBinding, listFeatureBindings, updateDiaryChatFollowMain, updateFeatureBinding } from "./registry-client";
 import { FEATURE_GROUPS, FEATURE_NAMES, featureScope, featureStatus, protocolName, type FeatureBinding, type FeatureUsage } from "./feature-bindings";
 import { validLiteral } from "./registry-types";
 
@@ -32,6 +32,18 @@ describe("Feature Binding boundary", () => {
     expect(saved.find(item => item.usage === "diary_chat")?.selection).toEqual(triple);
     expect(fetchMock.mock.calls[0]).toMatchObject(["/api/registry/feature-bindings/diary_chat", { method: "PUT" }]);
     expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual(triple);
+  });
+  it("reads Diary follow mode and updates only the Settings boolean", async () => {
+    const raw = wire();
+    const index = raw.features.findIndex(item => item.usage === "diary_chat");
+    raw.features[index] = { ...raw.features[index], follow_main: false };
+    fetchMock.mockResolvedValueOnce(json(raw)).mockResolvedValueOnce(json({ ok: true }));
+    const features = await listFeatureBindings();
+    expect(features[index]).toMatchObject({ follow_main: false, selection: triple });
+    expect(features.find(item => item.usage === "memory_digest")?.follow_main).toBeUndefined();
+    await updateDiaryChatFollowMain(true);
+    expect(fetchMock.mock.calls[1]).toMatchObject(["/api/settings", { method: "PUT", cache: "no-store" }]);
+    expect(JSON.parse(fetchMock.mock.calls[1][1]!.body as string)).toEqual({ diary_chat_follow_main: true });
   });
   it.each(["missing", "duplicate", "permissions", "selection"])("rejects malformed %s instead of inventing defaults", async kind => {
     const raw = wire();

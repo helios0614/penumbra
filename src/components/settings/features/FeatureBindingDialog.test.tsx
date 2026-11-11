@@ -4,7 +4,8 @@ import { elements, find, hookSession } from "@/components/chat/test-utils/hook-s
 import { AppSelect } from "@/components/ui/app-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { clearFeatureBinding, updateFeatureBinding } from "@/domain/registry/registry-client";
+import { Switch } from "@/components/ui/switch";
+import { clearFeatureBinding, updateDiaryChatFollowMain, updateFeatureBinding } from "@/domain/registry/registry-client";
 import { FEATURE_GROUPS, type FeatureSelection, type FeatureUsage } from "@/domain/registry/feature-bindings";
 import { RegistryError } from "@/domain/registry/registry-types";
 import { FeatureBindingDialog } from "./FeatureBindingDialog";
@@ -14,9 +15,9 @@ vi.mock("react", async original => {
   const actual = await original<typeof React>();
   return { ...actual, ...Object.fromEntries(["useState", "useRef", "useCallback", "useId", "useEffect", "useLayoutEffect", "useSyncExternalStore"].map(key => [key, vi.fn(actual[key as keyof typeof actual] as never)])) };
 });
-vi.mock("@/domain/registry/registry-client", () => ({ clearFeatureBinding: vi.fn(), updateFeatureBinding: vi.fn() }));
+vi.mock("@/domain/registry/registry-client", () => ({ clearFeatureBinding: vi.fn(), updateDiaryChatFollowMain: vi.fn(), updateFeatureBinding: vi.fn() }));
 vi.mock("./feature-snapshot", () => ({ readFeatureSnapshot: vi.fn() }));
-afterEach(() => { vi.restoreAllMocks(); vi.mocked(updateFeatureBinding).mockReset(); vi.mocked(clearFeatureBinding).mockReset(); vi.mocked(readFeatureSnapshot).mockReset(); });
+afterEach(() => { vi.restoreAllMocks(); vi.mocked(updateFeatureBinding).mockReset(); vi.mocked(clearFeatureBinding).mockReset(); vi.mocked(updateDiaryChatFollowMain).mockReset(); vi.mocked(readFeatureSnapshot).mockReset(); });
 const triple = { connection_id: "a", protocol: "anthropic_messages", model: "manual/outside-catalog" };
 function snapshot(selection: FeatureSelection | null = triple): FeatureSnapshot {
   return { registry: { schema_version: 2, authority_state: "persisted_v2", migration_required: false, diagnosticCount: 0, deferredCount: 0,
@@ -34,6 +35,31 @@ const click = (tree: React.ReactNode, label: string) => find(tree, Button, p => 
 const change = (tree: React.ReactNode, label: string, value: string) => find(tree, AppSelect, p => p.ariaLabel === label).props.onValueChange(value);
 
 describe("Feature editor behavior with fake Registry", () => {
+  it("round-trips the Diary follow switch and restores the same independent fields", async () => {
+    const mode = (follow_main: boolean): FeatureSnapshot => {
+      const initial = snapshot();
+      return { ...initial, features: initial.features.map(item => item.usage === "diary_chat" ? { ...item, follow_main } : item) };
+    };
+    vi.mocked(updateDiaryChatFollowMain).mockResolvedValue(undefined);
+    vi.mocked(readFeatureSnapshot).mockResolvedValueOnce(mode(false)).mockResolvedValueOnce(mode(true));
+    const { hooks, props } = setup(mode(true), "diary_chat");
+    const toggle = () => find(hooks.render(), Switch);
+    expect(toggle().props.checked).toBe(true);
+    expect(elements(hooks.render()).some(item => item.type === Input)).toBe(false);
+    toggle().props.onCheckedChange(false);
+    await vi.waitFor(() => expect(props.onObserved).toHaveBeenCalledOnce());
+    expect(toggle().props.checked).toBe(false);
+    expect(find(hooks.render(), Input).props.value).toBe(triple.model);
+    toggle().props.onCheckedChange(true);
+    await vi.waitFor(() => expect(props.onObserved).toHaveBeenCalledTimes(2));
+    expect(toggle().props.checked).toBe(true);
+    expect(elements(hooks.render()).some(item => item.type === Input)).toBe(false);
+    expect(updateDiaryChatFollowMain).toHaveBeenNthCalledWith(1, false, expect.any(Object));
+    expect(updateDiaryChatFollowMain).toHaveBeenNthCalledWith(2, true, expect.any(Object));
+    expect(updateFeatureBinding).not.toHaveBeenCalled();
+    expect(clearFeatureBinding).not.toHaveBeenCalled();
+    hooks.dispose();
+  });
   it("keeps the saved literal on open, then prefills only on a different Connection selection", () => {
     const { hooks } = setup();
     expect(find(hooks.render(), Input).props.value).toBe(triple.model);

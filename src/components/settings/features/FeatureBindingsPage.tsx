@@ -54,12 +54,12 @@ export function FeatureBindingsPage({ onManageConnections, focusUsage }: { onMan
               className="min-w-0 space-y-1.5 py-4 focus:outline-2 focus:-outline-offset-2 focus:outline-ring">
               <div data-feature-heading className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
                 <h5 className="min-w-0 text-sm font-semibold">{FEATURE_NAMES[usage]}</h5>
-                <FeatureStatus feature={item} />
+                {item.follow_main ? <span className="text-xs text-muted-foreground">跟随主聊天</span> : <FeatureStatus feature={item} />}
                 <Button ref={element => { actions.current[usage] = element; }} variant="ghost" size="icon-lg" className="shrink-0" aria-label={`编辑：${FEATURE_NAMES[usage]}`}
                   disabled={read.state.status !== "success"} onClick={() => { setNotice(""); setEditing(usage); }}><Pencil className="size-4" aria-hidden="true" /></Button>
               </div>
-              {selection && <FeatureSelectionSummary selection={selection} connectionName={connection?.name ?? `连接 ID：${selection.connection_id || "空值"}`} />}
-              {item.diagnostic && <p className="break-all text-[11px] text-muted-foreground">{usage} · {item.diagnostic}</p>}
+              {!item.follow_main && selection && <FeatureSelectionSummary selection={selection} connectionName={connection?.name ?? `连接 ID：${selection.connection_id || "空值"}`} />}
+              {!item.follow_main && item.diagnostic && <p className="break-all text-[11px] text-muted-foreground">{usage} · {item.diagnostic}</p>}
             </article>;
           })}</div>
         </section>)}

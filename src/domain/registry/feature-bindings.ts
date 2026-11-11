@@ -17,6 +17,7 @@ export interface FeatureBinding {
   readonly diagnostic: string | null;
   readonly allowed_protocols: readonly string[];
   readonly lifecycle: string;
+  readonly follow_main?: boolean;
 }
 const protocolNames: Readonly<Record<string, string>> = {
   openai_chat_completions: "OpenAI 对话补全", anthropic_messages: "Anthropic 消息接口",

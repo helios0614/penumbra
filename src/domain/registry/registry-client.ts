@@ -130,8 +130,11 @@ export async function listFeatureBindings(options?: ApiRequestOptions): Promise<
     if (!record(item) || !(item.diagnostic === null || text(item.diagnostic)) ||
       !Array.isArray(item.allowed_protocols) || !item.allowed_protocols.every(text) ||
       new Set(item.allowed_protocols).size !== item.allowed_protocols.length || !text(item.lifecycle)) return invalid();
+    const followMain = usage === "diary_chat" ? item.follow_main : undefined;
+    if (followMain !== undefined && typeof followMain !== "boolean") return invalid();
     return { usage, selection: item.selection === null ? null : parseSelection(item.selection), diagnostic: item.diagnostic === null ? null : diagnostic(item.diagnostic),
-      allowed_protocols: item.allowed_protocols as string[], lifecycle: item.lifecycle };
+      allowed_protocols: item.allowed_protocols as string[], lifecycle: item.lifecycle,
+      ...(followMain !== undefined ? { follow_main: followMain } : {}) };
   });
 }
 export async function updateFeatureBinding(usage: FeatureUsage, selection: FeatureSelection, options?: ApiRequestOptions): Promise<FeatureSelection> {
@@ -145,4 +148,9 @@ export async function clearFeatureBinding(usage: FeatureUsage, options?: ApiRequ
   const raw = await request(`${featureBase}/${encodeURIComponent(usage)}`, "DELETE", undefined, options);
   if (!record(raw) || raw.ok !== true) return invalid();
   return true;
+}
+
+export async function updateDiaryChatFollowMain(follow: boolean, options?: ApiRequestOptions): Promise<void> {
+  const raw = await request("/api/settings", "PUT", { diary_chat_follow_main: follow }, options);
+  if (!record(raw) || raw.ok !== true) return invalid();
 }
