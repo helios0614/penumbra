@@ -13,6 +13,7 @@ const ttlOptions = [
   { value: "5m", label: "5 分钟" },
   { value: "1h", label: "1 小时" },
 ] as const;
+const ttlLabel = "Anthropic 系统缓存有效期";
 
 export function SettingsAdvanced() {
   const { value, pending, error, refresh, save } = useSettingsReadback(readCacheSettings);
@@ -29,9 +30,9 @@ export function SettingsAdvanced() {
             onCheckedChange={next => { void save(signal => setCacheEnabled(next, signal)); }} />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
-          <span>Anthropic System Cache TTL</span>
-          <AppSelect<SystemCacheTtl> ariaLabel="Anthropic System Cache TTL" value={value.anthropic_system_cache_ttl}
-            options={ttlOptions} className="w-auto min-w-24" controlSize="comfortable" disabled={busy}
+          <span>{ttlLabel}</span>
+          <AppSelect<SystemCacheTtl> ariaLabel={ttlLabel} value={value.anthropic_system_cache_ttl}
+            options={ttlOptions} className="w-auto min-w-24" surface="translucent" controlSize="comfortable" disabled={busy}
             onValueChange={next => { void save(signal => setSystemCacheTtl(next, signal)); }} />
         </div>
       </>}
@@ -71,7 +72,7 @@ function KeepaliveThreshold({ value, disabled, onSave }: {
   }}>
     <label htmlFor={id} className="text-sm">回复间隔阈值（分钟）</label>
     <div className="flex items-center gap-2">
-      <Input id={id} type="number" min={1} max={55} step={1} required controlSize="comfortable"
+      <Input id={id} type="number" min={1} max={55} step={1} required surface="translucent" controlSize="comfortable"
         className="w-20" value={draft ?? String(value)} disabled={disabled} onChange={event => setDraft(event.target.value)} />
       <Button type="submit" size="comfortable" disabled={disabled || !draft || Number(draft) === value}>保存</Button>
     </div>

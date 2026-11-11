@@ -116,7 +116,7 @@ async function run(browser, origin, layout, width) {
   };
   const advanced = page.getByRole('region', { name: '高级设置', exact: true });
   const cache = advanced.getByRole('switch', { name: '缓存总开关', exact: true });
-  const ttl = advanced.getByRole('combobox', { name: 'Anthropic System Cache TTL', exact: true });
+  const ttl = advanced.getByRole('combobox', { name: 'Anthropic 系统缓存有效期', exact: true });
   const keepalive = advanced.getByRole('switch', { name: '服务端缓存保活', exact: true });
   const threshold = advanced.getByRole('spinbutton', { name: '回复间隔阈值（分钟）', exact: true });
   const expectSwitch = (control, checked) => control.and(page.locator(`[aria-checked="${checked}"]:enabled`)).waitFor();
@@ -169,6 +169,8 @@ async function run(browser, origin, layout, width) {
     assert.equal(await category('系统状态').count(), 0);
     await category('高级设置').click();
     await expectSwitch(cache, true);
+    assert.equal(await ttl.getAttribute('data-surface'), 'translucent');
+    assert.equal(await threshold.getAttribute('data-surface'), 'translucent');
     assert.equal(await ttl.locator('[data-slot="select-value"]').textContent(), '1 小时');
     assert.equal(await threshold.inputValue(), '50');
     state.fail = '/api/settings/cache-toggle';

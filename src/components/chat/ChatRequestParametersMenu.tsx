@@ -21,17 +21,28 @@ export function ChatRequestParametersMenu({ settings, disabled }: { readonly set
     setOpen(next);
     if (next) void settings?.controller.open();
   };
-  const ready = settings?.state.data;
   return <Popover open={open} onOpenChange={changeOpen}>
     <PopoverTrigger render={<Button type="button" variant="ghost" size="icon-lg" disabled={disabled || !scope}
       aria-label="聊天设置" title="聊天设置" className="shrink-0 text-muted-foreground" />}>
       <MoreHorizontal className="size-4.5" aria-hidden="true" />
     </PopoverTrigger>
     <PopoverContent align="end" sideOffset={8} initialFocus={type => type === "keyboard"}
-      className="scrollbar-none max-h-(--available-height) w-72 max-w-(--available-width) gap-1.5 overflow-y-auto overscroll-contain rounded-2xl p-3">
-      <div className="border-b border-border/60 pb-2">
-        <PopoverTitle className="shrink-0 whitespace-nowrap">聊天设置</PopoverTitle>
+      className="max-h-[min(34rem,var(--available-height))] w-72 max-w-(--available-width) gap-0 overflow-hidden rounded-2xl px-0 py-3">
+      <div className="mx-3 shrink-0 border-b border-border/60 pb-2">
+        <PopoverTitle className="whitespace-nowrap">聊天设置</PopoverTitle>
       </div>
+      <ChatSettingsContent settings={settings} disabled={disabled} />
+    </PopoverContent>
+  </Popover>;
+}
+
+function ChatSettingsContent({ settings, disabled }: { readonly settings?: ChatSettingsUi; readonly disabled: boolean }) {
+  const ready = settings?.state.data;
+
+  return <div data-slot="chat-settings-scroll"
+    className="group/chat-settings scrollbar-none relative flex min-h-0 flex-col overflow-hidden overscroll-contain has-[>details[open]]:overflow-y-auto">
+    <div data-slot="chat-settings-parameters"
+      className="scrollbar-none min-h-0 space-y-1.5 overflow-y-auto overscroll-contain px-3 pt-1.5 group-has-[>details[open]]/chat-settings:shrink-0 group-has-[>details[open]]/chat-settings:overflow-visible">
       <ChatSendShortcutSetting />
       {(!ready && settings?.state.status !== "error") && <p className="py-3 text-xs text-muted-foreground" role="status">正在读取设置…</p>}
       {settings?.state.status === "error" && <div className="text-xs text-muted-strong" role="alert">暂时无法读取设置。
@@ -47,9 +58,9 @@ export function ChatRequestParametersMenu({ settings, disabled }: { readonly set
           <ChatSettingSlider settings={settings} field="carryover_count" label="新会话携带历史" metadata={ready.carryover_count} disabled={disabled} unit="条" />
         </div>
       </div>}
-      <ChatAdvancedSettings disabled={disabled} />
-    </PopoverContent>
-  </Popover>;
+    </div>
+    <ChatAdvancedSettings disabled={disabled} />
+  </div>;
 }
 
 export function ChatSendShortcutSetting() {

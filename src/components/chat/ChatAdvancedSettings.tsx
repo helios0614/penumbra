@@ -14,8 +14,13 @@ const groups = [
 
 export function ChatAdvancedSettings({ disabled }: { disabled: boolean }) {
   const [expanded, setExpanded] = useState(false);
-  return <details className="group/advanced border-t border-border/60" onToggle={event => setExpanded(event.currentTarget.open)}>
-    <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-md text-sm font-medium focus-visible:outline-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
+  return <details className="group/advanced mx-3 shrink-0 border-t border-border/60"
+    onToggle={event => {
+      const section = event.currentTarget;
+      setExpanded(section.open);
+      if (section.open) section.parentElement?.scrollTo({ top: section.offsetTop });
+    }}>
+    <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-md text-sm font-medium focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
       高级控制
       <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open/advanced:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
     </summary>

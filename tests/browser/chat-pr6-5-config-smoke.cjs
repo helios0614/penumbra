@@ -190,7 +190,7 @@ async function run(browser, width) {
   await page.screenshot({ path: `${output}/thinking-${width}.png` });
   await page.setViewportSize({ width, height: 260 }); await page.waitForTimeout(250);
   await slider('新会话携带历史').scrollIntoViewIfNeeded();
-  assert(await panel().evaluate(el => el.scrollHeight > el.clientHeight && el.scrollWidth <= el.clientWidth + 1));
+  assert(await panel().locator('[data-slot="chat-settings-parameters"]').evaluate(el => el.scrollHeight > el.clientHeight && el.scrollWidth <= el.clientWidth + 1));
   await page.setViewportSize({ width, height: 844 });
   await page.getByRole('switch', { name: '扩展思考' }).click(); await saveEnd();
   assert.deepEqual(state.defaults.thinking[ANTHROPIC], { enabled: false, effort: 'max' });

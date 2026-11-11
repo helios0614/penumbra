@@ -37,11 +37,13 @@ async function run(browser, width) {
   });
 
   const panel = page.getByRole('dialog', { name: '聊天设置' });
+  const advanced = panel.locator('summary').filter({ hasText: '高级控制' });
+  const scroll = panel.locator('[data-slot="chat-settings-scroll"]');
   const control = field => panel.getByRole('switch', { name: fields[field], exact: true });
   const expectSwitch = (field, checked) => control(field).and(page.locator(`[aria-checked="${checked}"]:enabled`)).waitFor();
   const open = async () => {
     await page.getByRole('button', { name: '聊天设置', exact: true }).click();
-    await panel.getByText('高级控制', { exact: true }).click();
+    await advanced.click();
   };
 
   try {
@@ -64,7 +66,16 @@ async function run(browser, width) {
     assert.equal(reads, initialReads + 4);
     await page.setViewportSize({ width, height: 360 });
     await control('include_drift').scrollIntoViewIfNeeded();
-    assert(await panel.evaluate(el => el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight > el.clientHeight));
+    assert(await scroll.evaluate(el => el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight > el.clientHeight));
+    await advanced.click();
+    await control('include_drift').waitFor({ state: 'detached' });
+    const parameters = panel.locator('[data-slot="chat-settings-parameters"]');
+    await parameters.evaluate(el => { el.scrollTop = 0; });
+    assert(await advanced.evaluate(el => {
+      const heading = el.getBoundingClientRect();
+      const popup = el.closest('[data-slot="popover-content"]').getBoundingClientRect();
+      return heading.top >= popup.top && heading.bottom <= popup.bottom;
+    }));
     await page.keyboard.press('Escape');
     await panel.waitFor({ state: 'hidden' });
     await page.reload();

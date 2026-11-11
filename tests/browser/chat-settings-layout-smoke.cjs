@@ -27,12 +27,18 @@ const reportPath = process.env.CHAT_SETTINGS_LAYOUT_REPORT || '/private/tmp/chat
         const box = el.getBoundingClientRect();
         const title = el.querySelector('[id="' + el.getAttribute('aria-labelledby') + '"]');
         const titleBox = title.getBoundingClientRect();
+        const parameters = el.querySelector('[data-slot="chat-settings-parameters"]').getBoundingClientRect();
         const efforts = [...el.querySelector('[aria-label="思考强度"]').querySelectorAll('button')].map(button => {
           const r = button.getBoundingClientRect(); return { top: r.top, width: r.width, height: r.height, overflow: button.scrollWidth > button.clientWidth + 1 };
+        });
+        const thumbsFit = [...el.querySelectorAll('[data-slot="slider-thumb"]')].every(thumb => {
+          const bounds = thumb.getBoundingClientRect();
+          return bounds.left >= parameters.left && bounds.right <= parameters.right;
         });
         return { height: box.height, panelWidth: box.width, left: box.left, right: box.right, overflow: el.scrollWidth > el.clientWidth + 1, efforts,
           heading: { titleFits: title.scrollWidth <= title.clientWidth,
             titleSingleLine: titleBox.height <= parseFloat(getComputedStyle(title).lineHeight) + 1 },
+          thumbsFit,
           sliderHeights: [...el.querySelectorAll('[data-slot="slider-control"]')].map(control => control.getBoundingClientRect().height) };
       });
       measurements.push({ viewport: width, ...geometry });
@@ -43,6 +49,7 @@ const reportPath = process.env.CHAT_SETTINGS_LAYOUT_REPORT || '/private/tmp/chat
         assert.equal(new Set(geometry.efforts.map(effort => effort.top)).size, 1);
         assert(geometry.efforts.every(effort => effort.width >= 44 && effort.height >= 44 && !effort.overflow));
         assert(geometry.sliderHeights.every(height => height >= 44));
+        assert(geometry.thumbsFit, 'Collapsed settings keep the full slider thumbs inside the scroll area');
         const low = page.getByRole('button', { name: 'low', exact: true });
         await low.click(); await page.waitForFunction(() => document.querySelector('[aria-label="思考强度"] button[aria-pressed="true"]')?.textContent === 'low');
         await page.waitForFunction(() => !document.querySelector('[data-chat-setting="thinking"]')?.textContent.includes('保存中'));
@@ -59,7 +66,9 @@ const reportPath = process.env.CHAT_SETTINGS_LAYOUT_REPORT || '/private/tmp/chat
         assert.equal(state.defaults.temperatures[protocol], 0);
         await page.setViewportSize({ width, height: 260 });
         await page.waitForFunction(() => { const el = document.querySelector('[aria-label="思考强度"]')?.closest('[data-slot="popover-content"]');
-          if (!el) return false; const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight + 1 && el.scrollHeight > el.clientHeight; });
+          if (!el) return false;
+          const r = el.getBoundingClientRect(), body = el.querySelector('[data-slot="chat-settings-parameters"]');
+          return r.top >= 0 && r.bottom <= innerHeight + 1 && body.scrollHeight > body.clientHeight; });
         const carryover = page.locator('[data-chat-setting="carryover_count"]').getByRole('slider');
         await carryover.scrollIntoViewIfNeeded(); await carryover.focus(); await page.keyboard.press('Home');
         await page.waitForFunction(() => document.querySelector('[data-chat-setting="carryover_count"] output')?.textContent === '0条');
