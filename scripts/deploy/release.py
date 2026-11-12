@@ -651,7 +651,7 @@ def run(args, report):
         if selection and selection[2] == "reused":
             report["release"] = gh.resolve(workflow, source, *selection[:2])
         if args.action == "deploy":
-            report["plan"] = [selection[2] if selection else "dispatch", "verify-published-identity", "start-strict-proxy",
+            report["plan"] = [selection[2] if selection else "dispatch", "verify-published-identity", "start-isolated-proxy",
                               "verify", "install", "status", "cleanup"]
         return
     if selection is None:

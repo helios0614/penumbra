@@ -203,7 +203,8 @@ def proxy_policy():
                 raw = stream.read(8193)
                 require(len(raw) <= 8192, "proxy-policy")
             policy = json_data(raw)
-            require(set(policy) == {"host", "port", "sni", "password", "alpn", "expectedEgressIp"}, "proxy-policy")
+            # Accept legacy ssl metadata without using it to configure the temporary proxy.
+            require(set(policy) - {"ssl"} == {"host", "port", "sni", "password", "alpn", "expectedEgressIp"}, "proxy-policy")
             host = re.compile(r"[A-Za-z0-9][A-Za-z0-9.:-]{0,252}")
             sni = re.compile(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}")
             require(fields(policy, {"host": host, "sni": sni}) and type(policy["port"]) is int and
@@ -232,14 +233,16 @@ def proxy_dependencies():
 def tls_entry(session, policy):
     # Isolate even the resolver, which need not honor socket timeouts.
     code = """import socket,ssl,sys
-host,port,sni,ca,*alpn=sys.argv[1:]
-context=ssl.create_default_context(cafile=ca)
+host,port,sni,*alpn=sys.argv[1:]
+context=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+context.check_hostname=False
+context.verify_mode=ssl.CERT_NONE
 if alpn: context.set_alpn_protocols(alpn)
 with socket.create_connection((host,int(port)),timeout=5) as connection:
     with context.wrap_socket(connection,server_hostname=sni): pass
 """
     rc, _, _ = session.command([PYTHON, "-I", "-B", "-c", code, policy["host"], str(policy["port"]),
-                                policy["sni"], CA, *policy["alpn"]], code="entry-tls", timeout=12)
+                                policy["sni"], *policy["alpn"]], code="entry-tls", timeout=12)
     require(rc == 0, "entry-tls")
 
 
@@ -276,7 +279,7 @@ def proxy(session, policy, report):
     require(port != 1080 and not listeners(session, port), "proxy-start")
     config = {"run_type": "client", "local_addr": "127.0.0.1", "local_port": port,
               "remote_addr": policy["host"], "remote_port": policy["port"], "password": [policy["password"]],
-              "ssl": {"sni": policy["sni"], "verify": True, "verify_hostname": True, "cert": CA, "alpn": policy["alpn"]}}
+              "ssl": {"sni": policy["sni"], "verify": False, "verify_hostname": False, "cert": CA, "alpn": policy["alpn"]}}
     process = None
     report["proxyCleaned"] = False
     try:

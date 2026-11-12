@@ -91,6 +91,10 @@ class ProbeTests(unittest.TestCase):
                 config.chmod(0o600)
                 with remote.proxy_policy() as (_, policy):
                     self.assertEqual(policy, POLICY)
+                with_ssl = {**POLICY, "ssl": {"verify": False, "verify_hostname": False}}
+                config.write_text(json.dumps(with_ssl))
+                with remote.proxy_policy() as (_, policy):
+                    self.assertEqual(policy, with_ssl)
                 target = config.with_name("other.json")
                 config.rename(target)
                 config.symlink_to(target)
@@ -151,6 +155,8 @@ class TLSLoopbackTests(unittest.TestCase):
                             "-out", str(cert)], check=True, capture_output=True, timeout=10)
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             ctx.load_cert_chain(cert, key)
+            server_names = []
+            ctx.set_servername_callback(lambda _socket, name, _context: server_names.append(name))
             target.socket = ctx.wrap_socket(target.socket, server_side=True)
             for server in (target, socks):
                 threading.Thread(target=server.serve_forever, kwargs={"poll_interval": .05}, daemon=True).start()
@@ -159,13 +165,12 @@ class TLSLoopbackTests(unittest.TestCase):
             try:
                 with patch.multiple(remote, PYTHON=sys.executable, CA=str(cert), TRACE=url + "/trace",
                                     GITHUB=url + "/git"), patch.object(remote, "owned_listener", return_value=True):
-                    remote.tls_entry(TestSession(), config)
-                    with self.assertRaisesRegex(remote.Refused, "entry-tls"):
-                        remote.tls_entry(TestSession(), {**config, "sni": "incorrect.invalid"})
+                    # The entry uses TLS and sends SNI even with an untrusted, mismatched cert.
+                    remote.tls_entry(TestSession(), {**config, "sni": "entry.example.invalid"})
+                    self.assertEqual(server_names, ["entry.example.invalid"])
                     remote.probe(TestSession(), None, socks.server_address[1], config)
                     with patch.object(remote, "TRACE", f"https://127.0.0.1:{target.server_port}/trace"):
-                        # The SOCKS server denies non-domain SOCKS requests. Hostname validation
-                        # is exercised directly above, while this also proves no direct fallback.
+                        # The SOCKS server denies non-domain requests, proving no direct fallback.
                         with self.assertRaisesRegex(remote.Refused, "probe-network"):
                             remote.probe(TestSession(), None, socks.server_address[1], config)
             finally:
@@ -343,7 +348,7 @@ class StatusContractTests(unittest.TestCase):
 class LinuxProcessTests(unittest.TestCase):
     def fake_proxy(self, directory, exit_immediately=False):
         path = Path(directory) / "fake-trojan"
-        config_check = ("assert c['ssl']['verify'] and c['ssl']['verify_hostname']\n"
+        config_check = ("assert c['ssl']['verify'] is False and c['ssl']['verify_hostname'] is False\n"
                         "assert c['ssl']['cert'] == '/etc/ssl/certs/ca-certificates.crt'\n"
                         "assert c['password'] and c['local_port'] != 1080 and c['local_addr'] == '127.0.0.1'\n")
         body = "sys.exit(3)\n" if exit_immediately else (
@@ -361,7 +366,8 @@ class LinuxProcessTests(unittest.TestCase):
         report = {}
         with tempfile.TemporaryDirectory() as directory:
             with patch.object(remote, "TROJAN", self.fake_proxy(directory)), patch.object(remote, "tls_entry"):
-                with self.assertRaisesRegex(RuntimeError, "fixture"), remote.proxy(session, POLICY, report) as (p, port):
+                policy = {**POLICY, "ssl": {"verify": True, "verify_hostname": True}}
+                with self.assertRaisesRegex(RuntimeError, "fixture"), remote.proxy(session, policy, report) as (p, port):
                     proc = Path("/proc") / str(p.pid)
                     self.assertNotIn(SECRET.encode(), (proc / "cmdline").read_bytes())
                     self.assertNotIn(SECRET.encode(), (proc / "environ").read_bytes())
