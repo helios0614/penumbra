@@ -22,7 +22,7 @@ import time
 INSTALLER = Path("/home/ubuntu/penumbra-tools/install.py")
 ROOT = Path("/home/ubuntu/AionHome/penumbra-web")
 POLICY = Path("/home/ubuntu/.config/penumbra-release/proxy.json")
-TROJAN = "/usr/src/trojan/trojan"
+TROJAN = "/usr/local/libexec/penumbra-release/trojan"
 CA = "/etc/ssl/certs/ca-certificates.crt"
 CURL = "/usr/bin/curl"
 SS = "/usr/bin/ss"
