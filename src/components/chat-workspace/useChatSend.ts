@@ -11,7 +11,7 @@ export type UseChatSendResult = {
   readonly state: ChatSendState;
   readonly send: (input: ChatSendInput) => Promise<boolean>;
   readonly regenerate: (input: ChatRegenerateInput) => Promise<boolean>;
-  readonly retryFinalization: () => Promise<void>;
+  readonly retryFinalization: (options?: { readonly manual?: boolean }) => Promise<void>;
   readonly reconcilePending: () => Promise<void>;
   readonly resetError: () => void;
   readonly releaseAfterReview: () => void;
@@ -58,7 +58,7 @@ export function useChatSend(reconcileHistory: ChatHistoryReconciler, conversatio
   const getState = useCallback((id?: string) => sessions.state(id ?? owner.current), []);
   const send = useCallback((input: ChatSendInput) => sessions.get(input.conversationId).send(input), []);
   const regenerate = useCallback((input: ChatRegenerateInput) => sessions.get(input.conversationId).regenerate(input), []);
-  const retryFinalization = useCallback(async () => { if (owner.current) await sessions.get(owner.current).retryFinalization(); }, []);
+  const retryFinalization = useCallback(async (options?: { readonly manual?: boolean }) => { if (owner.current) await sessions.get(owner.current).retryFinalization(options); }, []);
   const reconcilePending = useCallback(() => sessions.reconcilePending(), []);
   const resetError = useCallback(() => { if (owner.current) sessions.get(owner.current).resetError(); }, []);
   const releaseAfterReview = useCallback(() => { if (owner.current) sessions.get(owner.current).releaseAfterReview(); }, []);

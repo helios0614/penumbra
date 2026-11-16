@@ -77,7 +77,7 @@ export interface ChatSendController {
   send(input: ChatSendInput): Promise<boolean>;
   regenerate(input: ChatRegenerateInput): Promise<boolean>;
   reconcileUserPersistence(): Promise<void>;
-  retryFinalization(): Promise<void>;
+  retryFinalization(options?: { readonly manual?: boolean }): Promise<void>;
   resetError(): void;
   releaseAfterReview(): void;
   subscribe(listener: (state: ChatSendState) => void): () => void;
@@ -196,12 +196,34 @@ export function createChatSendController(
     } catch { /* Missing, stale or unavailable receipts cannot authorize a merge/retry. */ }
   };
 
+  const resolvePersistedSendAssistant = async (
+    execution: ActiveSendExecution,
+    reconciliation: ChatHistoryReconciliationResult,
+    receiptAlreadyRead: boolean,
+  ): Promise<string | null> => {
+    const persisted = (id: string | null | undefined): id is string => !!id &&
+      (reconciliation.assistants ? reconciliation.assistants.some(row => row.id === id) : reconciliation.persistedMessageIds.includes(id));
+    const streamed = execution.accumulator.message.assistantMessageId;
+    if (persisted(streamed)) return streamed;
+    // Don't hold finalization on a background user-acceptance read still in flight;
+    // the next retry (realtime/focus/manual) consults the receipt again.
+    if (dependencies.lookupSendResult && !receiptAlreadyRead && execution.receiptLookup === null) {
+      try {
+        const receipt = await lookupReceipt(execution);
+        if (receipt && persisted(receipt.assistantMessageId)) return receipt.assistantMessageId;
+      } catch { /* Missing receipt: keep unknown; an explicit「重新核对」releases it. */ }
+    }
+    return null;
+  };
+
   const performFinalization = async (execution: ActiveExecution) => {
     if (!isCurrent(execution)) return;
     publish(activeAssistantState("finalizing", execution));
 
+    let receiptAlreadyRead = false;
     try {
       if (execution.kind === "send" && execution.accumulator.message.assistantMessageId === null && dependencies.lookupSendResult) {
+        receiptAlreadyRead = true;
         try {
           const receipt = await lookupReceipt(execution);
           if (!receipt || !isCurrent(execution)) return;
@@ -236,15 +258,17 @@ export function createChatSendController(
             );
           }
         } else {
-          const expectedPersistedMessageId = execution.accumulator.message.assistantMessageId;
-          if (
-            expectedPersistedMessageId === null ||
-            !(reconciliation.assistants ? reconciliation.assistants.some(row => row.id === expectedPersistedMessageId)
-              : reconciliation.persistedMessageIds.includes(expectedPersistedMessageId))
-          ) {
+          const persistedAssistantId = await resolvePersistedSendAssistant(execution, reconciliation, receiptAlreadyRead);
+          if (!isCurrent(execution)) return;
+          if (persistedAssistantId === null) {
             throw new Error(
               "Expected assistant is not yet present in HTTP history",
             );
+          }
+          if (persistedAssistantId !== execution.accumulator.message.assistantMessageId) {
+            // The stream's ID may belong to a discarded attempt (backend retry).
+            // HTTP history + receipt are authoritative for which row answers this send.
+            execution.accumulator = { ...execution.accumulator, message: { ...execution.accumulator.message, assistantMessageId: persistedAssistantId } };
           }
         }
       }
@@ -325,13 +349,19 @@ export function createChatSendController(
         traceChat("controller.event", execution, { event: event.type });
         if (event.type === "start" && execution.accumulator.message.assistantMessageId !== null &&
             event.assistantMessageId !== execution.accumulator.message.assistantMessageId) {
-          throw new ChatExecutionContractError("Conflicting assistant start identity");
+          if (execution.kind === "regenerate") throw new ChatExecutionContractError("Conflicting assistant start identity");
+          // A new send start means the backend began another attempt: the
+          // previous attempt's partial body and error are no longer current.
+          execution.accumulator = createStreamingAssistantAccumulator(execution.executionId, execution.accumulator.message.createdAt);
+          execution.executionError = null;
+          execution.terminalFailure = false;
         }
         if (execution.kind === "send" &&
             (event.type === "failure" || (event.type === "debug-summary" && event.hasError)) &&
             execution.accumulator.message.assistantMessageId !== null &&
             event.messageId !== execution.accumulator.message.assistantMessageId) {
-          throw new ChatExecutionContractError("Send failure ID does not match its assistant message ID");
+          // Failure for another (stale) attempt: ignore it instead of aborting this stream.
+          continue;
         }
         if (execution.kind === "regenerate" &&
             (event.type === "failure" || (event.type === "debug-summary" && event.hasError)) &&
@@ -581,7 +611,7 @@ export function createChatSendController(
 
     reconcileUserPersistence,
 
-    async retryFinalization() {
+    async retryFinalization(options) {
       if (!disposed && active === null && state.kind === "error" && !state.conversationId) {
         publish(INITIAL_CHAT_SEND_STATE);
         return;
@@ -605,6 +635,14 @@ export function createChatSendController(
         return;
       }
       await finalize(active);
+      // An explicit「重新核对」after a successful HTTP read: the refreshed history
+      // on screen is authoritative, so don't keep a stale overlay/lock forever.
+      if (options?.manual && !disposed && active?.recoveryReadSucceeded &&
+          (state.kind === "finalization-uncertain" || state.kind === "regenerate-finalization-uncertain")) {
+        traceChat("execution.released", active);
+        active = null;
+        publish(INITIAL_CHAT_SEND_STATE);
+      }
     },
 
     resetError() {

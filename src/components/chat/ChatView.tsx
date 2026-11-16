@@ -171,7 +171,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
   };
 
   const recoverExecution = async () => {
-    await send.retryFinalization();
+    await send.retryFinalization({ manual: true });
     try { await workspace.refreshConversationList(); } catch { /* Retain current safe setup state. */ }
   };
 
