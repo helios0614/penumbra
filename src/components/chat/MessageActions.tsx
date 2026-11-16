@@ -15,6 +15,7 @@ interface MessageActionsProps {
   onRegenerate?: () => void;
   regenerateDisabled?: boolean;
   onDelete?: () => void;
+  deleteUnavailableReason?: string | null;
   onExtract?: () => void;
   onEdit?: () => void;
   editUnavailableReason?: string | null;
@@ -31,6 +32,7 @@ function MessageActionsInner({
   onRegenerate,
   regenerateDisabled = false,
   onDelete,
+  deleteUnavailableReason,
   onExtract,
   onEdit,
   editUnavailableReason,
@@ -133,13 +135,15 @@ function MessageActionsInner({
                 size="icon-xs"
                 aria-label="删除消息"
                 onClick={onDelete}
+                disabled={!!deleteUnavailableReason}
+                title={deleteUnavailableReason ?? "删除消息"}
                 className="text-muted-foreground hover:text-destructive"
               />
             }
           >
             <Trash2 className="size-3" />
           </TooltipTrigger>
-          <TooltipContent>删除</TooltipContent>
+          <TooltipContent>{deleteUnavailableReason ?? "删除"}</TooltipContent>
         </Tooltip>
       )}
     </div>

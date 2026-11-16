@@ -102,6 +102,7 @@ interface BubbleListProps {
   readonly onInsert?: (text: string) => void;
   readonly onEdit?: (messageId: string) => void;
   readonly onDelete?: (messageId: string) => void;
+  readonly deleteUnavailableReason?: string | null;
   readonly onExtract?: (messageId: string) => void;
   readonly actionsForMessage?: (messageId: string) => { edit: boolean; delete: boolean; regenerate: boolean; extract?: boolean };
   readonly editUnavailableReason?: (messageId: string) => string | null;
@@ -124,13 +125,14 @@ interface MessageRowProps {
   readonly onInsert?: (text: string) => void;
   readonly onEdit?: (id: string) => void;
   readonly onDelete?: (id: string) => void;
+  readonly deleteUnavailableReason?: string | null;
   readonly onExtract?: (id: string) => void;
   readonly editUnavailableReason?: string | null;
 }
 
 // Per-row handlers and search values stay stable when another message streams.
 const MessageRow = memo(function MessageRow({ message, userName, query, active, result,
-  showActions, onRegenerate, regenerateDisabled, regenerateUnavailableReason, onInsert, onEdit, onDelete, onExtract, editUnavailableReason }: MessageRowProps) {
+  showActions, onRegenerate, regenerateDisabled, regenerateUnavailableReason, onInsert, onEdit, onDelete, onExtract, editUnavailableReason, deleteUnavailableReason }: MessageRowProps) {
   const regenerate = useCallback(() => onRegenerate?.(message.id), [onRegenerate, message.id]);
   const extract = useCallback(() => onExtract?.(message.id), [onExtract, message.id]);
   const remove = useCallback(() => onDelete?.(message.id), [onDelete, message.id]);
@@ -139,6 +141,7 @@ const MessageRow = memo(function MessageRow({ message, userName, query, active, 
   return <SearchHighlightContext value={search}>
     <Bubble message={message} userName={userName} showActions={showActions} onRegenerate={onRegenerate ? regenerate : undefined}
       regenerateDisabled={regenerateDisabled} regenerateUnavailableReason={regenerateUnavailableReason}
+      deleteUnavailableReason={deleteUnavailableReason}
       onExtract={onExtract ? extract : undefined} onDelete={onDelete ? remove : undefined} onInsert={onInsert} onEdit={onEdit ? edit : undefined} editUnavailableReason={editUnavailableReason} />
     {active && result && <div className="chat-search-match mt-2 rounded-lg px-3 py-2 text-xs text-muted-strong" aria-label="当前消息匹配内容">
       {result.snippets.map((s, i) => <p key={i} className="break-words leading-6 [overflow-wrap:anywhere]">{highlightSearchText(s.text, query)}</p>)}
@@ -162,6 +165,7 @@ function BubbleListInner({
   onInsert,
   onEdit,
   onDelete,
+  deleteUnavailableReason,
   onExtract,
   actionsForMessage,
   editUnavailableReason,
@@ -304,6 +308,7 @@ function BubbleListInner({
                       onDelete={onDelete && available?.delete !== false ? rowActions.delete : undefined}
                       onExtract={onExtract && available?.extract === true ? rowActions.extract : undefined}
                       editUnavailableReason={editUnavailableReason?.(message.id)}
+                      deleteUnavailableReason={deleteUnavailableReason}
                     />
                   </div>
                 );

@@ -39,6 +39,9 @@ import type { Message, MessageSearchResult } from "@/domain/message";
 import { editMessageContent, MessageEditError } from "@/domain/message/message-edit";
 import { messageEditContentReason, messageEditWorkspaceReason } from "@/components/chat-workspace/chat-message-edit-policy";
 import { MessageEditDialog } from "./MessageEditDialog";
+import { MessageDeleteDialog } from "./MessageDeleteDialog";
+import { deleteMessage, MessageDeleteError } from "@/domain/message/message-delete";
+import { messageDeleteWorkspaceReason } from "@/components/chat-workspace/chat-message-delete-policy";
 import { useSearchBack, hasOpenChatDialog } from "./search-history";
 import { normalizeSearch, searchTextRanges } from "./search-highlight";
 import { ChatShell } from "./ChatShell";
@@ -72,6 +75,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
   const recoveryConversation = useRef(pendingChatConversationId());
   const toast = useToast("chat-conversations");
   const workspace = useChatWorkspace({ preferredConversationId: recoveryConversation.current });
+  // Serialize text edits and deletes against this page's send/regenerate actions.
   const editSaving = useRef(false);
   const { aiName, userName } = useDisplayNames(workspace.state.status === "ready");
   const send = useChatSend(workspace.reloadSelectedConversationHistory,
@@ -163,6 +167,21 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
     } finally { editSaving.current = false; }
   };
 
+  const removeMessage = async (original: Message) => {
+    const current = workspace.getState();
+    const reason = messageDeleteWorkspaceReason(current, send.getState(original.conversationId));
+    if (editSaving.current || reason) throw new MessageDeleteError(reason ?? "正在更新消息。");
+    if (current.status !== "ready" || current.workspace.selectedConversationId !== original.conversationId ||
+        !["user", "assistant", "system"].includes(original.rawRole)) {
+      throw new MessageDeleteError("当前会话或消息已变化，请关闭并刷新核对。");
+    }
+    editSaving.current = true;
+    try {
+      await deleteMessage(original);
+      await workspace.reconcileSelectedConversationRealtimeEvent({ type: "message-deleted", conversationId: original.conversationId, messageId: original.id });
+    } finally { editSaving.current = false; }
+  };
+
   const refreshState = async () => {
     if (workspace.state.status !== "ready") return;
     const conversationId = workspace.state.workspace.selectedConversationId;
@@ -190,6 +209,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       onSend={sendMessage}
       onRegenerate={regenerateMessage}
       onEditMessage={saveMessageEdit}
+      onDeleteMessage={removeMessage}
       onRetryFinalization={recoverExecution}
       onReleaseAfterReview={send.releaseAfterReview}
       onSaveMainSelection={workspace.saveMainSelection}
@@ -229,6 +249,7 @@ export interface ChatWorkspaceViewProps {
   readonly onSend?: (content: string, attachments?: readonly string[], expectedOwner?: string) => Promise<boolean>;
   readonly onRegenerate?: (messageId: string) => Promise<boolean>;
   readonly onEditMessage?: (message: Message, content: string) => Promise<void>;
+  readonly onDeleteMessage?: (message: Message) => Promise<void>;
   readonly onRetryFinalization?: () => void | Promise<void>;
   readonly onReleaseAfterReview?: () => void;
   readonly onSaveMainSelection?: (conversationId: string, selection: MainSelection) => Promise<void>;
@@ -258,6 +279,7 @@ export function ChatWorkspaceView({
   onSend,
   onRegenerate,
   onEditMessage,
+  onDeleteMessage,
   onRetryFinalization,
   onReleaseAfterReview,
   onSaveMainSelection,
@@ -278,6 +300,7 @@ export function ChatWorkspaceView({
   const [modelSelectionPending, setModelSelectionPending] = useState(false);
   const [conversationAction, setConversationAction] = useState<ConversationAction | null>(null);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  const [deletingMessage, setDeletingMessage] = useState<Message | null>(null);
   const [managementError, setManagementError] = useState<string | null>(null);
   const drafts = useRef(draftSession?.texts ?? new Map<string, SenderDraft>());
   const historyProjector = useRef<ReturnType<typeof createChatMessageProjector> | null>(null);
@@ -633,6 +656,12 @@ export function ChatWorkspaceView({
                 const message = workspace.history?.messages.find(item => item.id === messageId);
                 if (message && !messageEditWorkspaceReason(state, getSendState?.(draftOwner ?? undefined) ?? sendState) && !messageEditContentReason(message)) setEditingMessage(message);
               } : undefined}
+              onDelete={onDeleteMessage ? messageId => {
+                const message = workspace.history?.messages.find(item => item.id === messageId);
+                if (message && ["user", "assistant", "system"].includes(message.rawRole) &&
+                    !messageDeleteWorkspaceReason(state, getSendState?.(draftOwner ?? undefined) ?? sendState)) setDeletingMessage(message);
+              } : undefined}
+              deleteUnavailableReason={messageDeleteWorkspaceReason(state, sendState)}
               editUnavailableReason={messageId => {
                 const message = workspace.history?.messages.find(item => item.id === messageId);
                 return messageEditWorkspaceReason(state, sendState) ?? (message ? messageEditContentReason(message) : "消息尚未确认保存。");
@@ -658,6 +687,13 @@ export function ChatWorkspaceView({
           )}
 
       </ChatShell>
+      {deletingMessage?.conversationId === draftOwner && onDeleteMessage && <MessageDeleteDialog
+        key={`${deletingMessage.conversationId}:${deletingMessage.id}`}
+        message={deletingMessage}
+        unavailableReason={messageDeleteWorkspaceReason(state, sendState)}
+        onDelete={onDeleteMessage}
+        onClose={() => setDeletingMessage(null)}
+      />}
       {editingMessage?.conversationId === draftOwner && onEditMessage && <MessageEditDialog
         key={`${editingMessage.conversationId}:${editingMessage.id}`}
         message={editingMessage}

@@ -1,6 +1,6 @@
 import { useChatRenderTrace } from "./useChatRenderTrace";
 import { format } from "date-fns";
-import { CircleHelp } from "lucide-react";
+import { CircleHelp, Trash2 } from "lucide-react";
 import { ChatAttachments } from "@/components/media/ChatAttachments";
 import { useAiName } from "@/components/identity/AiNameContext";
 import { memo, useMemo, useRef } from "react";
@@ -66,6 +66,7 @@ interface BubbleProps {
   readonly onInsert?: (text: string) => void;
   readonly onEdit?: () => void;
   readonly onDelete?: () => void;
+  readonly deleteUnavailableReason?: string | null;
   readonly onExtract?: () => void;
   readonly editUnavailableReason?: string | null;
 }
@@ -80,6 +81,7 @@ function BubbleInner({
   onInsert,
   onEdit,
   onDelete,
+  deleteUnavailableReason,
   onExtract,
   editUnavailableReason,
 }: BubbleProps) {
@@ -92,6 +94,13 @@ function BubbleInner({
   const insertText = useMemo(() => canInsert ? insertableBody(message.content) : "", [canInsert, message.content]);
   if (message.kind === "system") {
     return <div data-message-id={message.id} tabIndex={-1} className="min-w-0 w-full outline-none">
+      {showActions && onDelete && <div className="chat-message-actions flex justify-end">
+        <Button type="button" variant="ghost" size="icon-xs" aria-label="删除系统通知"
+          title={deleteUnavailableReason ?? "删除系统通知"} disabled={!!deleteUnavailableReason}
+          className="text-muted-foreground hover:text-destructive" onClick={onDelete}>
+          <Trash2 className="size-3" aria-hidden="true" />
+        </Button>
+      </div>}
       <CapabilityMessage record={message.capabilities?.display} identity={message.id} />
     </div>;
   }
@@ -152,6 +161,7 @@ function BubbleInner({
               role={message.kind}
               content={message.content}
               onDelete={onDelete}
+              deleteUnavailableReason={deleteUnavailableReason}
               onExtract={onExtract}
               onEdit={onEdit}
               editUnavailableReason={editUnavailableReason}
