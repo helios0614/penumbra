@@ -9,6 +9,15 @@ import { ApiError } from "@/lib/api";
 import { toSafeChatExecutionError } from "@/application/chat-send/chat-send-errors";
 
 afterEach(() => vi.unstubAllGlobals());
+
+function stubChatFetch(fetch: typeof globalThis.fetch) {
+  vi.stubGlobal("fetch", (url: RequestInfo | URL, options?: RequestInit) =>
+    String(url).endsWith("/api/chat/debug/drain")
+      ? Promise.resolve(new Response(null, { status: 403 }))
+      : fetch(url, options),
+  );
+}
+
 const failure = "[Anthropic API 错误 524] provider_request_failed\n上游类型：bad_response_status_code\n上游信息：Proxy Read Timeout\n请求 ID：req-synthetic";
 async function settled(controller: ReturnType<typeof createChatSendController>) {
   await vi.waitFor(() => expect(["idle", "error", "finalization-uncertain", "regenerate-finalization-uncertain"]).toContain(controller.getState().kind));
@@ -30,15 +39,15 @@ it("keeps two persisted paragraphs and the safe actual failure after history rer
 it("keeps same-chunk partial body, real error and canonical target through failed send → regenerate", async () => {
   let history: ReturnType<typeof mapMessage>[] = [];
   let generation = 0;
-  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
-    const regenerate = url.includes("/regenerate");
+  stubChatFetch(async (url) => {
+    const regenerate = String(url).includes("/regenerate");
     generation++;
     const content = regenerate ? "恢复成功" : "第一段。\n\n第二段。\n" + failure;
     history = [mapMessage(messageWire({ id: "failed-id", content, thinking: null, drift: null }))];
     const payload = `data: ${JSON.stringify({ type: "start", id: "failed-id" })}\n\ndata: ${JSON.stringify({ type: "chunk", content })}\n\n` +
       (regenerate ? `event: persisted\ndata: ${JSON.stringify({ id: "failed-id", content, thinking: null, drift: null })}\n\n` : "");
     return new Response(payload, { headers: { "content-type": "text/event-stream" } });
-  }));
+  });
   const controller = createChatSendController({ createUuid: () => "synthetic", reconcileHistory: async () => ({
     persistedMessageIds: history.map(m => m.id), regenerateTarget: history[0] ? createRegeneratePersistenceProjection(history[0]) : null,
   }) });
@@ -53,7 +62,8 @@ it("keeps same-chunk partial body, real error and canonical target through faile
 });
 
 it("shows actual HTTP 524 inside an unconfirmed assistant and keeps regenerate locked", async () => {
-  const fetch = vi.fn(async () => new Response("<html>Cookie=synthetic-secret</html>", { status: 524 })); vi.stubGlobal("fetch", fetch);
+  const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response("<html>Cookie=synthetic-secret</html>", { status: 524 }));
+  stubChatFetch(fetch);
   const controller = createChatSendController({ createUuid: () => "http", reconcileHistory: async () => ({ persistedMessageIds: [], regenerateTarget: null }) });
   await controller.send({ conversationId: "conv_a", content: "问题" }); await settled(controller);
   expect(controller.getState().kind).toBe("finalization-uncertain");
