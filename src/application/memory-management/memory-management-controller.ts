@@ -1,7 +1,7 @@
 import { allowsMemorySourceActions, checkMemorySource, deleteAndRequeueMemory, deleteMemory, digestMemories, editMemory, readMemoryTask, resummarizeMemory, type MemoryEditInput, type MemoryRequeueTask } from "@/domain/memory";
 import type { MemoryListController } from "@/application/memory-list";
 import { INITIAL_MEMORY_MANAGEMENT_STATE, type MemoryAction, type MemoryManagementState, type MemorySourceRead } from "./memory-management-types";
-import { memoryManagementError, MEMORY_SOURCE_REASONS } from "./memory-management-service";
+import { memoryEditError, memoryManagementError, MEMORY_SOURCE_REASONS } from "./memory-management-service";
 
 const defaults = { checkMemorySource, deleteAndRequeueMemory, deleteMemory, digestMemories, editMemory, readMemoryTask, resummarizeMemory };
 export type MemoryManagementApi = typeof defaults;
@@ -104,7 +104,7 @@ export function createMemoryManagementController(list: MemoryListController, api
         return true;
       } catch (error) {
         if (!disposed) {
-          const safe = memoryManagementError(error);
+          const safe = action.kind === "edit" ? memoryEditError(error) : memoryManagementError(error);
           publish({ actionError: safe });
           if (action.kind === "requeue") {
             if (MEMORY_SOURCE_REASONS[safe.code]) putSource(id, { status: "ready", value: { supported: false, reason: safe.code } });

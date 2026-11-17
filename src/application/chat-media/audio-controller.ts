@@ -1,15 +1,18 @@
 import { musicStreamUrl } from "@/domain/media/media-resources";
+import { createMusicVolumePreference } from "./music-volume";
 
 export type AudioStatus = "idle" | "loading" | "buffering" | "playing" | "paused" | "ended" | "error";
-export type AudioState = { readonly identity: string | null; readonly status: AudioStatus; readonly position: number; readonly duration: number | null; readonly seekable: boolean; readonly error: string | null };
-const initial: AudioState = Object.freeze({ identity: null, status: "idle", position: 0, duration: null, seekable: false, error: null });
+export type AudioState = { readonly identity: string | null; readonly status: AudioStatus; readonly position: number; readonly duration: number | null; readonly seekable: boolean; readonly error: string | null; readonly volume: number; readonly volumeError: string | null };
+const initial: AudioState = Object.freeze({ identity: null, status: "idle", position: 0, duration: null, seekable: false, error: null, volume: 100, volumeError: null });
 
 /** One browser audio per Chat scope. Does not execute MUSIC or persist results. */
 export function createAudioController(createAudio: () => HTMLAudioElement = () => new Audio(), resourceUrl: (id: number) => string = musicStreamUrl) {
-  let audio: HTMLAudioElement | null = null, state = initial, sequence = 0, playRequest = 0, alive = true;
+  const volumePreference = createMusicVolumePreference();
+  let audio: HTMLAudioElement | null = null, state = { ...initial, volume: volumePreference.read() }, sequence = 0, playRequest = 0, alive = true;
   let cleanup = () => {};
   const listeners = new Set<() => void>();
   const publish = (patch: Partial<AudioState>) => { if (!alive) return; state = Object.freeze({ ...state, ...patch }); listeners.forEach(fn => fn()); };
+  const syncVolume = () => { const volume = volumePreference.read(); if (audio) audio.volume = volume / 100; publish({ volume }); };
   const clear = () => {
     sequence++; playRequest++; cleanup(); cleanup = () => {};
     if (audio) { audio.pause(); audio.removeAttribute("src"); audio.load(); }
@@ -33,7 +36,7 @@ export function createAudioController(createAudio: () => HTMLAudioElement = () =
       if (!alive || !identity || !Number.isSafeInteger(song) || song <= 0) return;
       if (state.identity === identity && audio && !["error", "ended", "idle"].includes(state.status)) {
         if (state.status === "playing" || state.status === "loading" || state.status === "buffering") { playRequest++; audio.pause(); publish({ status: "paused" }); }
-        else { publish({ status: "loading", error: null }); begin(); }
+        else { syncVolume(); publish({ status: "loading", error: null }); begin(); }
         return;
       }
       clear();
@@ -52,11 +55,17 @@ export function createAudioController(createAudio: () => HTMLAudioElement = () =
       on("ended", () => publish({ status: "ended", ...times() }));
       on("error", error);
       for (const event of ["loadedmetadata", "durationchange", "timeupdate", "progress", "canplay"]) on(event, () => publish(times()));
-      publish({ ...initial, identity, status: "loading" });
+      publish({ ...initial, identity, status: "loading", volume: volumePreference.read() });
       target.preload = "none";
-      target.volume = musicVolume();
+      target.volume = state.volume / 100;
       target.src = resourceUrl(song);
       begin();
+    },
+    setVolume(percent: number) {
+      if (!alive || !Number.isFinite(percent)) return;
+      const preference = volumePreference.write(percent);
+      if (audio) audio.volume = preference.volume / 100;
+      publish(preference);
     },
     seek(fraction: number) {
       if (!audio || !state.seekable || !state.duration || !Number.isFinite(fraction)) return;
@@ -69,17 +78,16 @@ export function createAudioController(createAudio: () => HTMLAudioElement = () =
         }
       }
     },
-    stop() { clear(); publish(initial); },
-    activate() { alive = true; },
-    dispose() { clear(); alive = false; audio = null; state = initial; },
+    stop() { clear(); publish({ ...initial, volume: state.volume, volumeError: state.volumeError }); },
+    activate() {
+      alive = true; syncVolume();
+      if (typeof window !== "undefined") { window.addEventListener("musicvolumechange", syncVolume); window.addEventListener("pageshow", syncVolume); window.addEventListener("storage", storageVolume); document.addEventListener("visibilitychange", syncVolume); }
+    },
+    dispose() {
+      clear(); alive = false; audio = null; state = { ...initial, volume: state.volume };
+      if (typeof window !== "undefined") { window.removeEventListener("musicvolumechange", syncVolume); window.removeEventListener("pageshow", syncVolume); window.removeEventListener("storage", storageVolume); document.removeEventListener("visibilitychange", syncVolume); }
+    },
   };
+  function storageVolume(event: StorageEvent) { if (event.key === "aion_music_volume" || event.key === null) syncVolume(); }
 }
 export type AudioController = ReturnType<typeof createAudioController>;
-function musicVolume(): number {
-  try {
-    const native = (window as unknown as { AionMusic?: { getMusicVolume(): number } }).AionMusic;
-    const stored = native ? native.getMusicVolume() : localStorage.getItem("aion_music_volume");
-    const value = stored === null || stored === "" ? 100 : Number(stored);
-    return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) / 100 : 1;
-  } catch { return 1; }
-}

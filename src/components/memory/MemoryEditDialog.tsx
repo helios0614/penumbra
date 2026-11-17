@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { normalizeMemoryKeywordText } from "./MemoryCreateDialog";
+import { MEMORY_TYPE_OPTIONS } from "./memory-presentation";
+import { AppSelect } from "@/components/ui/app-select";
 
 export function memoryKeywordDraft(memory: Memory): string {
   if (memory.keywordsForEdit !== undefined) {
@@ -21,6 +23,11 @@ export function MemoryEditDialog({ memory, pending, error, onSubmit, onClose, fi
 }) {
   // An opening snapshot: background GETs must not replace an unsaved draft.
   const [content, setContent] = useState(memory.content);
+  const [originalType] = useState(memory.type);
+  const [type, setType] = useState(memory.type ?? "");
+  const typeOptions = MEMORY_TYPE_OPTIONS.some(option => option.value === originalType) ? MEMORY_TYPE_OPTIONS : [
+    { value: originalType ?? "", label: originalType || "未设置（保留原值）", disabled: true }, ...MEMORY_TYPE_OPTIONS,
+  ];
   const [keywords, setKeywords] = useState(() => memoryKeywordDraft(memory));
   const [importance, setImportance] = useState(memory.importance?.toString() ?? "");
   const [keywordsChanged, setKeywordsChanged] = useState(false);
@@ -34,7 +41,7 @@ export function MemoryEditDialog({ memory, pending, error, onSubmit, onClose, fi
     const score = Number(importance);
     if (importanceChanged && (!importance.trim() || !Number.isFinite(score) || score < 0 || score > 1)) { setValidation("重要度应为 0 到 1 之间的数字。"); return; }
     setValidation(null); submitRef.current = true;
-    try { await onSubmit({ content, ...(keywordsChanged ? { keywords: JSON.stringify(normalizeMemoryKeywordText(keywords)) } : {}), ...(importanceChanged ? { importance: score } : {}) }); }
+    try { await onSubmit({ content, ...(type !== (originalType ?? "") ? { type } : {}), ...(keywordsChanged ? { keywords: JSON.stringify(normalizeMemoryKeywordText(keywords)) } : {}), ...(importanceChanged ? { importance: score } : {}) }); }
     finally { submitRef.current = false; }
   };
   return <Dialog open disablePointerDismissal={pending} onOpenChange={(open, details) => { if (!open) { if (pending || submitRef.current) details.cancel(); else onClose(); } }}>
@@ -44,6 +51,9 @@ export function MemoryEditDialog({ memory, pending, error, onSubmit, onClose, fi
         <label className="flex flex-col gap-2 text-sm font-medium">正文
           <Textarea ref={contentRef} autoFocus rows={6} surface="translucent" className="scrollbar-none min-h-28 max-h-52 resize-none overflow-y-auto" value={content} disabled={pending} onChange={event => setContent(event.target.value)} />
         </label>
+        <div className="mt-4 flex flex-col gap-2 text-sm">类型
+          <AppSelect ariaLabel="记忆类型" value={type} options={typeOptions} onValueChange={setType} disabled={pending} surface="translucent" controlSize="comfortable" />
+        </div>
         <label className="mt-4 flex flex-col gap-2 text-sm">关键词
           <Input surface="translucent" controlSize="comfortable" value={keywords} disabled={pending} placeholder="用逗号分隔" onChange={event => { setKeywords(event.target.value); setKeywordsChanged(true); }} />
         </label>

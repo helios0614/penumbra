@@ -7,8 +7,9 @@ const id = (v: unknown): v is string => typeof v === "string" && v.trim().length
 function invalid(): never { throw new MemoryContractError("Invalid memory management response"); }
 
 export function buildMemoryEditDto(input: MemoryEditInput) {
+  if (input.type !== undefined && (typeof input.type !== "string" || !input.type.trim())) invalid();
   if (!input.content.trim() || input.keywords !== undefined && typeof input.keywords !== "string" || input.importance !== undefined && (!Number.isFinite(input.importance) || input.importance < 0 || input.importance > 1)) invalid();
-  return { content: input.content, ...(input.keywords !== undefined ? { keywords: input.keywords } : {}), ...(input.importance !== undefined ? { importance: input.importance } : {}) };
+  return { content: input.content, ...(input.type !== undefined ? { type: input.type } : {}), ...(input.keywords !== undefined ? { keywords: input.keywords } : {}), ...(input.importance !== undefined ? { importance: input.importance } : {}) };
 }
 export function mapMemoryWrite(payload: unknown, requestedId?: string): void {
   if (!record(payload) || payload.ok !== true || requestedId !== undefined && payload.id !== requestedId) invalid();

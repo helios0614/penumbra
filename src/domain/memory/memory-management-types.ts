@@ -1,5 +1,6 @@
 export type MemoryEditInput = {
   readonly content: string;
+  readonly type?: string;
   readonly keywords?: string;
   readonly importance?: number;
 };

@@ -14,6 +14,14 @@ export function sourceReason(code: string) { return MEMORY_SOURCE_REASONS[code] 
 export function taskFailure(code: string) {
   return MEMORY_SOURCE_REASONS[code] ?? ({ llm_failure: "辅助模型未能完成总结。", parse_failure: "总结结果无法读取。", embedding_failure: "记忆向量生成失败。", persistence_failure: "总结结果未能保存。" }[code] ?? "这次来源总结未能完成。");
 }
+export function memoryEditError(error: unknown): MemoryManagementError {
+  const safe = memoryManagementError(error);
+  if (!(error instanceof ApiError) || [401, 403, 404, 409, 422].includes(error.status)) return safe;
+  const reason = error.status > 0 ? `HTTP ${error.status}` : ({ TIMEOUT: "请求超时", NETWORK_ERROR: "网络连接失败", ABORTED: "请求已取消", INVALID_RESPONSE: "响应格式异常", HTTP_ERROR: "请求失败" }[error.code]);
+  const detail = (error.data as { detail?: unknown } | null)?.detail;
+  const message = typeof detail === "string" && detail.trim() ? `：${detail.trim()}` : "";
+  return { ...safe, message: `保存结果无法确认（${reason}）${message}。输入已保留，请重新读取列表核对。` };
+}
 export function memoryManagementError(error: unknown): MemoryManagementError {
   if (error instanceof MemoryBusinessError) return { code: error.code, uncertain: false, message: error.code === "operation_busy" ? "请等待当前操作完成。" : error.code === "memory_not_found" ? "这条记忆已不存在，请重新读取列表。" : "重新总结未完成，原有显示已保留，请核对列表后重试。" };
   if (error instanceof ApiError) {

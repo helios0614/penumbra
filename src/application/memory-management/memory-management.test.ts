@@ -29,7 +29,19 @@ describe("Memory management coordination", () => {
     const s = setup(); await s.list.load(); s.api.editMemory.mockRejectedValueOnce(new ApiError("private", 503));
     s.controller.open({ kind: "edit", memory }); expect(await s.controller.submit({ content: "draft" })).toBe(false);
     expect(s.controller.getState().action?.kind).toBe("edit"); expect(s.controller.getState().actionError?.message).not.toContain("private");
+    expect(s.controller.getState().actionError?.message).toContain("HTTP 503");
     expect(s.api.editMemory).toHaveBeenCalledOnce(); expect(s.loader).toHaveBeenCalledTimes(2);
+  });
+  it("replaces the visible memory with the GET result after editing type",async()=>{
+    let saved=false; const s=setup(vi.fn(async r=>page(r.page,[{...memory,type:saved?"promise":"digest"}])));
+    await s.list.load(); s.api.editMemory.mockImplementation(async()=>{saved=true;}); s.controller.open({kind:"edit",memory});
+    expect(await s.controller.submit({content:memory.content,type:"promise"})).toBe(true);
+    expect(s.list.getState().data?.items[0]).toEqual({...memory,type:"promise"}); expect(s.loader).toHaveBeenCalledTimes(2);
+  });
+  it("shows the server's edit failure detail while keeping the dialog open", async()=>{
+    const s=setup(); await s.list.load(); s.api.editMemory.mockRejectedValueOnce(new ApiError("保存被拒绝",503,{detail:"保存被拒绝"}));
+    s.controller.open({kind:"edit",memory}); expect(await s.controller.submit({content:memory.content,type:"emotion"})).toBe(false);
+    expect(s.controller.getState().actionError?.message).toContain("保存被拒绝"); expect(s.controller.getState().action?.kind).toBe("edit");
   });
   it("ordinary delete calls only DELETE and recovers an empty tail page preserving filters", async () => {
     let removed=false;

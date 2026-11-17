@@ -7,6 +7,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("memory management contracts", () => {
   it("edits only explicitly requested fields without replacing unrelated metadata", () => {
     expect(buildMemoryEditDto({ content: " \n原文\n " })).toEqual({ content: " \n原文\n " });
+    expect(buildMemoryEditDto({ content: " \n原文\n ", type: "promise" })).toEqual({ content: " \n原文\n ", type: "promise" });
     expect(buildMemoryEditDto({ content: "新文字", keywords: "[]", importance: 0 })).toEqual({ content: "新文字", keywords: "[]", importance: 0 });
     for (const input of [{ content: " " }, { content: "ok", importance: NaN }, { content: "ok", importance: 2 }]) expect(() => buildMemoryEditDto(input)).toThrow(MemoryContractError);
   });

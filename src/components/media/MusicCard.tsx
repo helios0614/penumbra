@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { ExternalLink, Info, LoaderCircle, Music2, Pause, Play, RotateCcw } from "lucide-react";
+import { ExternalLink, Info, LoaderCircle, Music2, Pause, Play, RotateCcw, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
 import type { MusicMedia } from "@/domain/media/media-types";
 import { readMusicDetail } from "@/domain/media/media-client";
 import { useChatAudio } from "./ChatAudio";
@@ -53,6 +54,12 @@ export function MusicCard({ song, identity }: { song: MusicMedia; identity: stri
       <div className="flex justify-between gap-2 text-[10px] text-muted-foreground"><span>{clock(state.position)} / {clock(state.duration)}</span>
         <span role="status">{busy ? state.status === "buffering" ? "缓冲中" : "正在连接音频" : playing ? "播放中" : state.status === "ended" ? "播放完成" : state.status === "paused" ? "已暂停" : "播放失败"}</span></div>
     </div>}
+    {song.id && <div className="mt-1 flex min-w-0 items-center gap-3 text-muted-strong">
+      <Volume2 className="size-3.5 shrink-0" aria-hidden="true" />
+      <Slider ariaLabel={`音乐音量：${song.name}`} value={state.volume} onValueChange={value => controller?.setVolume(value)} disabled={!controller} className="min-w-0 flex-1" />
+      <span className="w-8 shrink-0 text-right text-[10px] tabular-nums" aria-hidden="true">{state.volume}%</span>
+    </div>}
+    {state.volumeError && <p role="alert" className="text-xs text-destructive-foreground">{state.volumeError}</p>}
     {failed && <p role="alert" className="mt-2 text-xs text-destructive-foreground">{state.error}</p>}
     {!song.id && <p className="mt-2 text-xs text-muted-strong">这条记录没有可靠的歌曲 ID，暂不能播放。</p>}
     {song.id && <div className="music-result-links">

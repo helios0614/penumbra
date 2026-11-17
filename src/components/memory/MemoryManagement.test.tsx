@@ -14,6 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialogAction } from "@/components/ui/alert-dialog";
 import { Popover } from "@/components/ui/popover";
+import { AppSelect } from "@/components/ui/app-select";
+import { MEMORY_TYPE_OPTIONS } from "./memory-presentation";
 import { hookSession, elements, find } from "@/components/chat/test-utils/hook-session";
 vi.mock("react", async original => { const actual = await original<typeof React>(); return { ...actual, ...Object.fromEntries(["useState", "useRef", "useCallback", "useId", "useEffect", "useLayoutEffect"].map(key=>[key,vi.fn(actual[key as keyof typeof actual] as never)])) }; });
 afterEach(()=>vi.restoreAllMocks());
@@ -28,6 +30,20 @@ function editor() {
   return {...h,submit,close,save:()=>form().props.onSubmit?.({preventDefault:vi.fn()} as never),pending:()=>{pending=true;}};
 }
 describe("memory management presentation",()=>{
+  it.each(["digest", "future-type", "旧名字总结", "", null])("prefills and preserves the stored type, then sends only an explicit type change: %j", async type => {
+    const submit=vi.fn(async()=>false);
+    const h=hookSession(()=>MemoryEditDialog({memory:{...memory,type},pending:false,error:{code:"HTTP_ERROR",message:"保存失败（HTTP 503）",uncertain:true},onSubmit:submit,onClose:vi.fn(),finalFocus:focus}));
+    const select=()=>find(h.render(),AppSelect);
+    expect(select().props.value).toBe(type ?? "");
+    expect(select().props.options.filter(o=>!o.disabled)).toEqual(MEMORY_TYPE_OPTIONS);
+    const save=()=>{ const form=find(h.render(),DialogBody).props.render as React.ReactElement<React.ComponentProps<"form">>; form.props.onSubmit?.({preventDefault:vi.fn()} as never); };
+    save(); await tick(); expect(submit).toHaveBeenLastCalledWith({content:memory.content});
+    select().props.onValueChange("promise"); save(); await tick();
+    expect(submit).toHaveBeenLastCalledWith({content:memory.content,type:"promise"});
+    expect(select().props.value).toBe("promise"); expect(JSON.stringify(h.render())).toContain("HTTP 503");
+    expect(find(h.render(),Input,p=>p.placeholder==="用逗号分隔").props.value).toContain("tag-39");
+    expect(find(h.render(),Input,p=>p.type==="number").props.value).toBe("0.456"); h.dispose();
+  });
   it.each([undefined, {status:"ready",value:{supported:true,sourceCount:10}}, {status:"error",error:{code:"unknown",message:"failed",uncertain:true}}] as const)("hides source actions for the stored 知远总结 type regardless of cached preflight: %j", source => {
     const special = {...memory,type:"知远总结",content:"正文不参与类型判断"}; const check=vi.fn(),action=vi.fn();
     const h=hookSession(()=>MemoryActions({memory:special,pending:false,source,onCheckSource:check,onAction:action}));
