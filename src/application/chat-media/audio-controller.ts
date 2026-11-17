@@ -1,26 +1,41 @@
 import { musicStreamUrl } from "@/domain/media/media-resources";
 import { createMusicVolumePreference } from "./music-volume";
+import { diagnoseMusicStream } from "@/domain/media/media-client";
 
 export type AudioStatus = "idle" | "loading" | "buffering" | "playing" | "paused" | "ended" | "error";
 export type AudioState = { readonly identity: string | null; readonly status: AudioStatus; readonly position: number; readonly duration: number | null; readonly seekable: boolean; readonly error: string | null; readonly volume: number; readonly volumeError: string | null };
 const initial: AudioState = Object.freeze({ identity: null, status: "idle", position: 0, duration: null, seekable: false, error: null, volume: 100, volumeError: null });
 
 /** One browser audio per Chat scope. Does not execute MUSIC or persist results. */
-export function createAudioController(createAudio: () => HTMLAudioElement = () => new Audio(), resourceUrl: (id: number) => string = musicStreamUrl) {
+export function createAudioController(createAudio: () => HTMLAudioElement = () => new Audio(), resourceUrl: (id: number) => string = musicStreamUrl,
+  diagnose: (song: number, signal: AbortSignal) => Promise<string> = diagnoseMusicStream) {
   const volumePreference = createMusicVolumePreference();
   let audio: HTMLAudioElement | null = null, state = { ...initial, volume: volumePreference.read() }, sequence = 0, playRequest = 0, alive = true;
   let cleanup = () => {};
+  let songId: number | null = null, diagnosis: AbortController | null = null, diagnosisSequence = -1;
   const listeners = new Set<() => void>();
   const publish = (patch: Partial<AudioState>) => { if (!alive) return; state = Object.freeze({ ...state, ...patch }); listeners.forEach(fn => fn()); };
   const syncVolume = () => { const volume = volumePreference.read(); if (audio) audio.volume = volume / 100; publish({ volume }); };
   const clear = () => {
     sequence++; playRequest++; cleanup(); cleanup = () => {};
+    diagnosis?.abort(); diagnosis = null;
     if (audio) { audio.pause(); audio.removeAttribute("src"); audio.load(); }
   };
   const times = () => audio ? { position: Number.isFinite(audio.currentTime) ? audio.currentTime : 0,
     duration: Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : null,
     seekable: audio.seekable.length > 0 && Number.isFinite(audio.duration) && audio.duration > 0 } : {};
-  const error = () => publish({ status: "error", error: "音频未能播放。请检查登录或资源，点击重试。" });
+  const error = () => {
+    if (diagnosisSequence === sequence) return;
+    diagnosisSequence = sequence;
+    publish({ status: "error", error: "音频播放失败，正在检查链接…可点击重试。" });
+    if (!songId) return;
+    const current = sequence, abort = new AbortController(); diagnosis = abort;
+    void diagnose(songId, abort.signal).then(message => {
+      if (alive && current === sequence && !abort.signal.aborted && state.status === "error") publish({ error: message });
+    }).catch(() => {
+      if (alive && current === sequence && !abort.signal.aborted && state.status === "error") publish({ error: "音频播放失败；暂时无法确认链接状态，请点击重试。" });
+    });
+  };
   const begin = () => {
     if (!audio) return;
     const attempt = sequence, request = ++playRequest;
@@ -40,6 +55,7 @@ export function createAudioController(createAudio: () => HTMLAudioElement = () =
         return;
       }
       clear();
+      songId = song;
       if (!audio) { try { audio = createAudio(); } catch { publish({ identity }); error(); return; } }
       const current = sequence, target = audio;
       const bindings: [string, EventListener][] = [];

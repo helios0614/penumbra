@@ -306,11 +306,35 @@ button.capability-header:hover, .capability-technical-toggle:hover {
 .chat-generation-dots i:nth-child(3) { animation-delay: .32s; }
 @keyframes chat-dot { 0%, 70%, 100% { opacity: .35; } 35% { opacity: .9; } }
 
+.chat-system-message-actions {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  z-index: 1;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+}
+.chat-system-message[data-actions-revealed="true"] > .chat-system-message-actions,
+.chat-system-message:has(:focus-visible) > .chat-system-message-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: hover) and (pointer: fine) {
+  .chat-system-message:hover > .chat-system-message-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-system-message-actions { transition: none; }
+}
+
 /* Touch landscape and tablets also keep the two-level keyboard layout. */
 @media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .chat-workspace-header > button { min-width: 44px; min-height: 44px; }
   .chat-message-actions { opacity: 1; }
-  .chat-message-actions button { min-width: 28px; min-height: 36px; }
+  .chat-message-actions button, .chat-system-message-actions button { min-width: 28px; min-height: 36px; }
   .chat-composer-dock { padding: 8px 12px max(12px, env(safe-area-inset-bottom)); }
   .chat-composer {
     --chat-compact-inset: 120px;

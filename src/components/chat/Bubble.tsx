@@ -1,9 +1,9 @@
 import { useChatRenderTrace } from "./useChatRenderTrace";
 import { format } from "date-fns";
-import { CircleHelp, Trash2 } from "lucide-react";
+import { CircleHelp, X } from "lucide-react";
 import { ChatAttachments } from "@/components/media/ChatAttachments";
 import { useAiName } from "@/components/identity/AiNameContext";
-import { memo, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { readMessageSelection } from "./message-selection";
 import { insertableBody } from "./insertable-body";
 import { splitAssistantBubbles, splitUserBubbles } from "./bubble-chunks";
@@ -71,6 +71,55 @@ interface BubbleProps {
   readonly editUnavailableReason?: string | null;
 }
 
+function SystemMessageBubble({ message, showActions, onDelete, deleteUnavailableReason }: {
+  message: Extract<ChatMessageViewModel, { kind: "system" }>;
+} & Pick<BubbleProps, "showActions" | "onDelete" | "deleteUnavailableReason">) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const pointerTypeRef = useRef<string | null>(null);
+  const [revealedId, setRevealedId] = useState<string | null>(null);
+  const canDelete = showActions && !!onDelete;
+  const revealed = canDelete && revealedId === message.id;
+
+  useEffect(() => {
+    if (!revealed) return;
+    const document = containerRef.current?.ownerDocument;
+    if (!document) return;
+    const dismissOutside = (event: PointerEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setRevealedId(null);
+    };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setRevealedId(null);
+    };
+    document.addEventListener("pointerdown", dismissOutside);
+    document.addEventListener("keydown", dismissOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOutside);
+      document.removeEventListener("keydown", dismissOnEscape);
+    };
+  }, [revealed]);
+
+  return <div ref={containerRef} data-message-id={message.id} tabIndex={-1}
+    data-actions-revealed={revealed || undefined}
+    className={cn("chat-system-message relative min-w-0 w-full outline-none", canDelete && "pe-7")}
+    onPointerDownCapture={canDelete ? event => { pointerTypeRef.current = event.pointerType; } : undefined}
+    onPointerCancel={() => { pointerTypeRef.current = null; }}
+    onClick={canDelete ? () => {
+      const pointerType = pointerTypeRef.current;
+      pointerTypeRef.current = null;
+      // Reveal after this click is dispatched, so the first tap cannot hit the newly shown X.
+      if (pointerType === "touch" || pointerType === "pen") setRevealedId(message.id);
+    } : undefined}>
+    {canDelete && <div className="chat-system-message-actions flex justify-end">
+      <Button type="button" variant="ghost" size="icon-xs" aria-label="删除系统通知"
+        title={deleteUnavailableReason ?? "删除系统通知"} disabled={!!deleteUnavailableReason}
+        className="text-muted-foreground hover:text-destructive" onClick={onDelete}>
+        <X className="size-3" aria-hidden="true" />
+      </Button>
+    </div>}
+    <CapabilityMessage record={message.capabilities?.display} identity={message.id} />
+  </div>;
+}
+
 function BubbleInner({
   showActions = true,
   message,
@@ -93,16 +142,8 @@ function BubbleInner({
   const canInsert = message.kind === "assistant" && message.insertable !== false && message.executionStatus === undefined && !!onInsert;
   const insertText = useMemo(() => canInsert ? insertableBody(message.content) : "", [canInsert, message.content]);
   if (message.kind === "system") {
-    return <div data-message-id={message.id} tabIndex={-1} className="min-w-0 w-full outline-none">
-      {showActions && onDelete && <div className="chat-message-actions flex justify-end">
-        <Button type="button" variant="ghost" size="icon-xs" aria-label="删除系统通知"
-          title={deleteUnavailableReason ?? "删除系统通知"} disabled={!!deleteUnavailableReason}
-          className="text-muted-foreground hover:text-destructive" onClick={onDelete}>
-          <Trash2 className="size-3" aria-hidden="true" />
-        </Button>
-      </div>}
-      <CapabilityMessage record={message.capabilities?.display} identity={message.id} />
-    </div>;
+    return <SystemMessageBubble message={message} showActions={showActions} onDelete={onDelete}
+      deleteUnavailableReason={deleteUnavailableReason} />;
   }
   if (message.kind === "unknown") {
     return <NeutralMessage message={message} />;

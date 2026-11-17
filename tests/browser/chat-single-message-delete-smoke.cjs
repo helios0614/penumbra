@@ -49,15 +49,58 @@ async function run(browser, layout, width) {
     return route.fallback();
   });
   const bubble = id => page.locator(`[data-message-id="${id}"]`);
+  const touch = width < 768;
+  const activate = locator => touch ? locator.tap() : locator.click();
+  const reveal = async id => {
+    if (touch) {
+      if (await bubble(id).getAttribute('data-actions-revealed') === 'true') return;
+      await bubble(id).scrollIntoViewIfNeeded();
+      const box = await bubble(id).boundingBox();
+      await bubble(id).tap({ position: { x: box.width - 14, y: 8 } });
+    } else await bubble(id).hover();
+  };
+  const expectActions = (id, visible) => page.waitForFunction(({ id, visible }) => {
+    const actions = document.querySelector(`[data-message-id="${id}"] .chat-system-message-actions`);
+    const style = getComputedStyle(actions);
+    return style.opacity === (visible ? '1' : '0') && style.pointerEvents === (visible ? 'auto' : 'none');
+  }, { id, visible });
   const dialog = page.getByRole('dialog', { name: /^删除(消息|系统通知)$/ });
   const open = async id => {
     const button = bubble(id).getByRole('button', { name: /^删除(消息|系统通知)$/ });
-    assert(await button.isEnabled()); await button.click(); await dialog.waitFor();
+    if (id.startsWith('notice-')) await reveal(id);
+    assert(await button.isEnabled()); await activate(button); await dialog.waitFor();
   };
   const submit = () => dialog.getByRole('button', { name: '确认删除', exact: true }).click();
   try {
     const path = layout === 'editorial' ? '/penumbra/editorial/app/chat' : '/penumbra/app/chat';
     await page.goto(origin + path); await bubble('neighbor').waitFor();
+    await bubble('notice-structured').scrollIntoViewIfNeeded();
+    await page.mouse.move(0, 0);
+    await expectActions('notice-structured', false);
+    assert.equal(await bubble('notice-structured').locator('.lucide-x').count(), 1);
+    const before = await bubble('notice-structured').boundingBox();
+    const header = bubble('notice-structured').locator('.capability-header');
+    const headerBefore = await header.boundingBox();
+    assert(Math.abs(headerBefore.y - before.y) < 1, 'delete action must not add an empty row above the notice');
+    await reveal('notice-structured'); await expectActions('notice-structured', true);
+    assert.equal(await dialog.count(), 0, 'the first tap must only reveal X');
+    assert.equal((await bubble('notice-structured').boundingBox()).height, before.height, 'revealing X must not change row height');
+    const closeBox = await bubble('notice-structured').getByRole('button', { name: '删除系统通知', exact: true }).boundingBox();
+    assert(closeBox.x >= headerBefore.x + headerBefore.width, 'X must not cover status or disclosure');
+    if (touch) {
+      await activate(header); assert.equal(await header.getAttribute('aria-expanded'), 'true');
+      assert.equal(await dialog.count(), 0); assert.equal(writes.length, 0);
+      await reveal('notice-legacy'); await expectActions('notice-legacy', true); await expectActions('notice-structured', false);
+      await bubble('neighbor').tap(); await expectActions('notice-legacy', false);
+      await activate(header); assert.equal(await header.getAttribute('aria-expanded'), 'false');
+      await bubble('neighbor').tap(); await expectActions('notice-structured', false);
+    } else {
+      await page.mouse.move(0, 0); await expectActions('notice-structured', false);
+      const close = bubble('notice-structured').getByRole('button', { name: '删除系统通知', exact: true });
+      await close.focus(); await page.keyboard.press('Tab'); await page.keyboard.press('Shift+Tab');
+      await expectActions('notice-structured', true);
+      await bubble('neighbor').click(); await page.mouse.move(0, 0); await expectActions('notice-structured', false);
+    }
     await open('delete-user'); await dialog.getByRole('button', { name: '取消', exact: true }).click();
     await dialog.waitFor({ state: 'hidden' }); assert.equal(writes.length, 0);
     fail = true; await open('delete-user'); await submit();
@@ -99,7 +142,7 @@ async function run(browser, layout, width) {
     await page.screenshot({ path: `/private/tmp/chat-delete-${layout}-${width}.png` });
     assert.equal(state.sends.length, 0); assert.equal(state.regenerates.length, 0); assert.deepEqual(errors, []);
     assert(writes.every(id => !id.includes(':tools')));
-    console.log(`${layout} ${width}px passed: all roles, historical/structured/MCP/trigger/empty system cards, cancel, failure/retry, false acknowledgment, pending lock, reload, mixed rows and reading scroll`);
+    console.log(`${layout} ${width}px passed: system X hover/tap reveal, compact positioned action, disclosure, keyboard, all roles, cancel, failure/retry, pending lock, reload and reading scroll`);
   } catch (error) { console.error(page.url(), await page.locator('body').innerText(), errors, state.requests.slice(-8)); throw error; } finally { await context.close(); }
 }
 (async () => {

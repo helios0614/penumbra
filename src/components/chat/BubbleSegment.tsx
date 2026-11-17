@@ -87,7 +87,7 @@ function BubbleSegmentInner({
   const surface = user ? "body" : markdownSurface(content);
   return (
     <div
-      className={cn("relative min-w-0 max-w-full", sticker && "mb-5")}
+      className={cn("relative min-w-0 max-w-full", sticker && "mb-3")}
       data-reaction-anchor={sticker ? reaction?.targetMessageId : undefined}
       data-markdown-segment={user ? undefined : surface}
     >

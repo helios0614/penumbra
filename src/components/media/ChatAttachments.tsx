@@ -14,7 +14,7 @@ export function ChatAttachments({ attachments, messageId, reaction, kind }: { at
   const aiName = useAiName();
   const images = attachments.flatMap(a => a.kind === "image" ? [{ url: a.url, label: a.label }] : []);
   let imageIndex = 0;
-  return <div className={cn("chat-media relative", reaction && "mb-5")} aria-label="消息附件" data-message-role={kind} data-reaction-anchor={reaction?.targetMessageId}>
+  return <div className={cn("chat-media relative", reaction && "mb-3")} aria-label="消息附件" data-message-role={kind} data-reaction-anchor={reaction?.targetMessageId}>
     <div className="chat-media-grid" data-count={attachments.filter(a => a.kind === "image" || a.kind === "video").length}
       data-density={attachments.filter(a => a.kind === "image" || a.kind === "video").length >= 5 ? "many" : "few"}>
       {attachments.map((a, index) => a.kind === "image" ? <MediaImage key={index} image={a} images={images} index={imageIndex++} />

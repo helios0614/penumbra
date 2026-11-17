@@ -60,6 +60,9 @@
 .music-result-progress input::-moz-range-progress { height: 4px; border-radius: 999px; background: var(--music-accent); }
 .music-result-progress input::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--music-accent); }
 .music-result-links { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 12px; margin-top: 2px; }
+.music-result-volume [data-slot="slider-track"] { height: 3px; }
+.music-result-volume [data-slot="slider-indicator"] { background: color-mix(in srgb, var(--color-primary) 45%, transparent); }
+.music-result-volume [data-slot="slider-thumb"] { width: 10px; height: 10px; border-width: 1px; border-color: color-mix(in srgb, var(--color-primary) 55%, transparent); box-shadow: none; }
 .attachment-drafts { display: flex; gap: 10px; max-width: 720px; max-height: 240px; margin: 0 auto 10px; overflow: auto; padding: 2px; overscroll-behavior: contain; }
 .attachment-draft { flex: none; width: 144px; }
 .attachment-draft-preview { position: relative; display: flex; width: 144px; height: 100px; margin-bottom: 4px; border-radius: 14px; background: var(--chat-ai-surface); }

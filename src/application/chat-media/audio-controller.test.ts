@@ -15,8 +15,29 @@ class FakeAudio extends EventTarget {
 }
 // Placeholder is never read; each FakeAudio installs its own seekable object.
 const owner = { ranges: [] as [number, number][] };
-function setup() { const audio = new FakeAudio(); const factory = vi.fn(() => audio as unknown as HTMLAudioElement); const controller = createAudioController(factory); return { audio, factory, controller }; }
+function setup(diagnose = vi.fn(async()=>"音频播放失败；当前链接检查可用，请点击重试。")) { const audio = new FakeAudio(); const factory = vi.fn(() => audio as unknown as HTMLAudioElement); const controller = createAudioController(factory,undefined,diagnose); return { audio, factory, controller, diagnose }; }
 describe("browser music resource lifecycle", () => {
+  it("uses the actual 20-second preview duration and treats its end as normal", () => {
+    const s=setup();s.controller.play("preview",36390008);
+    s.audio.duration=20;s.audio.event("loadedmetadata");s.audio.event("playing");
+    expect(s.controller.getState()).toMatchObject({status:"playing",duration:20,error:null});
+    s.controller.setVolume(45);s.audio.currentTime=20;s.audio.ended=true;s.audio.event("ended");
+    expect(s.controller.getState()).toMatchObject({status:"ended",duration:20,position:20,volume:45,error:null});
+    expect(s.diagnose).not.toHaveBeenCalled();expect(s.audio.play).toHaveBeenCalledOnce();
+  });
+  it("checks a media error once, preserves identity and waits for a manual retry", async()=>{
+    const s=setup(); s.controller.play("song",42); s.audio.event("error"); s.audio.reject!(new Error("network"));
+    await Promise.resolve(); await Promise.resolve();
+    expect(s.diagnose).toHaveBeenCalledOnce(); expect(s.controller.getState()).toMatchObject({identity:"song",status:"error",error:expect.stringContaining("当前链接检查可用")});
+    expect(s.audio.play).toHaveBeenCalledTimes(1); s.controller.play("song",42); expect(s.audio.play).toHaveBeenCalledTimes(2);
+  });
+  it("aborts diagnostics on song change and ignores its late result",async()=>{
+    let resolve!:(message:string)=>void;
+    const diagnose=vi.fn(()=>new Promise<string>(done=>{resolve=done;}));const s=setup(diagnose);
+    s.controller.play("one",42);s.audio.event("error");const signal=(diagnose.mock.calls as unknown as [number,AbortSignal][])[0][1];
+    s.controller.play("two",44);expect(signal.aborted).toBe(true);resolve("old failure");await Promise.resolve();
+    expect(s.controller.getState()).toMatchObject({identity:"two",status:"loading",error:null});
+  });
   it("does not create/preload audio before a click and never optimistically claims playback", () => {
     const s = setup(); expect(s.factory).not.toHaveBeenCalled(); s.controller.play("A:1", 42);
     expect(s.audio.src).toContain("/api/music/stream/42"); expect(s.controller.getState().status).toBe("loading");
