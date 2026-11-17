@@ -44,7 +44,7 @@ describe("streaming recovery without over-defensive locks", () => {
     controller.dispose();
   });
 
-  it("releases an unknown result on explicit 重新核对 once HTTP history was read", async () => {
+  it("keeps an unknown result on explicit 重新核对 after HTTP history was read", async () => {
     const row = saved("assistant-b");
     const controller = createChatSendController({ createUuid: () => "client-a",
       openExecution: async () => ({ kind: "stream", events: stream([{ type: "start", assistantMessageId: "assistant-a" }]) }),
@@ -56,8 +56,7 @@ describe("streaming recovery without over-defensive locks", () => {
     await controller.retryFinalization(); // automatic retries keep the protection
     expect(controller.getState().kind).toBe("finalization-uncertain");
     await controller.retryFinalization({ manual: true });
-    expect(controller.getState()).toEqual({ kind: "idle" });
-    expect(composeVisibleChatMessages([row], controller.getState(), "conv_a").some(r => r.executionStatus)).toBe(false);
+    expect(controller.getState()).toMatchObject({ kind: "finalization-uncertain", executionId: "execution:client-a" });
     controller.dispose();
   });
 });

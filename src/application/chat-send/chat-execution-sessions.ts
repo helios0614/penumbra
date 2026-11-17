@@ -21,7 +21,7 @@ export function createChatExecutionSessions(dependencies: ChatSendControllerDepe
     async reconcilePending() {
       await Promise.all([...controllers.values()].map(controller => {
         const state = controller.getState();
-        return state.kind === "finalization-uncertain" || state.kind === "regenerate-finalization-uncertain" ? controller.retryFinalization() : controller.reconcileUserPersistence();
+        return state.recoveries?.length || state.kind === "finalization-uncertain" || state.kind === "regenerate-finalization-uncertain" ? controller.retryFinalization() : controller.reconcileUserPersistence();
       }));
     },
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },

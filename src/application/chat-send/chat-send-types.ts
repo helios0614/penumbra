@@ -87,7 +87,7 @@ type ActiveChatRegenerateState = {
   readonly executionError: SafeChatExecutionError | null;
 };
 
-export type ChatSendState =
+type ChatSendStateBase =
   | { readonly kind: "idle"; readonly confirmedSend?: { readonly conversationId: string; readonly clientMessageId: string } }
   | (ActiveChatSendState & { readonly kind: "sending-user" })
   | (AssistantChatSendState & { readonly kind: "streaming" })
@@ -121,6 +121,17 @@ export type ChatSendState =
       readonly recoveryReadSucceeded?: boolean;
       readonly error: SafeChatExecutionError;
     });
+
+/** A reviewed unknown execution remains recoverable after its input lock is released. */
+export type ChatExecutionRecovery = Extract<ChatSendStateBase, {
+  readonly kind: "finalization-uncertain" | "regenerate-finalization-uncertain";
+}>;
+
+export type ChatSendState = ChatSendStateBase & {
+  readonly recoveries?: readonly ChatExecutionRecovery[];
+  /** A late, authoritative result may clear only this original submission's recovery. */
+  readonly reconciledSend?: { readonly conversationId: string; readonly clientMessageId: string };
+};
 
 export type ChatSendInput = {
   readonly conversationId: string;

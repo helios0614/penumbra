@@ -11,7 +11,17 @@ export function composeVisibleChatMessages(
   conversationId: string,
   projectMessages: ChatMessageProjector = presentChatMessages,
 ): readonly ChatMessageViewModel[] {
-  const visible = [...projectMessages(persistentMessages)];
+  let visible = [...projectMessages(persistentMessages)];
+  for (const recovery of execution.recoveries ?? []) {
+    visible = [...composeExecutionMessages(persistentMessages, recovery, conversationId, visible, true)];
+  }
+  return composeExecutionMessages(persistentMessages, execution, conversationId, visible);
+}
+
+function composeExecutionMessages(
+  persistentMessages: readonly Message[], execution: ChatSendState,
+  conversationId: string, visible: ChatMessageViewModel[], reviewed = false,
+): readonly ChatMessageViewModel[] {
   if (execution.kind === "error" && execution.conversationId === conversationId && execution.assistant && !execution.optimisticUser && !execution.failedMessageId) {
     visible.push({ kind: "assistant", id: execution.assistant.overlayId, content: execution.assistant.content,
       createdAt: execution.assistant.createdAt, thinking: execution.assistant.thinking, simpleThink: execution.assistant.simpleThink,
@@ -32,7 +42,7 @@ export function composeVisibleChatMessages(
   }
   if ((execution.kind === "streaming" || execution.kind === "finalizing" || execution.kind === "finalization-uncertain") &&
       execution.conversationId === conversationId && visible.some(message => message.id === execution.assistant.assistantMessageId)) return visible;
-  const recovered = (execution.kind === "finalization-uncertain" || execution.kind === "regenerate-finalization-uncertain") && execution.recoveryReadSucceeded;
+  const recovered = (execution.kind === "finalization-uncertain" || execution.kind === "regenerate-finalization-uncertain") && (execution.recoveryReadSucceeded || reviewed);
   if (recovered && execution.conversationId === conversationId) {
     if (execution.kind === "regenerate-finalization-uncertain") {
       // The old target remains authoritative. Keep this attempt's partial in

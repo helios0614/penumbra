@@ -43,6 +43,7 @@ export type {
   ChatGenerationOptionField,
   ChatGenerationUiValues,
   ChatExecutionKind,
+  ChatExecutionRecovery,
   ChatRegenerateGenerationUiValues,
   ChatRegenerateInput,
   ChatSendInput,

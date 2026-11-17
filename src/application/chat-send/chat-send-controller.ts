@@ -34,6 +34,7 @@ import {
 import {
   INITIAL_CHAT_SEND_STATE,
   type ChatExecutionKind,
+  type ChatExecutionRecovery,
   type ChatRegenerateInput,
   type ChatSendInput,
   type ChatSendState,
@@ -122,6 +123,7 @@ export function createChatSendController(
   const now = dependencies.now ?? (() => Date.now() / 1000);
   let state = INITIAL_CHAT_SEND_STATE;
   let active: ActiveExecution | null = null;
+  const recoveries = new Map<string, { execution: ActiveExecution; snapshot: ChatExecutionRecovery }>();
   let disposed = false;
   const listeners = new Set<(state: ChatSendState) => void>();
 
@@ -134,8 +136,30 @@ export function createChatSendController(
       if ("targetMessageId" in nextState) aliasChatTrace(nextState.targetMessageId, nextState);
       traceChat("session.publish", nextState, { phase: nextState.kind, size: assistant?.content.length ?? 0 });
     } else if (active) traceChat("session.publish", active, { phase: nextState.kind });
-    state = nextState;
+    const { recoveries: _previousRecoveries, ...current } = nextState;
+    state = recoveries.size ? { ...current, recoveries: [...recoveries.values()].map(item => item.snapshot) } : current;
     listeners.forEach((listener) => listener(state));
+  };
+
+  const publishFinalization = (execution: ActiveExecution, nextState: ChatSendState) => {
+    if (active === execution) {
+      if (nextState.kind === "idle" || nextState.kind === "error") active = null;
+      publish(nextState);
+      return;
+    }
+    const recovery = recoveries.get(execution.executionId);
+    if (!recovery || recovery.execution !== execution) return;
+    if (nextState.kind === "finalizing" || nextState.kind === "regenerate-finalizing") return;
+    if (nextState.kind === "finalization-uncertain" || nextState.kind === "regenerate-finalization-uncertain") {
+      recovery.snapshot = nextState;
+      publish(state);
+      return;
+    }
+    recoveries.delete(execution.executionId);
+    const reconciledSend = nextState.kind === "idle" ? nextState.confirmedSend
+      : nextState.kind === "error" ? nextState.acceptedSend : undefined;
+    // A late result removes only its own recovery; the new execution is untouched.
+    publish({ ...state, ...(reconciledSend ? { reconciledSend } : {}) });
   };
 
   const activeAssistantState = (
@@ -211,14 +235,15 @@ export function createChatSendController(
       try {
         const receipt = await lookupReceipt(execution);
         if (receipt && persisted(receipt.assistantMessageId)) return receipt.assistantMessageId;
-      } catch { /* Missing receipt: keep unknown; an explicit「重新核对」releases it. */ }
+      } catch { /* Missing receipt: keep this execution unknown. */ }
     }
     return null;
   };
 
   const performFinalization = async (execution: ActiveExecution) => {
     if (!isCurrent(execution)) return;
-    publish(activeAssistantState("finalizing", execution));
+    execution.recoveryReadSucceeded = false;
+    publishFinalization(execution, activeAssistantState("finalizing", execution));
 
     let receiptAlreadyRead = false;
     try {
@@ -290,8 +315,7 @@ export function createChatSendController(
       } else if (!execution.terminalFailure) execution.executionError = null;
 
       traceChat("execution.reconciled", execution);
-      active = null;
-      publish(execution.executionError === null
+      publishFinalization(execution, execution.executionError === null
         ? execution.kind === "send"
           ? { kind: "idle", confirmedSend: { conversationId: execution.conversationId, clientMessageId: execution.optimisticUser.clientMessageId } }
           : INITIAL_CHAT_SEND_STATE
@@ -309,7 +333,7 @@ export function createChatSendController(
           error: execution.executionError });
     } catch {
       if (!isCurrent(execution)) return;
-      publish(execution.kind === "send"
+      publishFinalization(execution, execution.kind === "send"
         ? {
             kind: "finalization-uncertain",
             recoveryReadSucceeded: execution.recoveryReadSucceeded,
@@ -436,7 +460,7 @@ export function createChatSendController(
   };
 
   const isCurrent = (execution: ActiveExecution) =>
-    !disposed && active === execution;
+    !disposed && (active === execution || recoveries.get(execution.executionId)?.execution === execution);
 
   return {
     getState() {
@@ -611,7 +635,12 @@ export function createChatSendController(
 
     reconcileUserPersistence,
 
-    async retryFinalization(options) {
+    async retryFinalization() {
+      const current = active;
+      const reviewed = [...recoveries.values()];
+      for (const { execution } of reviewed) await finalize(execution);
+      // Reading an older released request must not reset a newer foreground error.
+      if (active !== current || (current === null && reviewed.length > 0)) return;
       if (!disposed && active === null && state.kind === "error" && !state.conversationId) {
         publish(INITIAL_CHAT_SEND_STATE);
         return;
@@ -635,14 +664,6 @@ export function createChatSendController(
         return;
       }
       await finalize(active);
-      // An explicit「重新核对」after a successful HTTP read: the refreshed history
-      // on screen is authoritative, so don't keep a stale overlay/lock forever.
-      if (options?.manual && !disposed && active?.recoveryReadSucceeded &&
-          (state.kind === "finalization-uncertain" || state.kind === "regenerate-finalization-uncertain")) {
-        traceChat("execution.released", active);
-        active = null;
-        publish(INITIAL_CHAT_SEND_STATE);
-      }
     },
 
     resetError() {
@@ -654,7 +675,10 @@ export function createChatSendController(
     releaseAfterReview() {
       if (!disposed && active?.recoveryReadSucceeded &&
           (state.kind === "finalization-uncertain" || state.kind === "regenerate-finalization-uncertain")) {
-        // Explicit human review is not a completion/stop acknowledgement from the backend.
+        // Release only the input lock, retaining the original execution for read-only recovery.
+        const { recoveries: _otherRecoveries, reconciledSend: _settled, ...snapshot } = state;
+        recoveries.set(active.executionId, { execution: active, snapshot });
+        traceChat("execution.released", active);
         active = null;
         publish(INITIAL_CHAT_SEND_STATE);
       }
@@ -671,6 +695,8 @@ export function createChatSendController(
       disposed = true;
       listeners.clear();
       active?.abortController.abort();
+      recoveries.forEach(({ execution }) => execution.abortController.abort());
+      recoveries.clear();
       active = null;
     },
   };

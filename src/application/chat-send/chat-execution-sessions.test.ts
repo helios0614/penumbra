@@ -47,6 +47,28 @@ describe("conversation-owned executions and acceptance evidence", () => {
     a.dispose(); b.dispose();
   });
 
+  it("rechecks reviewed records through the existing session recovery entry without locking another conversation", async () => {
+    let committed = false;
+    const open = vi.fn(async () => ({ kind: "stream" as const, events: (async function* () {
+      yield { type: "start" as const, assistantMessageId: "A-reply" };
+      yield { type: "chunk" as const, content: "A partial" };
+    })() }));
+    const sessions = createChatExecutionSessions({ createUuid: () => "A-client", openExecution: open,
+      reconcileHistory: async () => ({ persistedMessageIds: committed ? ["A-reply"] : [], regenerateTarget: null }),
+    });
+    const a = sessions.get("A");
+    await a.send({ conversationId: "A", content: "A question" });
+    await wait(() => sessions.state("A").kind === "finalization-uncertain");
+    a.releaseAfterReview();
+    expect(sessions.active("A")).toBe(false);
+    expect(sessions.state("A").recoveries).toHaveLength(1);
+    expect(sessions.state("B")).toEqual({ kind: "idle" });
+    committed = true; await sessions.reconcilePending();
+    expect(sessions.state("A").recoveries).toBeUndefined();
+    expect(sessions.state("B")).toEqual({ kind: "idle" });
+    expect(open).toHaveBeenCalledOnce(); a.dispose();
+  });
+
   it.each([400, 401, 403, 408, 422, 429, 499, 524])("keeps bare HTTP %s unknown without another POST", async status => {
     const open = vi.fn(async () => { throw new ApiError("proxy", status, "<html>proxy response</html>"); });
     const sessions = createChatExecutionSessions({ createUuid: () => "client-a", openExecution: open,

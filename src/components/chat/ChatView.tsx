@@ -46,6 +46,7 @@ import { useSearchBack, hasOpenChatDialog } from "./search-history";
 import { normalizeSearch, searchTextRanges } from "./search-highlight";
 import { ChatShell } from "./ChatShell";
 import { ChatExecutionFeedback } from "./ChatExecutionFeedback";
+import { ChatExecutionReviewAction } from "./ChatExecutionReviewAction";
 import {
   ChatWorkspaceEmpty,
   ChatWorkspaceError,
@@ -319,11 +320,13 @@ export function ChatWorkspaceView({
   }, [draftOwner, media.store]);
   useDesktopChatImagePaste(pasteScopeRef, draftEditable ? receiveFiles : undefined);
   useEffect(() => {
-    const confirmed = sendState.kind === "idle" ? sendState.confirmedSend : sendState.kind === "error" ? sendState.acceptedSend : undefined;
-    if (!confirmed) return;
-    media.store.getRecoveries(confirmed.conversationId).forEach(item => {
-      if (item.clientMessageId === confirmed.clientMessageId) media.store.discardRecovery(confirmed.conversationId, item.id);
-    });
+    const completed = [sendState.reconciledSend, sendState.kind === "idle" ? sendState.confirmedSend : sendState.kind === "error" ? sendState.acceptedSend : undefined];
+    for (const confirmed of completed) {
+      if (!confirmed) continue;
+      media.store.getRecoveries(confirmed.conversationId).forEach(item => {
+        if (item.clientMessageId === confirmed.clientMessageId) media.store.discardRecovery(confirmed.conversationId, item.id);
+      });
+    }
   }, [sendState, media.recoveries, media.store]);
   const search = useChatSearch(state.status === "ready" && !state.pendingConversationId ? ownerRef.current : null, state.status === "ready" ? state.searchRevision : 0);
   const readingRef=useRef<ChatReadingHandle|null>(null);
@@ -734,13 +737,16 @@ function ChatRealtimeNotice({
   );
 }
 
-function ChatExecutionNotice({ state, onRetryFinalization }: {
+function ChatExecutionNotice({ state, onRetryFinalization, onReleaseAfterReview }: {
   readonly state: ChatSendState;
   readonly onRetryFinalization?: () => void | Promise<void>;
   readonly onReleaseAfterReview?: () => void;
 }) {
   const error = executionNoticeError(state);
-  if (error === null) return null;
+  if (error === null) return state.recoveries?.length ? <div data-chat-execution-feedback className="mx-auto mb-2 flex max-w-[720px] items-center gap-2 text-xs text-muted-strong">
+    <span role="status">上次回复结果待确认，临时回复已保留</span>
+    {onRetryFinalization && <Button variant="ghost" size="compact" onClick={() => void onRetryFinalization()}>重新核对</Button>}
+  </div> : null;
   if (state.kind === "error" && state.confirmedFailure && state.failedMessageId) return null;
   if (state.kind === "error" && state.rejectedSubmission) return <p data-chat-execution-feedback role="alert" className="mx-auto mb-2 max-w-[720px] text-xs text-muted-strong">{error.message}</p>;
   const uncertain = state.kind === "finalization-uncertain" || state.kind === "regenerate-finalization-uncertain";
@@ -748,6 +754,7 @@ function ChatExecutionNotice({ state, onRetryFinalization }: {
   if (uncertain || checking) return <div data-chat-execution-feedback className="mx-auto mb-2 flex max-w-[720px] items-center gap-2 text-xs text-muted-strong">
     <span role="status" title={error.message}>回复结果待确认</span>
     {onRetryFinalization && <Button variant="ghost" size="compact" disabled={checking} onClick={() => void onRetryFinalization()}>重新核对</Button>}
+    {uncertain && onReleaseAfterReview && <ChatExecutionReviewAction ready={state.recoveryReadSucceeded === true} onRelease={onReleaseAfterReview} />}
   </div>;
   // Streamed provider errors are already displayed next to their partial body.
   if (state.kind !== "error") return null;

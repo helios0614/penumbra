@@ -331,12 +331,13 @@ describe("ChatWorkspaceView ready states", () => {
     expect(html).not.toContain('aria-label="当前无法切换到会话 A"');
   });
 
-  it("shows finalization uncertainty once instead of repeating it in sender footer", () => {
+  it.each([false, true])("shows uncertainty and offers explicit release only after this HTTP read succeeds: %s", recoveryReadSucceeded => {
     const selected = conversation("conv_a", "会话 A");
     const messageText = "回复已结束，但暂时无法确认保存状态。";
     const sendState: ChatSendState = {
       kind: "regenerate-finalization-uncertain",
       executionId: "regenerate-uncertain",
+      recoveryReadSucceeded,
       conversationId: "conv_a",
       targetMessageId: "assistant_latest",
       assistant: {
@@ -365,14 +366,17 @@ describe("ChatWorkspaceView ready states", () => {
     )), undefined, {
       onSend: vi.fn(async () => true),
       sendState,
+      onRetryFinalization: vi.fn(),
+      onReleaseAfterReview: vi.fn(),
     });
 
     expect(html).toContain(`title="${messageText}"`);
     expect(html).toContain("回复结果待确认");
-    expect(html).not.toContain("已核对历史，返回编辑");
+    expect(html).toContain("重新核对");
+    expect(html.includes("返回编辑")).toBe(recoveryReadSucceeded);
     expect(html.indexOf("data-chat-execution-feedback")).toBeGreaterThan(html.indexOf("</header>"));
     expect(html).toContain("临时新回复");
-    expect(html).not.toContain("原回复");
+    expect(html.includes("原回复")).toBe(recoveryReadSucceeded);
   });
 
   it("does not expose raw workspace payload fields or unsafe unknown role labels", () => {
@@ -431,6 +435,8 @@ function render(
     readonly onRegenerate?: (messageId: string) => Promise<boolean>;
     readonly sendState?: ChatSendState;
     readonly realtimeState?: ChatRealtimeState;
+    readonly onRetryFinalization?: () => Promise<void>;
+    readonly onReleaseAfterReview?: () => void;
   } = {},
 ): string {
   const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -447,6 +453,8 @@ function render(
       onRegenerate={props.onRegenerate}
       sendState={props.sendState}
       realtimeState={props.realtimeState}
+      onRetryFinalization={props.onRetryFinalization}
+      onReleaseAfterReview={props.onReleaseAfterReview}
     />,
   );
   expect(consoleError).not.toHaveBeenCalled();
