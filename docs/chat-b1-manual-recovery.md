@@ -1,6 +1,6 @@
 # PR CHAT-B1：手动核对不丢失 partial
 
-日期：2026-11-17（Asia/Shanghai）。本项完成后停止，等待验收；未进入 CHAT-B2。
+日期：2026-11-17（Asia/Shanghai）。本文包含初次实现交付与 CHAT-B1-CLOSEOUT 收尾记录。A–D 人工验收已完成；B 场景交互调整留待 CHAT-B2-D。人工验收结果与最终产品决定见末尾收尾记录，本轮未进入 CHAT-B2-A。
 
 ## 交付范围与工作区
 
@@ -32,6 +32,8 @@
 仅重置读取标记不能解决正文丢失；仅禁止解除则可能长期锁定。原 follow-up 文档禁止暴露返回编辑，与本次治理目标存在冲突。已在实施该交互前明确指出并由用户确认采用「显式人工解除、保留旧执行记录、隔离迟到事件」，据此更新相关交互契约。
 
 ## 行为契约
+
+本节记录 CHAT-B1 当前已提交实现的行为；后续已确认、尚待 CHAT-B2-D 实施的交互调整见末尾收尾记录。
 
 | 场景 | 结果 |
 | --- | --- |
@@ -98,7 +100,77 @@ node node_modules/vitest/vitest.mjs run --config /private/tmp/chat-b1/vitest.con
 - 恢复记录仅保留于现有页面会话的内存生命周期；浏览器刷新/进程退出仍不能保证未保存 partial 留存。本次按要求不新增持久化机制。
 - 返回编辑不会停止旧后台任务。用户随后显式提交时，旧任务可能仍运行并稍后出现于历史；界面在解除前明确说明，不伪造停止确认。
 - canonical receipt 丢失时仍可能无法确认新结果。不会以旧 target 存在或文字变化代替本轮提交证明；用户可保留记录并返回编辑。
-- 已执行离线合同、组件交互和静态渲染验证；未进行真机键盘、真实浏览器视觉或生产联调验收。
+- 初次实现交付时已执行离线合同、组件交互和静态渲染验证。后续本地隔离环境的 A–D 人工验收已完成，结果见下文；真机键盘与生产联调不在此次记录范围内。
 - 本次未修 CHAT-B2/B3/B4/D8、APP 或 SSE 格式问题，不将它们计入 B1 完成范围。
 
-未 commit、push、deploy。到此停止，待 CHAT-B1 验收后再进入下一项。
+初次实现交付时未 commit、push、deploy；之后经用户授权完成工程原则及 CHAT-B1 本地提交。以下收尾只更新本文档、停止隔离服务并检查工作区，不新增 commit、push 或 deploy。
+
+## CHAT-B1-CLOSEOUT：人工验收收尾
+
+收尾日期：2026-11-17（Asia/Shanghai）。人工验收结论依据用户本轮明确提供的实际观察记录；与此前自动走查证据分别保留。本轮不修改业务源码、测试、配置、数据库或依赖。
+
+### A–D 人工验收结果
+
+| 场景 | 结论 | 实际观察结果 |
+| --- | --- | --- |
+| A：断流与重新核对 | 通过 | SSE 断开后后台生成继续运行；partial 保留；重新核对没有触发额外生成；Fake Provider 正常完成后，assistant 正文进入历史。 |
+| B：返回编辑与保留临时回复 | 核心行为通过，发现一项交互优化 | partial 与原 execution 保留，没有取消或重发；返回编辑后可以继续操作。人工讨论确认返回编辑无需二次确认，后续交互调整见下节。 |
+| C：旧请求迟到 | 通过 | 旧请求完成后正常进入历史；新请求执行状态不被旧结果覆盖；下一条草稿及附件保留；没有额外生成请求。 |
+| D：历史读取失败 | 通过 | 故障注入针对 `b1-d`，历史读取请求正常触发；partial 与 execution 保留；读取失败时没有错误解除未知状态；恢复读取后可以再次核对。 |
+
+D 场景仅记录本次实际观察到的读取与交互行为。本次人工验收未采集的 HTTP 响应状态码不作补填，也不以故障开关的设计值代替观测结果。
+
+### B 场景交互问题与最终产品决定
+
+人工讨论确认，独立的返回编辑入口及其二次确认步骤不再需要。最终产品行为已确认如下：
+
+- 移除独立的「返回编辑」入口。
+- 移除「保留临时回复，返回编辑」确认弹窗。
+- 输入框始终允许编辑。
+- 附件可以正常调整。
+- 「重新核对」只负责查询状态，不再作为编辑的前置条件。
+- 旧 execution 未终结时仍禁止发送。
+
+上述交互调整纳入 **CHAT-B2-D**，尚待实施。本轮只记录决定，保留 CHAT-B1 已提交实现与测试；不擅自修复交互，不进入 CHAT-B2-A。B 场景核心稳定性验收通过，不表示上述后续产品行为已经上线或已经由当前实现提供。
+
+### 隔离服务停止与证据保留
+
+停止前核对 `/private/tmp/chat-b1-manual-20261117/processes.json` 与实际监听进程：
+
+| 服务 | 停止前 PID | 端口 | 已核对工作目录 |
+| --- | --- | --- | --- |
+| 后端 Fake Provider 验收服务 | 14666 | 45672 | `/private/tmp/chat-b1-manual-20261117` |
+| 前端验收服务 | 14667 | 45671 | `/private/tmp/chat-b1-manual-20261117` |
+
+执行该目录内的停止入口：
+
+```sh
+python3 /private/tmp/chat-b1-manual-20261117/service.py stop
+```
+
+命令成功退出。随后 `service.py status` 显示两个端口均未运行、进程记录为空；`lsof` 确认 45671、45672 均无 TCP 监听，原两个 PID 不再持有该目录中的验收进程。未操作其他本地服务。
+
+未执行 `reset` 或删除数据。以下合成数据库与验收证据继续保留在原目录：
+
+- `source/backend/data/chat.db`
+- `backend.log`、`ui-server.log`
+- `browser-results.json`、`browser-check.log`、`transport-check.log`
+- 其余既有辅助文件与截图。
+
+### 两仓工作区与已有提交核对
+
+| 仓库 | 当前分支与 HEAD | 本轮开始时 | 收尾后 |
+| --- | --- | --- | --- |
+| Penumbra | `main`；`8df2190b645326d63bd228cec203d145babd4920`，`doc: append-reply-pipeline-audit` | 已跟踪文件无修改；已有未跟踪文件 `docs/chat-b2-cancellation-audit.md` | 仅本文档新增未提交修改；原未跟踪文件保留；暂存区为空。 |
+| AionHome | `refactor-code-main`；`86c3670139b42944a77a8cc4a4564fe5a65d1190`，`doc: sse-library-comparative-study` | 工作区干净 | 工作区保持干净；暂存区为空。 |
+
+已有工程原则与 B1 提交保持不变：
+
+- AionHome：`701760b9c0cf468e5d0b513b6058cc6172217f5f`，`docs(engineering): establish shared principles and agent instructions`。
+- Penumbra：`baacd4327c97bc0b801428c3057c80153a72fb1b`，`fix(chat): preserve CHAT-B1 partials and establish engineering principles`。
+
+此前三份审计报告现已分别由已有提交跟踪：Penumbra 的 `chat-streaming-state-audit.md` 对应 `faa11e840408be73a0e7e6f85d6f846c8cc20479`，`append-reply-pipeline-audit.md` 对应当前 HEAD；AionHome 的 `sse-library-comparative-study.md` 对应当前 HEAD。本轮未修改、删除或暂存三份报告，收尾前后内容 SHA-256 一致；原有未跟踪的 `chat-b2-cancellation-audit.md` 亦原样保留。
+
+本轮只核对文档 diff、工作区与服务停止状态，不重跑业务测试或构建。未修改业务实现、测试、配置、数据库、依赖；未 commit、push、deploy。
+
+B1 收尾执行事项已完成，暂无未完成的 B1 收尾事项。CHAT-B2-D 的交互调整为后续实施待办，不在本轮执行。到此停止，等待人工确认。
