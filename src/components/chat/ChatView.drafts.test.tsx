@@ -10,6 +10,8 @@ import { find, hookSession } from "./test-utils/hook-session";
 import type { ChatWorkspaceControllerState } from "@/components/chat-workspace";
 import type { ChatSendState } from "@/application/chat-send";
 import { uploadMedia } from "@/domain/media/media-client";
+import { executionReader } from "@/test-fixtures/chat-execution";
+import { encodeChatExecutionId } from "@/application/chat-execution";
 
 vi.mock("react", async original => {
   const actual = await original<typeof React>();
@@ -33,12 +35,12 @@ function pending(): Extract<ChatSendState, { kind: "sending-user" }> {
     overlayId: "optimistic:1", clientMessageId: "client:1", content: "原提交", createdAt: 1, attachments: ["/uploads/1700000000001.png"],
   } };
 }
-function setup(onSend: (content: string, attachments?: readonly string[], owner?: string) => Promise<boolean>) {
+function setup(onSend: (content: string, attachments?: readonly string[], owner?: string) => Promise<boolean>, onCancelExecution = vi.fn()) {
   let n = 0, state = ready(), sendState: ChatSendState = { kind: "idle" };
   vi.mocked(uploadMedia).mockReset().mockImplementation(async uploaded => ({ url: `/uploads/${1700000000000 + ++n}.png`, name: uploaded.name, type: "image/png" }));
   vi.spyOn(URL, "createObjectURL").mockImplementation(blob => `blob:${(blob as File).name}`);
   const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-  const hooks = hookSession(() => ChatWorkspaceView({ state, sendState, getSendState: () => sendState, onSend, onRetry: vi.fn(), onSelectConversation: vi.fn(), onRetryConversationSwitch: vi.fn() }));
+  const hooks = hookSession(() => ChatWorkspaceView({ state, sendState, getSendState: () => sendState, onSend, onCancelExecution, onRetry: vi.fn(), onSelectConversation: vi.fn(), onRetryConversationSwitch: vi.fn() }));
   const shell = () => find(hooks.render(), ChatShell).props;
   const sender = () => find(shell().composer, Sender).props;
   const media = () => find(sender().attachments, AttachmentDrafts).props;
@@ -52,6 +54,24 @@ function setup(onSend: (content: string, attachments?: readonly string[], owner?
 }
 
 describe("Main Chat submission snapshots and next drafts", () => {
+  it("keeps text and attachment editing through generation/Stop, including upload; terminal settles only the original submission", async () => {
+    const cancel = vi.fn(), s = setup(async () => true, cancel);
+    const fact = await executionReader({ phase: "generating", terminal: false, outcome: null, ownerAvailable: true, cancelable: true })("A", encodeChatExecutionId("send", "client:1"));
+    s.execute({ ...pending(), serverExecution: fact });
+    expect(s.sender().action).toBe("stop"); expect(s.sender().disabled).toBe(false);
+    s.sender().onDraftChange!({ value: "下一条中文草稿", recoveryDrafts: [] });
+    vi.mocked(uploadMedia).mockImplementationOnce(() => new Promise(() => {}));
+    s.sender().onFiles!([file("uploading.png")]);
+    expect(s.sender().attachmentsReady).toBe(false); expect(s.media().disabled).toBe(false);
+    await s.sender().onStop!(); expect(cancel).toHaveBeenCalledOnce();
+    const id = s.media().items[0].id; s.media().store.remove("A", id);
+    s.execute({ ...pending(), serverExecution: { ...fact, cancelRequested: true, cancelable: false } });
+    expect(s.sender().action).toBe("stopping");
+    s.sender().onFiles!([file("next.png")]); await Promise.resolve();
+    s.execute({ kind: "idle", confirmedSend: { conversationId: "A", clientMessageId: "client:1" }, serverExecution: { ...fact, terminal: true, outcome: "cancelled", phase: "terminal" } });
+    expect(s.sender().action).toBe("send"); expect(s.media().items.map(item => item.file.name)).toEqual(["next.png"]);
+    s.select("B"); s.select("A"); expect(s.sender().initialDraft?.value).toBe("下一条中文草稿"); s.dispose();
+  });
   it.each(["success", "failure", "late"])("clears only the accepted %s submission recovery and keeps unrelated recoveries and next attachments", async outcome => {
     let finish!: (value: boolean) => void;
     const s = setup(() => new Promise<boolean>(resolve => { finish = resolve; }));

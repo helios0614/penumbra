@@ -1198,12 +1198,16 @@ describe("Chat execution stream lifecycle and error propagation", () => {
   it("exports only pure execution contracts, mappers, and clients", () => {
     expect(Object.keys(chatExecution).sort()).toEqual([
       "ChatExecutionContractError",
+      "cancelChatExecution",
+      "encodeChatExecutionId",
       "mapChatExecutionEvent",
       "mapDuplicateSendAcknowledgement",
       "mapRegenerateQuery",
       "mapSendMessageRequest",
       "openRegenerateExecution",
       "openSendExecution",
+      "readActiveChatExecution",
+      "readChatExecution",
     ]);
     expect(chatExecution).not.toHaveProperty("Message");
     expect(chatExecution).not.toHaveProperty("MessageHistoryState");

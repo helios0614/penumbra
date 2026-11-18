@@ -27,6 +27,8 @@ it("keeps the send caller and fetch alive across history/list refresh, rerenders
       signals.push(init.signal!);
       return new Response(new ReadableStream<Uint8Array>({ start(controller) { streams.set(owner, controller); } }), { headers: { "content-type": "text/event-stream" } });
     }
+    if (url.pathname.endsWith("/executions/results")) return Response.json({results:[],next_cursor:null});
+    if (url.pathname.endsWith("/executions/active")) return Response.json({ execution: null });
     if (url.pathname === "/api/conversations") {
       if (holdList) await new Promise<void>((resolve, reject) => {
         pendingGets.push(resolve);
@@ -51,6 +53,7 @@ it("keeps the send caller and fetch alive across history/list refresh, rerenders
   render(); await vi.advanceTimersByTimeAsync(0);
   let current = render();
   expect(current.workspace.state.status).toBe("ready");
+  await vi.advanceTimersByTimeAsync(0); current = render();
   await current.send.send({ conversationId: "lifecycle-A", content: "synthetic" });
   const assertLive = () => expect(signals.map(signal => signal.aborted)).toEqual(signals.map(() => false));
   for (let index = 0; index < 5; index++) { current = render(); assertLive(); }
@@ -63,6 +66,7 @@ it("keeps the send caller and fetch alive across history/list refresh, rerenders
   expect(canceledGets).toEqual(["conversations"]); assertLive();
   current.workspace.selectConversation("lifecycle-B"); await vi.advanceTimersByTimeAsync(0); current = render();
   expect(current.send.state.kind).toBe("idle");
+  await vi.advanceTimersByTimeAsync(0); current = render();
   await current.send.send({ conversationId: "lifecycle-B", content: "synthetic" }); assertLive();
   // Same cleanup path used by home navigation / unmount / StrictMode effect replay.
   hooks.dispose(); assertLive();
@@ -76,4 +80,28 @@ it("keeps the send caller and fetch alive across history/list refresh, rerenders
   expect(current.send.getState("lifecycle-B").kind).toBe("finalization-uncertain");
   assertLive(); hooks.dispose();
   expect(vi.getTimerCount()).toBe(0);
+});
+
+it("reads paginated stopped results on entry/remount and GET-only focus/manual recovery", async () => {
+  vi.stubGlobal("window", new EventTarget());
+  const conv = "refresh-stopped-lifecycle";
+  const fact = { conv_id:conv,execution_id:"send.cmVxdWVzdA",kind:"send",request_id:"request",phase:"terminal",terminal:true,
+    outcome:"cancelled",reason:"user_cancelled",cancel_requested:true,user_message_id:"deleted-user",target_message_id:null,
+    assistant_message_id:null,partial_text:"persisted safe partial",owner_available:false,cancelable:false };
+  const fetch = vi.fn<typeof globalThis.fetch>(async (path, init) => {
+    expect(init?.method ?? "GET").toBe("GET");
+    if (String(path).includes("/executions/results")) return Response.json({results:[{execution:fact,created_at:1}],next_cursor:null});
+    if (String(path).endsWith("/executions/active")) return Response.json({execution:null});
+    throw new Error(`Unexpected read ${path}`);
+  });
+  vi.stubGlobal("fetch",fetch);
+  const reconcileHistory = async () => ({persistedMessageIds:[],regenerateTarget:null});
+  const hooks = hookSession(() => useChatSend(reconcileHistory,conv));
+  hooks.render(); hooks.commit();
+  await vi.waitFor(() => expect(hooks.render().state.stoppedExecutions).toHaveLength(1));
+  await hooks.render().retryFinalization({manual:true});
+  window.dispatchEvent(new Event("focus"));
+  await vi.waitFor(() => expect(fetch.mock.calls.filter(([path]) => String(path).includes("/executions/results"))).toHaveLength(3));
+  expect(hooks.render().state.stoppedExecutions).toHaveLength(1);
+  expect(hooks.render().isExecutionActive()).toBe(false); hooks.dispose();
 });

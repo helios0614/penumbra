@@ -46,7 +46,7 @@ import { useSearchBack, hasOpenChatDialog } from "./search-history";
 import { normalizeSearch, searchTextRanges } from "./search-highlight";
 import { ChatShell } from "./ChatShell";
 import { ChatExecutionFeedback } from "./ChatExecutionFeedback";
-import { ChatExecutionReviewAction } from "./ChatExecutionReviewAction";
+import { getChatComposerAction } from "@/components/chat-workspace/chat-sender-policy";
 import {
   ChatWorkspaceEmpty,
   ChatWorkspaceError,
@@ -88,15 +88,17 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
   const chatSettings = useChatSettings(workspace, send);
   const realtime = useChatRealtime(workspace.state, send.state, {
     reconcileEvent: async event => {
+      // Apply mutation invalidation first so an older recovery read cannot revive it.
+      await workspace.reconcileSelectedConversationRealtimeEvent(event);
       const current = send.getState();
-      if ((current.kind === "finalization-uncertain" || current.kind === "regenerate-finalization-uncertain") && event.type !== "message-deleted") {
+      if (send.isExecutionActive() && (current.kind === "idle" || current.kind === "error" ||
+          current.kind === "finalization-uncertain" || current.kind === "regenerate-finalization-uncertain" || current.serverExecution?.cancelRequested)) {
         await send.retryFinalization();
-      } else await workspace.reconcileSelectedConversationRealtimeEvent(event);
+      }
     },
     reconcileAfterReconnect: async conversationId => {
-      const current = send.getState();
-      if (current.kind === "finalization-uncertain" || current.kind === "regenerate-finalization-uncertain") await send.retryFinalization();
-      else await workspace.reconcileSelectedConversationAfterReconnect(conversationId);
+      await workspace.reconcileSelectedConversationAfterReconnect(conversationId);
+      await send.reconcilePending();
     },
     refreshConversationList: async () => { await send.reconcilePending(); await workspace.refreshConversationList(); },
   });
@@ -154,7 +156,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
 
   const saveMessageEdit = async (original: Message, content: string) => {
     const current = workspace.getState();
-    const reason = messageEditWorkspaceReason(current, send.getState(original.conversationId)) ?? messageEditContentReason(original);
+    const reason = messageEditWorkspaceReason(current, send.getState(original.conversationId), original.id) ?? messageEditContentReason(original);
     if (editSaving.current || reason) throw new MessageEditError(reason ?? "正在保存消息。");
     if (current.status !== "ready" || current.workspace.selectedConversationId !== original.conversationId ||
         !current.workspace.history?.messages.some(message => message.id === original.id && message.rawRole === original.rawRole)) {
@@ -170,7 +172,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
 
   const removeMessage = async (original: Message) => {
     const current = workspace.getState();
-    const reason = messageDeleteWorkspaceReason(current, send.getState(original.conversationId));
+    const reason = messageDeleteWorkspaceReason(current, send.getState(original.conversationId), original.id);
     if (editSaving.current || reason) throw new MessageDeleteError(reason ?? "正在更新消息。");
     if (current.status !== "ready" || current.workspace.selectedConversationId !== original.conversationId ||
         !["user", "assistant", "system"].includes(original.rawRole)) {
@@ -212,7 +214,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
       onEditMessage={saveMessageEdit}
       onDeleteMessage={removeMessage}
       onRetryFinalization={recoverExecution}
-      onReleaseAfterReview={send.releaseAfterReview}
+      onCancelExecution={send.cancel}
       onSaveMainSelection={workspace.saveMainSelection}
       chatSettings={chatSettings}
       onRefreshState={refreshState}
@@ -252,7 +254,7 @@ export interface ChatWorkspaceViewProps {
   readonly onEditMessage?: (message: Message, content: string) => Promise<void>;
   readonly onDeleteMessage?: (message: Message) => Promise<void>;
   readonly onRetryFinalization?: () => void | Promise<void>;
-  readonly onReleaseAfterReview?: () => void;
+  readonly onCancelExecution?: () => void | Promise<void>;
   readonly onSaveMainSelection?: (conversationId: string, selection: MainSelection) => Promise<void>;
   readonly chatSettings?: ChatSettingsUi;
   readonly onRefreshState?: () => Promise<void>;
@@ -282,7 +284,7 @@ export function ChatWorkspaceView({
   onEditMessage,
   onDeleteMessage,
   onRetryFinalization,
-  onReleaseAfterReview,
+  onCancelExecution,
   onSaveMainSelection,
   chatSettings,
   onRefreshState,
@@ -313,8 +315,8 @@ export function ChatWorkspaceView({
   const pasteScopeRef = useRef<HTMLDivElement>(null);
   const draftOwner = ownerRef.current;
   useEffect(() => { setEditingMessage(null); }, [draftOwner]);
-  // Workspace readiness gates editing; execution ownership only gates submission.
-  const draftEditable = getChatSenderAvailability(state, INITIAL_CHAT_SEND_STATE).enabled && !modelSelectionPending && onSend !== undefined;
+  // A valid draft owner permits editing independently of model/execution readiness.
+  const draftEditable = state.status === "ready" && draftOwner !== null && onSend !== undefined;
   const receiveFiles = useCallback((files: readonly File[]) => {
     if (draftOwner && ownerRef.current === draftOwner) media.store.add(draftOwner, files);
   }, [draftOwner, media.store]);
@@ -581,10 +583,12 @@ export function ChatWorkspaceView({
           onDraftChange={draftOwner ? (draft) => { drafts.current.set(draftOwner, draft); } : undefined}
           apiRef={senderRef}
           disabled={!draftEditable}
+          action={getChatComposerAction(sendState)}
+          onStop={onCancelExecution}
           submitDisabled={!sender.enabled || modelSelectionPending || !!chatSettings?.state.saving}
           placeholder="输入消息…"
           statusMessage={executionActive || executionNoticeVisible ? undefined : modelSelectionPending ? "正在切换模型…" : sender.statusMessage ?? undefined}
-          feedback={<><ChatExecutionNotice state={sendState} onRetryFinalization={onRetryFinalization} onReleaseAfterReview={onReleaseAfterReview} />
+          feedback={<><ChatExecutionNotice state={sendState} onRetryFinalization={onRetryFinalization} />
             <SubmissionRecovery items={media.recoveries.filter(item => !(executionActive && "optimisticUser" in sendState && item.clientMessageId === sendState.optimisticUser?.clientMessageId))} locked={!draftEditable || executionActive} onRestore={item => {
               if (!draftOwner || ownerRef.current !== draftOwner || executionActive || !draftEditable) return;
               if (!media.store.getRecoveries(draftOwner).some(current => current.id === item.id)) return;
@@ -657,17 +661,17 @@ export function ChatWorkspaceView({
               messages={messages}
               onEdit={onEditMessage ? messageId => {
                 const message = workspace.history?.messages.find(item => item.id === messageId);
-                if (message && !messageEditWorkspaceReason(state, getSendState?.(draftOwner ?? undefined) ?? sendState) && !messageEditContentReason(message)) setEditingMessage(message);
+                if (message && !messageEditWorkspaceReason(state, getSendState?.(draftOwner ?? undefined) ?? sendState, messageId) && !messageEditContentReason(message)) setEditingMessage(message);
               } : undefined}
               onDelete={onDeleteMessage ? messageId => {
                 const message = workspace.history?.messages.find(item => item.id === messageId);
                 if (message && ["user", "assistant", "system"].includes(message.rawRole) &&
-                    !messageDeleteWorkspaceReason(state, getSendState?.(draftOwner ?? undefined) ?? sendState)) setDeletingMessage(message);
+                    !messageDeleteWorkspaceReason(state, getSendState?.(draftOwner ?? undefined) ?? sendState, messageId)) setDeletingMessage(message);
               } : undefined}
-              deleteUnavailableReason={messageDeleteWorkspaceReason(state, sendState)}
+              deleteUnavailableReason={messageId => messageDeleteWorkspaceReason(state, sendState, messageId)}
               editUnavailableReason={messageId => {
                 const message = workspace.history?.messages.find(item => item.id === messageId);
-                return messageEditWorkspaceReason(state, sendState) ?? (message ? messageEditContentReason(message) : "消息尚未确认保存。");
+                return messageEditWorkspaceReason(state, sendState, messageId) ?? (message ? messageEditContentReason(message) : "消息尚未确认保存。");
               }}
               userName={userName}
               onInsert={draftEditable && !managementLocked && !modelSelectionPending ? (text) => {
@@ -693,14 +697,14 @@ export function ChatWorkspaceView({
       {deletingMessage?.conversationId === draftOwner && onDeleteMessage && <MessageDeleteDialog
         key={`${deletingMessage.conversationId}:${deletingMessage.id}`}
         message={deletingMessage}
-        unavailableReason={messageDeleteWorkspaceReason(state, sendState)}
+        unavailableReason={messageDeleteWorkspaceReason(state, sendState, deletingMessage.id)}
         onDelete={onDeleteMessage}
         onClose={() => setDeletingMessage(null)}
       />}
       {editingMessage?.conversationId === draftOwner && onEditMessage && <MessageEditDialog
         key={`${editingMessage.conversationId}:${editingMessage.id}`}
         message={editingMessage}
-        unavailableReason={messageEditWorkspaceReason(state, sendState)}
+        unavailableReason={messageEditWorkspaceReason(state, sendState, editingMessage.id)}
         onSave={onEditMessage}
         onClose={() => setEditingMessage(null)}
       />}
@@ -737,14 +741,18 @@ function ChatRealtimeNotice({
   );
 }
 
-function ChatExecutionNotice({ state, onRetryFinalization, onReleaseAfterReview }: {
+function ChatExecutionNotice({ state, onRetryFinalization }: {
   readonly state: ChatSendState;
   readonly onRetryFinalization?: () => void | Promise<void>;
-  readonly onReleaseAfterReview?: () => void;
 }) {
   const error = executionNoticeError(state);
-  if (error === null) return state.recoveries?.length ? <div data-chat-execution-feedback className="mx-auto mb-2 flex max-w-[720px] items-center gap-2 text-xs text-muted-strong">
-    <span role="status">上次回复结果待确认，临时回复已保留</span>
+  const waiting = getChatComposerAction(state) === "waiting";
+  if (state.controlError || waiting) return <div data-chat-execution-feedback className="mx-auto mb-2 flex max-w-[720px] items-center gap-2 text-xs text-muted-strong">
+    <span role="status">{state.controlError ?? (state.serverExecution?.phase === "finalizing" ? "正在完成收尾，请等待或重新核对。" : "执行状态待确认，请重新核对。")}</span>
+    {onRetryFinalization && <Button variant="ghost" size="compact" disabled={state.discovering} onClick={() => void onRetryFinalization()}>重新核对</Button>}
+  </div>;
+  if (error === null) return state.resultsError || state.recoveries?.length ? <div data-chat-execution-feedback className="mx-auto mb-2 flex max-w-[720px] items-center gap-2 text-xs text-muted-strong">
+    <span role="status">{state.resultsError ?? "上次回复结果待确认，临时回复已保留"}</span>
     {onRetryFinalization && <Button variant="ghost" size="compact" onClick={() => void onRetryFinalization()}>重新核对</Button>}
   </div> : null;
   if (state.kind === "error" && state.confirmedFailure && state.failedMessageId) return null;
@@ -754,14 +762,14 @@ function ChatExecutionNotice({ state, onRetryFinalization, onReleaseAfterReview 
   if (uncertain || checking) return <div data-chat-execution-feedback className="mx-auto mb-2 flex max-w-[720px] items-center gap-2 text-xs text-muted-strong">
     <span role="status" title={error.message}>回复结果待确认</span>
     {onRetryFinalization && <Button variant="ghost" size="compact" disabled={checking} onClick={() => void onRetryFinalization()}>重新核对</Button>}
-    {uncertain && onReleaseAfterReview && <ChatExecutionReviewAction ready={state.recoveryReadSucceeded === true} onRelease={onReleaseAfterReview} />}
   </div>;
   // Streamed provider errors are already displayed next to their partial body.
   if (state.kind !== "error") return null;
-  return <ChatExecutionFeedback summary="暂时无法发送" detail={error.message} uncertain={false} reviewReady={false} onRefresh={onRetryFinalization} />;
+  return <ChatExecutionFeedback summary="暂时无法发送" detail={error.message} uncertain={false} onRefresh={onRetryFinalization} />;
 }
 
 function executionNoticeError(state: ChatSendState) {
+  if (state.serverExecution?.terminal && state.kind !== "error") return null;
   switch (state.kind) {
     case "error":
     case "finalization-uncertain":

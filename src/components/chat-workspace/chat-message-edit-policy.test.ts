@@ -16,14 +16,20 @@ describe("saved message editing safety", () => {
   it.each(["system", "tool", "cam_trigger"])("denies %s messages", role => {
     expect(messageEditContentReason(mapMessage(messageWire({ role })))).not.toBeNull();
   });
-  it.each(["sending-user", "streaming", "finalizing", "finalization-uncertain", "regenerate-streaming", "regenerate-finalizing", "regenerate-finalization-uncertain"])("locks %s while allowing another conversation", kind => {
-    expect(messageEditWorkspaceReason(ready, { kind, conversationId: "conv_a" } as ChatSendState)).not.toBeNull();
+  it.each(["sending-user", "streaming", "finalizing", "finalization-uncertain", "regenerate-streaming", "regenerate-finalizing", "regenerate-finalization-uncertain"])("allows other persistent messages during %s", kind => {
+    expect(messageEditWorkspaceReason(ready, { kind, conversationId: "conv_a" } as ChatSendState, "old-message")).toBeNull();
     expect(messageEditWorkspaceReason(ready, { kind, conversationId: "conv_b" } as ChatSendState)).toBeNull();
   });
-  it("allows confirmed execution completion/failure and denies unknown failure", () => {
+  it("does not block unrelated messages on an unknown transport error", () => {
     expect(messageEditWorkspaceReason(ready, { kind: "idle" })).toBeNull();
     expect(messageEditWorkspaceReason(ready, { kind: "error", confirmedFailure: true } as ChatSendState)).toBeNull();
-    expect(messageEditWorkspaceReason(ready, { kind: "error" } as ChatSendState)).not.toBeNull();
+    expect(messageEditWorkspaceReason(ready, { kind: "error" } as ChatSendState)).toBeNull();
     expect(messageEditWorkspaceReason({ status: "loading" }, { kind: "idle" })).not.toBeNull();
   });
+  it("protects only this live send's accepted User", () => {
+    const state = { kind: "streaming", conversationId: "conv_a", optimisticUser: { persistedMessageId: "current-user" } } as ChatSendState;
+    expect(messageEditWorkspaceReason(ready, state, "current-user")).toContain("当前请求");
+    expect(messageEditWorkspaceReason(ready, state, "other-user")).toBeNull();
+  });
+
 });

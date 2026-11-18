@@ -1,3 +1,4 @@
+import { executionReader, pendingExecutionReader } from "@/test-fixtures/chat-execution";
 import { describe, expect, it, vi } from "vitest";
 import { createChatSendController, type ChatSendState } from "./index";
 import { mapMessage } from "@/domain/message";
@@ -15,7 +16,7 @@ async function* stream(values: ChatExecutionEvent[]) { for (const value of value
 describe("streaming recovery without over-defensive locks", () => {
   it("treats a new start as a fresh attempt and drops the previous attempt's error", async () => {
     const row = saved("assistant-b", "second attempt");
-    const controller = createChatSendController({ createUuid: () => "client-a",
+    const controller = createChatSendController({ readExecution: executionReader(), createUuid: () => "client-a",
       openExecution: async () => ({ kind: "stream", events: stream([
         { type: "start", assistantMessageId: "assistant-a" },
         { type: "failure", messageId: "assistant-a", code: "provider_request_failed", error: "当前回复生成失败。" },
@@ -33,7 +34,7 @@ describe("streaming recovery without over-defensive locks", () => {
 
   it("adopts the receipt's assistant when the streamed ID never reaches history", async () => {
     const row = saved("assistant-b");
-    const controller = createChatSendController({ createUuid: () => "client-a",
+    const controller = createChatSendController({ readExecution: executionReader(), createUuid: () => "client-a",
       openExecution: async () => ({ kind: "stream", events: stream([{ type: "start", assistantMessageId: "assistant-a" }]) }),
       lookupSendResult: async () => receipt("assistant-b"),
       reconcileHistory: async () => ({ persistedMessageIds: ["user-a", row.id], regenerateTarget: null, assistants: [row] }),
@@ -46,7 +47,7 @@ describe("streaming recovery without over-defensive locks", () => {
 
   it("keeps an unknown result on explicit 重新核对 after HTTP history was read", async () => {
     const row = saved("assistant-b");
-    const controller = createChatSendController({ createUuid: () => "client-a",
+    const controller = createChatSendController({ readExecution: pendingExecutionReader, createUuid: () => "client-a",
       openExecution: async () => ({ kind: "stream", events: stream([{ type: "start", assistantMessageId: "assistant-a" }]) }),
       lookupSendResult: async () => receipt(null),
       reconcileHistory: async () => ({ persistedMessageIds: ["user-a", row.id], regenerateTarget: null, assistants: [row] }),
@@ -56,7 +57,7 @@ describe("streaming recovery without over-defensive locks", () => {
     await controller.retryFinalization(); // automatic retries keep the protection
     expect(controller.getState().kind).toBe("finalization-uncertain");
     await controller.retryFinalization({ manual: true });
-    expect(controller.getState()).toMatchObject({ kind: "finalization-uncertain", executionId: "execution:client-a" });
+    expect(controller.getState()).toMatchObject({ kind: "finalization-uncertain", executionId: "send.Y2xpZW50LWE" });
     controller.dispose();
   });
 });

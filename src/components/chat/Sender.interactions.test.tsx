@@ -1,3 +1,4 @@
+import { pendingExecutionReader } from "@/test-fixtures/chat-execution";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Sender } from "./Sender";
@@ -43,6 +44,23 @@ function mountMeasurements(s: ReturnType<typeof session>, compactHeight = 24, co
 }
 
 describe("floating Sender interactions", () => {
+  it("stops only by the explicit button, with an empty draft or pending upload; keeps IME and next draft", async () => {
+    const stop = vi.fn(), send = vi.fn(); let action: "stop" | "stopping" | "waiting" = "stop";
+    const s = hookSession(() => Sender({ onSend: send, onStop: stop, action, hasAttachments: true, attachmentsReady: false }));
+    const input = () => find(s.render(), "textarea").props;
+    expect(input().disabled).not.toBe(true);
+    const button = () => find(s.render(), Button, p => p["aria-label"] === (action === "stopping" ? "停止中" : "停止生成")).props;
+    expect(button().disabled).toBe(false);
+    input().onChange?.({ target: { value: "下一条中文" } } as never);
+    input().onCompositionStart?.({} as never);
+    for (const flags of [{}, { shiftKey: true }, { repeat: true }, { nativeEvent: { keyCode: 229 } }]) {
+      input().onKeyDown?.({ key: "Enter", nativeEvent: {}, preventDefault: vi.fn(), ...flags } as never);
+    }
+    expect(stop).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled();
+    button().onClick?.({} as never); expect(stop).toHaveBeenCalledOnce(); expect(input().value).toBe("下一条中文");
+    action = "stopping"; expect(button().disabled).toBe(true);
+    action = "waiting"; expect(button().disabled).toBe(true); s.dispose();
+  });
   it.each(["none", "enter", "shift-enter"] as const)("keeps button submission and raw text in %s mode", async mode => {
     vi.mocked(useSendShortcut).mockReturnValue(mode);
     const onSend = vi.fn(() => true), s = session(onSend);
@@ -185,7 +203,7 @@ describe("floating Sender interactions", () => {
     const stream = new ReadableStream<Uint8Array>({ start(writer) { body = writer; } });
     const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(() => new Promise((resolve) => { accept = resolve; }));
     vi.stubGlobal("fetch", fetch);
-    const controller = createChatSendController({ createUuid: () => "draft-acceptance", reconcileHistory: async () => {
+    const controller = createChatSendController({ readExecution: pendingExecutionReader, createUuid: () => "draft-acceptance", reconcileHistory: async () => {
       throw new Error("synthetic history unavailable");
     } });
     const s = session((content) => controller.send({ conversationId: "synthetic", content }));
@@ -203,7 +221,7 @@ describe("floating Sender interactions", () => {
   it("returns the pending original when opening fails and the real controller enters unknown recovery", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockRejectedValue(new TypeError("synthetic offline"));
     vi.stubGlobal("fetch", fetch);
-    const controller = createChatSendController({ createUuid: () => "draft-unknown", reconcileHistory: async () => {
+    const controller = createChatSendController({ readExecution: pendingExecutionReader, createUuid: () => "draft-unknown", reconcileHistory: async () => {
       throw new Error("synthetic history unavailable");
     } });
     const s = session((content) => controller.send({ conversationId: "synthetic", content }));

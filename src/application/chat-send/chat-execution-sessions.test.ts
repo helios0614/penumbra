@@ -1,3 +1,4 @@
+import { executionReader, pendingExecutionReader } from "@/test-fixtures/chat-execution";
 import { describe, expect, it, vi } from "vitest";
 import { createChatExecutionSessions } from "./chat-execution-sessions";
 import { isDefiniteChatRejection } from "./chat-send-rejection";
@@ -24,7 +25,7 @@ describe("conversation-owned executions and acceptance evidence", () => {
     const wires = { A: channel(), B: channel() };
     const stored = new Set<string>(), open = vi.fn(async (id: string) => ({ kind: "stream" as const, events: wires[id as keyof typeof wires].events() }));
     let uuid = 0;
-    const sessions = createChatExecutionSessions({ createUuid: () => String(++uuid), openExecution: open,
+    const sessions = createChatExecutionSessions({ readExecution: (conv, id) => (stored.has(conv) ? executionReader({ assistantMessageId: conv + "-reply" }) : pendingExecutionReader)(conv, id), createUuid: () => String(++uuid), openExecution: open,
       reconcileHistory: async id => ({ persistedMessageIds: stored.has(id) ? [id + "-reply"] : [], regenerateTarget: null, assistants: stored.has(id) ? [{ id: id + "-reply", content: id + " saved", thinking: null, simpleThink: null }] : [] }),
     });
     const a = sessions.get("A"), b = sessions.get("B");
@@ -53,15 +54,15 @@ describe("conversation-owned executions and acceptance evidence", () => {
       yield { type: "start" as const, assistantMessageId: "A-reply" };
       yield { type: "chunk" as const, content: "A partial" };
     })() }));
-    const sessions = createChatExecutionSessions({ createUuid: () => "A-client", openExecution: open,
+    const sessions = createChatExecutionSessions({ readExecution: (conv, id) => (committed ? executionReader({ assistantMessageId: "A-reply" }) : pendingExecutionReader)(conv, id), createUuid: () => "A-client", openExecution: open,
       reconcileHistory: async () => ({ persistedMessageIds: committed ? ["A-reply"] : [], regenerateTarget: null }),
     });
     const a = sessions.get("A");
     await a.send({ conversationId: "A", content: "A question" });
     await wait(() => sessions.state("A").kind === "finalization-uncertain");
-    a.releaseAfterReview();
-    expect(sessions.active("A")).toBe(false);
-    expect(sessions.state("A").recoveries).toHaveLength(1);
+    expect(a).not.toHaveProperty("releaseAfterReview");
+    expect(sessions.active("A")).toBe(true);
+    expect(sessions.state("A").recoveries).toBeUndefined();
     expect(sessions.state("B")).toEqual({ kind: "idle" });
     committed = true; await sessions.reconcilePending();
     expect(sessions.state("A").recoveries).toBeUndefined();
@@ -71,7 +72,7 @@ describe("conversation-owned executions and acceptance evidence", () => {
 
   it.each([400, 401, 403, 408, 422, 429, 499, 524])("keeps bare HTTP %s unknown without another POST", async status => {
     const open = vi.fn(async () => { throw new ApiError("proxy", status, "<html>proxy response</html>"); });
-    const sessions = createChatExecutionSessions({ createUuid: () => "client-a", openExecution: open,
+    const sessions = createChatExecutionSessions({ readExecution: pendingExecutionReader, createUuid: () => "client-a", openExecution: open,
       reconcileHistory: async () => ({ persistedMessageIds: [], regenerateTarget: null, assistants: [] }),
     });
     await sessions.get("A").send({ conversationId: "A", content: "input" });
@@ -88,7 +89,7 @@ describe("conversation-owned executions and acceptance evidence", () => {
     expect(isDefiniteChatRejection(new ApiError("upstream", 400, { detail: { code: "provider_request_failed" } }))).toBe(false);
     const read = vi.fn(), open = vi.fn(async () => { throw error; });
     let uuid = 0;
-    const sessions = createChatExecutionSessions({ createUuid: () => "client-" + ++uuid, openExecution: open, reconcileHistory: read });
+    const sessions = createChatExecutionSessions({ readExecution: pendingExecutionReader, createUuid: () => "client-" + ++uuid, openExecution: open, reconcileHistory: read });
     const controller = sessions.get("A");
     await controller.send({ conversationId: "A", content: "input", generation: { attachments: ["/uploads/a.png"] } });
     expect(controller.getState()).toMatchObject({ kind: "error", rejectedSubmission: { clientMessageId: "client-1", content: "input", attachments: ["/uploads/a.png"] } });

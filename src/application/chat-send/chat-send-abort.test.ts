@@ -1,3 +1,4 @@
+import { executionReader, pendingExecutionReader } from "@/test-fixtures/chat-execution";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openSendExecution } from "@/application/chat-execution";
 import { readChatSendResult } from "./chat-send-result";
@@ -98,7 +99,7 @@ describe("send abort provenance through the production transport", () => {
 
   it("identifies reader cancellation after a protocol error without any controller abort", async () => {
     const wire = transport();
-    const sessions = createChatExecutionSessions({ reconcileHistory: emptyHistory, createUuid: () => "synthetic-client" });
+    const sessions = createChatExecutionSessions({ readExecution: pendingExecutionReader, reconcileHistory: emptyHistory, createUuid: () => "synthetic-client" });
     const pending = sessions.get("synthetic-A").send({ conversationId: "synthetic-A", content: "synthetic" });
     wire.headers(); await pending;
     wire.emit({ type: "start", id: "" });
@@ -111,7 +112,7 @@ describe("send abort provenance through the production transport", () => {
 
   it("identifies real network rejection without an AbortController call", async () => {
     const wire = transport();
-    const controller = createChatSendController({ reconcileHistory: emptyHistory });
+    const controller = createChatSendController({ readExecution: pendingExecutionReader, reconcileHistory: emptyHistory });
     const pending = controller.send({ conversationId: "synthetic-A", content: "synthetic" });
     wire.disconnect(); await pending; await vi.advanceTimersByTimeAsync(0);
     expect(controller.getState()).toMatchObject({ kind: "finalization-uncertain", executionError: { code: "network" } });
@@ -122,7 +123,7 @@ describe("send abort provenance through the production transport", () => {
 
   it("locates explicit controller disposal as a different caller abort path", async () => {
     const wire = transport();
-    const controller = createChatSendController({ reconcileHistory: emptyHistory });
+    const controller = createChatSendController({ readExecution: pendingExecutionReader, reconcileHistory: emptyHistory });
     const pending = controller.send({ conversationId: "synthetic-A", content: "synthetic" });
     controller.dispose(); await pending;
     expect(wire.trace.filter(row => row.source === "abort")).toHaveLength(2);
@@ -141,7 +142,7 @@ describe("send abort provenance through the production transport", () => {
       return Promise.resolve(Response.json({ conv_id: "synthetic-A", client_msg_id: "synthetic-client", user_message_id: "saved-user", assistant_message_id: persisted ? "saved-assistant" : null }));
     });
     vi.stubGlobal("fetch", fetch);
-    const sessions = createChatExecutionSessions({ createUuid: () => "synthetic-client", lookupSendResult: readChatSendResult,
+    const sessions = createChatExecutionSessions({ readExecution: (conv, id) => (persisted ? executionReader({ assistantMessageId: "saved-assistant" }) : pendingExecutionReader)(conv, id), createUuid: () => "synthetic-client", lookupSendResult: readChatSendResult,
       openExecution: (owner, input, options) => openSendExecution(owner, input, { ...options, timeoutMs: 30_000 }),
       reconcileHistory: async () => ({ persistedMessageIds: ["saved-user", ...(persisted ? ["saved-assistant"] : [])], regenerateTarget: null,
         assistants: persisted ? [{ id: "saved-assistant", content: "synthetic", thinking: null, simpleThink: null }] : [] }),

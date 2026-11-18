@@ -322,16 +322,16 @@ describe("ChatWorkspaceView ready states", () => {
     });
 
     expect(html).toContain("临时新回复");
-    expect(html).not.toContain("原回复");
+    expect(html).toContain("原回复");
     expect(html).not.toContain("正在输入");
     expect(html).not.toContain("chat-generation");
     expect(html).not.toMatch(/<textarea[^>]*disabled/);
-    expect(html).toMatch(/aria-label="发送消息"[^>]*disabled|disabled=""[^>]*aria-label="发送消息"/);
+    expect(html).toMatch(/aria-label="停止生成"[^>]*disabled|disabled=""[^>]*aria-label="停止生成"/);
     expect(html).toContain('aria-label="打开会话会话 A"');
     expect(html).not.toContain('aria-label="当前无法切换到会话 A"');
   });
 
-  it.each([false, true])("shows uncertainty and offers explicit release only after this HTTP read succeeds: %s", recoveryReadSucceeded => {
+  it.each([false, true])("keeps uncertainty and removes release regardless of history read: %s", recoveryReadSucceeded => {
     const selected = conversation("conv_a", "会话 A");
     const messageText = "回复已结束，但暂时无法确认保存状态。";
     const sendState: ChatSendState = {
@@ -367,16 +367,16 @@ describe("ChatWorkspaceView ready states", () => {
       onSend: vi.fn(async () => true),
       sendState,
       onRetryFinalization: vi.fn(),
-      onReleaseAfterReview: vi.fn(),
+      onCancelExecution: vi.fn(),
     });
 
     expect(html).toContain(`title="${messageText}"`);
     expect(html).toContain("回复结果待确认");
     expect(html).toContain("重新核对");
-    expect(html.includes("返回编辑")).toBe(recoveryReadSucceeded);
+    expect(html).not.toContain("返回编辑");
     expect(html.indexOf("data-chat-execution-feedback")).toBeGreaterThan(html.indexOf("</header>"));
     expect(html).toContain("临时新回复");
-    expect(html.includes("原回复")).toBe(recoveryReadSucceeded);
+    expect(html).toContain("原回复");
   });
 
   it("does not expose raw workspace payload fields or unsafe unknown role labels", () => {
@@ -426,6 +426,18 @@ describe("ChatView accepted-user projection during an unfinished assistant", () 
   });
 });
 
+it("keeps stopped-result recovery errors light, read-only and independent of the send button", () => {
+  const selected = conversation("conv_a", "会话 A");
+  const html = render(ready(snapshot([selected], selected, history("conv_a", []))), undefined, {
+    sendState: {kind:"idle",resultsError:"已停止回复暂时无法完整读取；已显示的内容已保留，可重新核对。"},
+    onRetryFinalization:async () => {}, onSend:async () => true,
+  });
+  expect(html).toContain("已停止回复暂时无法完整读取");
+  expect(html).toContain("重新核对");
+  expect(html).not.toContain("返回编辑");
+  expect(html).toContain('aria-label="发送消息"');
+});
+
 function render(
   state: ChatWorkspaceControllerState,
   onBack?: () => void,
@@ -436,7 +448,7 @@ function render(
     readonly sendState?: ChatSendState;
     readonly realtimeState?: ChatRealtimeState;
     readonly onRetryFinalization?: () => Promise<void>;
-    readonly onReleaseAfterReview?: () => void;
+    readonly onCancelExecution?: () => void;
   } = {},
 ): string {
   const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -454,7 +466,7 @@ function render(
       sendState={props.sendState}
       realtimeState={props.realtimeState}
       onRetryFinalization={props.onRetryFinalization}
-      onReleaseAfterReview={props.onReleaseAfterReview}
+      onCancelExecution={props.onCancelExecution}
     />,
   );
   expect(consoleError).not.toHaveBeenCalled();

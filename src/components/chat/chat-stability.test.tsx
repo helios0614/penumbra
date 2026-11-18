@@ -1,3 +1,4 @@
+import { executionReader, pendingExecutionReader } from "@/test-fixtures/chat-execution";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, it, vi } from "vitest";
 import { createChatSendController, createRegeneratePersistenceProjection, type ChatSendState } from "@/application/chat-send";
@@ -48,7 +49,7 @@ it("keeps same-chunk partial body, real error and canonical target through faile
       (regenerate ? `event: persisted\ndata: ${JSON.stringify({ id: "failed-id", content, thinking: null, drift: null })}\n\n` : "");
     return new Response(payload, { headers: { "content-type": "text/event-stream" } });
   });
-  const controller = createChatSendController({ createUuid: () => "synthetic", reconcileHistory: async () => ({
+  const controller = createChatSendController({ readExecution: executionReader({ assistantMessageId: "failed-id" }), createUuid: () => "synthetic", reconcileHistory: async () => ({
     persistedMessageIds: history.map(m => m.id), regenerateTarget: history[0] ? createRegeneratePersistenceProjection(history[0]) : null,
   }) });
   await controller.send({ conversationId: "conv_a", content: "合成问题" }); await settled(controller);
@@ -64,7 +65,7 @@ it("keeps same-chunk partial body, real error and canonical target through faile
 it("shows actual HTTP 524 inside an unconfirmed assistant and keeps regenerate locked", async () => {
   const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response("<html>Cookie=synthetic-secret</html>", { status: 524 }));
   stubChatFetch(fetch);
-  const controller = createChatSendController({ createUuid: () => "http", reconcileHistory: async () => ({ persistedMessageIds: [], regenerateTarget: null }) });
+  const controller = createChatSendController({ readExecution: pendingExecutionReader, createUuid: () => "http", reconcileHistory: async () => ({ persistedMessageIds: [], regenerateTarget: null }) });
   await controller.send({ conversationId: "conv_a", content: "问题" }); await settled(controller);
   expect(controller.getState().kind).toBe("finalization-uncertain");
   expect(html([], controller.getState())).toContain("HTTP 524");
@@ -82,7 +83,7 @@ it("rejects unsafe legacy diagnostic lines without leaking private commands", ()
 
 it("keeps a declared model failure unknown until its assistant is actually persisted", async () => {
   let saved = false;
-  const controller = createChatSendController({ createUuid: () => "failure-not-saved",
+  const controller = createChatSendController({ readExecution: (conv, id) => (saved ? executionReader({ outcome: "failed", assistantMessageId: "failed-id" }) : pendingExecutionReader)(conv, id), createUuid: () => "failure-not-saved",
     openExecution: async () => ({ kind: "stream", events: (async function* () {
       yield { type: "start" as const, assistantMessageId: "failed-id" };
       yield { type: "chunk" as const, content: "临时正文\n" + failure };

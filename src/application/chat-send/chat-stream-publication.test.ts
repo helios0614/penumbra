@@ -1,3 +1,4 @@
+import { executionReader } from "@/test-fixtures/chat-execution";
 import { describe, expect, it } from "vitest";
 import type { ChatExecutionEvent } from "@/application/chat-execution";
 import { createChatSendController } from "./chat-send-controller";
@@ -9,7 +10,7 @@ async function stream(events: readonly ChatExecutionEvent[], regenerate = false)
   const end = new Promise<void>(resolve => { close = resolve; });
   const states: ChatSendState[] = [];
   async function* source() { yield* events; consumed(); await end; }
-  const controller = createChatSendController({
+  const controller = createChatSendController({ readExecution: executionReader(),
     createUuid: () => "publication-test",
     openExecution: async () => ({ kind: "stream", events: source() }),
     openRegenerateExecution: async () => ({ kind: "stream", events: source() }),

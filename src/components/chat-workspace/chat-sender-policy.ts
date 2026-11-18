@@ -1,4 +1,4 @@
-import { INITIAL_CHAT_SEND_STATE, type ChatSendState } from "@/application/chat-send";
+import { INITIAL_CHAT_SEND_STATE, isChatExecutionActive, type ChatSendState } from "@/application/chat-send";
 import type { ChatSetupStatus } from "@/application/chat-setup";
 import type { ChatWorkspaceControllerState } from "@/components/chat-workspace/chat-workspace-controller";
 
@@ -9,7 +9,18 @@ export type ChatSenderAvailability = {
 };
 
 export function scopedChatExecution(state: ChatSendState, conversationId: string | null): ChatSendState {
-  return "conversationId" in state && state.conversationId && state.conversationId !== conversationId ? INITIAL_CHAT_SEND_STATE : state;
+  const owner = state.executionConversationId ?? state.serverExecution?.conversationId ?? ("conversationId" in state ? state.conversationId : undefined);
+  return owner && owner !== conversationId ? INITIAL_CHAT_SEND_STATE : state;
+}
+
+export function getChatComposerAction(state: ChatSendState): "send" | "stop" | "stopping" | "waiting" {
+  if (!isChatExecutionActive(state)) return "send";
+  if (state.cancelling) return "stopping";
+  if (state.discovering || state.discoveryUnknown || state.controlError) return "waiting";
+  if (state.serverExecution?.cancelRequested) return state.serverExecution.ownerAvailable ? "stopping" : "waiting";
+  if (state.serverExecution) return state.serverExecution.cancelable ? "stop" : "waiting";
+  // The request identity is known before POST acceptance/response headers.
+  return "executionId" in state ? "stop" : "waiting";
 }
 
 export function getChatSenderAvailability(
@@ -17,6 +28,8 @@ export function getChatSenderAvailability(
   sendState: ChatSendState,
 ): ChatSenderAvailability {
   if (workspaceState.status === "ready") sendState = scopedChatExecution(sendState, workspaceState.workspace.selectedConversationId);
+  if (sendState.discovering || sendState.discoveryUnknown || sendState.serverExecution && !sendState.serverExecution.terminal) return unavailable("上一条执行尚未终结，请等待或重新核对。");
+  if (sendState.serverExecution?.terminal) sendState = INITIAL_CHAT_SEND_STATE;
   if (sendState.kind === "sending-user") {
     return unavailable("正在发送消息。");
   }

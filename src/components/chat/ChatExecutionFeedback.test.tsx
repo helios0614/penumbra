@@ -11,7 +11,7 @@ vi.mock("react", async (importOriginal) => {
   return { ...actual, ...Object.fromEntries(["useState", "useRef", "useCallback", "useId", "useEffect", "useLayoutEffect"].map((key) => [key, vi.fn(actual[key as keyof typeof actual] as never)])) };
 });
 afterEach(() => vi.restoreAllMocks());
-const base = { summary: "回复结果待确认", detail: "安全的错误说明", uncertain: true, reviewReady: false };
+const base = { summary: "回复结果待确认", detail: "安全的错误说明", uncertain: true };
 describe("layered Chat recovery feedback", () => {
   it("starts with one compact accessible entry and keeps technical explanation and actions collapsed", () => {
     const html = renderToStaticMarkup(<ChatExecutionFeedback {...base} onRefresh={vi.fn()} />);
@@ -27,20 +27,14 @@ describe("layered Chat recovery feedback", () => {
     find(s.render(), Popover).props.onOpenChange?.(false, {} as never);
     expect(find(s.render(), Popover).props.open).toBe(false);
   });
-  it("only invokes explicit refresh, locks duplicate clicks, and does not allow release before a successful history read", async () => {
+  it("only refreshes explicitly, guards duplicate clicks, and has no return-to-edit operation", async () => {
     let finish!: () => void;
-    const refresh = vi.fn(() => new Promise<void>((done) => { finish = done; })), release = vi.fn();
-    let reviewReady = false;
-    const s = hookSession(() => ChatExecutionFeedback({ ...base, reviewReady, onRefresh: refresh, onReturnToEdit: release }));
-    const button = () => find(s.render(), Button, (p) => React.Children.toArray(p.children).includes("刷新状态"));
+    const refresh = vi.fn(() => new Promise<void>(done => { finish = done; }));
+    const s = hookSession(() => ChatExecutionFeedback({ ...base, onRefresh: refresh }));
+    const button = () => find(s.render(), Button, p => React.Children.toArray(p.children).includes("刷新状态"));
     const first = button().props.onClick?.({} as never); button().props.onClick?.({} as never);
-    expect(refresh).toHaveBeenCalledOnce(); expect(release).not.toHaveBeenCalled();
-    expect(() => find(s.render(), Button, (p) => p.children === "已核对历史，返回编辑")).toThrow();
-    finish(); await first; reviewReady = true;
-    const back = find(s.render(), Button, (p) => p.children === "已核对历史，返回编辑");
-    expect(JSON.stringify(find(s.render(), PopoverContent).props.children)).toContain("返回编辑不会停止后台任务");
-    back.props.onClick?.({} as never); expect(release).toHaveBeenCalledOnce(); expect(refresh).toHaveBeenCalledOnce();
-    expect(find(s.render(), Popover).props.open).toBe(false);
+    expect(refresh).toHaveBeenCalledOnce(); finish(); await first;
+    expect(JSON.stringify(s.render())).not.toContain("返回编辑"); s.dispose();
   });
   it("retains ordinary request failure detail and reports refresh errors safely", async () => {
     const refresh = vi.fn(async () => { throw new Error("private endpoint"); });

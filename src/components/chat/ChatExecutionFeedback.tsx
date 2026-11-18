@@ -4,14 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-/** Presentation only. Refresh/release remain owned by the Main adapter. */
-export function ChatExecutionFeedback({ summary, detail, uncertain, reviewReady, onRefresh, onReturnToEdit }: {
+/** Presentation only. Refresh remain owned by the Main adapter. */
+export function ChatExecutionFeedback({ summary, detail, uncertain, onRefresh }: {
   readonly summary: string;
   readonly detail: string;
   readonly uncertain: boolean;
-  readonly reviewReady: boolean;
   readonly onRefresh?: () => void | Promise<void>;
-  readonly onReturnToEdit?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -30,9 +28,7 @@ export function ChatExecutionFeedback({ summary, detail, uncertain, reviewReady,
         <ScrollArea className="chat-model-scroll"><div className="space-y-3 p-3 text-xs leading-relaxed">
           <PopoverTitle>回复状态</PopoverTitle>
           <p>{detail}</p>
-          {uncertain && <p>{reviewReady
-            ? "历史已刷新，后台生成是否结束仍未确认。返回编辑不会停止后台任务；请先核对历史，避免重复提交。"
-            : "结果尚未确认，请先刷新历史核对。刷新只读取状态，不会再次发送或重新生成。"}</p>}
+          {uncertain && <p>结果尚未确认，可重新核对。核对只读取状态，不会再次发送或重新生成；草稿和附件可以继续编辑。</p>}
           {onRefresh && <Button type="button" variant="outline" size="compact" loading={busy} disabled={busy} onClick={async () => {
             if (refreshing.current) return;
             refreshing.current = true; setBusy(true); setRefreshError(false);
@@ -40,8 +36,7 @@ export function ChatExecutionFeedback({ summary, detail, uncertain, reviewReady,
             finally { refreshing.current = false; setBusy(false); }
           }}><RefreshCw className="size-3.5" aria-hidden="true" />刷新状态</Button>}
           {refreshError && <p role="alert">暂时无法刷新，请稍后重试。</p>}
-          {uncertain && reviewReady && onReturnToEdit && <Button type="button" variant="outline" size="compact" disabled={busy}
-            onClick={() => { if (refreshing.current) return; setOpen(false); onReturnToEdit(); }}>已核对历史，返回编辑</Button>}
+
         </div></ScrollArea>
       </PopoverContent>
     </Popover>

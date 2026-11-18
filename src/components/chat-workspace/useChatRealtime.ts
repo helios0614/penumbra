@@ -91,6 +91,13 @@ export function toRealtimeContext(
 function toExecutionContext(
   state: ChatSendState,
 ): ChatRealtimeContext["execution"] {
+  const execution = state.serverExecution;
+  if (execution) return execution.terminal ? { kind: "idle" } : {
+    kind: "active", executionKind: execution.kind, conversationId: execution.conversationId,
+    userMessageId: execution.userMessageId, assistantMessageId: execution.assistantMessageId,
+    targetMessageId: execution.targetMessageId,
+    recovering: state.kind === "idle" || state.kind === "error" || state.kind === "finalization-uncertain" || state.kind === "regenerate-finalization-uncertain",
+  };
   switch (state.kind) {
     case "sending-user":
       return {

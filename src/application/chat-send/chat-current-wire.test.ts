@@ -1,3 +1,4 @@
+import { executionReader, pendingExecutionReader } from "@/test-fixtures/chat-execution";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mapMessage, mapMessageHistory } from "@/domain/message";
 import { mapChatExecutionEvent, openRegenerateExecution } from "@/application/chat-execution";
@@ -24,7 +25,7 @@ describe("current HTTP and persisted DRIFT wire", () => {
   it("confirms a null-drift regenerate receipt against HTTP that omits empty drift", async () => {
     const receipt = mapChatExecutionEvent({ id: "assistant-a", content: "new answer", thinking: null, drift: null }, "persisted");
     const committed = mapMessage(messageWithoutDriftWire({ content: "new answer", thinking: null }));
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: executionReader(),
       openRegenerateExecution: async () => ({ kind: "stream", events: events([
         { type: "start" as const, assistantMessageId: "assistant-a" }, receipt,
       ]) }),
@@ -63,7 +64,7 @@ describe("current HTTP and persisted DRIFT wire", () => {
     const original = mapMessage(messageWire());
     const committed = mapMessage(messageWire({ content: "new", thinking: null, drift: "随想" }));
     const reconcileHistory = vi.fn(async () => ({ persistedMessageIds: [committed.id], regenerateTarget: createRegeneratePersistenceProjection(committed) }));
-    const controller = createChatSendController({ openRegenerateExecution, reconcileHistory, createUuid: () => "synthetic" });
+    const controller = createChatSendController({ readExecution: executionReader(), openRegenerateExecution, reconcileHistory, createUuid: () => "synthetic" });
     await controller.regenerate({ conversationId: "conv_a", targetMessageId: original.id, targetCreatedAt: original.createdAt });
     await waitFor(() => controller.getState().kind === "idle");
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/conversations/conv_a/messages/assistant-a/regenerate");
@@ -112,7 +113,7 @@ describe("stream display control boundaries", () => {
 
 describe("canonical failure and read-only recovery", () => {
   it("does not accept another target's failure as completion of this regenerate", async () => {
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: pendingExecutionReader,
       openRegenerateExecution: async () => ({ kind: "stream", events: events([
         mapChatExecutionEvent({ type: "error", id: "another-target", code: "regenerate_conflict" }),
       ]) }),
@@ -127,11 +128,11 @@ describe("canonical failure and read-only recovery", () => {
 
   it("does not release an unknown request before any successful HTTP reread", async () => {
     const openExecution = vi.fn(async () => { throw new ApiError("private", 0, null, "TIMEOUT"); });
-    const controller = createChatSendController({ openExecution, createUuid: () => "unknown",
+    const controller = createChatSendController({ readExecution: pendingExecutionReader, openExecution, createUuid: () => "unknown",
       reconcileHistory: async () => { throw new ApiError("private", 503); } });
     await controller.send({ conversationId: "conv_a", content: "synthetic" });
     await waitFor(() => controller.getState().kind === "finalization-uncertain");
-    controller.releaseAfterReview();
+    expect(controller).not.toHaveProperty("releaseAfterReview");
     expect(controller.getState().kind).toBe("finalization-uncertain");
     expect(openExecution).toHaveBeenCalledOnce();
     controller.dispose();
@@ -141,7 +142,7 @@ describe("canonical failure and read-only recovery", () => {
     const unsafe = { endpoint: "https://private.invalid", api_payload: "fake-secret", prompt_messages: ["private context"] };
     const error = mapChatExecutionEvent({ type: "error", id: "assistant-a", code, ...unsafe });
     const debug = mapChatExecutionEvent({ type: "debug", msg_id: "assistant-a", has_error: true, error_code: code, ...unsafe });
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: executionReader(),
       openRegenerateExecution: async () => ({ kind: "stream", events: events([error, debug]) }),
       reconcileHistory: async () => ({ persistedMessageIds: ["assistant-a"], regenerateTarget: createRegeneratePersistenceProjection(mapMessage(messageWire())) }),
       createUuid: () => "failure",
@@ -156,7 +157,7 @@ describe("canonical failure and read-only recovery", () => {
   it.each(["TIMEOUT", "NETWORK_ERROR"] as const)("does not infer unsaved user input after opening %s", async (code) => {
     const openExecution = vi.fn(async () => { throw new ApiError("private", 0, null, code); });
     const reconcileHistory = vi.fn(async () => ({ persistedMessageIds: ["already-saved-user"], regenerateTarget: null }));
-    const controller = createChatSendController({ openExecution, reconcileHistory, createUuid: () => "stable" });
+    const controller = createChatSendController({ readExecution: pendingExecutionReader, openExecution, reconcileHistory, createUuid: () => "stable" });
     expect(await controller.send({ conversationId: "conv_a", content: "user" })).toBe(false);
     await waitFor(() => controller.getState().kind === "finalization-uncertain");
     expect(await controller.send({ conversationId: "conv_a", content: "user" })).toBe(false);
@@ -164,8 +165,8 @@ describe("canonical failure and read-only recovery", () => {
     expect(openExecution).toHaveBeenCalledOnce();
     expect(reconcileHistory).toHaveBeenCalledTimes(2);
     expect(controller.getState()).toMatchObject({ kind: "finalization-uncertain", recoveryReadSucceeded: true });
-    controller.releaseAfterReview();
-    expect(controller.getState().kind).toBe("idle");
+    expect(controller).not.toHaveProperty("releaseAfterReview");
+    expect(controller.getState().kind).toBe("finalization-uncertain");
     expect(openExecution).toHaveBeenCalledOnce();
     controller.dispose();
   });
@@ -176,7 +177,7 @@ describe("canonical failure and read-only recovery", () => {
       yield { type: "start" as const, assistantMessageId: "assistant-a" };
       throw new ApiError("private", 0, null, "NETWORK_ERROR");
     })() }));
-    const controller = createChatSendController({ openExecution, createUuid: () => "broken",
+    const controller = createChatSendController({ readExecution: vi.fn().mockImplementationOnce(pendingExecutionReader).mockImplementation(executionReader({ assistantMessageId: "assistant-a" })), openExecution, createUuid: () => "broken",
       reconcileHistory: async () => ({ persistedMessageIds: committed ? ["assistant-a"] : ["saved-user"], regenerateTarget: null }) });
     await controller.send({ conversationId: "conv_a", content: "user" });
     await waitFor(() => controller.getState().kind === "finalization-uncertain");

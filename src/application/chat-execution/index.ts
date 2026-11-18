@@ -27,3 +27,5 @@ export type {
 } from "@/application/chat-execution/chat-execution-types";
 
 // Wire DTOs intentionally stay private to the Chat Execution boundary.
+export { encodeChatExecutionId, readChatExecution, readActiveChatExecution, cancelChatExecution } from "./chat-execution-status";
+export type { MainChatExecution } from "./chat-execution-status";

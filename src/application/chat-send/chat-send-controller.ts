@@ -6,7 +6,6 @@ import {
   type ChatExecutionEvent,
   type ChatProviderFailureCode,
   type ChatExecutionStream,
-  type RegeneratePersistenceReceipt,
   type RegenerateInput,
   type SendExecutionResult,
   type SendMessageInput,
@@ -17,11 +16,7 @@ import {
   reduceChatExecutionEvent,
   type StreamingAssistantAccumulator,
 } from "@/application/chat-send/chat-send-accumulator";
-import {
-  areRegeneratePersistenceProjectionsEqual,
-  createRegeneratePersistenceProjection,
-  type ChatHistoryReconciliationResult,
-} from "@/application/chat-send/chat-regenerate-persistence";
+import type { ChatHistoryReconciliationResult } from "@/application/chat-send/chat-regenerate-persistence";
 import {
   finalizationUncertainError,
   providerFailureError,
@@ -45,6 +40,9 @@ import {
 import { assistantFailureCode, assistantFailureIndex, formatAssistantFailure } from "@/domain/message/assistant-failure";
 import type { ChatSendResult } from "./chat-send-result";
 import { isDefiniteChatRejection } from "./chat-send-rejection";
+import { ApiError } from "@/lib/api";
+import { cancelChatExecution, encodeChatExecutionId, mapMainChatExecution, readActiveChatExecution, readChatExecution, type MainChatExecution } from "@/application/chat-execution/chat-execution-status";
+import { readChatExecutionResults } from "@/application/chat-execution/chat-execution-results";
 
 export type ChatSendExecutionOpener = (
   conversationId: string,
@@ -56,7 +54,7 @@ export type ChatRegenerateExecutionOpener = (
   conversationId: string,
   messageId: string,
   input: RegenerateInput,
-  options?: { readonly signal?: AbortSignal },
+  options?: { readonly signal?: AbortSignal; readonly headers?: HeadersInit },
 ) => Promise<ChatExecutionStream>;
 
 export type ChatHistoryReconciler = (
@@ -65,6 +63,10 @@ export type ChatHistoryReconciler = (
 ) => Promise<ChatHistoryReconciliationResult>;
 
 export type ChatSendControllerDependencies = {
+  readonly readExecutionResults?: typeof readChatExecutionResults;
+  readonly readExecution?: typeof readChatExecution;
+  readonly readActiveExecution?: typeof readActiveChatExecution;
+  readonly cancelExecution?: typeof cancelChatExecution;
   readonly openExecution?: ChatSendExecutionOpener;
   readonly openRegenerateExecution?: ChatRegenerateExecutionOpener;
   readonly reconcileHistory: ChatHistoryReconciler;
@@ -80,12 +82,15 @@ export interface ChatSendController {
   reconcileUserPersistence(): Promise<void>;
   retryFinalization(options?: { readonly manual?: boolean }): Promise<void>;
   resetError(): void;
-  releaseAfterReview(): void;
+  cancel(): Promise<void>;
+  discoverActive(conversationId: string): Promise<void>;
+  recoverStoppedResults(conversationId: string): Promise<void>;
   subscribe(listener: (state: ChatSendState) => void): () => void;
   dispose(): void;
 }
 
 type ActiveExecutionBase = {
+  status: MainChatExecution | null;
   readonly executionId: string;
   readonly conversationId: string;
   accumulator: StreamingAssistantAccumulator;
@@ -106,8 +111,6 @@ type ActiveSendExecution = ActiveExecutionBase & {
 type ActiveRegenerateExecution = ActiveExecutionBase & {
   readonly kind: "regenerate";
   readonly targetMessageId: string;
-  persistenceReceipt: RegeneratePersistenceReceipt | null;
-  persistenceReceiptContractFailure: boolean;
   sawTargetStart: boolean;
 };
 
@@ -121,7 +124,24 @@ export function createChatSendController(
     openRegenerateExecution;
   const createUuid = dependencies.createUuid ?? defaultUuid;
   const now = dependencies.now ?? (() => Date.now() / 1000);
+  const readExecution = dependencies.readExecution ?? readChatExecution;
+  const readActiveExecution = dependencies.readActiveExecution ?? readActiveChatExecution;
+  const cancelExecution = dependencies.cancelExecution ?? cancelChatExecution;
+  const readExecutionResults = dependencies.readExecutionResults ?? readChatExecutionResults;
   let state = INITIAL_CHAT_SEND_STATE;
+  let serverExecution: MainChatExecution | undefined;
+  let conversationOwner: string | undefined;
+  let discovering = false, discoveryUnknown = false, cancelling = false;
+  let controlError: string | undefined;
+  let discovery: Promise<void> | null = null;
+  let resultsRecovery: Promise<void> | null = null;
+  let resultsError: string | undefined;
+  const stoppedExecutions: { execution: MainChatExecution; createdAt: number }[] = [];
+  const rememberStopped = (result: MainChatExecution, createdAt: number) => {
+    if (result.terminal && result.outcome === "cancelled" && !stoppedExecutions.some(item => item.execution.executionId === result.executionId)) {
+      stoppedExecutions.push({ execution: result, createdAt });
+    }
+  };
   let active: ActiveExecution | null = null;
   const recoveries = new Map<string, { execution: ActiveExecution; snapshot: ChatExecutionRecovery }>();
   let disposed = false;
@@ -136,8 +156,15 @@ export function createChatSendController(
       if ("targetMessageId" in nextState) aliasChatTrace(nextState.targetMessageId, nextState);
       traceChat("session.publish", nextState, { phase: nextState.kind, size: assistant?.content.length ?? 0 });
     } else if (active) traceChat("session.publish", active, { phase: nextState.kind });
-    const { recoveries: _previousRecoveries, ...current } = nextState;
-    state = recoveries.size ? { ...current, recoveries: [...recoveries.values()].map(item => item.snapshot) } : current;
+    const { recoveries: _previousRecoveries, serverExecution: _previousServer, discovering: _discovering, discoveryUnknown: _unknown, cancelling: _cancelling, controlError: _controlError, resultsError: _resultsError, ...current } = nextState;
+    state = { ...current,
+      ...(conversationOwner ? { executionConversationId: conversationOwner } : {}),
+      ...(serverExecution ? { serverExecution } : {}),
+      ...(discovering ? { discovering } : {}), ...(discoveryUnknown ? { discoveryUnknown } : {}),
+      ...(cancelling ? { cancelling } : {}), ...(controlError ? { controlError } : {}),
+      ...(resultsError ? { resultsError } : {}),
+      ...(stoppedExecutions.length ? { stoppedExecutions: [...stoppedExecutions] } : {}),
+      ...(recoveries.size ? { recoveries: [...recoveries.values()].map(item => item.snapshot) } : {}) };
     listeners.forEach((listener) => listener(state));
   };
 
@@ -200,6 +227,7 @@ export function createChatSendController(
       if (execution.optimisticUser.persistedMessageId === undefined) {
         execution.optimisticUser = { ...execution.optimisticUser, persistedMessageId: receipt.userMessageId };
       }
+      if (receipt.execution) acceptStatus(execution, receipt.execution);
       if (receipt.assistantMessageId) aliasChatTrace(receipt.assistantMessageId, execution);
       traceChat("receipt.read", execution, { phase: receipt.assistantMessageId ? "assistant" : "user" });
       return receipt;
@@ -217,144 +245,97 @@ export function createChatSendController(
         // User acceptance changes only its projection, never the assistant/unknown state.
         publish({ ...state, optimisticUser: execution.optimisticUser });
       }
+      if (execution.status?.terminal && active === execution) void finalize(execution);
     } catch { /* Missing, stale or unavailable receipts cannot authorize a merge/retry. */ }
   };
 
-  const resolvePersistedSendAssistant = async (
-    execution: ActiveSendExecution,
-    reconciliation: ChatHistoryReconciliationResult,
-    receiptAlreadyRead: boolean,
-  ): Promise<string | null> => {
-    const persisted = (id: string | null | undefined): id is string => !!id &&
-      (reconciliation.assistants ? reconciliation.assistants.some(row => row.id === id) : reconciliation.persistedMessageIds.includes(id));
-    const streamed = execution.accumulator.message.assistantMessageId;
-    if (persisted(streamed)) return streamed;
-    // Don't hold finalization on a background user-acceptance read still in flight;
-    // the next retry (realtime/focus/manual) consults the receipt again.
-    if (dependencies.lookupSendResult && !receiptAlreadyRead && execution.receiptLookup === null) {
-      try {
-        const receipt = await lookupReceipt(execution);
-        if (receipt && persisted(receipt.assistantMessageId)) return receipt.assistantMessageId;
-      } catch { /* Missing receipt: keep this execution unknown. */ }
+  const acceptStatus = (execution: ActiveExecution, value: MainChatExecution) => {
+    if (value.conversationId !== execution.conversationId || value.executionId !== execution.executionId || value.kind !== execution.kind) {
+      throw new ChatExecutionContractError("Execution identity mismatch");
     }
-    return null;
+    // A durable terminal observation is monotonic, even if an older GET returns late.
+    if (execution.status?.terminal) return;
+    execution.status = value;
+    rememberStopped(value, execution.accumulator.message.createdAt);
+    if (active === execution) { serverExecution = value; controlError = undefined; }
   };
+
+  const uncertainState = (execution: ActiveExecution): ChatExecutionRecovery => ({
+    ...activeAssistantState("finalizing", execution),
+    kind: execution.kind === "send" ? "finalization-uncertain" : "regenerate-finalization-uncertain",
+    recoveryReadSucceeded: execution.recoveryReadSucceeded,
+    error: finalizationUncertainError(),
+  } as ChatExecutionRecovery);
 
   const performFinalization = async (execution: ActiveExecution) => {
     if (!isCurrent(execution)) return;
     execution.recoveryReadSucceeded = false;
     publishFinalization(execution, activeAssistantState("finalizing", execution));
-
-    let receiptAlreadyRead = false;
+    let reconciliation: ChatHistoryReconciliationResult | null = null;
     try {
-      if (execution.kind === "send" && execution.accumulator.message.assistantMessageId === null && dependencies.lookupSendResult) {
-        receiptAlreadyRead = true;
-        try {
-          const receipt = await lookupReceipt(execution);
-          if (!receipt || !isCurrent(execution)) return;
-          execution.accumulator = { ...execution.accumulator, message: { ...execution.accumulator.message, assistantMessageId: receipt.assistantMessageId } };
-        } catch { /* History still refreshes; missing identity remains unknown. */ }
+      if (!execution.status?.terminal) acceptStatus(execution, await readExecution(execution.conversationId, execution.executionId));
+    } catch { /* A missing/unavailable execution is unknown, never stopped. */ }
+    if (active === execution && execution.status?.terminal) {
+      execution.abortController.abort();
+      publish(state);
+    }
+    try {
+      if (execution.kind === "send" && !execution.status?.terminal && !execution.optimisticUser.persistedMessageId && execution.receiptLookup === null) {
+        try { await lookupReceipt(execution); } catch { /* Exact execution GET survives message deletion. */ }
       }
-      traceChat("history.begin", execution);
-      const reconciliation = execution.kind === "regenerate"
-        ? await dependencies.reconcileHistory(
-            execution.conversationId,
-            execution.targetMessageId,
-          )
+      reconciliation = execution.kind === "regenerate"
+        ? await dependencies.reconcileHistory(execution.conversationId, execution.targetMessageId)
         : await dependencies.reconcileHistory(execution.conversationId);
       if (!isCurrent(execution)) return;
-      traceChat("history.end", execution, { size: reconciliation.persistedMessageIds.length });
       execution.recoveryReadSucceeded = true;
-      if (
-        execution.kind === "regenerate" &&
-        execution.persistenceReceiptContractFailure
-      ) {
-        throw new Error("Regenerate persistence receipt contract failed");
-      }
-      if (execution.kind === "regenerate" && execution.sawTargetStart && isRegeneratePersistenceConfirmed(execution, reconciliation)) {
-        execution.terminalFailure = false;
-        execution.executionError = null;
-      }
-      if (!execution.terminalFailure || (execution.kind === "send" && execution.accumulator.message.assistantMessageId !== null)) {
-        if (execution.kind === "regenerate") {
-          if (!execution.sawTargetStart || !isRegeneratePersistenceConfirmed(execution, reconciliation)) {
-            throw new Error(
-              "Expected regenerate state is not yet present in HTTP history",
-            );
-          }
-        } else {
-          const persistedAssistantId = await resolvePersistedSendAssistant(execution, reconciliation, receiptAlreadyRead);
-          if (!isCurrent(execution)) return;
-          if (persistedAssistantId === null) {
-            throw new Error(
-              "Expected assistant is not yet present in HTTP history",
-            );
-          }
-          if (persistedAssistantId !== execution.accumulator.message.assistantMessageId) {
-            // The stream's ID may belong to a discarded attempt (backend retry).
-            // HTTP history + receipt are authoritative for which row answers this send.
-            execution.accumulator = { ...execution.accumulator, message: { ...execution.accumulator.message, assistantMessageId: persistedAssistantId } };
-          }
-        }
-      }
-
-      // A committed row is authoritative over the transport that carried it.
-      // Keep actual provider failure diagnostics from that row, not an old socket error.
-      if (execution.kind === "send") {
-        const saved = reconciliation.assistants?.find(row => row.id === execution.accumulator.message.assistantMessageId);
-        if (saved) {
-          const failureIndex = assistantFailureIndex(saved.content);
-          execution.terminalFailure = failureIndex >= 0;
-          const savedError = failureIndex < 0 ? null : formatAssistantFailure(saved.content.slice(failureIndex));
-          const prior = execution.executionError;
-          execution.executionError = savedError === null ? null : {
-            ...providerFailureError(assistantFailureCode(saved.content)),
-            message: prior?.code === "provider-failure" && prior.message.includes("\n") && !savedError.includes("\n") ? prior.message : savedError,
-          };
-        } else if (!execution.terminalFailure) execution.executionError = null;
-      } else if (!execution.terminalFailure) execution.executionError = null;
-
-      traceChat("execution.reconciled", execution);
-      publishFinalization(execution, execution.executionError === null
-        ? execution.kind === "send"
-          ? { kind: "idle", confirmedSend: { conversationId: execution.conversationId, clientMessageId: execution.optimisticUser.clientMessageId } }
-          : INITIAL_CHAT_SEND_STATE
-        : { kind: "error", conversationId: execution.conversationId,
-          ...(execution.kind === "send" && execution.accumulator.message.assistantMessageId !== null ? {
-            acceptedSend: { conversationId: execution.conversationId, clientMessageId: execution.optimisticUser.clientMessageId },
-          } : {}),
-          confirmedFailure: execution.terminalFailure,
-          failedMessageId: !execution.terminalFailure ? undefined : execution.kind === "regenerate" ? execution.targetMessageId : execution.accumulator.message.assistantMessageId ?? undefined,
-          failedTargetContent: execution.kind === "regenerate" ? reconciliation.regenerateTarget?.content
-            : reconciliation.assistants?.find(row => row.id === execution.accumulator.message.assistantMessageId)?.content,
-          ...(execution.kind === "regenerate" ? { regeneratePartial: execution.accumulator.message } : {}),
-          ...(execution.kind === "send" && execution.accumulator.message.assistantMessageId === null
-            ? { assistant: { ...execution.accumulator.message, error: execution.executionError.message } } : {}),
-          error: execution.executionError });
-    } catch {
-      if (!isCurrent(execution)) return;
-      publishFinalization(execution, execution.kind === "send"
-        ? {
-            kind: "finalization-uncertain",
-            recoveryReadSucceeded: execution.recoveryReadSucceeded,
-            executionId: execution.executionId,
-            conversationId: execution.conversationId,
-            optimisticUser: execution.optimisticUser,
-            assistant: execution.accumulator.message,
-            executionError: execution.executionError,
-            error: finalizationUncertainError(),
-          }
-        : {
-            kind: "regenerate-finalization-uncertain",
-            recoveryReadSucceeded: execution.recoveryReadSucceeded,
-            executionId: execution.executionId,
-            conversationId: execution.conversationId,
-            targetMessageId: execution.targetMessageId,
-            assistant: execution.accumulator.message,
-            executionError: execution.executionError,
-            error: finalizationUncertainError(),
-          });
+    } catch { /* Keep the temporary presentation when HTTP history is unavailable. */ }
+    if (!isCurrent(execution)) return;
+    const result = execution.status;
+    if (!result?.terminal) {
+      publishFinalization(execution, uncertainState(execution));
+      return;
     }
+
+    // Only durable terminal evidence permits closing our relay and releasing generation.
+    execution.abortController.abort();
+    if (result.outcome === "cancelled") {
+      if (active === execution) controlError = reconciliation ? undefined : "执行已终结，历史暂时无法读取；临时结果已保留，可重新核对。";
+      publishFinalization(execution, execution.kind === "send"
+        ? { kind: "idle", confirmedSend: { conversationId: execution.conversationId, clientMessageId: execution.optimisticUser.clientMessageId } }
+        : INITIAL_CHAT_SEND_STATE);
+      return;
+    }
+    if (!reconciliation) {
+      // This is a terminal-only presentation recovery, never a nonterminal release.
+      const snapshot = { ...uncertainState(execution), serverExecution: result };
+      recoveries.set(execution.executionId, { execution, snapshot });
+      if (active === execution) {
+        active = null;
+        controlError = "执行已终结，历史暂时无法读取；临时回复已保留，可重新核对。";
+        publish(INITIAL_CHAT_SEND_STATE);
+      } else publish(state);
+      return;
+    }
+    const saved = reconciliation.assistants?.find(row => row.id === result.assistantMessageId);
+    if (saved) {
+      const index = assistantFailureIndex(saved.content);
+      const message = index < 0 ? null : formatAssistantFailure(saved.content.slice(index));
+      const prior = execution.executionError;
+      execution.executionError = message === null ? null : {
+        ...providerFailureError(assistantFailureCode(saved.content)),
+        message: prior?.code === "provider-failure" && prior.message.includes("\n") && !message.includes("\n") ? prior.message : message,
+      };
+    } else if (result.outcome === "completed" && (execution.kind !== "regenerate" || !execution.terminalFailure) && execution.executionError?.code !== "provider-failure") execution.executionError = null;
+    const error = execution.executionError;
+    const acceptedSend = execution.kind === "send"
+      ? { conversationId: execution.conversationId, clientMessageId: execution.optimisticUser.clientMessageId } : undefined;
+    publishFinalization(execution, error ? { kind: "error", conversationId: execution.conversationId,
+      confirmedFailure: true, acceptedSend, error,
+      failedMessageId: execution.kind === "regenerate" ? execution.targetMessageId : result.assistantMessageId ?? undefined,
+      failedTargetContent: execution.kind === "regenerate" ? reconciliation.regenerateTarget?.content : saved?.content,
+      ...(execution.kind === "regenerate" ? { regeneratePartial: execution.accumulator.message }
+        : result.assistantMessageId ? {} : { assistant: execution.accumulator.message }),
+    } : acceptedSend ? { kind: "idle", confirmedSend: acceptedSend } : INITIAL_CHAT_SEND_STATE);
   };
 
   const finalize = (execution: ActiveExecution): Promise<void> => {
@@ -369,7 +350,7 @@ export function createChatSendController(
   ) => {
     try {
       for await (const event of events) {
-        if (!isCurrent(execution)) return;
+        if (!isCurrent(execution) || execution.status?.terminal) return;
         traceChat("controller.event", execution, { event: event.type });
         if (event.type === "start" && execution.accumulator.message.assistantMessageId !== null &&
             event.assistantMessageId !== execution.accumulator.message.assistantMessageId) {
@@ -402,16 +383,12 @@ export function createChatSendController(
         }
         if (execution.kind === "regenerate" && event.type === "persisted") {
           if (event.receipt.id !== execution.targetMessageId) {
-            execution.persistenceReceiptContractFailure = true;
             execution.executionError = toSafeChatExecutionError(
               new ChatExecutionContractError(
                 "Regenerate persistence receipt ID does not match the target message ID",
               ),
               "regenerate",
             );
-          } else {
-            execution.persistenceReceipt =
-              createRegeneratePersistenceProjection(event.receipt);
           }
         }
         const reduction = reduceChatExecutionEvent(
@@ -430,13 +407,13 @@ export function createChatSendController(
         if (execution.accumulator.message.error && execution.executionError?.code === "provider-failure") {
           execution.executionError = { ...execution.executionError, message: execution.accumulator.message.error };
         }
-        // Always reduce every event above: marker buffers and persistence receipts
-        // can change without changing the subscribed presentation snapshot.
+        // Reduce hidden marker buffers and validate identity even when the
+        // subscribed presentation does not change.
         const nextState = activeAssistantState("streaming", execution);
         if (!sameStreamingPresentation(state, nextState)) publish(nextState);
       }
     } catch (error) {
-      if (!isCurrent(execution)) return;
+      if (!isCurrent(execution) || execution.status?.terminal) return;
       execution.executionError ??= toSafeChatExecutionError(
         error,
         execution.kind,
@@ -462,16 +439,106 @@ export function createChatSendController(
   const isCurrent = (execution: ActiveExecution) =>
     !disposed && (active === execution || recoveries.get(execution.executionId)?.execution === execution);
 
+  const settleDiscovered = async (result: MainChatExecution) => {
+    if (!result.terminal) return;
+    rememberStopped(result, now());
+    publish(INITIAL_CHAT_SEND_STATE);
+    try {
+      await dependencies.reconcileHistory(result.conversationId);
+      if (serverExecution === result) controlError = undefined;
+    } catch {
+      if (serverExecution === result) controlError = "执行已终结，历史暂时无法读取；可重新核对。";
+    }
+    publish(state);
+  };
+
+  function discoverActive(conversationId: string): Promise<void> {
+    conversationOwner = conversationId;
+    if (disposed || active || serverExecution && !serverExecution.terminal) return Promise.resolve();
+    if (discovery) return discovery;
+    discovering = true; publish(state);
+    discovery = (async () => {
+      try {
+        const result = await readActiveExecution(conversationId);
+        if (disposed || active) return;
+        // Null proves only that this discovery found no live Main execution.
+        if (result) serverExecution = stoppedExecutions.find(item => item.execution.executionId === result.executionId)?.execution ?? result;
+        discoveryUnknown = false; controlError = undefined;
+      } catch {
+        discoveryUnknown = true; controlError = "尚未确认会话的执行状态；请重新核对。";
+      } finally { discovering = false; discovery = null; publish(state); }
+    })();
+    return discovery;
+  }
+
+  function recoverStoppedResults(conversationId: string): Promise<void> {
+    if (disposed || conversationOwner && conversationOwner !== conversationId) return Promise.resolve();
+    conversationOwner = conversationId;
+    if (resultsRecovery) return resultsRecovery;
+    // A finite traversal of bounded pages, only on entry/read-only recovery.
+    // Merge successful pages immediately, retaining them if a later GET fails.
+    resultsRecovery = (async () => {
+      let before: string | undefined;
+      const cursors = new Set<string>();
+      try {
+        do {
+          const page = await readExecutionResults(conversationId, before);
+          if (disposed) return;
+          for (const item of page.results) {
+            const result = item.execution;
+            const execution = active?.executionId === result.executionId ? active : recoveries.get(result.executionId)?.execution;
+            if (execution) { acceptStatus(execution, result); void finalize(execution); }
+            else if (serverExecution?.executionId === result.executionId && !serverExecution.terminal) {
+              serverExecution = result;
+              void settleDiscovered(result);
+            }
+            rememberStopped(result, item.createdAt);
+            const index = stoppedExecutions.findIndex(row => row.execution.executionId === result.executionId);
+            stoppedExecutions[index] = item;
+          }
+          stoppedExecutions.sort((a, b) => a.createdAt - b.createdAt || a.execution.executionId.localeCompare(b.execution.executionId));
+          publish(state);
+          before = page.nextCursor ?? undefined;
+          if (before && cursors.has(before)) throw new ChatExecutionContractError("Repeated execution results cursor");
+          if (before) cursors.add(before);
+        } while (before);
+        resultsError = undefined;
+      } catch {
+        resultsError = "已停止回复暂时无法完整读取；已显示的内容已保留，可重新核对。";
+      } finally { resultsRecovery = null; publish(state); }
+    })();
+    return resultsRecovery;
+  }
+
+  const reconcileConflict = async (error: unknown, execution: ActiveExecution): Promise<boolean> => {
+    if (!(error instanceof ApiError) || error.status !== 409 ||
+        (error.data as { detail?: { code?: string } })?.detail?.code !== "chat_execution_active") return false;
+    active = null; serverExecution = undefined; discoveryUnknown = true;
+    publish(execution.kind === "send" ? { kind: "error", conversationId: execution.conversationId,
+      error: execution.executionError!, rejectedSubmission: execution.optimisticUser }
+      : { kind: "error", conversationId: execution.conversationId, confirmedFailure: true, error: execution.executionError! });
+    await discoverActive(execution.conversationId);
+    return true;
+  };
+
+  const retainTerminalPresentation = () => {
+    if (!active?.status?.terminal) return;
+    recoveries.set(active.executionId, { execution: active,
+      snapshot: { ...uncertainState(active), serverExecution: active.status } });
+    active = null;
+  };
+
   return {
     getState() {
       return state;
     },
 
     async send(input) {
+      retainTerminalPresentation();
       if (
         disposed ||
-        active !== null ||
-        (state.kind !== "idle" && state.kind !== "error")
+        active !== null || isChatExecutionActive(state) ||
+        (state.kind !== "idle" && state.kind !== "error" && !state.serverExecution?.terminal)
       ) {
         return false;
       }
@@ -489,7 +556,7 @@ export function createChatSendController(
         return false;
       }
 
-      const executionId = `execution:${clientMessageId}`;
+      const executionId = encodeChatExecutionId("send", clientMessageId);
       const createdAt = now();
       const optimisticUser: OptimisticUserMessage = {
         overlayId: `${executionId}:user`,
@@ -500,6 +567,7 @@ export function createChatSendController(
       };
       const execution: ActiveExecution = {
         kind: "send",
+        status: null,
         executionId,
         conversationId: input.conversationId,
         optimisticUser,
@@ -516,6 +584,8 @@ export function createChatSendController(
         finalization: null,
       };
       active = execution;
+      conversationOwner = input.conversationId;
+      serverExecution = undefined; controlError = undefined;
       bindChatTrace(execution.abortController.signal, execution);
       traceChat("execution.begin", execution, { phase: execution.kind });
       publish({
@@ -539,6 +609,7 @@ export function createChatSendController(
       } catch (error) {
         if (!isCurrent(execution)) return false;
         execution.executionError = toSafeChatExecutionError(error);
+        if (await reconcileConflict(error, execution)) return false;
         execution.terminalFailure = isDefiniteChatRejection(error, "send");
         if (execution.terminalFailure) {
           active = null;
@@ -549,7 +620,7 @@ export function createChatSendController(
         return false;
       }
 
-      if (!isCurrent(execution)) return false;
+      if (!isCurrent(execution) || execution.status?.terminal) return false;
       if (result.kind === "duplicate") {
         execution.duplicateUserMessageId = result.userMessageId;
         execution.optimisticUser = { ...execution.optimisticUser, persistedMessageId: result.userMessageId };
@@ -563,10 +634,11 @@ export function createChatSendController(
     },
 
     async regenerate(input) {
+      retainTerminalPresentation();
       if (
         disposed ||
-        active !== null ||
-        (state.kind !== "idle" && state.kind !== "error")
+        active !== null || isChatExecutionActive(state) ||
+        (state.kind !== "idle" && state.kind !== "error" && !state.serverExecution?.terminal)
       ) {
         return false;
       }
@@ -579,8 +651,10 @@ export function createChatSendController(
       }
 
       let executionId: string;
+      let requestId: string;
       try {
-        executionId = `execution:regenerate:${createUuid()}`;
+        requestId = createUuid();
+        executionId = encodeChatExecutionId("regenerate", requestId);
       } catch (error) {
         publish({
           kind: "error",
@@ -591,11 +665,10 @@ export function createChatSendController(
 
       const execution: ActiveRegenerateExecution = {
         kind: "regenerate",
+        status: null,
         executionId,
         conversationId: input.conversationId,
         targetMessageId: input.targetMessageId,
-        persistenceReceipt: null,
-        persistenceReceiptContractFailure: false,
         accumulator: createStreamingAssistantAccumulator(
           executionId,
           input.targetCreatedAt,
@@ -608,6 +681,8 @@ export function createChatSendController(
         finalization: null,
       };
       active = execution;
+      conversationOwner = input.conversationId;
+      serverExecution = undefined; controlError = undefined;
       bindChatTrace(execution.abortController.signal, execution);
       traceChat("execution.begin", execution, { phase: execution.kind });
       publish(activeAssistantState("streaming", execution));
@@ -618,17 +693,24 @@ export function createChatSendController(
           input.conversationId,
           input.targetMessageId,
           mapChatRegenerateExecutionInput(input.generation),
-          { signal: execution.abortController.signal },
+          { signal: execution.abortController.signal, headers: { "X-Chat-Execution-Id": requestId } },
         );
       } catch (error) {
         if (!isCurrent(execution)) return false;
         execution.executionError = toSafeChatExecutionError(error, "regenerate");
+        if (await reconcileConflict(error, execution)) return false;
         execution.terminalFailure = isDefiniteChatRejection(error, "regenerate");
+        if (execution.terminalFailure) {
+          active = null;
+          publish({ kind: "error", conversationId: execution.conversationId, confirmedFailure: true,
+            failedMessageId: execution.targetMessageId, error: execution.executionError });
+          return false;
+        }
         void finalize(execution);
         return false;
       }
 
-      if (!isCurrent(execution)) return false;
+      if (!isCurrent(execution) || execution.status?.terminal) return false;
       void consume(execution, result.events);
       return true;
     },
@@ -636,34 +718,27 @@ export function createChatSendController(
     reconcileUserPersistence,
 
     async retryFinalization() {
-      const current = active;
-      const reviewed = [...recoveries.values()];
-      for (const { execution } of reviewed) await finalize(execution);
-      // Reading an older released request must not reset a newer foreground error.
-      if (active !== current || (current === null && reviewed.length > 0)) return;
-      if (!disposed && active === null && state.kind === "error" && !state.conversationId) {
-        publish(INITIAL_CHAT_SEND_STATE);
-        return;
-      }
-      if (!disposed && active === null && state.kind === "error" && state.conversationId) {
-        const failedState = state;
+      if (discovery) { await discovery; return; }
+      if (disposed) return;
+      if (active) { await finalize(active); return; }
+      for (const { execution } of [...recoveries.values()]) await finalize(execution);
+      if (serverExecution && !serverExecution.terminal) {
+        const original = serverExecution;
         try {
-          await dependencies.reconcileHistory(state.conversationId);
-          if (state === failedState) publish(INITIAL_CHAT_SEND_STATE);
-        } catch { /* Retain the safe error and the read-only recovery action. */ }
+          const result = await readExecution(original.conversationId, original.executionId);
+          if (serverExecution !== original) return;
+          serverExecution = result; controlError = undefined;
+          if (result.terminal) await settleDiscovered(result); else publish(state);
+        } catch { controlError = "执行状态暂时无法读取；尚未确认终结。"; publish(state); }
         return;
       }
-      if (
-        disposed ||
-        active === null ||
-        (
-          state.kind !== "finalization-uncertain" &&
-          state.kind !== "regenerate-finalization-uncertain"
-        )
-      ) {
-        return;
+      if (conversationOwner) {
+        if (discoveryUnknown) await discoverActive(conversationOwner);
+        else {
+          try { await dependencies.reconcileHistory(conversationOwner); controlError = undefined; publish(state); }
+          catch { controlError = "历史暂时无法读取；当前展示已保留，可重新核对。"; publish(state); }
+        }
       }
-      await finalize(active);
     },
 
     resetError() {
@@ -672,17 +747,41 @@ export function createChatSendController(
       }
     },
 
-    releaseAfterReview() {
-      if (!disposed && active?.recoveryReadSucceeded &&
-          (state.kind === "finalization-uncertain" || state.kind === "regenerate-finalization-uncertain")) {
-        // Release only the input lock, retaining the original execution for read-only recovery.
-        const { recoveries: _otherRecoveries, reconciledSend: _settled, ...snapshot } = state;
-        recoveries.set(active.executionId, { execution: active, snapshot });
-        traceChat("execution.released", active);
-        active = null;
-        publish(INITIAL_CHAT_SEND_STATE);
-      }
+    async cancel() {
+      const execution = active;
+      const identity = execution ? { conversationId: execution.conversationId, executionId: execution.executionId } : serverExecution;
+      if (disposed || cancelling || !identity || serverExecution?.terminal || serverExecution?.cancelRequested) return;
+      cancelling = true; controlError = undefined; publish(state);
+      try {
+        const response = await cancelExecution(identity.conversationId, identity.executionId);
+        if (disposed || execution && active !== execution || !execution && serverExecution?.executionId !== identity.executionId) return;
+        if (execution) acceptStatus(execution, response.execution);
+        else if (!serverExecution?.terminal) serverExecution = response.execution;
+        else return;
+        if (response.execution.terminal) {
+          if (execution) await finalize(execution);
+          else await settleDiscovered(response.execution);
+        }
+      } catch (error) {
+        if (disposed || execution && active !== execution || !execution && (serverExecution?.executionId !== identity.executionId || serverExecution.terminal)) return;
+        // 409 supplies a safe exact status, but still cannot prove termination.
+        if (error instanceof ApiError && error.status === 409) {
+          try {
+            const data = error.data as { detail?: { execution?: unknown } };
+            const value = mapMainChatExecution(data?.detail?.execution, identity.conversationId, identity.executionId);
+            if (execution) acceptStatus(execution, value); else serverExecution = value;
+          } catch { /* Invalid/absent projection retains unknown. */ }
+        }
+        controlError = error instanceof ApiError && error.status === 404
+          ? "尚未找到原执行，不能确认停止；可重新核对后再次停止。"
+          : error instanceof ApiError && error.status === 409
+            ? "当前服务无法控制原执行；请等待并重新核对。"
+            : "停止请求结果尚未确认；请重新核对。";
+      } finally { cancelling = false; publish(state); }
     },
+
+    discoverActive,
+    recoverStoppedResults,
 
     subscribe(listener) {
       if (disposed) return () => undefined;
@@ -723,6 +822,8 @@ function sameAssistantPresentation(a: StreamingAssistantMessage, b: StreamingAss
 }
 
 export function isChatSendActive(state: ChatSendState): boolean {
+  if (state.discovering || state.discoveryUnknown) return true;
+  if (state.serverExecution) return !state.serverExecution.terminal;
   return (
     state.kind === "sending-user" ||
     state.kind === "streaming" ||
@@ -760,14 +861,4 @@ function defaultUuid(): string {
     throw new Error("Secure UUID generation is unavailable");
   }
   return globalThis.crypto.randomUUID();
-}
-
-function isRegeneratePersistenceConfirmed(
-  execution: ActiveRegenerateExecution,
-  reconciliation: ChatHistoryReconciliationResult,
-): boolean {
-  const expected = execution.persistenceReceipt;
-  const persisted = reconciliation.regenerateTarget;
-  if (expected === null || persisted === null) return false;
-  return areRegeneratePersistenceProjectionsEqual(persisted, expected);
 }

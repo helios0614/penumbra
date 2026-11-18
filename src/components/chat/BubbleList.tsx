@@ -102,7 +102,7 @@ interface BubbleListProps {
   readonly onInsert?: (text: string) => void;
   readonly onEdit?: (messageId: string) => void;
   readonly onDelete?: (messageId: string) => void;
-  readonly deleteUnavailableReason?: string | null;
+  readonly deleteUnavailableReason?: string | null | ((messageId: string) => string | null);
   readonly onExtract?: (messageId: string) => void;
   readonly actionsForMessage?: (messageId: string) => { edit: boolean; delete: boolean; regenerate: boolean; extract?: boolean };
   readonly editUnavailableReason?: (messageId: string) => string | null;
@@ -308,7 +308,7 @@ function BubbleListInner({
                       onDelete={onDelete && available?.delete !== false ? rowActions.delete : undefined}
                       onExtract={onExtract && available?.extract === true ? rowActions.extract : undefined}
                       editUnavailableReason={editUnavailableReason?.(message.id)}
-                      deleteUnavailableReason={deleteUnavailableReason}
+                      deleteUnavailableReason={typeof deleteUnavailableReason === "function" ? deleteUnavailableReason(message.id) : deleteUnavailableReason}
                     />
                   </div>
                 );

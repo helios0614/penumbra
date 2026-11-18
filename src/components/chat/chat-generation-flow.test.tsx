@@ -1,3 +1,4 @@
+import { executionReader, pendingExecutionReader } from "@/test-fixtures/chat-execution";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createChatSendController, createRegeneratePersistenceProjection } from "@/application/chat-send";
@@ -38,7 +39,7 @@ describe("Main wire → controller → UI generation states", () => {
     const original = mapMessage(messageWire({ content: "old", thinking: null, drift: null }));
     const saved = mapMessage(messageWire({ content: "body", thinking: "one\n\ntwo", drift: "authorized drift" }));
     let history = kind === "regenerate" ? [original] : [];
-    const controller = createChatSendController({ openRegenerateExecution,
+    const controller = createChatSendController({ readExecution: executionReader(), openRegenerateExecution,
       createUuid: () => "synthetic-thinking",
       reconcileHistory: async () => {
         history = [saved];
@@ -64,7 +65,7 @@ describe("Main wire → controller → UI generation states", () => {
   it("shows waiting, separate Thinking/DRIFT, visible streaming and authoritative send completion", async () => {
     const wire = wireStream();
     let history = [mapMessage(messageWire({ id: "prior", content: "prior reply" }))];
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: executionReader(),
       createUuid: () => "synthetic-send",
       reconcileHistory: async () => {
         history = [...history,
@@ -98,7 +99,7 @@ describe("Main wire → controller → UI generation states", () => {
     const original = mapMessage(messageWire({ content: "original persisted body", thinking: null, drift: null }));
     const committed = mapMessage(messageWire({ content: "replacement body", thinking: null, drift: null }));
     let history = [original], readable = outcome !== "unknown";
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: outcome === "unknown" ? pendingExecutionReader : executionReader({ outcome: outcome === "failure" ? "failed" : "completed", assistantMessageId: outcome === "success" ? original.id : null }),
       openRegenerateExecution,
       createUuid: () => `synthetic-${outcome}`,
       reconcileHistory: async () => {
@@ -108,10 +109,10 @@ describe("Main wire → controller → UI generation states", () => {
       },
     });
     const messages = () => composeVisibleChatMessages(history, controller.getState(), "conv_a");
-    const html = () => renderToStaticMarkup(<Bubble message={messages()[0]} />);
+    const html = () => renderToStaticMarkup(<>{messages().map(m => <Bubble key={m.id} message={m} />)}</>);
     await controller.regenerate({ conversationId: "conv_a", targetMessageId: original.id, targetCreatedAt: original.createdAt });
-    expect(messages()).toHaveLength(1); expect(messages()[0].id).toBe(original.id);
-    expect(html()).toContain("思考中"); expect(html()).not.toContain("original persisted body");
+    expect(messages()).toHaveLength(2); expect(messages()[0].id).toBe(original.id);
+    expect(html()).toContain("思考中"); expect(html()).toContain("original persisted body");
     wire.emit({ type: "start", id: original.id, drift_enabled: false, include_drift: true });
     wire.emit({ type: "chunk", content: "replacement body[DRIFT:SYNTH_PRIVATE][THINKING_START]safe[HEART:SYNTH_PRIVATE][THINKING_END]" });
     await waitFor(() => html().includes("replacement body")); expect(html()).not.toContain("chat-generation");
@@ -121,7 +122,7 @@ describe("Main wire → controller → UI generation states", () => {
     wire.close();
     await waitFor(() => controller.getState().kind === (outcome === "success" ? "idle" : outcome === "failure" ? "error" : "regenerate-finalization-uncertain"));
     expect(JSON.stringify(messages())).not.toContain("SYNTH_PRIVATE");
-    expect(messages()).toHaveLength(outcome === "failure" ? 2 : 1); expect(messages()[0].id).toBe(original.id);
+    expect(messages()).toHaveLength(outcome === "success" ? 1 : 2); expect(messages()[0].id).toBe(original.id);
     expect(original.content).toBe("original persisted body");
     if (outcome === "success") {
       expect(messages()[0].content).toBe(committed.content); expect(html()).not.toContain("chat-generation");
@@ -129,7 +130,7 @@ describe("Main wire → controller → UI generation states", () => {
       expect(messages()[0].content).toBe(original.content); expect(html()).not.toContain("chat-generation");
       expect(messages()[1]).toMatchObject({ content: "replacement body", executionStatus: "unconfirmed" });
     } else {
-      expect(html()).toContain("结果待确认"); expect(messages()[0].content).toBe("replacement body");
+      expect(html()).toContain("结果待确认"); expect(messages()[0].content).toBe(original.content);
       readable = true; await controller.retryFinalization();
       expect(controller.getState()).toMatchObject({ kind: "regenerate-finalization-uncertain", recoveryReadSucceeded: true });
       expect(messages()[0].content).toBe(original.content); // PR1 read-only recovery displays HTTP authority.

@@ -1,3 +1,4 @@
+import { executionReader, pendingExecutionReader } from "@/test-fixtures/chat-execution";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -120,7 +121,7 @@ describe("unified regenerate execution controller", () => {
       persisted = saved;
       return stream([{ type: "start", assistantMessageId: "assistant-a" }, persistedReceipt(saved)]);
     });
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: executionReader(),
       openRegenerateExecution,
       reconcileHistory: async () => reconciliation(persisted),
       createUuid: () => "manual-retry",
@@ -144,7 +145,7 @@ describe("unified regenerate execution controller", () => {
     const openRegenerateExecution = vi.fn<ChatRegenerateExecutionOpener>(
       () => opened.promise,
     );
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: pendingExecutionReader,
       openRegenerateExecution,
       reconcileHistory: vi.fn(async () => reconciliation(oldTarget())),
       createUuid: () => "uuid-regenerate",
@@ -192,7 +193,7 @@ describe("unified regenerate execution controller", () => {
         { type: "unknown", rawType: "future-event" },
       ]),
     );
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: executionReader(),
       openRegenerateExecution,
       reconcileHistory,
       createUuid: () => "uuid-success",
@@ -214,7 +215,7 @@ describe("unified regenerate execution controller", () => {
       "conv-a",
       "assistant-a",
       {},
-      { signal: expect.any(AbortSignal) },
+      { signal: expect.any(AbortSignal), headers: { "X-Chat-Execution-Id": "uuid-success" } },
     );
     expect(reconcileHistory).toHaveBeenCalledWith("conv-a", "assistant-a");
 
@@ -236,7 +237,7 @@ describe("unified regenerate execution controller", () => {
       thinking: null,
       simpleThink: null,
     }));
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: executionReader(),
       openRegenerateExecution: vi.fn(async () => ({
         kind: "stream" as const,
         events: (async function* () {
@@ -295,7 +296,7 @@ describe("unified regenerate execution controller", () => {
       thinking: null,
       simpleThink: null,
     } as const;
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: executionReader(),
       openRegenerateExecution: vi.fn(async () => stream([
         { type: "start", assistantMessageId: "assistant-a" },
         { type: "chunk", content: rawContent },
@@ -310,7 +311,7 @@ describe("unified regenerate execution controller", () => {
   });
 
   it("normalizes empty optional receipt text before comparing HTTP", async () => {
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: executionReader(),
       openRegenerateExecution: vi.fn(async () => stream([
         { type: "start", assistantMessageId: "assistant-a" },
         { type: "chunk", content: "new answer" },
@@ -342,7 +343,7 @@ describe("unified regenerate execution controller", () => {
         { type: "chunk", content: "new answer" },
       ]),
     );
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: pendingExecutionReader,
       openRegenerateExecution,
       reconcileHistory,
       createUuid: () => "uuid-same-id-old-content",
@@ -427,7 +428,7 @@ describe("unified regenerate execution controller", () => {
     receipt,
     persisted,
   ) => {
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: vi.fn().mockImplementationOnce(pendingExecutionReader).mockImplementation(executionReader()),
       openRegenerateExecution: vi.fn(async () => stream([
         { type: "start", assistantMessageId: "assistant-a" },
         ...chunks,
@@ -450,7 +451,7 @@ describe("unified regenerate execution controller", () => {
       thinking: null,
       simpleThink: null,
     } as const;
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: executionReader(),
       openRegenerateExecution: vi.fn(async () => stream([
         { type: "start", assistantMessageId: "assistant-a" },
         { type: "chunk", content: "same answer" },
@@ -473,7 +474,7 @@ describe("unified regenerate execution controller", () => {
       { type: "chunk", content: "temporary" },
     ] satisfies readonly ChatExecutionEvent[]],
   ] as const)("treats %s as a contract failure and never succeeds regenerate", async (_label, events) => {
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: pendingExecutionReader,
       openRegenerateExecution: vi.fn(async () => stream(events)),
       reconcileHistory: vi.fn(async () => reconciliation(oldTarget())),
       createUuid: () => "uuid-contract",
@@ -493,7 +494,7 @@ describe("unified regenerate execution controller", () => {
       thinking: null,
       simpleThink: null,
     }));
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: pendingExecutionReader,
       openRegenerateExecution: vi.fn(async () => stream([
         { type: "start", assistantMessageId: "assistant-a" },
         { type: "chunk", content: "new answer" },
@@ -526,7 +527,7 @@ describe("unified regenerate execution controller", () => {
   ] as const)("keeps %s partial content temporary and reloads the unchanged target", async (marker) => {
     const reload = deferred<ReturnType<typeof reconciliation>>();
     const reconcileHistory = vi.fn(() => reload.promise);
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: executionReader(),
       openRegenerateExecution: vi.fn(async () => stream([
         { type: "start", assistantMessageId: "assistant-a" },
         { type: "chunk", content: "temporary partial" },
@@ -580,7 +581,7 @@ describe("unified regenerate execution controller", () => {
         }),
       ]),
     );
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: vi.fn().mockImplementationOnce(pendingExecutionReader).mockImplementation(executionReader()),
       openRegenerateExecution,
       reconcileHistory,
       createUuid: () => "uuid-uncertain",
@@ -598,7 +599,7 @@ describe("unified regenerate execution controller", () => {
     });
 
     await controller.retryFinalization();
-    expect(controller.getState()).toEqual({ kind: "idle" });
+    expect(controller.getState()).toMatchObject({ kind: "idle", serverExecution: { terminal: true } });
     expect(openRegenerateExecution).toHaveBeenCalledOnce();
     expect(reconcileHistory).toHaveBeenCalledTimes(2);
   });
@@ -624,7 +625,7 @@ describe("unified regenerate execution controller", () => {
         persistedReceipt(expected),
       ]),
     );
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: vi.fn().mockImplementationOnce(pendingExecutionReader).mockImplementation(executionReader()),
       openRegenerateExecution,
       reconcileHistory,
       createUuid: () => "uuid-mismatch-retry",
@@ -643,7 +644,7 @@ describe("unified regenerate execution controller", () => {
     });
 
     await controller.retryFinalization();
-    expect(controller.getState()).toEqual({ kind: "idle" });
+    expect(controller.getState()).toMatchObject({ kind: "idle", serverExecution: { terminal: true } });
     expect(openRegenerateExecution).toHaveBeenCalledOnce();
     expect(reconcileHistory).toHaveBeenCalledTimes(2);
     expect(reconcileHistory).toHaveBeenNthCalledWith(
@@ -654,7 +655,7 @@ describe("unified regenerate execution controller", () => {
   });
 
   it("remains uncertain when successful SSE cannot find the same target ID in HTTP history", async () => {
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: pendingExecutionReader,
       openRegenerateExecution: vi.fn(async () => stream([
         { type: "start", assistantMessageId: "assistant-a" },
         { type: "chunk", content: "temporary replacement" },
@@ -688,7 +689,7 @@ describe("unified regenerate execution controller", () => {
       async () => Promise.reject(httpError(status, backendCode)),
     );
     const reconcileHistory = vi.fn(async () => reconciliation(oldTarget()));
-    const controller = createChatSendController({
+    const controller = createChatSendController({ readExecution: pendingExecutionReader,
       openRegenerateExecution,
       reconcileHistory,
       createUuid: () => "uuid-preflight",
@@ -700,7 +701,7 @@ describe("unified regenerate execution controller", () => {
       error: { code: safeCode },
     });
     expect(controller.getState()).not.toHaveProperty("assistant");
-    expect(reconcileHistory).toHaveBeenCalledOnce();
+    expect(reconcileHistory).not.toHaveBeenCalled();
   });
 });
 

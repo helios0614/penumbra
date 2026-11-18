@@ -1,6 +1,6 @@
 # Penumbra 前端契约摘要
 
-> 最后更新：2026-10-26（Main配置与PR6.5持久设置边界）
+> 最后更新：2026-11-18（S6E2-C Main Stop / Abort）
 
 导航：[架构原则](./penumbra-architecture.md) · [迁移路线图](./frontend-migration-plan.md) · [前端契约](./frontend-contracts.md)
 
@@ -12,6 +12,19 @@
 - 本地 optimistic state 只能用于临时展示，不能成为持久事实。
 - 客户端状态必须能通过服务端 ID、snapshot、重新加载结果或明确的 event 规则对账。
 - WebSocket 连接状态只说明传输是否在线，不能代替业务状态。
+
+### Main execution / Stop（S6E2-C，当前合同）
+
+本节取代下文较早 S6C / S6E1 / C2A3.1 关于“receipt + HTTP 即可结束执行”的门禁描述。HTTP history 仍是消息正文权威；receipt / persisted SSE 仍只证明对应提交，不证明 owner 终结。后端权威为 AionHome `docs/regenerate-contract.md` §14；实施及缺口见 [S6E2-C 记录](./chat-b2-cancellation-audit.md#16-s6e2-c-实施记录2026-11-18)。
+
+- 身份：send 使用 `client_msg_id`；canonical regenerate 每次 UUID 经 `X-Chat-Execution-Id` 传入；公开 ID 是 `kind + '.' + base64url(UTF-8 request_id)`，不含 padding，完整身份还包括 conversation。target / overlay ID 不作为尝试身份。
+- `GET .../executions/active` 发现活动执行；`GET .../executions/{id}` 精确读取；`POST .../executions/{id}/cancel` 只由明确 Stop 触发。GET / receipt 全部 no-store。DTO 在 `application/chat-execution` 映射成 `MainChatExecution`，不把原始 wire / 私有异常放入 UI。
+- 只有权威 `terminal:true` 解锁同会话 send / regenerate。202、非终态 200、404、409、503、断网、SSE EOF、Assistant 已提交或内容相等均不解锁。已确认终态不会被迟到读取或取消响应降级。
+- 准备 / 生成显示停止；取消意图已接受显示停止中并禁重复；finalizing、owner 不可控及查询未知保留原按钮位置禁用并可只读核对。Stop 不依赖草稿、上传就绪或原 POST 是否仍等待响应头。文本 / 附件编辑只需有效草稿 owner；发送快捷键仍只发送，不会变成 Stop。
+- Main 的 `releaseAfterReview`、返回编辑及确认 UI 已移除。重新核对 / focus / online / WS 恢复只 GET execution / receipt / 必要 history，不 cancel、不恢复生成或重发，不新增轮询。
+- 除当前未终结 send 绑定的 User 外，持久消息按原内容和局部保存约束编辑 / 删除。regenerate 仍限最新普通 Assistant；target 与本次临时输出分行，不让旧 overlay 覆盖编辑后的正文或恢复已删消息。
+- cancelled partial 只取服务端安全 `partialText`，单独标「已停止」，无公开正文就不显示空泡，不提交为 Assistant。未知执行保留 B1 安全 partial / Thinking / DRIFT。终态与 history 读取分离：历史失败保留临时结果，不阻止已确认终态后的新请求；迟到结果只结算自身 execution，不清新草稿 / 附件。
+- `/active` 不发现已终结结果。完全刷新丢失 ID 后无法恢复 cancelled partial；当前不做内容匹配或复杂前端持久化。需要后端单独补充按会话有界的只读停止结果发现；本轮仅记录该缺口。多 worker 不可控时等待精确终态，不调度远程取消。
 
 ### Conversation Domain（S3A）
 
@@ -130,7 +143,7 @@ S6C 建立的 execution state 在 S6E1 扩展为统一 send/regenerate ownership
 - 每次明确 send 使用 `crypto.randomUUID()` 生成一个 `client_msg_id`，同一 execution 与 finalization retry 保持该 ID；conversation ID、时间戳或伪造 persisted message ID 都不作为幂等 ID。
 - 点击发送后先创建 `OptimisticUserMessage` overlay 并进入 `sending-user`。只有 `openSendExecution()` 成功返回 stream/duplicate 分支后 Sender 才清空 draft；HTTP 前置失败会移除 optimistic overlay、保留输入并显示安全错误。
 - production 首版只发送 `content + client_msg_id`。request mapper 的完整 C2A2 allowlist 是 `content/attachments/client_msg_id/temperature/context_limit/thinking_effort/fast_mode/whisper_mode`；没有真实 UI state 的可选字段全部省略，后端 canonical defaults 为唯一默认事实来源。不得发送 model/provider/cache/carryover/raw history/Settings/MCP/cookie/Authorization。
-- SSE `start/chunk/debug-summary/persisted/unknown/capability` 仍由同一 parser 与 Execution mapper 处理。composition reducer 只保留 assistant content、thinking、simple-think、safe usage、server assistant ID 与两个固定 provider failure code；regenerate controller 单独保存 normalized persistence receipt，send 不使用它。raw SSE object、debug body、provider response、endpoint、payload、prompt、key 和 stack 不进入 React state。
+- SSE `start/chunk/debug-summary/persisted/unknown/capability` 仍由同一 parser 与 Execution mapper 处理。composition reducer 只保留 assistant content、thinking、simple-think、safe usage、server assistant ID 与两个固定 provider failure code；regenerate controller 校验 persistence receipt 的目标身份，send 不使用它；执行门禁采用上述 S6E2-C 的持久终态。raw SSE object、debug body、provider response、endpoint、payload、prompt、key 和 stack 不进入 React state。
 - `[THINKING_START]...[THINKING_END]`、`[SIMPLETHINK:...]` 与 `provider_request_failed/provider_execution_failed` marker 都支持跨 chunk 累积；provider failure 只映射成固定安全错误，包含 marker 的 provider 文本不展示。
 - transport EOF 不等于持久化成功。EOF 后进入 finalizing 并调用 `reloadMessageHistoryFromScratch()`；正常 stream 已取得 `start.assistantMessageId` 时，只有 HTTP history 包含同一真实 ID 才移除 overlay。HTTP 暂时只有 user 时进入 finalization uncertain；明确 provider failure 仍以 HTTP reload 为最终状态。若 persisted assistant content 含固定 provider failure marker，presentation mapper 只投影通用安全文案，不修改 Domain Message，也不展示 provider 名称或状态码。
 - finalization uncertain 保留 optimistic/partial assistant overlay 并标记“未确认保存”，只提供“重新加载历史”。retry 不重新调用 provider、不生成新 `client_msg_id`、不按文本去重。
@@ -179,11 +192,11 @@ S6E1 只使用 `POST /api/conversations/{conversationId}/messages/{messageId}/re
 - UI guard 只选择当前 selected conversation 中由 HTTP history 读取的、`roleKind=assistant`、`isCarryover=false` 的 latest tail assistant。Workspace/readiness 必须 available + ready，setup/readiness model 必须与 selected conversation 一致，且不能处于 switch 或任一 active execution。user/system/unknown/hidden-runtime、carryover、wrong-conversation、optimistic user 与 streaming assistant 都不是 target；后端仍是最终 eligibility authority。
 - send 与 regenerate 共用同一 active execution slot。send active 时 regenerate disabled；regenerate streaming/finalizing/finalization-uncertain 时 Sender、regenerate 与 conversation switching disabled。double click 不能打开第二个 execution，WS/reconnect 也不能重发 provider 请求。
 - regenerate 开始时 persistent target 仍保留在 `MessageHistoryState`。纯 presentation composition 按 target ID 把该 assistant 的可见 VM 替换为临时 overlay；loading、content、thinking、simpleThink、provider partial failure、finalizing 与 uncertain 都保持相同视觉 ID/位置，不追加第二个 assistant，不改变 Domain、history count 或 conversation message count。
-- regenerate 复用 S6C 的 SSE parser、event mapper、thinking/simpleThink/provider-marker accumulator 与 safe usage。共享 framing 保留命名 `event: persisted`，mapper 把 receipt 的 `simple_think` 明确投影为 `simpleThink`。`start.assistantMessageId` 和 receipt `id` 都必须等于 target message ID；mismatch 是安全 contract failure，receipt ID mismatch 还必须保持 finalization uncertain。缺失 start 不能成为成功 regenerate；malformed 已知 event 抛 contract error，unknown event 只保留安全 type marker 并继续消费。
+- regenerate 复用 S6C 的 SSE parser、event mapper、thinking/simpleThink/provider-marker accumulator 与 safe usage。共享 framing 保留命名 `event: persisted`，mapper 把 receipt 的 `simple_think` 明确投影为 `simpleThink`。`start.assistantMessageId` 和 receipt `id` 都必须等于 target message ID；mismatch 是安全 contract failure，receipt ID mismatch 保留安全错误并通过 execution GET 核对。缺失 start 不能单独成为完成证明；malformed 已知 event 抛 contract error，unknown event 只保留安全 type marker 并继续消费。
 - canonical target HTTP 错误安全映射为：404 `regenerate_target_not_found`（目标回复已不存在）、422 `regenerate_target_invalid`（当前回复不能重新生成）、409 `regenerate_target_not_latest`（该回复已不是当前最新回复）、409 `regenerate_conflict`（会话已发生变化，请刷新后重试）。`unknown_model/invalid_generation_options/unsupported_generation_option/provider_not_configured` 沿用 generation 安全映射；UI 不显示 raw body、endpoint 或 stack。
 - HTTP/preflight failure 立即移除 replacement overlay，原 persistent target 继续展示。streaming/provider failure 的 partial 只存在于 overlay；EOF 只进入 finalizing 并触发 HTTP scratch reload，不是 persistence confirmation。C2A3.1 `persisted` receipt 只对 active regenerate 表示 same-ID replacement 已 COMMIT；receipt 到达只在 execution 内保存 normalized `{id, content, thinking, simpleThink}`，不修改 Domain、不移除 overlay、不结束 execution，也不跳过 EOF 后 HTTP finalization。
 - controller 先安装 authoritative HTTP scratch history，再比较 receipt 与 HTTP target 的 `id/content/thinking/simpleThink`。两者完全相等才清除 overlay 并回到 idle；raw/flushed accumulator 不参与 persistence predicate，因为 raw provider stream 可能包含 `<meta>`、`[TODO:…]` 等被后端 canonical cleanup 移除的内容，前端不得复制 command parser。usage、attachments、MCP、cache、voice、createdAt 与其他 metadata 也不参与该 predicate。
-- receipt 缺失、HTTP reload 失败、target 缺失或任一 comparison 字段不一致时进入 regenerate finalization-uncertain，保留临时 replacement 和“未确认保存”；HTTP history 即使无法确认本次 transaction，仍照常安装为 authoritative truth。identical old/new content 不再有内容级歧义：receipt 本身证明 commit，receipt 与 HTTP 相等即可确认。“重新加载历史”只复用 active execution 已保存的 receipt 重做 HTTP GET，不再次 regenerate、不 DELETE、不创建 target ID、不自动 retry provider；从未收到 receipt 时，后续 HTTP retry 仍不能虚构本次 commit 已确认。
+**S6E2-C 前的提交对账合同（执行门禁现以上述持久终态为准）：** - receipt 缺失、HTTP reload 失败、target 缺失或任一 comparison 字段不一致时进入 regenerate finalization-uncertain，保留临时 replacement 和“未确认保存”；HTTP history 即使无法确认本次 transaction，仍照常安装为 authoritative truth。identical old/new content 不再有内容级歧义：receipt 本身证明 commit，receipt 与 HTTP 相等即可确认。“重新加载历史”只复用 active execution 已保存的 receipt 重做 HTTP GET，不再次 regenerate、不 DELETE、不创建 target ID、不自动 retry provider；从未收到 receipt 时，后续 HTTP retry 仍不能虚构本次 commit 已确认。
 - C2A3.1 后端顺序是 `COMMIT → WS msg_updated(target) → SSE persisted → post-commit side effects → EOF`。regenerate active 时先到的 `msg_updated(target)` 与其他 current-conversation event 一样只置 history dirty，不从 WS payload 覆盖 persistent target、不插入 assistant、不清除 overlay、不跳过 receipt；当前 execution 的 HTTP finalization 保持 ownership，idle 后再合并 dirty reconciliation。稳定关系是 `SSE persisted = commit acknowledgement / WS = persisted change notification / HTTP history = authoritative persisted truth`。
 - regenerate 是原位 replacement，BubbleList 不把 execution ID 作为强制滚到底部 key；target 在尾部且用户仍接近底部时可随流跟随，用户向上阅读时不强拉，final HTTP same-ID replacement 尽量保持 DOM/scroll 稳定。首版不实现复杂 anchor persistence。
 
@@ -394,7 +407,7 @@ debug 的公开 allowlist 只有 `messageId <- msg_id`、`modelKey <- model`、`
 - iterator 自然结束/transport EOF 只表示当前 HTTP response body 已结束；不产生 `completed` 或伪造的持久化事件，不表示 assistant commit、WS 送达、history 更新或 provider 正常完成。
 - caller abort、timeout 或 consumer 提前停止只停止本地请求和后续读取并释放资源。AionHome 的生成在独立后台 task 中继续；client 不提供 `cancelGeneration`，也不承诺停止 provider、阻止持久化、撤销 command 或取消其他 side effect。
 
-底层 Chat Execution 仍不调用 history、不创建 optimistic Message、不连接 WebSocket、不读取 Settings，也不修改 `MessageHistoryState`。S6C/S6E1 的统一上层 controller 在 EOF 后显式触发 HTTP scratch reload；send 继续以真实新 assistant ID 对账，regenerate 只有在 saved receipt 与 same-ID HTTP target 的 normalized semantic projection 完全相等时才移除临时展示。
+**S6E2-C 前的提交对账合同（执行门禁现以上述持久终态为准）：** 底层 Chat Execution 仍不调用 history、不创建 optimistic Message、不连接 WebSocket、不读取 Settings，也不修改 `MessageHistoryState`。S6C/S6E1 的统一上层 controller 在 EOF 后显式触发 HTTP scratch reload；send 继续以真实新 assistant ID 对账，regenerate 只有在 saved receipt 与 same-ID HTTP target 的 normalized semantic projection 完全相等时才移除临时展示。
 
 **AionsHome 权威来源**：`aion-chat/routes/chat.py::MsgCreate`、`send_message`、`regenerate_message` 及其 queue/SSE generator；旧 `static/chat.html` 只用于核对兼容差异。
 
@@ -426,7 +439,7 @@ S4E2 服务一次只处理一个 plan，不拥有连接或并发控制。S6D coo
 - AionHome C2A3 canonical target regenerate 已取代 Penumbra 的旧契约假设。target eligibility 是 persisted、non-carryover、latest tail assistant；后端继续为最终 authority。
 - 成功时 SSE `start.id`、named SSE `persisted.id`、被 UPDATE 的 persistent assistant 与 WS `msg_updated` 都使用相同 target ID；HTTP history 返回 same ID 与 authoritative canonical projection。Penumbra 只做临时视觉 replacement，不创建第二个 persisted assistant。
 - 未成功 commit 时 persistent target 保持原样。HTTP/preflight failure 立即撤掉 overlay；streaming/provider failure 必须先 HTTP reload 再展示原 authoritative target，partial 永不写入 Domain。
-- `SSE persisted = commit acknowledgement`，`HTTP history = authoritative persisted truth`，`receipt + HTTP projection match = frontend confirmed finalization`。EOF 与 raw provider stream 都不是 persistence confirmation；raw stream 也不等于 backend cleanup 后的 canonical Message。receipt missing、HTTP reload/target/match failure 都保留 finalization-uncertain overlay，identical output 在 receipt/HTTP 相等时正常成功。“重新加载历史”只做 HTTP GET，没有 provider、POST regenerate、DELETE、create 或 receipt regeneration side effect。
+**S6E2-C 前的提交对账合同（执行门禁现以上述持久终态为准）：** - `SSE persisted = commit acknowledgement`，`HTTP history = authoritative persisted truth`，`receipt + HTTP projection match = frontend confirmed finalization`。EOF 与 raw provider stream 都不是 persistence confirmation；raw stream 也不等于 backend cleanup 后的 canonical Message。receipt missing、HTTP reload/target/match failure 都保留 finalization-uncertain overlay，identical output 在 receipt/HTTP 相等时正常成功。“重新加载历史”只做 HTTP GET，没有 provider、POST regenerate、DELETE、create 或 receipt regeneration side effect。
 - production 禁止 legacy conversation-scoped regenerate，禁止 regenerate 的 DELETE + POST 编排。
 
 **AionsHome 权威来源**：C2A3 Atomic Target Regenerate Contract、canonical route implementation、message persistence contract tests 与 `msg_updated` contract。
@@ -574,7 +587,7 @@ SSE/WS/HTTP 的三源权威边界、S6D 连接/并发协调与 S6E1 canonical ta
 | Capability Composition | `Pending (S6E3)` | 未实施。 |
 | System Message / Instruction Presentation | `Pending (S6F)` | 未实施。 |
 | Message update reconciliation | `Backend contract gap` | WS 仅提供 ID 且 HTTP 无单 Message GET；latest refresh 无法保证较早消息已权威更新，结果保持 `latest-window-only`。 |
-| SSE/WS/HTTP 权威关系 | `Confirmed and integrated (S6D/C2A3.1)` | HTTP history 是 persisted final truth，SSE 是当前 execution 增量且 regenerate `persisted` 是 commit acknowledgement，WebSocket 是 post-commit notification；receipt+HTTP projection match 才确认 regenerate finalization，same-execution WS event 不创建 Message。 |
+| SSE/WS/HTTP 权威关系 | `Confirmed and integrated (S6D/C2A3.1)` | HTTP history 是 persisted final truth，SSE 是当前 execution 增量且 regenerate `persisted` 是 commit acknowledgement，WebSocket 是 post-commit notification；receipt+HTTP projection match 只说明提交对账，S6E2-C 的 execution.terminal 才确认执行终结；same-execution WS event 不创建 Message。 |
 | Stop/cancel | `Pending backend confirmation` | 尚无已确认的服务端停止契约。 |
 | Carryover 所有权 | `Pending backend confirmation` | 前后端职责与迁移方式待确认。 |
 | Production 部署方式 | `Pending backend confirmation` | 同源反代或跨域部署待确认。 |

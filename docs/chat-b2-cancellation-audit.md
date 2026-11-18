@@ -2,6 +2,15 @@
 
 审计日期：2026-11-17（Asia/Shanghai）。本轮仅静态读取当前工作区源码和已安装依赖源码，新增本报告；没有实施 CHAT-B2-A，没有运行应用、测试或构建，没有调用真实 Provider、数据库或线上服务，没有 commit、push、deploy。
 
+**2026-11-18 实施前复核：** 原审计保留，不重复研究。下一轮以 [S6E2 最小实施结论](#13-s6e2-实施前差异与最小方案2026-11-18) 为准：沿用 S6E2-A / B / C，Provider 完成判定仍属原 CHAT-B2，不纳入 Stop / Abort。
+
+
+**2026-11-18 S6E2-A 已实施：** 本次代码、合同结果和实际限制见 [第 14 节](#14-s6e2-a-实施记录2026-11-18)。第 1–13 节保留为原审计及实施依据；B / C 尚未实施。
+
+**2026-11-18 S6E2-B 已实施：** 公开 API、兼容性与本次合同结果见 [第 15 节](#15-s6e2-b-实施记录2026-11-18)；Composer 尚未改造。
+
+**2026-11-18 S6E2-C 已实施：** 前端接口、Composer / 消息操作、合同结果和刷新 partial 的明确缺口见 [第 16 节](#16-s6e2-c-实施记录2026-11-18)。
+
 ## 1. 基线、范围与结论
 
 | 工作区 | 分支 / HEAD | 开始时状态 |
@@ -400,6 +409,292 @@ Provider 阶段结果与 execution 结果分开表达：例如 Provider 已 comp
 **现有架构能以较小、分边界的改动实现可靠真正中止。现状缺的不是 SSE 功能，而是 Main execution 的可寻址 owner、端到端确定性流关闭、取消安全边界及持久终态/partial；regenerate 还缺可查询的尝试身份。补齐这些能力后，前端可沿用 CHAT-B1 草稿与会话隔离，只增加停止操作和终态门禁。若要求在未知多 worker 部署中仅加内存 Task 表就保证可靠，则不能达到目标，具体还缺 owner 定向控制机制。**
 
 本轮交付仅此报告，停止在人工评估处，不进入 CHAT-B2-A。交付核对：Penumbra 仅新增本文件，AionHome 无工作区变更；报告引用及空白格式做了静态检查，没有将任何业务测试标为通过。
+
+## 13. S6E2 实施前差异与最小方案（2026-11-18）
+
+### 13.1 复核基线与仍适用的结论
+
+本轮关联原架构主线 **S6E2 Stop / Abort**。只更新本文，不修改业务源码、测试、依赖、配置或数据库，不运行服务、commit、push、deploy。正常 send/regenerate 的消息持久化、Prompt 顺序、WS type/payload/timing、command grammar 与副作用顺序继续作为不变合同；新增 execution 事实不替代 messages 历史事实。
+
+| 仓库 | 当前分支 / HEAD | 本轮开始状态 / 与原审计差异 |
+| --- | --- | --- |
+| Penumbra | `main` / `6ec7c214f167654a58220ae2e94b328506d18a22` | 干净，无暂存或未跟踪文件；原审计已随该提交纳入版本管理。相对原审计 HEAD 仅变更本文及 B1 人工验收文档，业务源码未变 |
+| AionHome | `refactor-code-main` / `86c3670139b42944a77a8cc4a4564fe5a65d1190` | 干净；与原审计相同 HEAD |
+
+已读取两仓 AGENTS / engineering-principles、Penumbra CLAUDE / UI 开发入口、AionHome runtime model / master plan，并对照本文、`chat-streaming-state-audit.md`、`append-reply-pipeline-audit.md`、AionHome `sse-library-comparative-study.md`、B1 文档及当前 send/canonical regenerate 源码。仓库原路线图只把 S6E2 标为 Pending；未找到以 **Execution Ownership & Cancellation Safety / Explicit Server Cancel Contract** 为标题的独立方案文件。这两个名称按本轮明确要求用于 A/B 边界，不声称另有未找到的原文。本文 §2–9 的所有权、资源关闭、partial、截止点与执行查询设计仍适用。
+
+昨天（11 月 17 日）的 B1 A–D 人工结果与交互决定见 [B1 收尾记录](./chat-b1-manual-recovery.md#chat-b1-closeout人工验收收尾)。已提交的 B1 实现解决核对丢 partial、旧读取标志、迟到结果污染；**独立返回编辑及确认 Popover 仍在源码中，后台 Stop 尚未实现**。新交互属于 S6E2-C，不能把验收决定当成已上线行为。
+
+### 13.2 源码差异、复用与范围修正
+
+| 核对项 | 当前事实与最小结论 |
+| --- | --- |
+| Task 所有权 / 跨请求身份 | send `create_task`（2739）和 canonical regenerate（4260）仍丢弃返回值；debug scope 与 `_active_targets` 均不是 Task registry。send 复用 `conv_id + client_msg_id`；regenerate 传递本次尝试 UUID，不能复用 target ID 或 debug header。[A1] [A3] [A4] [A5] |
+| 准备与终结缺口 | send 在 user/receipt 提交、WS user 通知后才做 URL/digest/recall，最后创建 Producer；Producer 的 cache/MCP 初始化还在可靠 try/finally 之外。两段都纳入 A，不能只包最后 `stream_ai`；初始化失败必须有安全结果、relay 结束和 owner 释放。[A1] [A10] |
+| HTTPX / Adapter 取消 | 当前五类实际 Adapter 已有局部 client/response async context；等待网络时取消可沿 await 传播。本轮复核本机 HTTPX finally/HTTPCore cleanup 未变。Main 两调用端及 OpenAI/Gemini 分发仍缺确定性生成器关闭；Anthropic wrapper 还会吞掉 close 异常，A 需让关闭失败可被 owner 识别。沿用传输实现，只补关闭责任，不改 parser/协议完成条件。[A6] [A11] [A12] [D2] [D4] |
+| send receipt / regenerate 证明 | 复用 send 幂等事务与 assistant 同事务链接；复用 canonical 原 ID 原子替换、全会话快照重查、voice/HEART 事务及 persisted 事件。两者现有证明都只证明主消息提交，不证明 execution 已结束；须关联独立持久终态，删除消息不能抹掉执行身份或授权同身份再次生成。[A2] [A5] |
+| B1 / Composer | 复用每会话 sessions、active identity、finalization 合并、正文/附件快照与 revision、迟到结果隔离、独立临时回复和轻量反馈。`disabled` / `submitDisabled` 已分离；无需重建 Composer 或前端状态系统。[P1] [P2] [P3] [P6] [P10] |
+| 消息 mutation | 昨天 §6.2“send 不覆盖旧 ID”不足以证明所有消息均可立即开放。send 在 1388–1441 行之间同时使用 `body.content` 和随后读取的历史；编辑/删除本次 user 可造成输入身份与上下文不一致，删除还影响 receipt JOIN。C 只保留**当前未终结 send 所绑定 user** 的局部 edit/delete 限制，后端对应 PUT/DELETE 同样检查；其他持久消息开放。canonical target 可修改/删除，复用 commit 快照 conflict，不增加会话锁。[A1] [A2] [A5] [A22] |
+| append owner | 不能直接复用 `run_owned/stream_reply`：其取消可能进入 checkpoint 自动补提交，带两次 attempt、工具 owner、deadline 与 journal；不符合 Main 主动停止“不自动提交正常 Assistant、不重跑副作用”的契约。只复用 `append_reply_checkpoint.project(raw, secrets)` 的纯安全投影，不接其恢复写入。[A9] [A20] |
+
+**拆分修正：** §10 的 CHAT-B2-A…E 是昨天的建议，不作为本轮开工清单。S6E2-A 合并 ownership 与取消安全所必需的流关闭、Producer 初始化终结；S6E2-B 增加显式接口；S6E2-C 覆盖 Composer 及消息操作。原 **CHAT-B2 Provider 完成判定、CHAT-B3 空失败持久化** 均留在原主线，不作为 A 的前置条件。保留现有 Anthropic 完整性防护；新增 execution `completed` 只表示现有执行路径完成，不能据此声称已修复 OpenAI/Gemini EOF 完成误判。现有 `has_error`/明确异常仍写 failed，已提交消息身份必须保留。共享流关闭要回归 append/Diary，但不修改其重试、命令或调度政策。
+
+### 13.3 确定的最小执行与停止合同
+
+1. **一份 execution 事实、一个 Main owner。** 新增 Main 专用持久记录与进程内强引用表；身份为 `(conv, kind, request_id)`，send 的 request_id 是现有 client_msg_id，regenerate 是每次新 UUID。记录 phase、cancel intent、terminal outcome/reason、owner 进程身份、关联消息 ID 与停止后的安全 partial。消息 ID 不设会随消息删除级联消失的外键。旧无 client ID 的调用方由服务端分配身份，保持原请求兼容；其身份未交付前不能承诺可停止。
+2. **接受与去重是一处边界。** 同会话最多一个未终结 Main send/regenerate，其他会话、Diary、append 不受限。接受事务/registry 登记不得留出两个请求同时被接受的间隙；同身份重复请求读取原结果，不因消息删除再次生成；不同身份冲突返回 `409 chat_execution_active` 和可查询的原身份。send 的 user+receipt+execution 同一接受事务提交，接受阶段不注入用户取消；WS user 和后续准备/生成由独立 owner 负责，保持原相对顺序。HTTP 等待接受结果时也不能把请求取消传给 owner，不把 ASGI 请求 Task 作为 owner。
+3. **只在 preparing/generating 取消。** owner 首先进入最外层终结边界，再执行初始化和准备。未启动的 Task 先记 intent，由 owner 进入收尾边界后结算，避免 `Task.cancel()` 早于协程首步而跳过 finally。运行中首次用户 intent 才注入一次取消；重复 stop 不再次打断清理。显式关闭 Main → stream_ai → Adapter → HTTPX 各层资源；普通失败、用户取消、系统取消分开处理。
+4. **取消与正常处理只选一个入口。** 在 send `begin_reply`/MUSIC 等命令处理前、regenerate 输出准备/提交前，无 await 地检查 intent 并切 `finalizing`。stop 先胜则跳过正常命令、assistant 提交及 follow-up；finalizing 先胜则不再注入用户取消，等待原提交/后处理结束并返回真实结果。已执行的准备期写入、已提交消息、已派发独立副作用不回滚、不重放；`committed` Python 变量不能取代 DB 事实。
+5. **cancelled 必须有证据。** 本地 Provider 流退出、资源关闭、owner 主体停止后，将安全 partial 与单向终态同事务保存，再释放对应会话执行权；终态不可被迟到 SSE/debug/重复请求改写。取消接口本身断连不得取消 owner/清理。关闭失败、终态写入失败或 owner 不可达时不返回“已停止”，保持未确认并允许只读核对；不得仅凭 `Task.cancel()`/HTTP 200/202 释放发送权。清理不得依赖可能挂起的 WS 广播/导出；不照搬 append finally 的无界通知路径。
+6. **partial 只属于本次 execution。** 停止收尾保存一次安全可公开正文，使用 frozen binding 中的秘密集合进行投影；不新增逐 token checkpoint，不运行正常命令清理器保存 partial，不 INSERT 正常成功 Assistant。send user 保留，regenerate 原 target/voice/HEART 保留；公开 partial 标为“已停止”。B1 已有临时展示保留到对应结果接管，停止/核对不能清下一条草稿、附件或复活已删消息。未闭合控制内容/私有推理不作为公开 partial；无正文也可有取消终态。
+7. **只提供精确取消与只读发现/查询。** 接口固定为 `POST /api/conversations/{conv}/executions/{execution_id}/cancel`、`GET /api/conversations/{conv}/executions/{execution_id}`；另以只读 `GET .../executions/active` 支持刷新/重新进入会话后发现原执行（静态路径优先注册）。execution_id 为上述身份的稳定编码，由 A 合同固定且客户端可在 POST 前计算，不是 message ID。regenerate 用可选正常业务头 `X-Chat-Execution-Id` 传尝试 UUID，保留当前空 body / generation query allowlist，不依赖可关闭的诊断功能。查询与返回结果均 no-store、同 protected router 鉴权并验证会话归属；send-results 保留原字段并关联同一 execution 投影，不维护第二套状态。
+8. **响应含义固定。** 已终结重复 cancel 返回 `200` 原终态；已接受取消返回 `202`、`cancel_requested=true` 及当前 phase；已 finalizing 返回 `200` 当前非终态、`cancel_accepted=false`，不冒充失败或取消。不存在/错会话返回 `404 chat_execution_not_found`，owner 不在本进程且无法控制返回 `409 chat_execution_owner_unavailable`；认证/输入错误保留现有 401/422 语义。202、非终态 200、404、409、断网、旧服务不支持都不解锁新生成。GET 提供 committed IDs，即使提交后收尾 failed 也不得引导重发原请求。
+9. **本轮选择不预建“停止先到”记录。** §9.2 的持久 stop-intent tombstone 是可选设计，不是必要前置；它会引入尚未接受请求的保留/清理语义。最小实现让 owner 在接受后、耗时准备前可寻址。stop 若先于原 POST 接受而返回 not-found，保留真实 unknown 与原 request_id；原请求随后可继续运行，不能显示停止成功。收到原接受信息或只读发现后，允许用户再次显式停止；不自动重发生成，也不增加 reserve HTTP 握手。这与本轮“无法定位则未知”的要求一致，须纳入测试与提示。
+10. **部署范围明确。** 第一阶段仅保证单 Main owner 进程可控；仓库直接 uvicorn 入口无 workers 参数，实际部署 worker 数仍未核验。记录进程身份，重启后仅将已确认 owner 丢失的非终态标为系统 interrupted，绝不标 user cancelled 或自动恢复生成。活的其他 worker 不被回收。多 worker 的 owner 路由/控制传递未实现，不能用内存表宣称支持；这是 B 发布范围的条件，不阻塞 A 的本地合同与实现。远端推理是否立即停算/停费仍无 Provider 回执，不作保证。
+
+### 13.4 A / B / C 文件与依赖
+
+下表是最小预计修改集合；新增模块名为实施约定，不要求先抽出完整 Chat Orchestrator。每一步先加本边界合同，再改调用点。
+
+| 步骤 | 修改文件（仓库内路径） | 依赖 / 完成边界 |
+| --- | --- | --- |
+| **S6E2-A — Execution Ownership & Cancellation Safety** | AionHome 新增 `aion-chat/chat_execution_runtime.py`（强引用、phase/intent 仲裁、单次取消和清理）、`chat_execution_receipts.py`（接受/终态/partial）；修改 `routes/chat.py` 两真实入口、regenerate 身份 header、准备边界和当前 send user 的 mutation guard，`ai_providers.py` 生成器关闭链，`database.py` schema 初始化，`main.py` owner shutdown/已死 owner 回收接线；`chat_send_receipts.py` 复用并关联 execution 身份 | 无 B/C 前置。内部取消入口可由合成测试调用；先证明正常执行与系统取消安全，不先暴露用户 Stop。全部初始化在收尾边界内，未开始 Task 取消也可结算，Task/relay 资源有明确释放责任 |
+| **S6E2-B — Explicit Server Cancel Contract** | AionHome `routes/chat.py` 新增 cancel、active/get；复用 A 的 runtime/receipts；扩展 send-results 投影及 canonical 尝试结果查询；合同写入 `docs/regenerate-contract.md` / `docs/chat-sse-pr-c.md` 等既有对应文档 | 依赖 A；完成上述 HTTP/错误语义、幂等、权限/归属、取消响应丢失后的终态核对。不更改既有 WS 与 persisted receipt 格式，execution 终态提供独立证明 |
+| **S6E2-C — Penumbra Composer 接入** | `src/application/chat-execution/` client/types/dto/request（或同目录独立 result client）；`chat-send/` controller/types/result 与 sessions 接线；`components/chat-workspace/useChatSend.ts`、sender/edit/delete/regenerate policy、`presentation/chat-execution-composer.ts`；`components/chat/ChatView.tsx`、`Sender.tsx`、`ChatExecutionFeedback.tsx`、`ChatExecutionReviewAction.tsx` 及必要 Bubble 接线；对应 `frontend-contracts.md` | 依赖 B 稳定合同。移除 Main releaseAfterReview 能力及返回编辑入口/二次确认；共享类型只按实际引用调整。保留 B1 不丢 partial/草稿/附件与迟到隔离；不把取消等同 rejected send，不能自动恢复或再次提交旧附件 |
+
+C 的固定交互：有有效草稿 owner 时，文本与附件在生成/unknown/stopping 均可编辑，不再依赖 Provider readiness 或核对成功；发送仍受原模型/上传资格约束。空闲或权威终态显示发送；可定位且仍可取消时显示停止（不依赖草稿为空、附件上传或 isSubmitting）；请求取消后显示停止中并防重复。已 finalizing 或 owner 不可定位时保留停止位置但禁用，轻量说明并保留只读重新核对；不新增“等待确认”按钮或大型面板。终态 GET 可释放生成门禁，历史失败则继续保留已有展示，不能重发来恢复历史。消息 receipt/persisted/HTTP 内容相等都不能再单独代表 owner 终结。
+
+保留 Sender 的 `shouldSubmitSenderKey`、composition/keyCode 229/快捷键/repeat 判定；Enter 仍只调用受发送门禁保护的 handleSubmit，不能因右侧切换而触发 stop。regenerate 作为新 execution，同样等待同会话原 execution 终结。已有持久 target 与新临时结果分开；编辑/删除后抑制旧 overlay，不让 SSE 视觉覆盖新内容。当前 send user 的局部限制之外，保留消息身份、legacy inline 安全与保存操作本身的 busy 条件即可。
+
+### 13.5 必须先固化的合同与验收
+
+| 阶段 / 测试文件 | 必测断言 |
+| --- | --- |
+| A 新增 `tests/contract/test_chat_execution_runtime.py`、`test_chat_execution_receipts.py` | 接受前/后、Task 首步前、URL/digest/recall/cache/MCP 初始化中断；安全收尾必达；相同身份不重生、消息删除不丢身份；同会话 send↔regenerate 冲突、不同会话同时运行；Task 强引用释放与已死/活异进程区分 |
+| A 扩展 `test_chat_send_receipts.py`、`test_canonical_regenerate_route.py`、`test_atomic_regenerate_persistence.py` | 正常 user/receipt/WS 与 Prompt/副作用顺序不变；本次 user edit/delete 局部冲突；其他消息正常操作；regen target/上下文 edit/delete 导致旧提交 conflict，原消息/voice/HEART 不被旧执行覆盖或复活 |
+| A 新增 `test_main_chat_cancellation.py`，扩展现有 Anthropic lifecycle/provenance 用例 | 真实五类 Adapter + fake HTTPX transport：等 headers、网络 read、yield 后调用方暂停/退出均 close；关闭异常不能报 cancelled；SSE relay 断开不取消 Provider，detached 队列不再积压传输副本，也不能用有界无人消费队列阻塞业务 |
+| A/B 取消与提交竞争（使用 barrier 控时） | 最后 chunk 与 stop、切 finalizing 前后、DB commit 前后、commit 成功但 Python flag 未更新、WS/persisted 丢失、postprocess 失败；只落一个终态。取消胜出无正常命令/Assistant/follow-up；完成胜出保留原提交与已执行副作用，不撤销、不重复；已派发 append 不追杀 |
+| B 新增 `test_chat_execution_cancel_route.py` | 重复 cancel 仅一次注入；stop HTTP 被取消/响应丢失仍完成 owner 清理；202/非终态200不代表停止；404停止先到、401/422、错会话、异 owner409、GET-only/no-store；独立终态/partial 可恢复，零正文与半控制 marker 不泄漏 |
+| C 扩展 `chat-send-abort.test.ts`、`chat-manual-recovery.test.ts`、`chat-execution-sessions.test.ts`、`chat-regenerate.test.ts` | 删除非终态 release 预期；停止中/未知禁发及禁 regen；原提交证明早于 owner 终态仍不解锁；取消/读取失败不伪装成功；刷新发现 active；A 的迟到结果不改变 B 的状态，不清新草稿/附件；只读核对不发 cancel/send/regenerate |
+| C 扩展 `Sender.interactions.test.tsx`、`Sender.media.test.tsx`、`ChatView.drafts.test.tsx`、message edit/delete/regenerate policy、execution-composer tests | 正常/断流/停止时编辑草稿及附件；空草稿/上传中仍可停止；移除独立返回编辑/确认；中文 IME、桌面/移动快捷键、repeat 不误发/误停；target mutation 后旧 overlay 不覆盖；真实手机软键盘留人工验收 |
+
+共享回归只覆盖受到关闭链影响的既有 Anthropic / append transport / Diary 合同，不重做三库比较，不改 Provider 完成、空失败正文、追加队列、MCP/Location 周期或性能。测试使用临时 SQLite、fake Provider/transport 与 barrier，不访问真实凭据/业务库，不用“只 mock task.cancel 返回 true”替代资源关闭证据。
+
+### 13.6 开始 A 的结论与本轮停止点
+
+**没有阻碍开始 S6E2-A 的实际问题。** 现有架构与 B1 能复用；上述准备期 ownership、初始化终结、确定性流关闭和取消/提交仲裁就是 A 必须补的最小边界。Provider 完成判定与空失败持久化仍有已确认缺口，但不应借此重开审计或阻止 A。多 worker 是后续发布保证的明确条件；未确认时按单 owner 范围实施和验收，不扩成分布式任务系统。
+
+本轮仅静态复核源码/历史与文档并更新本文，未新增/运行合同测试、构建或 Provider 联调；原审计测试矩阵与昨天人工结果不充作本轮运行证据。完成文档差异与空白检查后停止，等待确认；下一轮直接从 A 的接受/owner/终结合同测试开始。
+
+## 14. S6E2-A 实施记录（2026-11-18）
+
+本次正式实施 A，以 §13.3–13.5 为依据，不新建方案。AionHome 起点仍为 `86c3670139b42944a77a8cc4a4564fe5a65d1190`，工作区干净；Penumbra 起点为 `6ec7c214f167654a58220ae2e94b328506d18a22`，已有本文 §13 的未提交改动，全部保留。已阅读两仓库 AGENTS / engineering-principles、相关生命周期 / append / SSE / B1 报告，以及后端 Runtime Model、Refactor Master Plan、regenerate contract。未启动生产应用、调用真实 Provider 或访问生产数据库；没有 commit、push、deploy。
+
+### 14.1 实际代码边界
+
+AionHome 共 13 个文件（7 个实现、6 个合同测试），Penumbra 仅更新本文。
+
+| 文件（AionHome `aion-chat/` 下） | 职责 |
+| --- | --- |
+| 新增 `chat_execution_receipts.py` | Main 专属持久身份、会话接受约束、读取与提交关联；不以 message 外键级联删除事实 |
+| 新增 `chat_execution_runtime.py` | owner 强引用、准备到终结、取消意图/提交仲裁、安全 partial、HTTPX 清理、relay detach、shutdown / 死 owner 回收 |
+| `routes/chat.py` | send 与 canonical regenerate 接入独立 owner；准备/Producer 收尾；UUID header；仅当前 send user 的编辑/删除保护；提交同事务关联 execution |
+| `ai_providers.py` | Main → stream_ai → 五类实际 Adapter → HTTPX 的显式关闭；Main 清理中的取消等待资源退出 |
+| `regenerate_contract.py` | 复用原 reserve / 乐观快照 / 替换事务，在原事务内记录 committed target |
+| `database.py`、`main.py` | schema 初始化；启动回收已死 owner，退出时等待 Main 系统取消收尾 |
+| 新增 `tests/contract/test_main_chat_execution.py`、`test_main_provider_closure.py` | 26 项 Main 合同与 39 项实际 Adapter/dispatcher 资源合同，共 65 项 |
+| 原 `test_canonical_regenerate_route.py`、`test_send_frozen_llm_binding.py`、`test_regenerate_followup_frozen_llm_binding.py`、`test_main_chat_shadow_prompt_plan.py` | 更新源码检查到 `_send_message_owned` / `_regenerate_target_owned`，保留原有断言 |
+
+没有另建 send receipt 状态机，`chat_send_receipts.py` 的事实和原链接事务直接复用。legacy conversation regenerate、Diary / append 的接受限制及其 owner 不接入 Main 门禁；共享 Adapter 显式退出的影响由既有合同回归覆盖。
+
+### 14.2 身份、持久状态与正常行为
+
+- 身份键为 `(conv_id, execution_id)`；编码固定为 `kind + '.' + base64url(UTF-8 request_id)`，去掉 padding。send 的 request_id 是原 `client_msg_id`；canonical regenerate 取正常业务头 `X-Chat-Execution-Id` 的尝试 UUID，并规范成标准 UUID 字符串。缺头的旧调用由服务端生成新 UUID，不以 target ID 去重。旧 send 无 client ID 时也生成本次身份。
+- `chat_executions` 保存 kind / request_id、phase / outcome / reason、user / target / committed assistant ID、user cancel intent、owner PID 与进程创建时间、一次性安全 partial 和时间。消息删除不删除此记录；同一身份重到不再次调用 Provider。没有逐 token checkpoint。
+- phase 为 `preparing → generating → finalizing → terminal`；outcome 为 `completed / cancelled / failed`，NULL 始终表示未确认终态。DB partial unique index 保证每会话至多一个 NULL outcome；接受与原 user/receipt 同事务，canonical 复用 reserve 后在写事务接受。不同身份的并发 Main 返回 409；其他会话可独立执行。
+- send 仍先提交原 user / receipt，再发原 user WS，再按原顺序运行 URL、digest、recall、Prompt 和 Producer。Prompt / Provider 选择 / 命令与副作用顺序、正常 WS 类型和 payload 不变。SSE 响应可在接受后、耗时准备前返回；接受后的准备异常改由 owner 安全终结并结束 relay，不再遗留等待 done 的转发器。
+- 当前 send user 在未终结时编辑/删除返回 409；其他消息操作仍可用。canonical target / 上下文被编辑或删除，由原提交快照冲突保护，不能旧提交覆盖或复活。成功提交 ID 与消息/替换同事务落库，即使 commit 返回前或后续步骤被系统取消，也保留提交证据。
+
+### 14.3 取消、资源与 partial
+
+内部 `request_cancel(db_factory, conv_id, execution_id, system=False)` 可供 B 直接调用；查询复用 `read_execution` / `read_active_execution`，编码复用 `execution_id`。`wait_for_execution` 供内部等待与合同验证；本次没有新增公开 Stop / GET execution 路由，也未扩展 send-results HTTP 投影。
+
+首次用户意图只在 preparing / generating 注入一次取消；重复取消不再次打断清理。切 finalizing 前无 await 地检查 intent 并切 phase：取消先胜就不进入正常命令、Assistant 提交和 follow-up；finalizing 先胜则拒绝用户硬取消，等待原路径结束。系统取消独立记录 `system_interrupted` / `service_restarted` 并归为 failed，不伪装 user cancelled。已提交事实、已执行副作用不回滚，也不重放。
+
+owner 是独立 Task，强引用覆盖预检、接受、准备、Producer、提交及必要收尾，ASGI 请求 Task 不承担 owner。内部首步前意图在接受后执行取消；直接系统 Task.cancel 首步前则无已接受记录、释放引用。`record_pending` 覆盖 SQLite commit 已成功但 Python 标志尚未更新的窗口。终态/partial 的 DB 结算独立受保护，不依赖 WS 或导出；清理完成后才确认终态并释放对应会话接受资格。
+
+关闭链显式退出各层 async generator，并保留 HTTPX client / response context。HTTPX 还会在迭代 EOF 内自行 close，因此 Main 对 response stream 的 close 及 client/context 退出等待完成后才传播取消；关闭异常留下 `outcome=NULL, reason=resource_close_failed`，不宣称 cancelled。SSE detach 只丢弃队列传输副本，不取消 owner；包括 POST 在接受前被取消、尚无消费端，以及 body 尚未首步就关闭的窗口。detach 后队列不继续积压，也不以无人消费的有界队列阻塞业务。
+
+安全 partial 只属于 execution，收尾时用冻结凭据与配置秘密集合调用既有公开安全投影；不保存未闭合控制内容、私有推理或凭据，不作为正常成功 Assistant，不执行命令。send user 保留；取消 regenerate 保留 target / voice / HEART。已独立派发的 append Task 不被追杀；继承 ContextVar 的子 Task 不被误认成 Main owner，也不因等待独立 follow-up 完成而占用 Main 资格。
+
+### 14.4 本次合同证据
+
+先补合同复现缺口，再实施 owner/关闭边界；收尾复核另先复现了五类 Adapter 的关闭 await 被取消，以及 send/regenerate 接受前断开导致未连接 relay 积压，再修复。
+
+| 验证集合 | 结果 |
+| --- | --- |
+| Main execution / Provider closure 新合同 | **65 通过**（包含在下行总数） |
+| 核心 14 个合同文件：上述两文件、send receipts、canonical/atomic regenerate、两项 frozen binding、command runtime、Anthropic lifecycle/provenance、append transport、Chat stability、Diary PR1/manual regenerate | **338 通过** |
+| 扩展 8 个合同文件：Main defaults/thinking/shadow/effective input、OpenAI direct cutover/handoff、Anthropic cutover、URL Reader first entry | **225 通过，1 项既有失败** |
+| 原 HEAD 隔离复现该单项失败 | 同样失败：`test_url_reader_first_entry.py::test_settings_api_persists_and_projects_web_gate` 的 `save_settings` mock 不接受已有 `require_directory_sync` 关键字；本轮不修改无关 Settings 实现/测试 |
+
+全部在不含生产配置和数据的临时源码镜像运行，SQLite 为临时库，Provider 为 fake，实际 Adapter 使用 Fake HTTPX transport / MockTransport；额外 socket guard 禁止真实连接。测试镜像与交付文件逐一核对 SHA-256。13 个改动 Python 文件语法解析、两仓库 `git diff --check` 通过；无前端源码变化，未运行 TypeScript / 前端构建，未用生产应用启动充当构建。运行日志保留在 `/private/tmp/s6e2-a/core-final.log`、`behavior2.log`、`baseline.log`。
+
+受控 barrier 覆盖：同身份重复/删除后重到、同会话冲突/跨会话独立；首步前/URL/digest/recall/Producer 初始化；headers/read/yield/提前退出/调用方异常/关闭期间取消/关闭异常；cancel 先于 finalizing 与 finalizing 先于命令/commit；SQLite 已提交但 await 尚未返回、提交后后处理失败；安全 partial、原消息隔离；Task 强引用释放、取消控制请求断开、独立 follow-up；SSE 断开及未连接 relay。
+
+### 14.5 明确限制与停止点
+
+单 Main owner 进程可控；SQLite 接受约束跨连接/worker 有效，但没有跨 worker 远程取消通道。启动回收仅终结已确认进程身份消失的记录，活的其他 worker 不回收；部署 worker 数仍须人工核验。HTTPX 本地资源退出不证明远端已停算或停费。
+
+正常 Main 的同步后处理仍可能等待 WS broadcast、music result、export/digest enqueue 或 cache upgrade；这些原路径没有统一的时限保证。finalizing 期间保留发送门禁且拒绝用户硬取消，本次未擅加 timeout。已交接独立 owner 的 append/MCP follow-up 不等到其完成。关闭异常或终态落库失败保留未确认事实与门禁，不能用 HTTP 200 / task.cancel 成功替代终态；本进程 owner 已结束时，后续 B 必须如实返回不可控制，不能假装停止成功。
+
+Provider 完成判定、空回复失败持久化、追加回复专项问题仍保留原范围；本次未引入 SSE 依赖或改 parser。人工验收重点为正常 send/regenerate 的 WS/Prompt/副作用一致性、内部取消时本地 HTTPX 退出、服务退出及部署 worker 边界；公网 Provider/真实手机 UI 未验收。**A 的实现与合同验证已完成，停在此处等待人工验收和审查；不进入 B/C。**
+
+## 15. S6E2-B 实施记录（2026-11-18）
+
+本轮只交付后端公开取消/查询契约。开始时 AionHome 的 A 已由 `f6a15de` 提交，工作区干净；Penumbra 仍在 `6ec7c214f167654a58220ae2e94b328506d18a22`，本文 §13/14 的现有未提交改动完整保留。已重新阅读两仓 AGENTS / engineering-principles、Runtime Model / Refactor Master Plan，并对照 §13/14 核对 A 的真实参数；没有重做生命周期审计、实现新 owner 或修改前端。
+
+### 15.1 交付接口与文件
+
+| 接口 | 契约 |
+| --- | --- |
+| `POST /api/conversations/{conv}/executions/{execution_id}/cancel` | 精确用户取消；沿用 A `request_cancel(get_db, conv_id, identity)`，不暴露 system 参数 |
+| `GET /api/conversations/{conv}/executions/{execution_id}` | 精确读取执行事实，不依赖关联消息仍存在 |
+| `GET /api/conversations/{conv}/executions/active` | 静态路径先注册；只发现本会话尚未终结 Main，无活动时 `200 {execution:null}` |
+| 原 `GET .../send-results/{client_msg_id}` | 保留四个原字段和原 message JOIN 语义，新增 `execution` 安全投影或 null |
+
+AionHome 修改 8 个文件：`aion-chat/routes/chat.py`（三个接口、白名单投影、send-results 关联与安全 DB 错误）；`chat_execution_runtime.py`（新增无副作用 `execution_control` 读取本地可控性）；`chat_execution_receipts.py`（活动读取局部修复）；`main.py`（新增路径只读 session 认证和 no-store）；新增 `tests/contract/test_chat_execution_cancel_route.py`；修改 `test_chat_send_receipts.py`（保留原字段断言并验证新增关联）、`test_regenerate_followup_frozen_llm_binding.py`（临时 DB fixture 提供只读连接）；更新 `docs/regenerate-contract.md` §14 为完整公开契约。Penumbra 仅追加本文，无业务源码改动。
+
+唯一必要的 A 查询修复：原 `read_active_execution` 分两次 SELECT，在两次之间完成时会把终态记录作为 active 返回。先用真实 owner 与受控读时序复现，再改为一次带 `outcome IS NULL` 的 SELECT。未改变 A 的接受事务、owner、取消注入、清理或终态规则。
+
+### 15.2 公开投影与状态码
+
+精确 GET / active 返回 `{execution:E}`；成功 cancel 返回 `{execution:E,cancel_accepted:boolean}`。E 的固定字段：
+
+```text
+conv_id, execution_id, kind, request_id
+phase, terminal, outcome, reason, cancel_requested
+user_message_id, target_message_id, assistant_message_id
+partial_text, owner_available, cancelable
+```
+
+`terminal` 仅由持久 outcome 非 null 计算。outcome、reason、提交 ID 与 partial 取 DB；phase 与用户 cancel intent 在本地 owner 可达时也反映其即时状态，避免 finalizing 已裁决但 phase 写库尚未返回、首次意图写入仍在等待时给出矛盾投影。此读取不新增状态机或写入；即时意图绝不等于 cancelled。partial 直接复用 A 的安全投影，不重新处理原始 Provider 文本；PID、内部异常、凭据与原始私有推理不出现在公开字段。
+
+| HTTP | 真实含义 |
+| --- | --- |
+| 200，terminal=true | 已有或竞争期间完成的持久终态；返回原事实，cancel_accepted=false，不重放生成或副作用 |
+| 200，terminal=false | 已进入 finalizing，拒绝用户硬取消，cancel_accepted=false；仍不能释放发送门禁 |
+| 202 | 用户停止意图已由 A 接受或幂等确认，cancel_accepted=true、cancel_requested=true；仍未确认停止 |
+| 404 `chat_execution_not_found` | 会话/执行不存在或精确归属不符；stop 早于接受也不留提前停止记录，原 POST 随后可能继续运行 |
+| 409 `chat_execution_owner_unavailable` | 非终态存在但不能接受用户控制；detail.execution 附同一安全状态，涵盖异 worker、已结束但无终态、resource_close_failed、已有系统中断 |
+| 503 `chat_execution_unavailable` | DB 读取或取消意图写入不可用；不暴露内部 SQL/异常，取消可能已被 owner 接受，保持未知并按需只读核对 |
+| 401 / 422 | 既有 session 认证 / 标准输入校验；合法格式的未知身份用 404，路径身份格式不合法用 422 |
+
+认证沿用现有单账号授权模型，验证 conversation 存在及 `(conv_id, execution_id)` 精确匹配，不新增用户 ACL。push token 不授权这些路径。明确合同响应及认证/输入错误均 no-store；GET 使用现有 SQLite `mode=ro` 与只读 auth verifier，不初始化/修复库或 auth 文件，不调用 Provider、取消、恢复或重新生成。
+
+cancel 仍由 A 独立控制 Task 持有：HTTP 请求/响应断开不影响已接受的取消与 Main 清理。重复取消不重复注入；自然完成胜出时重新读取持久终态；系统中断不被后来的用户 stop 改成 user_cancelled。关闭异常或终态写入失败时，owner 结束仍不构成终态，GET 保留 unknown，cancel 返回 409。503 同样不能解释成“取消未发生”。
+
+### 15.3 send-results 兼容与 C 可用字段
+
+原 `conv_id / client_msg_id / user_message_id / assistant_message_id` 的值和含义保留。user 接受后 assistant 可为空；assistant 已提交时 execution 仍可 finalizing；提交后后处理 failed 仍返回 committed ID。assistant 删除后原 JOIN 字段可为 null，而 `execution.assistant_message_id` 保留提交历史。user 删除后原 send-results 仍为 404 `send_result_not_found`，独立 execution GET 继续可读。旧 receipt 没有 execution 返回 null，绝不补造完成事实。
+
+C 可直接使用：稳定 execution_id（沿用 A 的 kind + base64url request_id，无 padding）、regenerate 的 `X-Chat-Execution-Id` UUID、上述 E 全部字段，以及 cancel_accepted。以 `terminal / outcome` 确认终结；以 `cancel_requested` 展示已请求；以 `owner_available / cancelable` 判断精确控制能力；以 committed IDs 关联原消息，partial 不变成成功 Assistant。`execution:null`、202、非终态 200、404/409/503 和断网都不能作为旧执行已终结的证明。
+
+### 15.4 本次测试与边界
+
+新增 HTTP 合同 **38 项通过**；与 A 的核心 338 项、既有 Registry 33 项及共享认证/Settings/Music 51 项合并，**460 passed，20 项既有弃用 warning，无失败或跳过**。日志：`/private/tmp/s6e2-b/final.log`。测试先复现接口缺失及上述活动查询竞争、并发重复取消意图投影、缺库 GET 不创建文件与安全 503，再实现对应边界。
+
+受控时序覆盖 preparing / generating / finalizing / 已终结；认证、错误码和字段白名单；接受前 stop；取消后安全 partial；取消响应中断；并发重复意图写入；正常提交竞争及 phase 持久化前的 cutoff；提交后后处理失败；资源关闭失败、终态落库失败；删除消息后读取；独立任务/错会话/异 worker 不误取消；SSE 断开后只读查询不重新生成；旧 receipt 兼容。GET 在 query_only/只读连接、禁写 auth、文件内容与 mtime 检查下验证；缺库不创建文件。A 的真实 Adapter 关闭合同及 append/Diary 合同继续通过。
+
+全部运行于不含生产配置/数据的临时源码镜像，使用临时 SQLite、Fake Provider、MockTransport 与 barrier，并用 socket guard 禁止真实网络。七个改动 Python 文件语法解析通过；交付文件与测试镜像逐一核对 SHA-256；两仓 `git diff --check` 通过。无前端改动，不运行 TypeScript / 前端构建；未运行生产 lifespan、访问真实 Provider/生产配置/生产数据库/线上服务；没有 commit、push、deploy。
+
+单 owner 进程保证不扩大：异 worker 可读取共享事实，但不远程取消，也不回收活的异进程 owner。实际部署 worker 数仍须验收。本地关闭不证明远端停算/停费。A 已记录的同步 finalizing 无界等待、Provider 完成判定和空失败持久化边界保持原状；未增加 timeout、轮询、重试或调度器。**B 已完成，停止等待审查，不进入 S6E2-C。**
+
+## 16. S6E2-C 实施记录（2026-11-18）
+
+本轮实施 Penumbra Main Chat 的 Stop / Abort 接入。开工基线：Penumbra `6ec7c21`，已有本文 §13–15 未提交改动；AionHome `3f2023e`，工作区干净。已阅读两仓 AGENTS / engineering-principles、Penumbra UI 规范、本文 §13–15、后端 regenerate contract §14，以及 B1 收尾、Chat 状态审计、追加回复审计和已有 SSE 对比结论。未重做 Provider / SSE 研究；没有修改后端、Provider、parser、owner 或生产配置。
+
+### 16.1 实际文件与职责
+
+| 文件（Penumbra 内） | 实施边界 |
+| --- | --- |
+| `src/application/chat-execution/chat-execution-status.ts`、`index.ts` | B DTO 白名单转 camelCase；UTF-8 base64url 身份；精确 GET、active GET、cancel POST；no-store、归属和身份验证 |
+| `src/application/chat-send/chat-send-result.ts`、`chat-send-types.ts` | send-results 原四字段兼容，接入可选 execution 投影；本地保存服务端事实、控制请求反馈和已停止结果 |
+| `chat-send-controller.ts`、`chat-execution-sessions.ts` | POST 前已知身份、独立 regenerate UUID header、精确取消、终态门禁、active 发现、只读核对；终态只结算对应执行；旧读取不重置新请求 |
+| `src/components/chat-workspace/useChatSend.ts`、`useChatRealtime.ts` | 每会话 session；进入会话发现 active；focus / online / WS 恢复走 GET；刷新不重新生成、不自动 cancel |
+| `chat-sender-policy.ts`、`chat-message-edit-policy.ts`、`chat-message-delete-policy.ts` | 按 execution 事实派生按钮；只保护当前未终结 send 的 User；其他持久消息保留局部安全限制。原 regenerate policy 直接复用新的 active 判定，仍只允许最新普通 Assistant |
+| `presentation/chat-execution-composer.ts`、`src/components/chat/Bubble.tsx`、`BubbleList.tsx`、`chat-ui-types.ts` | regenerate 原 target 与尝试输出分行；HTTP 正文不会被旧 overlay 遮盖；停止正文独立标为「已停止」，按已知 user / target ID 放置，不复活已删消息 |
+| `src/components/chat/Sender.tsx`、`ChatView.tsx`、`ChatExecutionFeedback.tsx` | 复用右侧按钮位置；文本和附件资格独立于发送资格；只读重新核对与轻量反馈；移除返回编辑接线与 UI |
+| 删除 `ChatExecutionReviewAction.tsx` 及其专用旧测试 | 已查引用，只有 Main 使用；Diary 与其他独立入口没有接入该 release 组件。controller 的 `releaseAfterReview` 本身也已删除 |
+| `chat-execution-status.test.ts`、`chat-server-cancel.test.ts`、`chat-stop-wire.test.ts`、`src/test-fixtures/chat-execution.ts`，以及已有 controller / Sender / ChatView / policy / composer 测试 | 新合同先失败后实现；旧 B1 放行预期改为终态门禁；旧测试显式提供 execution 事实，不能由 history 模拟 owner 完成 |
+
+### 16.2 接口、身份和终态
+
+- Send 继续发送原 `client_msg_id`，execution ID 为 `send.` 加其 UTF-8 base64url（无 padding）。canonical regenerate 每次产生 UUID，通过 `X-Chat-Execution-Id` 传入；精确查询使用 `regenerate.` 加该 UUID 的同一编码，target / overlay ID 均不作为执行身份。generation query / body allowlist 保持不变。
+- `MainChatExecution` 只映射 B 固定字段：identity / kind / request ID、phase、terminal / outcome / reason、cancelRequested、user / target / assistant ID、partialText、ownerAvailable / cancelable。send-results 保留原四字段，并可携带同一投影；旧服务器的 null / 缺失 execution 不会被升级成完成证明。
+- 只有 `terminal:true` 可释放已接受 execution 的发送和 regenerate 资格；历史有 Assistant、receipt、persisted SSE、内容相等、HTTP 200 / 202、EOF 和 owner 消失均不能替代终态。已确认的终态不能被迟到 GET / cancel 响应降级。
+- 202 表示停止意图已接受，按钮「停止中」；200 非终态 finalizing 保持禁用并可核对；404 保留原身份和未知，不假装停止；409 / owner 不可控保持禁用；503 / 断网仅提示取消结果未确认。未定位任务时不自动 cancel，不重发原 POST。
+- POST 响应头尚未到达也能以原身份请求停止。前端 AbortController 只负责本地 relay 生命周期；不会用 abort 冒充 server stop。取得持久终态后可以关闭本地 relay。
+- 正常 send / regenerate 仍复用原 HTTP 历史读取和错误投影。真实 Provider 安全错误、HTTP 状态、request ID 留在原 SSE / HTTP 消息展示中；不改写为本地笼统失败。
+
+### 16.3 Composer、消息与临时结果
+
+- 有有效会话草稿 owner 就可编辑正文及增删附件，不以 Provider readiness、生成、断流、停止或历史核对成功为前提。新发送仍受原模型、上传、局部保存条件和 execution 门禁保护。
+- 右侧单一按钮派生为 send / stop / stopping / waiting。Stop 不依赖草稿非空、上传完成或正在等待原 POST；只由明确按钮操作调用。三档快捷键、composition、keyCode 229、repeat 和移动软键盘判定继续沿用原函数，Enter 不改为停止。
+- Main 非终态 release 入口已从 controller、hook、view 和共享反馈移除，非只隐藏按钮。「重新核对」只读 execution / receipt / 必要 history；无常驻轮询、定时器、自动发送或恢复生成。
+- 当前未终结 send 绑定的 User 使用真实 receipt / execution user ID 局部保护。其他持久消息按原内容安全与局部保存条件编辑 / 删除。regenerate target 可编辑或删除，临时尝试用独立行，旧 SSE 不覆盖新 HTTP 正文、不重建原 target；snapshot conflict 的真实错误保留。
+- cancelled 只展示该 execution 持久的安全 `partialText`，Thinking / DRIFT 不从旧流带入停止结果，不提交为普通 Assistant，不渲染空白停止气泡。未知状态仍保留 B1 的安全 partial / Thinking / DRIFT。停止正文按已知持久 user / target ID 锚定；锚点删除时保留独立结果，不猜测消息内容。
+- 终态 GET 与 history GET 分开：历史仍在等待时即可恢复提交资格；历史失败保留该执行的临时展示和轻量核对反馈。旧终态的历史迟到或失败只能处理自己的 presentation recovery，不能清掉新 execution、下一条正文或附件。
+
+### 16.4 刷新恢复与尚缺合同
+
+`GET /executions/active` 已接入刷新 / 重新进入会话。无活动返回 null 只表示本次发现没有活动 Main；它不会结算已知 ID 的未知 execution。发现 / 精确读取失败仍真实保留未确认状态。已知 ID 即使关联消息删除，仍可精确读取终态；本次页面会话内的已停止正文也由 conversation session 保留。
+
+**完全刷新后的已停止 partial 发现仍有实际后端合同缺口。** B 的 active 排除终态；精确 GET 要求先知道 ID；send-results 又要求先知道 client_msg_id，且删除 user 后原 receipt JOIN 会 404。当前消息历史没有持久 execution 关联索引，regenerate target 也不是尝试身份。因此浏览器丢失内存 ID 后无法发现已经 cancelled 的结果；本轮明确不声称该项已解决，没有引入内容匹配、自动生成或复杂前端存储。
+
+最小后续补充建议：增加 **按会话只读、数量有界的 cancelled 结果发现**，如 `GET /api/conversations/{conv}/executions/results?limit=…&before=…`，返回原 E 投影、用于稳定排序的时间 / 游标；至少能发现有安全 partial 的 cancelled execution，保留原 user / target ID，消息删除不抹掉结果。该索引需要覆盖多次停止，单个 latest 结果不足以恢复之前的 partial。沿用 B 认证、归属及 no-store，不改变 `/active`、消息正文或 owner。本轮没有新增这个后端接口，需单独确认合同后接入。
+
+多 worker 边界沿用 B：查询可读取共享持久事实；当前进程无法控制 owner 时不显示可停止，不远程调度或回收其他活 worker，只能等待精确终态。断流与已接受 cancel 均不保证远端立即停算 / 停费。
+
+### 16.5 验证与人工复核
+
+- 合同先补缺口再实现；新测试包含响应头前的身份、202 / 非终态 200、404 / 409 / 503 / 网络未知、SSE 断流后 Stop、接受取消但丢失响应、重复 Stop、精确终态持久重读、迟到 202 不降级、A / B 隔离、active 发现及终态 partial 发现缺口、历史挂起 / 迟到失败与新请求隔离、target 编辑 / 删除、独立安全停止正文和身份锚点。
+- Sender / ChatView 合同覆盖空草稿与上传中停止、生成 / 停止中编辑正文与增删附件、会话草稿快照、旧结果不清新附件、IME / repeat / 三档快捷键 / 移动判定、没有返回编辑或二次确认、消息局部保护和重新核对 GET-only。没有把只 mock cancel 返回 true 当作流终止证据；`chat-stop-wire` 使用真实前端 API / SSE adapter 和受控 Mock HTTP。
+- 前端最终完整测试、TypeScript / Vite 构建与 diff 检查结果见本节末尾的最终验证行。构建仅有 Vite >500 kB chunk 提示，本轮不做性能优化。
+- 后端必要回归：核对当前源码与既有隔离镜像的 12 个关键源码 / fixture 文件 SHA-256 一致；临时 SQLite、Fake Provider、真实 Adapter + MockTransport、禁止真实 socket 的隔离环境运行 `test_chat_execution_cancel_route.py`、`test_main_chat_execution.py`、`test_main_provider_closure.py`：**103 passed**。没有启动后端服务或生产循环，没有访问真实 Provider / 生产库。
+
+人工待验：桌面 / 手机的按钮位置、停止中及 waiting 轻量提示；真实中文 IME 与手机软键盘；生成时编辑 / 删除其他消息；regenerate target 编辑 / 删除后的独立 partial；断网停止后只读核对；实际多 worker 部署的 owner 不可控提示。完全刷新已停止 partial 的恢复须等上述最小后端查询补充，当前不能承诺。
+
+**最终验证：** `npm test`：230 个文件、3080 项测试通过；`npm run build`（含 `tsc -b`）通过，仅有上述 chunk 体积提示；必要后端合同 103 项通过；`git diff --check` 通过。前端日志 `/private/tmp/s6e2-c-verified-tests.log`、构建日志 `/private/tmp/s6e2-c-verified-build.log`、后端日志 `/private/tmp/s6e2-c-backend.log`。本轮未运行真实浏览器 / 手机视觉验收，相关人工项保留。
+
+本轮不 commit、push、deploy；不进入 Provider 完成判定、空失败持久化、append 专项或任何后续实施。完成后停止，等待人工视觉验收和功能复核。
+
+## 17. S6E2-C 收尾：已停止 Partial 的刷新恢复（2026-11-18）
+
+第 16.4 节确认的最小缺口已补齐；第 13–16 节保留原文。范围仅为持久结果只读发现与 Penumbra 恢复，没有修改 Main owner、Provider、取消截止点、消息持久化或 `/active`。
+
+### 接口与实现文件
+
+- AionHome `chat_execution_receipts.py` 增加 `read_execution_results`；`routes/chat.py` 增加静态 `GET /api/conversations/{conv}/executions/results?limit=50&before=<cursor>`，注册在动态 execution ID 路由前。`docs/regenerate-contract.md` 追加公开契约，新增 `test_chat_execution_results_route.py` 固化 HTTP 合同。
+- 响应为 `{results:[{execution:E,created_at:number}],next_cursor:string|null}`，复用 B 的安全 E 白名单、只读 session/SQLite、会话归属和 no-store。仅发现持久 cancelled 且安全 partial 非空的 Main execution；不 JOIN messages，原 user/target/committed 锚点即使消息删除仍保留。
+- 单页默认 50、最多 100；按不可变 `(created_at DESC, execution_id DESC)` 做 keyset 分页。游标包含版本、会话及最后排序键，客户端原样传回；错会话/非法游标 422，缺失会话 404，DB 不可用 503，均不泄露内部异常。分页不是冻结快照，期间新增的较新结果在下一次从首页核对时发现，不会因插入而移动旧页游标。
+- Penumbra 新增 `chat-execution-results.ts` adapter 和 `chat-stopped-results.test.ts`；`chat-send-controller.ts` / types 按 execution ID 合并各页与既有停止结果，保留服务端 created_at。读取失败保留已成功页及现有临时展示，独立 `resultsError` 不冒充 active 查询失败，也不改变发送终态门禁。
+- `useChatSend.ts` 在进入会话、focus/online、既有 WS 恢复及只读重新核对时读取结果；一次读取顺序遍历有界页，遇错停止，相同会话重叠读取合并。没有定时轮询、失败重试循环、自动 POST 或新持久化系统。
+- `chat-execution-composer.ts` 用 execution ID 消除当前/B1 临时 overlay 和重复停止结果；安全正文仍是独立“已停止”展示，不是成功 Assistant，不回填 user/target，不覆盖编辑正文。无正文不生成空气泡。`ChatView.tsx` 复用轻量重新核对提示；相应 hook/View/wire 合同同步更新。
+- 结果页若确认当前已知的同一 execution 终态，复用原结算入口；较早 `/active` 响应不能将该 execution 降回非终态。旧 execution 的结果不结算另一条新 execution，不清理草稿/附件。
+
+### 验证与剩余边界
+
+先补缺失接口和恢复合同并观察失败，再接实现；另以失败合同固定迟到 active 响应的竞争。
+
+- 前端完整测试：**231 文件、3089 passed**；覆盖全新 controller 丢失所有内存 ID 后恢复、多页/重复结果、多个停止、删除锚点、编辑正文、会话隔离、后续页失败、游标不前进、dispose/重叠读取、只读恢复和迟到 active。真实前端 HTTP/SSE adapter 的停止到刷新链也已通过。
+- TypeScript / Vite：`npm run build` 通过，仅有原有 >500 kB chunk 提示。
+- 后端：新结果接口 + 原取消 API / Main execution / 真实 Provider Adapter 关闭合同 **108 passed**，使用临时 SQLite、Fake Provider、MockTransport 和禁止真实 socket 的隔离镜像。新合同覆盖 session/push/错用户、no-store、稳定分页/范围/游标、消息删除后锚点、只读不写入、不调用 owner/Provider、真实取消安全投影和 DB 故障。发布回仓库的四个文件与已测试文件逐字一致；379 个 Python 源码/合同文件与隔离镜像逐字一致。
+- 两仓 `git diff --check` 通过。日志：`/private/tmp/s6e2-c-results/frontend-verified.log`、`build-verified.log`、`backend-final.log`。
+
+完全刷新后的安全停止 partial 现在可从后端重新发现，无需依赖消息存活、猜测内容或恢复生成。尚待人工浏览器/手机验收视觉与跨刷新实际操作；本轮未连接生产服务。多 worker 控制边界仍沿用 B，只读发现不提供远程取消。没有安全正文的停止不在结果列表产生消息；既有缺失持久终态/资源关闭失败不能被此接口伪装成 cancelled。
+
+本轮不 commit、push、deploy；完成后停止，等待人工审查。
 
 ## 源码索引
 

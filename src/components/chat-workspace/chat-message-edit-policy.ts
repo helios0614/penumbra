@@ -13,12 +13,16 @@ export function messageEditContentReason(message: Message): string | null {
   return null;
 }
 
-export function messageEditWorkspaceReason(state: ChatWorkspaceControllerState, execution: ChatSendState): string | null {
+export function messageEditWorkspaceReason(state: ChatWorkspaceControllerState, execution: ChatSendState, messageId?: string): string | null {
   if (state.status !== "ready" || !state.workspace.history || !state.workspace.selectedConversationId) return "会话尚未就绪。";
   if (state.pendingConversationId || state.conversationMutation || state.historyNavigationPending) return "正在更新会话，请稍后编辑。";
   execution = scopedChatExecution(execution, state.workspace.selectedConversationId);
-  if (isChatExecutionActive(execution) || (execution.kind === "error" && !execution.confirmedFailure && !execution.rejectedSubmission)) {
-    return "正在生成或核对回复，完成后可编辑。";
-  }
+  if (isCurrentSendUser(execution, messageId)) return "当前请求的 User 消息须等执行终结后编辑。";
   return null;
+}
+
+export function isCurrentSendUser(execution: ChatSendState, messageId?: string): boolean {
+  if (!messageId || !isChatExecutionActive(execution)) return false;
+  return execution.serverExecution?.kind === "send" && execution.serverExecution.userMessageId === messageId ||
+    "optimisticUser" in execution && execution.optimisticUser?.persistedMessageId === messageId;
 }

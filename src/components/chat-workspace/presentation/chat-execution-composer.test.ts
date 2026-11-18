@@ -146,7 +146,7 @@ describe("chat execution presentation composition", () => {
     ["regenerate-streaming", "streaming", ""],
     ["regenerate-finalizing", "finalizing", "partial"],
     ["regenerate-finalization-uncertain", "unconfirmed", "partial"],
-  ] as const)("replaces the persistent target in place for %s", (
+  ] as const)("keeps the persistent target separate from %s", (
     kind,
     executionStatus,
     content,
@@ -162,12 +162,10 @@ describe("chat execution presentation composition", () => {
 
     const visible = composeVisibleChatMessages(persistent, state, "conv-a");
 
-    expect(visible).toHaveLength(2);
-    expect(visible.map(({ id }) => id)).toEqual([
-      "persisted-user",
-      "assistant-target",
-    ]);
-    expect(visible[1]).toMatchObject({
+    expect(visible).toHaveLength(3);
+    expect(visible.slice(0, 2).map(({ id }) => id)).toEqual(["persisted-user", "assistant-target"]);
+    expect(visible[1].content).toBe("original persisted content");
+    expect(visible[2]).toMatchObject({
       kind: "assistant",
       content,
       thinking: content ? "thinking" : null,
@@ -201,11 +199,9 @@ describe("chat execution presentation composition", () => {
       "conv-a",
     );
 
-    expect(during).toHaveLength(1);
-    expect(during[0]).toMatchObject({
-      id: "assistant-target",
-      content: "temporary content",
-    });
+    expect(during).toHaveLength(2);
+    expect(during[0].content).toBe("original persisted content");
+    expect(during[1]).toMatchObject({ content: "temporary content" });
     expect(after).toHaveLength(1);
     expect(after[0]).toMatchObject({
       id: "assistant-target",

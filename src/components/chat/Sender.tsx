@@ -11,7 +11,7 @@ import {
   type ChangeEvent,
   type RefObject,
 } from "react";
-import { Send } from "lucide-react";
+import { Send, Square, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ComposerToolsMenu } from "./ComposerToolsMenu";
@@ -25,6 +25,8 @@ interface SenderProps {
   onSend?: (content: string) => boolean | void | "retained" | Promise<boolean | void | "retained">;
   disabled?: boolean;
   submitDisabled?: boolean;
+  action?: "send" | "stop" | "stopping" | "waiting";
+  onStop?: () => void | Promise<void>;
   placeholder?: string;
   statusMessage?: string;
   className?: string;
@@ -76,6 +78,8 @@ export function Sender({
   onSend,
   disabled,
   submitDisabled = false,
+  action = "send",
+  onStop,
   placeholder = "输入消息…",
   statusMessage,
   className,
@@ -174,7 +178,7 @@ export function Sender({
     const submittedDraft = valueRef.current;
     const submittedRevision = draftRevisionRef.current;
     const trimmed = submittedDraft.trim();
-    if ((!trimmed && !hasAttachments) || !attachmentsReady || disabled || submitDisabled || !onSend || submittingRef.current) return;
+    if (action !== "send" || (!trimmed && !hasAttachments) || !attachmentsReady || disabled || submitDisabled || !onSend || submittingRef.current) return;
 
     submittingRef.current = true;
     setIsSubmitting(true);
@@ -198,7 +202,7 @@ export function Sender({
       submittingRef.current = false;
       setIsSubmitting(false);
     }
-  }, [disabled, submitDisabled, onSend, hasAttachments, attachmentsReady]);
+  }, [disabled, submitDisabled, onSend, hasAttachments, attachmentsReady, action]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -236,6 +240,8 @@ export function Sender({
     !submitDisabled &&
     !isSubmitting &&
     onSend !== undefined;
+  const canAct = action === "send" ? canSend : action === "stop" && onStop !== undefined;
+  const actionLabel = action === "send" ? "发送消息" : action === "stopping" ? "停止中" : "停止生成";
 
   return (
     <div
@@ -294,16 +300,17 @@ export function Sender({
           <Button
             variant="default"
             size="icon-lg"
-            onClick={() => void handleSubmit()}
-            disabled={!canSend}
+            type="button"
+            onClick={() => { if (action === "stop" && canAct) void onStop?.(); else if (action === "send") void handleSubmit(); }}
+            disabled={!canAct}
             className={cn(
               "chat-composer-send size-11 shrink-0 rounded-full transition-opacity md:size-9",
-              !canSend && "opacity-40",
+              !canAct && "opacity-40",
             )}
-            aria-label="发送消息"
-            title="发送消息"
+            aria-label={actionLabel}
+            title={actionLabel}
           >
-            <Send className="size-4" />
+            {action === "send" ? <Send className="size-4" /> : action === "stopping" ? <LoaderCircle className="size-4 animate-spin" /> : <Square className="size-3.5 fill-current" />}
           </Button>
           <div ref={compactMeasureRef} data-measure="compact" aria-hidden="true" className="chat-composer-measure">{displayedValue + "\u200b"}</div>
           <div ref={contentMeasureRef} data-measure="content" aria-hidden="true" className="chat-composer-measure">{displayedValue + "\u200b"}</div>

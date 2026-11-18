@@ -6,8 +6,18 @@ import type { ChatWorkspaceSnapshot } from "@/application/chat-workspace";
 import { getChatSenderAvailability } from "@/components/chat-workspace";
 import type { ChatWorkspaceControllerState } from "@/components/chat-workspace";
 import type { ConversationSummary } from "@/domain/conversation";
+import { executionReader } from "@/test-fixtures/chat-execution";
+import { encodeChatExecutionId } from "@/application/chat-execution";
 
 describe("chat sender readiness policy", () => {
+  it.each(["discovering", "discoveryUnknown"] as const)("does not let an older terminal bypass %s for the current conversation", async flag => {
+    const serverExecution = await executionReader()("conv-a", encodeChatExecutionId("send", "old"));
+    expect(getChatSenderAvailability(readyState(), { kind: "idle", serverExecution, [flag]: true }).enabled).toBe(false);
+  });
+  it("permits sending after terminal evidence even while its old history read is finalizing", async () => {
+    const serverExecution = await executionReader()("conv-a", encodeChatExecutionId("send", "old"));
+    expect(getChatSenderAvailability(readyState(), { kind: "finalizing", serverExecution } as ChatSendState).enabled).toBe(true);
+  });
   it("enables only a selected, idle, model-bound ready workspace", () => {
     expect(getChatSenderAvailability(readyState(), { kind: "idle" })).toEqual({
       enabled: true,

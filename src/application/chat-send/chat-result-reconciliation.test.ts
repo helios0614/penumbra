@@ -1,3 +1,4 @@
+import { executionReader, pendingExecutionReader } from "@/test-fixtures/chat-execution";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createChatSendController, type ChatSendState } from "./index";
 import { readChatSendResult } from "./chat-send-result";
@@ -22,7 +23,7 @@ async function* stream(values: ChatExecutionEvent[], disconnected = false) {
 describe("PR7-A execution to persisted result reconciliation", () => {
   it("preserves safe streamed diagnostics when persisted failure has only a marker", async () => {
     const row = saved("assistant-a", "partial\n[请求出错: provider_execution_failed]");
-    const controller = createChatSendController({ createUuid: () => "client-a",
+    const controller = createChatSendController({ readExecution: executionReader({ outcome: "failed", assistantMessageId: "assistant-a" }), createUuid: () => "client-a",
       openExecution: async () => ({ kind: "stream", events: stream([
         { type: "start", assistantMessageId: row.id },
         { type: "failure", messageId: row.id, code: "provider_execution_failed", error: "当前回复生成失败。\n请求 ID：req-stream-detail" },
@@ -39,7 +40,7 @@ describe("PR7-A execution to persisted result reconciliation", () => {
 
   it("uses a valid regenerate commit receipt over earlier failure and late transport errors", async () => {
     const canonical = saved("target", "committed");
-    const controller = createChatSendController({ createUuid: () => "client-a",
+    const controller = createChatSendController({ readExecution: executionReader({ assistantMessageId: "target" }), createUuid: () => "client-a",
       openRegenerateExecution: async () => ({ kind: "stream", events: stream([
         { type: "start", assistantMessageId: "target" },
         { type: "failure", messageId: "target", code: "provider_execution_failed" },
@@ -57,7 +58,7 @@ describe("PR7-A execution to persisted result reconciliation", () => {
     let rows = [saved("unrelated")];
     let linked: string | null = null;
     const openExecution = vi.fn(async () => { throw new ApiError("proxy", status); });
-    const controller = createChatSendController({ createUuid: () => "client-a", openExecution,
+    const controller = createChatSendController({ readExecution: vi.fn().mockImplementationOnce(pendingExecutionReader).mockImplementationOnce(pendingExecutionReader).mockImplementation(executionReader({ assistantMessageId: "assistant-a" })), createUuid: () => "client-a", openExecution,
       lookupSendResult: async () => receipt(linked),
       reconcileHistory: async () => ({ persistedMessageIds: ["user-a", ...rows.map(r => r.id)], regenerateTarget: null, assistants: rows }),
     });
@@ -79,7 +80,7 @@ describe("PR7-A execution to persisted result reconciliation", () => {
 
   it.each([false, true])("keeps partial after disconnect and reconciles persisted failure=%s", async failed => {
     let rows: ReturnType<typeof saved>[] = [];
-    const controller = createChatSendController({ createUuid: () => "client-a",
+    const controller = createChatSendController({ readExecution: vi.fn().mockImplementationOnce(pendingExecutionReader).mockImplementationOnce(pendingExecutionReader).mockImplementation(executionReader({ assistantMessageId: "assistant-a", outcome: failed ? "failed" : "completed" })), createUuid: () => "client-a",
       openExecution: async () => ({ kind: "stream", events: stream([
         { type: "start", assistantMessageId: "assistant-a" },
         { type: "chunk", content: "partial[THINKING_START]separate thinking[THINKING_END][HEART:hidden]" },
@@ -101,13 +102,13 @@ describe("PR7-A execution to persisted result reconciliation", () => {
     const visible = composeVisibleChatMessages(rows, controller.getState(), "conv_a");
     expect(visible).toHaveLength(2);
     expect(visible.some(r => r.executionStatus)).toBe(false);
-    expect(JSON.stringify(visible)).not.toContain("execution:client-a:assistant");
+    expect(JSON.stringify(visible)).not.toContain("send.Y2xpZW50LWE:assistant");
     if (failed) expect(JSON.stringify(visible)).toContain("synthetic unavailable");
     controller.dispose();
   });
 
   it("does not treat a user or tool ID as the assistant, even if the receipt is bad", async () => {
-    const controller = createChatSendController({ createUuid: () => "client-a",
+    const controller = createChatSendController({ readExecution: pendingExecutionReader, createUuid: () => "client-a",
       openExecution: async () => { throw new ApiError("proxy", 524); },
       lookupSendResult: async () => receipt("user-a"),
       reconcileHistory: async () => ({ persistedMessageIds: ["user-a"], regenerateTarget: null, assistants: [] }),
@@ -121,7 +122,7 @@ describe("PR7-A execution to persisted result reconciliation", () => {
   it("coalesces simultaneous read-only recovery without second generation", async () => {
     let reads = 0;
     let resolve!: () => void;
-    const controller = createChatSendController({ createUuid: () => "client-a",
+    const controller = createChatSendController({ readExecution: pendingExecutionReader, createUuid: () => "client-a",
       openExecution: async () => { throw new ApiError("proxy", 524); },
       reconcileHistory: async () => { reads++; if (reads > 1) await new Promise<void>(r => { resolve = r; }); return { persistedMessageIds: [], regenerateTarget: null, assistants: [] }; },
     });
@@ -129,7 +130,7 @@ describe("PR7-A execution to persisted result reconciliation", () => {
     await settled(controller.getState, "finalization-uncertain");
     const first = controller.retryFinalization();
     const second = controller.retryFinalization();
-    expect(reads).toBe(2);
+    await vi.waitFor(() => expect(reads).toBe(2));
     resolve(); await Promise.all([first, second]);
     expect(controller.getState().kind).toBe("finalization-uncertain");
     controller.dispose();
@@ -140,7 +141,7 @@ describe("PR7-A execution to persisted result reconciliation", () => {
     let canonical = target;
     const events: ChatExecutionEvent[] = [{ type: "start", assistantMessageId: "target" }, { type: "chunk", content: "new partial" }];
     if (withReceipt) events.push({ type: "persisted", receipt: saved("target", "new complete") });
-    const controller = createChatSendController({ createUuid: () => "client-a",
+    const controller = createChatSendController({ readExecution: vi.fn().mockImplementationOnce(pendingExecutionReader).mockImplementation(withReceipt ? executionReader({ assistantMessageId: "target" }) : pendingExecutionReader), createUuid: () => "client-a",
       openRegenerateExecution: async () => ({ kind: "stream", events: stream(events, true) }),
       reconcileHistory: async () => ({ persistedMessageIds: [canonical.id], regenerateTarget: canonical, assistants: [canonical] }),
     });

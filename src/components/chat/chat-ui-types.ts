@@ -5,7 +5,7 @@ type ChatVisibleMessageBase = {
   readonly id: string;
   readonly content: string;
   readonly createdAt: number;
-  readonly executionStatus?: "optimistic" | "streaming" | "finalizing" | "unconfirmed";
+  readonly executionStatus?: "optimistic" | "streaming" | "finalizing" | "unconfirmed" | "stopped";
   readonly capabilities?: import("@/domain/message/capability-types").MessageCapabilities;
   readonly toolPending?: boolean;
 };

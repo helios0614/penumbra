@@ -154,18 +154,19 @@ function BubbleInner({
   const time = format(new Date(message.createdAt * 1000), "HH:mm");
   const executionLabel = message.executionStatus === undefined
     ? null
-    : !isUser ? (hasBody && message.executionStatus === "finalizing" ? "正在确认保存"
+    : !isUser ? (message.executionStatus === "stopped" ? "已停止" : hasBody && message.executionStatus === "finalizing" ? "正在确认保存"
       : hasBody && message.executionStatus === "unconfirmed" ? "结果待确认" : null) : {
         optimistic: "正在发送",
         streaming: "正在生成",
         finalizing: "正在确认",
         unconfirmed: "未确认保存",
+        stopped: "已停止",
       }[message.executionStatus];
   const generationLabel = isUser || message.executionStatus === undefined ? null
     : message.executionStatus === "streaming"
       ? (hasBody ? null : "思考中")
       : message.executionStatus === "finalizing" ? "正在确认保存"
-      : message.executionStatus === "unconfirmed" ? "结果待确认" : "正在发送";
+      : message.executionStatus === "unconfirmed" ? "结果待确认" : message.executionStatus === "stopped" ? "已停止" : "正在发送";
   const showEmptyFallback = message.kind === "assistant" && !hasBody && !generationLabel &&
     !message.thinking && !message.simpleThink && !message.error && !message.toolPending &&
     !message.attachments.length && !message.capabilities?.hasHeart && !message.capabilities?.results.length;

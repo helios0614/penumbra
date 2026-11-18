@@ -12,16 +12,39 @@ export function composeVisibleChatMessages(
   projectMessages: ChatMessageProjector = presentChatMessages,
 ): readonly ChatMessageViewModel[] {
   let visible = [...projectMessages(persistentMessages)];
+  const stoppedIds = new Set((execution.stoppedExecutions ?? [])
+    .filter(item => item.execution.conversationId === conversationId).map(item => item.execution.executionId));
   for (const recovery of execution.recoveries ?? []) {
+    if (stoppedIds.has(recovery.executionId)) continue;
     visible = [...composeExecutionMessages(persistentMessages, recovery, conversationId, visible, true)];
   }
-  return composeExecutionMessages(persistentMessages, execution, conversationId, visible);
+  if (!("executionId" in execution && stoppedIds.has(execution.executionId))) {
+    visible = [...composeExecutionMessages(persistentMessages, execution, conversationId, visible)];
+  }
+  const renderedStops = new Set<string>();
+  for (const { execution: result, createdAt } of execution.stoppedExecutions ?? []) {
+    if (result.conversationId !== conversationId || !result.partialText.trim() || renderedStops.has(result.executionId)) continue;
+    renderedStops.add(result.executionId);
+    const row: ChatMessageViewModel = { kind: "assistant", id: `${result.executionId}:stopped`, content: result.partialText,
+      createdAt, thinking: null, simpleThink: null, attachments: [], executionStatus: "stopped" };
+    const anchor = result.kind === "send" ? result.userMessageId : result.targetMessageId;
+    let index = visible.findIndex(message => message.id === anchor);
+    if (index < 0) visible.push(row);
+    else {
+      while (visible[index + 1]?.executionStatus === "stopped") index++;
+      visible.splice(index + 1, 0, row);
+    }
+  }
+  return visible;
 }
 
 function composeExecutionMessages(
   persistentMessages: readonly Message[], execution: ChatSendState,
   conversationId: string, visible: ChatMessageViewModel[], reviewed = false,
 ): readonly ChatMessageViewModel[] {
+  // Once cancellation is durable, only its server-projected public body belongs
+  // in the stopped row, independently of any history request still in flight.
+  if (execution.serverExecution?.terminal && execution.serverExecution.outcome === "cancelled") return visible;
   if (execution.kind === "error" && execution.conversationId === conversationId && execution.assistant && !execution.optimisticUser && !execution.failedMessageId) {
     visible.push({ kind: "assistant", id: execution.assistant.overlayId, content: execution.assistant.content,
       createdAt: execution.assistant.createdAt, thinking: execution.assistant.thinking, simpleThink: execution.assistant.simpleThink,
@@ -68,13 +91,11 @@ function composeExecutionMessages(
   }
   const regenerate = regenerateOverlay(execution, conversationId);
   if (regenerate !== null) {
-    const targetIndex = visible.findIndex(({ id }) =>
-      id === regenerate.targetMessageId
-    );
-    if (targetIndex < 0) return visible;
-    visible[targetIndex] = {
+    // The durable target always keeps its own body/actions. An attempt has its
+    // own row, so edits/deletes can never be hidden or resurrected by old SSE.
+    visible.push({
       kind: "assistant",
-      id: regenerate.targetMessageId,
+      id: regenerate.assistant.overlayId,
       content: regenerate.assistant.content,
       createdAt: regenerate.assistant.createdAt,
       thinking: regenerate.assistant.thinking,
@@ -83,7 +104,7 @@ function composeExecutionMessages(
       error: regenerate.assistant.error,
       attachments: [],
       executionStatus: regenerate.status,
-    };
+    });
     return visible;
   }
 
@@ -94,7 +115,7 @@ function composeExecutionMessages(
 
   const persistedUser = persistentMessages.some(message => message.conversationId === conversationId &&
     message.roleKind === "user" && message.id === overlay.optimisticUser.persistedMessageId);
-  if (!persistedUser) visible.push({
+  if (!persistedUser && !execution.serverExecution?.terminal) visible.push({
     kind: "user",
     id: overlay.optimisticUser.overlayId,
     content: overlay.optimisticUser.content,

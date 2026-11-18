@@ -1,3 +1,4 @@
+import { executionReader, pendingExecutionReader } from "@/test-fixtures/chat-execution";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, it, vi } from "vitest";
 import { createChatSendController, createRegeneratePersistenceProjection } from "@/application/chat-send";
@@ -32,7 +33,7 @@ it.each(["send", "append", "regenerate"])("%s keeps different real reasons for t
         (kind === "regenerate" ? `data: ${JSON.stringify({ type: "error", id, code: "provider_request_failed" })}\n\n` : ""),
         { headers: { "content-type": "text/event-stream" } });
     }));
-    const controller = createChatSendController({ createUuid: () => "reason", reconcileHistory: async () => ({
+    const controller = createChatSendController({ readExecution: executionReader(), createUuid: () => "reason", reconcileHistory: async () => ({
       persistedMessageIds: history.map(m => m.id), regenerateTarget: createRegeneratePersistenceProjection(history[0]),
     }) });
     if (kind === "send") await controller.send({ conversationId: "conv_a", content: "合成问题" });
@@ -57,7 +58,7 @@ it("faithfully keeps a generic upstream message and unlabelled safe legacy error
 it("keeps different safe HTTP error bodies in their unconfirmed Assistant without inferring a cause", async () => {
   for (const reason of reasons) {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: { type: "permission_error", message: reason } }), { status: 403, headers: { "content-type": "application/json" } })));
-    const controller = createChatSendController({ createUuid: () => "http-error", reconcileHistory: async () => ({ persistedMessageIds: [], regenerateTarget: null }) });
+    const controller = createChatSendController({ readExecution: pendingExecutionReader, createUuid: () => "http-error", reconcileHistory: async () => ({ persistedMessageIds: [], regenerateTarget: null }) });
     await controller.send({ conversationId: "conv_a", content: "问题" });
     await vi.waitFor(() => expect(controller.getState().kind).toBe("finalization-uncertain"));
     expect(render([], controller.getState())).toContain(reason);

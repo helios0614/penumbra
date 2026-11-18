@@ -1,3 +1,4 @@
+import { executionReader, pendingExecutionReader } from "@/test-fixtures/chat-execution";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createChatSendController, type ChatSendController } from "./chat-send-controller";
 import { createChatExecutionSessions } from "./chat-execution-sessions";
@@ -30,7 +31,7 @@ describe("user acceptance is independent of assistant completion", () => {
     const headers = deferred<ChatExecutionStream>(), stream = channel();
     const rows = [saved("A-user")];
     const open = vi.fn(() => headers.promise), lookup = vi.fn(async () => receipt());
-    const controller = createChatSendController({ createUuid: () => "client-A", openExecution: open, lookupSendResult: lookup,
+    const controller = createChatSendController({ readExecution: executionReader({ assistantMessageId: "A-assistant" }), createUuid: () => "client-A", openExecution: open, lookupSendResult: lookup,
       reconcileHistory: async () => ({ persistedMessageIds: rows.map(row => row.id), regenerateTarget: null,
         assistants: rows.filter(row => row.roleKind === "assistant").map(row => ({ id: row.id, content: row.content, thinking: null, simpleThink: null })) }),
     }); controllers.push(controller);
@@ -38,7 +39,7 @@ describe("user acceptance is independent of assistant completion", () => {
     await controller.reconcileUserPersistence();
     expect(controller.getState()).toMatchObject({ kind: "sending-user", optimisticUser: { persistedMessageId: "A-user", clientMessageId: "client-A", attachments: ["/uploads/synthetic.png"] } });
     const visible = () => composeVisibleChatMessages(rows, controller.getState(), "A");
-    expect(visible().map(row => [row.kind, row.id, row.executionStatus])).toEqual([["user", "A-user", undefined], ["assistant", "execution:client-A:assistant", "streaming"]]);
+    expect(visible().map(row => [row.kind, row.id, row.executionStatus])).toEqual([["user", "A-user", undefined], ["assistant", "send.Y2xpZW50LUE:assistant", "streaming"]]);
     expect(await controller.send({ conversationId: "A", content: "same text" })).toBe(false);
     headers.resolve({ kind: "stream", events: stream.events() }); await sending;
     stream.emit({ type: "start", assistantMessageId: "A-assistant" });
@@ -54,7 +55,7 @@ describe("user acceptance is independent of assistant completion", () => {
 
   it.each(["history-first", "receipt-first"])("merges only exact identities with %s and preserves legitimate repeated text", async order => {
     const result = deferred<ChatSendResult>(), stream = channel();
-    const controller = createChatSendController({ createUuid: () => "client-A", openExecution: async () => ({ kind: "stream", events: stream.events() }), lookupSendResult: () => result.promise, reconcileHistory: empty });
+    const controller = createChatSendController({ readExecution: pendingExecutionReader, createUuid: () => "client-A", openExecution: async () => ({ kind: "stream", events: stream.events() }), lookupSendResult: () => result.promise, reconcileHistory: empty });
     controllers.push(controller); await controller.send({ conversationId: "A", content: "same text" });
     let history = order === "history-first" ? [saved("other-user"), saved("A-user")] : [saved("other-user")];
     const read = controller.reconcileUserPersistence();
@@ -71,7 +72,7 @@ describe("user acceptance is independent of assistant completion", () => {
 
   it.each(["owner", "client", "empty-user"])("ignores a %s receipt mismatch and never guesses from content", async mismatch => {
     const stream = channel(), bad = { ...receipt(), ...(mismatch === "owner" ? { conversationId: "B" } : mismatch === "client" ? { clientMessageId: "other" } : { userMessageId: "" }) };
-    const controller = createChatSendController({ createUuid: () => "client-A", openExecution: async () => ({ kind: "stream", events: stream.events() }), lookupSendResult: async () => bad, reconcileHistory: empty });
+    const controller = createChatSendController({ readExecution: pendingExecutionReader, createUuid: () => "client-A", openExecution: async () => ({ kind: "stream", events: stream.events() }), lookupSendResult: async () => bad, reconcileHistory: empty });
     controllers.push(controller); await controller.send({ conversationId: "A", content: "same text" }); await controller.reconcileUserPersistence();
     const state = controller.getState();
     expect(state).toMatchObject({ kind: "streaming", optimisticUser: { clientMessageId: "client-A" } });
@@ -83,7 +84,7 @@ describe("user acceptance is independent of assistant completion", () => {
   it("coalesces concurrent identity reads without polling or changing generation state", async () => {
     const result = deferred<ChatSendResult>(), headers = deferred<ChatExecutionStream>();
     const lookup = vi.fn(() => result.promise), open = vi.fn(() => headers.promise);
-    const controller = createChatSendController({ createUuid: () => "client-A", openExecution: open, lookupSendResult: lookup, reconcileHistory: empty }); controllers.push(controller);
+    const controller = createChatSendController({ readExecution: pendingExecutionReader, createUuid: () => "client-A", openExecution: open, lookupSendResult: lookup, reconcileHistory: empty }); controllers.push(controller);
     const send = controller.send({ conversationId: "A", content: "same text" });
     const reads = [controller.reconcileUserPersistence(), controller.reconcileUserPersistence()];
     expect(lookup).toHaveBeenCalledOnce();
@@ -97,7 +98,7 @@ describe("user acceptance is independent of assistant completion", () => {
   it("retains unknown and recovery until the exact assistant is authoritative", async () => {
     let available = false, assistant: string | null = null;
     const rows = [saved("A-user")], open = vi.fn(async () => { throw new ApiError("synthetic disconnect", 0, null, "NETWORK_ERROR"); });
-    const controller = createChatSendController({ createUuid: () => "client-A", openExecution: open,
+    const controller = createChatSendController({ readExecution: (conv, id) => (assistant ? executionReader({ assistantMessageId: assistant }) : pendingExecutionReader)(conv, id), createUuid: () => "client-A", openExecution: open,
       lookupSendResult: async () => { if (!available) throw new Error("synthetic unavailable"); return { ...receipt(), assistantMessageId: assistant }; },
       reconcileHistory: async () => ({ persistedMessageIds: rows.map(row => row.id), regenerateTarget: null,
         assistants: rows.filter(row => row.roleKind === "assistant").map(row => ({ id: row.id, content: row.content, thinking: null, simpleThink: null })) }),
@@ -116,7 +117,8 @@ describe("user acceptance is independent of assistant completion", () => {
     const a1 = deferred<ChatSendResult>(), a2 = deferred<ChatSendResult>(), b = deferred<ChatSendResult>();
     const streams = [channel(), channel(), channel()]; let opens = 0, clients = 0;
     const lookup = vi.fn((owner: string, client: string) => owner === "B" ? b.promise : client === "client-1" ? a1.promise : a2.promise);
-    const sessions = createChatExecutionSessions({ createUuid: () => `client-${++clients}`, lookupSendResult: lookup,
+    let terminal = false;
+    const sessions = createChatExecutionSessions({ readExecution: (conv, id) => (terminal ? executionReader() : pendingExecutionReader)(conv, id), createUuid: () => `client-${++clients}`, lookupSendResult: lookup,
       openExecution: async () => ({ kind: "stream", events: streams[opens++].events() }), reconcileHistory: empty,
     });
     const a = sessions.get("A"), bc = sessions.get("B"); controllers.push(a, bc);
@@ -125,7 +127,7 @@ describe("user acceptance is independent of assistant completion", () => {
     expect(sessions.state("B")).toMatchObject({ kind: "streaming", optimisticUser: { persistedMessageId: "B-user" } });
     streams[0].emit({ type: "start", assistantMessageId: "old-assistant" }); streams[0].close();
     await settle(() => sessions.state("A").kind === "finalization-uncertain");
-    a.releaseAfterReview(); await a.send({ conversationId: "A", content: "same text" });
+    terminal = true; await a.retryFinalization(); terminal = false; await a.send({ conversationId: "A", content: "same text" });
     a1.resolve(receipt("A", "client-1")); await Promise.resolve();
     expect(sessions.state("A")).toMatchObject({ kind: "streaming", optimisticUser: { clientMessageId: "client-3" } });
     expect("optimisticUser" in sessions.state("A") && (sessions.state("A") as { optimisticUser: object }).optimisticUser).not.toHaveProperty("persistedMessageId");

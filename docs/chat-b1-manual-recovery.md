@@ -1,5 +1,7 @@
 # PR CHAT-B1：手动核对不丢失 partial
 
+> 2026-11-18：S6E2-C 已移除 Main 的返回编辑、二次确认和非终态 release；保留本文作为 B1 历史实施 / 人工验收记录。当前交互及终态门禁见 [S6E2-C 实施记录](./chat-b2-cancellation-audit.md#16-s6e2-c-实施记录2026-11-18)。
+
 日期：2026-11-17（Asia/Shanghai）。本文包含初次实现交付与 CHAT-B1-CLOSEOUT 收尾记录。A–D 人工验收已完成；B 场景交互调整留待 CHAT-B2-D。人工验收结果与最终产品决定见末尾收尾记录，本轮未进入 CHAT-B2-A。
 
 ## 交付范围与工作区

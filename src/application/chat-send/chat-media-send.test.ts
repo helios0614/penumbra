@@ -1,3 +1,4 @@
+import { executionReader, pendingExecutionReader } from "@/test-fixtures/chat-execution";
 import { describe, expect, it, vi } from "vitest";
 import { createChatSendController } from "./chat-send-controller";
 import type { ChatExecutionEvent } from "@/application/chat-execution";
@@ -12,7 +13,7 @@ describe("attachments through the existing send owner", () => {
     const wait = new Promise<void>(resolve => { complete = resolve; });
     async function* events(): AsyncGenerator<ChatExecutionEvent> { yield { type: "start", assistantMessageId: "saved-ai" }; await wait; }
     const open = vi.fn(async () => ({ kind: "stream" as const, events: events() }));
-    const controller = createChatSendController({ openExecution: open, createUuid: () => "uuid-media", reconcileHistory: vi.fn(async () => ({ persistedMessageIds: ["user", "saved-ai"], regenerateTarget: null })) });
+    const controller = createChatSendController({ readExecution: executionReader(), openExecution: open, createUuid: () => "uuid-media", reconcileHistory: vi.fn(async () => ({ persistedMessageIds: ["user", "saved-ai"], regenerateTarget: null })) });
     expect(await controller.send({ conversationId: "A", content: "", generation: { attachments: [url] } })).toBe(true);
     expect(open).toHaveBeenCalledWith("A", { content: "", clientMessageId: "uuid-media", attachments: [url] }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
     const visible = composeVisibleChatMessages([], controller.getState(), "A");
@@ -26,7 +27,7 @@ describe("attachments through the existing send owner", () => {
     const snapshot = drafts.capture("A")!;
     const open = vi.fn(async () => { throw new Error("transport disconnected after server may have accepted"); });
     const reconcile = vi.fn(async () => ({ persistedMessageIds: ["user"], regenerateTarget: null }));
-    const controller = createChatSendController({ openExecution: open, createUuid: () => "unknown-media", reconcileHistory: reconcile });
+    const controller = createChatSendController({ readExecution: pendingExecutionReader, openExecution: open, createUuid: () => "unknown-media", reconcileHistory: reconcile });
     expect(await controller.send({ conversationId: "A", content: "", generation: { attachments: snapshot.urls } })).toBe(false);
     snapshot.preserve(""); snapshot.release(); await tick(); expect(controller.getState().kind).toBe("finalization-uncertain");
     await controller.retryFinalization();

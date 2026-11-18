@@ -1,3 +1,4 @@
+import type { MainChatExecution } from "@/application/chat-execution/chat-execution-status";
 import type {
   ChatProviderFailureCode,
   RegenerateInput,
@@ -122,12 +123,20 @@ type ChatSendStateBase =
       readonly error: SafeChatExecutionError;
     });
 
-/** A reviewed unknown execution remains recoverable after its input lock is released. */
+/** Temporary presentation retained after a confirmed terminal whose history read failed. */
 export type ChatExecutionRecovery = Extract<ChatSendStateBase, {
   readonly kind: "finalization-uncertain" | "regenerate-finalization-uncertain";
-}>;
+}> & { readonly serverExecution?: MainChatExecution };
 
 export type ChatSendState = ChatSendStateBase & {
+  readonly executionConversationId?: string;
+  readonly serverExecution?: MainChatExecution;
+  readonly discovering?: boolean;
+  readonly discoveryUnknown?: boolean;
+  readonly cancelling?: boolean;
+  readonly controlError?: string;
+  readonly resultsError?: string;
+  readonly stoppedExecutions?: readonly { readonly execution: MainChatExecution; readonly createdAt: number }[];
   readonly recoveries?: readonly ChatExecutionRecovery[];
   /** A late, authoritative result may clear only this original submission's recovery. */
   readonly reconciledSend?: { readonly conversationId: string; readonly clientMessageId: string };
