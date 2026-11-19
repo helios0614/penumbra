@@ -46,8 +46,7 @@ def response(body, *, peer_port=PORT, tls=0, http=200):
 
 class ProbeTests(unittest.TestCase):
     def test_empty_or_bad_curl_output_blocks(self):
-        for data in (b"", b"{\"password\":\"" + SECRET.encode() + b"\"}", response(b""),
-                     response(TRACE_BODY).replace(b"127.0.0.1", b"::1")):
+        for data in (b"", b"{\"password\":\"" + SECRET.encode() + b"\"}", response(b"")):
             with self.subTest(data=data[:6]), self.assertRaisesRegex(remote.Refused, "probe-format"):
                 remote.probe_response(0, data, PORT)
 
@@ -57,8 +56,10 @@ class ProbeTests(unittest.TestCase):
                 remote.probe_response(rc, output, PORT)
 
     def test_exit_not_proven_for_wrong_listener(self):
-        with self.assertRaisesRegex(remote.Refused, "proxy-exit"):
-            remote.probe_response(0, response(TRACE_BODY, peer_port=PORT + 1), PORT)
+        for data in (response(TRACE_BODY, peer_port=PORT + 1),
+                     response(TRACE_BODY).replace(b"127.0.0.1", b"::1")):
+            with self.subTest(data=data[-40:]), self.assertRaisesRegex(remote.Refused, "proxy-exit"):
+                remote.probe_response(0, data, PORT)
 
     def test_probes_retry_transient_http_and_verify_exit_and_git(self):
         class ProbeSession:

@@ -56,6 +56,10 @@ class PrivilegedContracts(unittest.TestCase):
         READER.parent.mkdir(mode=0o755, parents=True)
         shutil.copyfile(PROJECT / 'scripts/deploy/read_node.py', READER)
         READER.chmod(0o644)
+        # A restricted user need not be able to traverse the runner's home/worktree.
+        helper = READER.parent / 'release_remote.py'
+        shutil.copyfile(PROJECT / 'scripts/deploy/release_remote.py', helper)
+        helper.chmod(0o644)
         RULE.write_text(f'{USER} ALL=(root) NOPASSWD: NOLOG_INPUT: NOLOG_OUTPUT: '
                         f'/usr/bin/python3.12 -I -B {READER}\n')
         RULE.chmod(0o440)
@@ -173,7 +177,7 @@ class PrivilegedContracts(unittest.TestCase):
                   '\nexcept r.Refused as e:\n print(str(e)); sys.exit(2)')
         for digest, code, expected in ((self.digest, 0, '"ok": true'), ('0'*64, 2, 'node-reader-version')):
             proc = command(['/usr/sbin/runuser', '-u', USER, '--', '/usr/bin/python3.12', '-I', '-B', '-c',
-                            script, str(PROJECT / 'scripts/deploy'), digest])
+                            script, str(READER.parent), digest])
             self.assertEqual(proc.returncode, code)
             self.assertIn(expected.encode(), proc.stdout)
             self.assertNotIn(SECRET.encode(), proc.stdout + proc.stderr)
