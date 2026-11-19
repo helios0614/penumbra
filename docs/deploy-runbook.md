@@ -2,24 +2,52 @@
 
 本入口用于已有线上版本的增量升级。GitHub Actions 测试、构建并把静态产物提交到 `deploy`。Ubuntu 使用现有安装器校验和切换静态文件。目录、事务和安装器规范见 [Ubuntu 静态部署](ubuntu-deployment.md)，发布流程见 [Deploy 产物](deploy-artifacts.md)。
 
-## 一次性准备
+## 一次性 Bootstrap
+
+Bootstrap 由现有管理员完成工具安装、版本核对和日志保护验收；日常 Release 由 `ubuntu` 执行代理、制品校验和静态安装。Bootstrap 不运行前端安装事务，也不重启或 reload Trojan、AionHome 或 cloudflared。
+
+当前信任边界包含 `ubuntu` 既有的 `NOPASSWD: ALL` 管理权限。保留该账号及其现有授权，不创建发布专用账号，不要求新增读取器授权条目。固定命令、root-owned 读取器及源码哈希约束发布程序的正常调用，不构成对已有 root 管理权限的最小权限隔离。
 
 - Windows 和 macOS 均需 Python 3.12+、Git、GitHub CLI 和 OpenSSH 客户端。执行 `gh auth login --hostname github.com`。账号需能读取目标仓库内容和 Actions，并有触发 `deploy.yml` 的权限。认证留在 GitHub CLI。
 - 在 OpenSSH 配置中准备现有 `aion-prod` 别名，使用部署账号 `ubuntu`，通过可信渠道核对主机指纹并录入 `known_hosts`。日常命令要求严格主机密钥检查和非交互认证。将已解锁的密钥加载到相应平台的 SSH agent，或使用现有非交互密钥方案。Windows OpenSSH 通常读取 `%USERPROFILE%\.ssh\config`，macOS 读取 `~/.ssh/config`。自定义别名可用 `--ssh-host`。
-- 在 Ubuntu 独立工具目录放置审查过的 `release_remote.py` 和 `install.py`，默认分别为 `/home/ubuntu/penumbra-tools/release_remote.py` 与 `/home/ubuntu/penumbra-tools/install.py`。本地入口按 LF 换行核对两份源码的 SHA-256，兼容 Windows 的 CRLF 工作树。升级工具后同步这两份文件。部署根目录是 `/home/ubuntu/AionHome/penumbra-web`。
+- 在 Ubuntu 独立工具目录维护审查过的 `release_remote.py` 和 `install.py`，默认分别为 `/home/ubuntu/penumbra-tools/release_remote.py` 与 `/home/ubuntu/penumbra-tools/install.py`。本地入口按 LF 换行核对两份源码的 SHA-256，兼容 Windows 的 CRLF 工作树。升级 helper 时同步匹配版本；安装器仅在其审查版本确有变化时升级。部署根目录是 `/home/ubuntu/AionHome/penumbra-web`。
 - 在 Ubuntu 为 `ubuntu` 保留 `~/.config/penumbra-release/`（`0700`），继续使用该目录上的既有部署锁。旧 `proxy.json` 原样保留但不再读取；节点字段和 `expectedEgressIp` 均不再使用，不维护出口 IP 白名单。
-- **生产使用新版入口前必须先准备读取器和精确 sudo 规则**。将审查过的 `scripts/deploy/read_node.py` 以 LF 换行安装到 `/usr/local/libexec/penumbra-release/read-node.py`，root 所有、`0644`；该路径的所有父目录必须 root 所有且组/其他用户不可写。服务器仍需 root 管理的 Trojan 二进制、系统 CA、`curl`、`ss`、`systemctl`、`sudo` 和 Python 3.12。同步本地与服务器 `release_remote.py`、`install.py`、读取器版本；入口按 LF 规范化 SHA-256 绑定三份源码，版本不符停止。
+- **生产使用新版入口前先完成读取器安装及日志保护验收**。将审查过的 `scripts/deploy/read_node.py` 以 LF 换行安装到 `/usr/local/libexec/penumbra-release/read-node.py`，root 所有、`0644`；该路径的所有父目录必须 root 所有且组/其他用户不可写。服务器仍需 root 管理的 Trojan 二进制、系统 CA、`curl`、`ss`、`systemctl`、`sudo` 和 Python 3.12。同步匹配的本地入口和远端 helper，核对现有 `install.py`；入口按 LF 规范化 SHA-256 绑定 helper、安装器和读取器三份源码，版本不符停止。安装器内容未变时不替换。
 - 读取器只读固定 `/usr/src/trojan/config.json`，要求文件 root 所有、无组/其他用户权限、无执行位，且父目录 root 所有、组/其他用户不可写。文件及路径不能是符号链接；大小不超过 64 KiB。若现有路径权限不符合要求，停止并另行审查运维准备，不在发布期间自动 chmod/chown 或移动正式配置。
 
-由运维在独立授权的准备阶段，用 `visudo` 审核类似以下精确规则（本仓库不自动安装或修改 sudoers）：
+发布工具使用现有管理权限，只执行以下固定读取命令；不需要另外添加 `NOPASSWD` 授权。以下仅记录 helper 的内部调用，不能直接在终端执行并显示输出：
 
-```sudoers
-ubuntu ALL=(root) NOPASSWD: /usr/bin/python3.12 -I -B /usr/local/libexec/penumbra-release/read-node.py
+```text
+/usr/bin/sudo -n -- /usr/bin/python3.12 -I -B /usr/local/libexec/penumbra-release/read-node.py
 ```
 
-不得使用参数通配符、任意 Python/脚本授权或允许发布账号编辑读取器。发布工具只调用 `/usr/bin/sudo -n -- /usr/bin/python3.12 -I -B /usr/local/libexec/penumbra-release/read-node.py`；读取器拒绝额外参数，不执行配置内容，不联网，不导入部署账号目录中的模块。生产准备时须验证 sudo 规则拒绝额外参数和其他脚本，并确认该精确命令没有 sudo I/O 会话录制或其他管道输出采集，防止凭据被外部日志系统记录。
+读取器拒绝额外参数，不执行配置内容、不联网，不导入部署账号目录中的模块。源码及所有父目录不允许 `ubuntu` 直接写入；管理员通过现有 sudo 安装和更新。日常命令不把整个 release helper、代理或安装器提权为 root。
 
-读取器拒绝重复 JSON key，要求 `run_type=client`、单元素非空密码数组、合法节点地址/端口/SNI，以及显式的 ALPN 数组（空数组允许；元素仅 `h2` 或 `http/1.1`）。它只导出规范化的 `host`、`port`、`sni`、`alpn`、`password`。凭据仅沿子进程管道进入普通用户发布进程内存，再写入 sealed memfd；不能手工把读取器输出粘贴到终端或报告，也不能开启子进程输出追踪。缺少读取器、无 sudo 权限、配置不合法或哈希不符都停止，不回退旧配置。
+读取器拒绝重复 JSON key，要求 `run_type=client`、单元素非空密码数组、合法节点地址/端口/SNI，以及显式的 ALPN 数组（空数组允许；元素仅 `h2` 或 `http/1.1`）。它只导出规范化的 `host`、`port`、`sni`、`alpn`、`password`。完整秘密传递链是：正式配置 → root 读取器内存 → sudo stdout 内部管道 → `ubuntu` 发布进程内存 → sealed memfd → 临时 Trojan。读取器 stderr 只输出固定错误码；调用包装器不转发原始 stdout、stderr 或异常内容到发布报告。凭据不进入 argv、环境变量、磁盘临时配置或 SSH 对外报告。
+
+sealed memfd 保留临时配置的匿名内存传递，并禁止写入、增长、缩小及变更 seals；最后一个 fd 关闭后由内核回收，包括进程被 SIGKILL 的情况。它保护临时配置的传递和生命周期，不能补救 sudo 已经录制上游凭据 stdout 的情况。不能手工运行读取器把结果打印到终端、文件或报告，也不能开启子进程原始输出追踪。缺少读取器、无 sudo 权限、配置不合法或哈希不符都停止，不回退旧配置。
+
+### sudo 日志保护
+
+Bootstrap 必须检查有效 sudoers 主文件和 includes、命令匹配顺序、`sudo.conf` 的 I/O 插件及相关外部采集配置。区分命令事件日志与 I/O 日志：命令路径、参数和退出状态可以正常审计；不得记录该固定读取命令的内部 stdout/stderr 凭据管道。`log_output` 也会记录非终端管道；普通外层终端日志、`use_pty` 或 rsyslog 的存在本身不证明该内部管道被采集。
+
+若现有策略没有录制该命令的内部管道，保持 sudoers 原样。只有确认存在 sudo I/O 录制时，才在独立授权下先备份，再为完整固定命令增加日志例外。例如：
+
+```sudoers
+Cmnd_Alias PENUMBRA_NODE_READ = /usr/bin/python3.12 -I -B /usr/local/libexec/penumbra-release/read-node.py
+Defaults!PENUMBRA_NODE_READ !log_input, !log_output
+```
+
+该例外只调整命令级日志，不新增授权、不改变 `ubuntu` 的既有权限，也不关闭全局日志。必须用 `visudo` 检查候选文件和完整配置，并核对最终生效顺序，防止其他 `LOG_INPUT` / `LOG_OUTPUT` 标签或设置覆盖。若采用 `NOLOG_INPUT` / `NOLOG_OUTPUT` 标签，同样只用作固定命令的日志保护，不声称限制账号权限。独立 I/O 插件或外部采集不一定受 sudoers 标签控制；发现无法控制的内部管道录制时停止，交由人工审查，不另建秘密通信机制。
+
+使用无凭据的配置审计确认日志保护；不能为测试录制而输出正式节点密码。没有证据的项目标为 `unverified`。只需验收与该管道有关的配置和采集范围，不把无法证明所有宿主机监控均不存在当作新增的全局发布门禁。
+
+### Bootstrap 与日常 Release 的交接
+
+1. 保存现有 helper 的回退副本，核对审查过的工具包及源码哈希；保留安装器、旧 `proxy.json` 和所有前端回滚材料。
+2. 在配置与父路径元数据符合要求、日志条件已经验收后，管理员独立安装 root-owned 读取器。不需要先通过新版 `release.py check` 来完成安装。
+3. 同步匹配的远端 helper 和本地入口，核对三份源码哈希及文件权限。不得在没有并发控制的情况下混用新旧 helper。
+4. 日常 Release 仍由 `ubuntu` 执行，只有固定读取器子进程使用 root。单独 `status` 不读取节点；`check`、dry-run 和真实部署各自读取一份会话内快照，不跨会话缓存秘密。
 
 每个 check 或部署会话读取一次磁盘配置快照；单独 status 不需要读取节点。**磁盘配置不证明正在运行的正式 Trojan 已加载相同内容**。本入口不 reload、不重启正式服务，也不自动切节点。
 
@@ -62,7 +90,7 @@ stdout 是 JSON 报告。可将输出重定向到工作树外，例如 PowerShel
 | 报告或现象 | 处理 |
 | --- | --- |
 | CI 失败、发布身份或 GitHub `main` 不匹配 | 检查对应 Actions run 和四项发布身份。dispatch 返回不明确时先在 Actions 查看是否已创建运行。 |
-| `node-reader-version`、`node-config` | 核对读取器源码哈希、root 所有权、可信父目录、精确 sudo 规则及正式配置结构；不打印凭据，不回退旧文件。 |
+| `node-reader-version`、`node-config` | 核对读取器源码哈希、root 所有权、可信父目录、固定 sudo 调用的可用性及正式配置结构；不打印凭据，不回退旧文件。日志保护按 Bootstrap 记录验收。 |
 | `proxy-policy`、`entry-tls`、`proxy-start`、`probe-tls`、`proxy-exit`、`probe-format` | 核对锁目录权限、节点 SNI 和 TLS 握手、GitHub HTTPS/响应格式、监听 PID 和 Ubuntu 依赖。Cloudflare 的普通请求失败只出现在辅助诊断中。 |
 | `verify`、`install`、`post-status`、`git-process`、`git-residue` 或 `lock-busy` | 先读 `status`，保留现场。出现 fetch 失败、Git 锁或临时 pack 时，按 Ubuntu 部署文档检查进程、文件占用、锁、临时 pack 和事务来源。确认安全前禁止重试、删除未知文件或强制覆盖资源。 |
 | SSH 断开、超时或中断 | 查看对账结果。若状态未知或 `ready:false`，重新运行 `status`，确认代理清理和安装器事务后再决定下一步。 |
