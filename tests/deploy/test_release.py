@@ -41,6 +41,22 @@ def http(status, body=b"", *, length=None):
     return f"HTTP/2 {status}\nContent-Length: {len(body) if length is None else length}\r\n\r\n".encode() + body
 
 
+class DiagnosticReportTests(unittest.TestCase):
+    def test_only_safe_diagnostic_fields_survive_protocol(self):
+        diagnostic = dict(status='observed', ip='2001:db8::1', hostMatches=True, curlExit=0,
+                          httpStatus='200', tlsVerifyResult=0, password=SECRET, stderr=SECRET, body=SECRET)
+        clean = release.clean_remote_reply(dict(version=1, ok=True, egressDiagnostic=diagnostic))
+        self.assertEqual(set(clean['egressDiagnostic']),
+                         {'status', 'ip', 'hostMatches', 'curlExit', 'httpStatus', 'tlsVerifyResult'})
+        self.assertNotIn(SECRET, repr(clean))
+
+    def test_invalid_optional_diagnostic_does_not_mask_release_error(self):
+        clean = release.clean_remote_reply(dict(version=1, ok=False, error='node-config',
+            egressDiagnostic=dict(status='unavailable', ip=SECRET, curlExit=SECRET, reason=SECRET)))
+        self.assertEqual(clean['error'], 'node-config')
+        self.assertNotIn(SECRET, repr(clean))
+
+
 class FlowTests(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory(prefix="penumbra release tests ")
@@ -59,7 +75,7 @@ class FlowTests(unittest.TestCase):
         self.git_run("update-ref", "refs/remotes/origin/main", self.source)
         self.tools = self.root / "scripts" / "deploy"
         self.tools.mkdir(parents=True)
-        for name in ("install.py", "release_remote.py"):
+        for name in ("install.py", "release_remote.py", "read_node.py"):
             shutil.copyfile(SCRIPTS / name, self.tools / name)
         self.git_run("add", "scripts")
         self.git_run("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false",
@@ -495,6 +511,14 @@ class ProcessTests(unittest.TestCase):
                 finally:
                     timer.cancel()
             self.assertTrue(ack.exists())
+
+
+def load_tests(loader, tests, pattern):
+    # Existing Windows/macOS CI command also exercises the new portable contracts.
+    if pattern == "test_release.py":
+        tests.addTests(loader.loadTestsFromName("test_release_probe"))
+        tests.addTests(loader.loadTestsFromName("test_read_node"))
+    return tests
 
 
 if __name__ == "__main__":

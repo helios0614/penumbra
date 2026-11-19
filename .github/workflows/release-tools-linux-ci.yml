@@ -1,0 +1,38 @@
+name: Isolated release tools Linux validation
+
+on:
+  push:
+    branches: [codex/release-tools-linux-20261119]
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645ba9c38
+        with:
+          node-version: '22'
+      - name: Require Linux fixture dependencies
+        run: |
+          /usr/bin/python3.12 -c 'import fcntl,os; assert hasattr(os, "memfd_create")'
+          command -v node git curl openssl ss unshare ip runuser sudo visudo
+          git diff --check
+      - name: Full regression without external network
+        run: |
+          sudo --preserve-env=PATH unshare --net --fork /bin/bash -euc '
+            ip link set lo up
+            exec runuser -u "$SUDO_USER" -- env -i PATH="$PATH" HOME="/home/$SUDO_USER" LANG=C.UTF-8 /usr/bin/python3.12 -B tests/deploy/run_linux_ci.py
+          '
+      - name: Root fixture and restricted sudo without external network
+        if: always()
+        run: |
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT unshare --net --fork /bin/bash -euc '
+            ip link set lo up
+            exec /usr/bin/python3.12 -I -B tests/deploy/linux_privileged_ci.py
+          '

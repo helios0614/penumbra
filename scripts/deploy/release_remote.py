@@ -21,7 +21,9 @@ import time
 
 INSTALLER = Path("/home/ubuntu/penumbra-tools/install.py")
 ROOT = Path("/home/ubuntu/AionHome/penumbra-web")
-POLICY = Path("/home/ubuntu/.config/penumbra-release/proxy.json")
+LOCK_DIRECTORY = Path("/home/ubuntu/.config/penumbra-release")
+NODE_READER = Path("/usr/local/libexec/penumbra-release/read-node.py")
+SUDO = "/usr/bin/sudo"
 TROJAN = "/usr/local/libexec/penumbra-release/trojan"
 CA = "/etc/ssl/certs/ca-certificates.crt"
 CURL = "/usr/bin/curl"
@@ -72,7 +74,7 @@ def fields(value, patterns):
 def check_request(request):
     action = request.get("action")
     require(type(request.get("version")) is int and request["version"] == 1 and action in ("check", "status", "deploy") and
-            fields(request, {"helperSha256": HASH, "installerSha256": HASH}), "request")
+            fields(request, {"helperSha256": HASH, "installerSha256": HASH, "nodeReaderSha256": HASH}), "request")
     if action == "deploy":
         release = request.get("release")
         require(fields(release, {**IDENTITY, "distSha256": HASH}) and "previousActive" in release and
@@ -146,8 +148,12 @@ class Session:
         deadline = time.monotonic() + timeout
         death = signal.SIGINT if installer else signal.SIGKILL
         try:
-            with subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                  env=env, start_new_session=True, preexec_fn=parent_death(death)) as process:
+            process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                       env=env, start_new_session=True, preexec_fn=parent_death(death))
+        except OSError:
+            raise Refused(code) from None
+        try:
+            with process:
                 try:
                     while True:
                         if monitor:
@@ -164,7 +170,9 @@ class Session:
                         stop(process, first=death, grace=13 if installer else 3)
                     raise
         except OSError:
-            raise Refused(code) from None
+            # Once started, communication/resource-close failures are lifecycle
+            # failures, never an ignorable auxiliary endpoint outage.
+            raise Refused("cleanup") from None
 
 
 def inspect_host(report):
@@ -187,37 +195,65 @@ def pinned_file(path, digest, code):
 
 
 @contextlib.contextmanager
-def proxy_policy():
+def proxy_lock():
     try:
-        fd = os.open(POLICY.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        fd = os.open(LOCK_DIRECTORY, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     except OSError:
         raise Refused("proxy-policy") from None
     try:
         info = os.fstat(fd)
         require(info.st_uid == os.geteuid() and not info.st_mode & 0o077, "proxy-policy")
-        try:
-            with os.fdopen(os.open(POLICY.name, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=fd), "rb") as stream:
-                info = os.fstat(stream.fileno())
-                require(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and not info.st_mode & 0o077 and
-                        info.st_nlink == 1 and info.st_size <= 8192, "proxy-policy")
-                raw = stream.read(8193)
-                require(len(raw) <= 8192, "proxy-policy")
-            policy = json_data(raw)
-            # Accept legacy ssl metadata without using it to configure the temporary proxy.
-            require(set(policy) - {"ssl"} == {"host", "port", "sni", "password", "alpn", "expectedEgressIp"}, "proxy-policy")
-            host = re.compile(r"[A-Za-z0-9][A-Za-z0-9.:-]{0,252}")
-            sni = re.compile(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}")
-            require(fields(policy, {"host": host, "sni": sni}) and type(policy["port"]) is int and
-                    0 < policy["port"] < 65536 and isinstance(policy["password"], str) and
-                    0 < len(policy["password"]) <= 4096 and all(ord(ch) >= 32 for ch in policy["password"]) and
-                    isinstance(policy["alpn"], list) and all(p in ("h2", "http/1.1") for p in policy["alpn"]) and
-                    isinstance(policy["expectedEgressIp"], str) and ipaddress.ip_address(policy["expectedEgressIp"]).is_global,
-                    "proxy-policy")
-        except (OSError, ValueError, TypeError, RecursionError):
-            raise Refused("proxy-policy") from None
-        yield fd, policy
+        yield fd
     finally:
         os.close(fd)
+
+
+def reader_file(digest):
+    """Pin the privileged script through root-owned, non-writable directories."""
+    fd = None
+    try:
+        fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        for part in NODE_READER.parts[1:-1]:
+            info = os.fstat(fd)
+            require(stat.S_ISDIR(info.st_mode) and info.st_uid == 0 and not info.st_mode & 0o022,
+                    "node-reader-version")
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        info = os.fstat(fd)
+        require(stat.S_ISDIR(info.st_mode) and info.st_uid == 0 and not info.st_mode & 0o022, "node-reader-version")
+        script = os.open(NODE_READER.name, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=fd)
+        with os.fdopen(script, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            require(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and not info.st_mode & 0o022 and
+                    info.st_nlink == 1 and 0 < info.st_size <= 65536, "node-reader-version")
+            raw = stream.read(65537)
+            require(len(raw) <= 65536 and hashlib.sha256(raw.replace(b"\r\n", b"\n")).hexdigest() == digest,
+                    "node-reader-version")
+    except OSError:
+        raise Refused("node-reader-version") from None
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
+def node_policy(session, request):
+    reader_file(request["nodeReaderSha256"])
+    rc, output, _ = session.command([SUDO, "-n", "--", PYTHON, "-I", "-B", NODE_READER.as_posix()],
+                                     code="node-config", timeout=10)
+    require(rc == 0 and len(output) <= 65536, "node-config")
+    try:
+        policy = json_data(output)
+        require(set(policy) == {"host", "port", "sni", "password", "alpn"}, "node-config")
+        require(fields(policy, {"host": re.compile(r"[A-Za-z0-9][A-Za-z0-9.:-]{0,252}"),
+                                "sni": re.compile(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}")}) and
+                type(policy["port"]) is int and 0 < policy["port"] < 65536 and
+                isinstance(policy["password"], str) and 0 < len(policy["password"]) <= 4096 and
+                all(32 <= ord(c) != 127 for c in policy["password"]) and isinstance(policy["alpn"], list) and
+                all(isinstance(p, str) and p in ("h2", "http/1.1") for p in policy["alpn"]), "node-config")
+        return policy
+    except (ValueError, UnicodeError, TypeError, RecursionError):
+        raise Refused("node-config") from None
 
 
 def proxy_dependencies():
@@ -320,43 +356,76 @@ def probe_response(rc, output, port):
         return None  # Bounded retry of a read-only transfer.
     require(rc == 0, "probe-network")
     body, marker, metrics = output.rpartition(MARKER)
-    result = re.fullmatch(rb"([0-9]{3}) ([0-9]+) (127\.0\.0\.1) ([0-9]+)\n", metrics)
-    require(marker and result and body and len(body) <= 65536, "probe-format")
-    http, tls, _, peer_port = result.groups()
+    result = re.fullmatch(rb"([0-9]{3}) ([0-9]+) (\S+) ([0-9]+)\n", metrics)
+    require(marker and result, "probe-format")
+    http, tls, peer, peer_port = result.groups()
+    require(peer == b"127.0.0.1" and peer_port == str(port).encode(), "proxy-exit")
+    require(body and len(body) <= 65536, "probe-format")
     require(tls == b"0", "probe-tls")
-    require(peer_port == str(port).encode(), "proxy-exit")
     if http in (b"408", b"429", b"500", b"502", b"503", b"504"):
         return None
     require(http == b"200", "probe-network")
     return body
 
 
+def probe_transfer(session, port, url):
+    return session.command([
+        CURL, "-q", "--silent", "--show-error", "--proxy", f"socks5h://127.0.0.1:{port}", "--noproxy", "",
+        "--cacert", CA, "--proto", "=https", "--connect-timeout", "5", "--max-time", "15", "--max-filesize", "65536",
+        "--write-out", MARKER.decode() + "%{http_code} %{ssl_verify_result} %{remote_ip} %{remote_port}\n", url,
+    ], env=proxy_environment(port), timeout=18, code="probe-network")
+
+
+def egress_diagnostic(session, port):
+    """One optional transfer. Never forward response bodies or raw stderr."""
+    result = {"status": "unavailable"}
+    try:
+        rc, output, _ = probe_transfer(session, port, TRACE)
+        result["curlExit"] = rc
+        metrics = output.rpartition(MARKER)[2]
+        match = re.fullmatch(rb"([0-9]{3}) ([0-9]{1,10}) 127\.0\.0\.1 ([0-9]{1,5})\n", metrics)
+        if match:
+            result.update(httpStatus=match[1].decode(), tlsVerifyResult=int(match[2]))
+        body = probe_response(rc, output, port)
+        if body is None:
+            return result
+    except Refused as exc:
+        # Catch only transfer/response failures. Lease, process ownership and
+        # cleanup failures still abort the release, including during a timeout.
+        if str(exc) not in ("probe-network", "probe-tls", "probe-format"):
+            raise
+        result["reason"] = str(exc)
+        return result
+    addresses = [line[3:] for line in body.splitlines() if line.startswith(b"ip=")]
+    hosts = [line[2:] for line in body.splitlines() if line.startswith(b"h=")]
+    result.update(status="invalid-response", hostMatches=hosts == [b"www.cloudflare.com"])
+    try:
+        if len(addresses) == 1 and result["hostMatches"]:
+            address = ipaddress.ip_address(addresses[0].decode("ascii"))
+            if getattr(address, "scope_id", None) is None:
+                result.update(status="observed", ip=str(address))
+    except (UnicodeError, ValueError):
+        pass
+    return result
+
+
 def probe(session, process, port, policy):
-    for url in (TRACE, GITHUB):
-        for attempt in range(3):
-            require(owned_listener(session, process, port), "proxy-exit")
-            rc, output, _ = session.command([
-                CURL, "-q", "--silent", "--show-error", "--proxy", f"socks5h://127.0.0.1:{port}", "--noproxy", "",
-                "--cacert", CA, "--proto", "=https", "--connect-timeout", "5", "--max-time", "15", "--max-filesize", "65536",
-                "--write-out", MARKER.decode() + "%{http_code} %{ssl_verify_result} %{remote_ip} %{remote_port}\n", url,
-            ], env=proxy_environment(port), timeout=18, code="probe-network")
-            body = probe_response(rc, output, port)
-            if body is not None:
-                break
-            if attempt < 2:
-                time.sleep(1 + attempt)
-        require(body is not None, "probe-network")
-        if url == TRACE:
-            addresses = [line[3:] for line in body.splitlines() if line.startswith(b"ip=")]
-            require(len(addresses) == 1 and b"h=www.cloudflare.com" in body.splitlines(), "proxy-exit")
-            try:
-                require(ipaddress.ip_address(addresses[0].decode("ascii")) ==
-                        ipaddress.ip_address(policy["expectedEgressIp"]), "proxy-exit")
-            except (UnicodeError, ValueError):
-                raise Refused("proxy-exit") from None
-        else:
-            require(body.startswith(b"001e# service=git-upload-pack\n0000"), "probe-format")
+    # GitHub is mandatory and independent of the auxiliary trace service.
+    for attempt in range(3):
+        require(owned_listener(session, process, port), "proxy-exit")
+        rc, output, _ = probe_transfer(session, port, GITHUB)
+        body = probe_response(rc, output, port)
+        if body is not None:
+            break
+        if attempt < 2:
+            time.sleep(1 + attempt)
+    require(body is not None, "probe-network")
+    require(body.startswith(b"001e# service=git-upload-pack\n0000"), "probe-format")
     require(owned_listener(session, process, port), "proxy-exit")
+    diagnostic = egress_diagnostic(session, port)
+    session.live()
+    require(owned_listener(session, process, port), "proxy-exit")
+    return diagnostic
 
 
 def services(session, *, monitor=True):
@@ -476,7 +545,7 @@ def deploy(session, request, report, policy):
     require(report["before"]["active"] == release["previousActive"], "production-changed")
     try:
         with proxy(session, policy, report) as (process, port):
-            probe(session, process, port, policy)
+            report["egressDiagnostic"] = probe(session, process, port, policy)
             report["proxyChecked"] = True
             check_git_processes()
             env = proxy_environment(port)
@@ -539,12 +608,13 @@ def execute(session, request, report):
         snapshot()
     if action == "status":
         return
-    # Read-only preflight opens the policy but never starts an instance or
+    # Read-only preflight reads one node snapshot but never starts an instance or
     # takes a write lock. Deployment holds a separate lock across both CLI calls.
-    with proxy_policy() as (fd, policy):
+    with proxy_lock() as fd:
         if action == "deploy":
             acquire_deploy_lock(fd)
             snapshot()
+        policy = node_policy(session, request)
         proxy_dependencies()
         check_git_processes()
         report["proxyPrerequisites"] = True

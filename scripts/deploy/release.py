@@ -484,6 +484,7 @@ class Remote:
         # when it reads the code, so bind both hosts to the same LF source.
         self.installer_hash = self.source_hash(HERE / "install.py")
         self.helper_hash = self.source_hash(HERE / "release_remote.py")
+        self.node_reader_hash = self.source_hash(HERE / "read_node.py")
 
     @staticmethod
     def source_hash(path):
@@ -491,7 +492,7 @@ class Remote:
 
     def call(self, action, release=None, *, timeout=None):
         request = {"version": 1, "action": action, "installerSha256": self.installer_hash,
-                   "helperSha256": self.helper_hash}
+                   "helperSha256": self.helper_hash, "nodeReaderSha256": self.node_reader_hash}
         if release:
             request["release"] = release
         rc, data, _ = command(self.argv, timeout=timeout or (REMOTE_WAIT if action == "deploy" else 600),
@@ -505,7 +506,7 @@ class Remote:
         return reply
 
 
-REMOTE_ERRORS = {"host", "helper-version", "installer-version", "dependencies", "proxy-policy", "status",
+REMOTE_ERRORS = {"host", "helper-version", "installer-version", "node-reader-version", "node-config", "dependencies", "proxy-policy", "status",
                  "services", "concurrent-deploy", "production-changed", "entry-tls", "proxy-start", "proxy-exit",
                  "probe-tls", "probe-network", "probe-format", "verify", "verify-identity", "install",
                  "install-identity", "post-status", "cleanup", "interrupted", "internal", "request", "git-process"}
@@ -569,6 +570,28 @@ def clean_remote_reply(data):
     for key in ("proxyPrerequisites", "proxyChecked"):
         if data.get(key) is True:
             clean[key] = True
+    diagnostic = data.get("egressDiagnostic")
+    if isinstance(diagnostic, dict) and diagnostic.get("status") in ("observed", "unavailable", "invalid-response"):
+        safe = {"status": diagnostic["status"]}
+        for key in ("curlExit", "tlsVerifyResult"):
+            if type(diagnostic.get(key)) is int and 0 <= diagnostic[key] <= 2**31-1:
+                safe[key] = diagnostic[key]
+        if isinstance(diagnostic.get("httpStatus"), str) and re.fullmatch(r"[0-9]{3}", diagnostic["httpStatus"]):
+            safe["httpStatus"] = diagnostic["httpStatus"]
+        if type(diagnostic.get("hostMatches")) is bool:
+            safe["hostMatches"] = diagnostic["hostMatches"]
+        if diagnostic.get("reason") in ("probe-network", "probe-tls", "probe-format"):
+            safe["reason"] = diagnostic["reason"]
+        # Canonicalize the only response-derived value; never forward raw bodies/stderr.
+        try:
+            import ipaddress
+            if isinstance(diagnostic.get("ip"), str):
+                address = ipaddress.ip_address(diagnostic["ip"])
+                if getattr(address, "scope_id", None) is None:
+                    safe["ip"] = str(address)
+        except ValueError:
+            pass
+        clean["egressDiagnostic"] = safe
     for key in ("proxyCleaned", "gitProcessesClear"):
         if type(data.get(key)) is bool:
             clean[key] = data[key]

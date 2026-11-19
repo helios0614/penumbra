@@ -26,12 +26,13 @@ import release
 
 SECRET = "fake-trojan-password-do-not-emit"
 POLICY = {"host": "fixture.invalid", "port": 443, "sni": "fixture.invalid", "password": SECRET,
-          "alpn": ["http/1.1"], "expectedEgressIp": "8.8.4.4"}
+          "alpn": ["http/1.1"]}
 PIN = {"artifactSha": "a" * 40, "sourceSha": "b" * 40, "workflowSha": "b" * 40, "buildId": "actions-123-1"}
 ACTIVE = {**PIN, "indexSha256": "c" * 64}
 PREVIOUS = {**ACTIVE, "artifactSha": "d" * 40}
 RELEASE = {**PIN, "fileCount": 2, "sizeBytes": 1234, "distSha256": "a" * 64, "previousActive": PREVIOUS}
-REQUEST = {"version": 1, "action": "deploy", "helperSha256": "a" * 64, "installerSha256": "b" * 64, "release": RELEASE}
+REQUEST = {"version": 1, "action": "deploy", "helperSha256": "a" * 64, "installerSha256": "b" * 64,
+           "nodeReaderSha256": "c" * 64, "release": RELEASE}
 READY = {"ready": True, "consistent": True, "pending": [], "active": PREVIOUS}
 STATES = {name: {"active": True, "pid": 2} for name in remote.SERVICES}
 PORT = 55001
@@ -62,8 +63,11 @@ class ProbeTests(unittest.TestCase):
     def test_probes_retry_transient_http_and_verify_exit_and_git(self):
         class ProbeSession:
             def __init__(inner):
-                inner.results = iter([(28, b""), (0, response(TRACE_BODY, http=503)),
-                                      (0, response(TRACE_BODY)), (0, response(GIT_BODY))])
+                inner.results = iter([(28, b""), (0, response(GIT_BODY, http=503)),
+                                      (0, response(GIT_BODY)), (0, response(TRACE_BODY))])
+
+            def live(inner):
+                pass
 
             def command(inner, argv, *, env, **kwargs):
                 self.assertEqual(argv[1], "-q")
@@ -77,29 +81,24 @@ class ProbeTests(unittest.TestCase):
 
         with patch.object(remote, "owned_listener", return_value=True), patch.object(remote.time, "sleep"):
             remote.probe(ProbeSession(), object(), PORT, POLICY)
-            with self.assertRaisesRegex(remote.Refused, "proxy-exit"):
-                remote.probe(ProbeSession(), object(), PORT, {**POLICY, "expectedEgressIp": "1.1.1.1"})
+            self.assertEqual(remote.probe(ProbeSession(), object(), PORT, POLICY)["ip"], "8.8.4.4")
 
-    def test_private_policy_mode_and_symlink(self):
+    def test_private_lock_directory_mode_and_symlink(self):
         with tempfile.TemporaryDirectory() as directory:
-            config = Path(directory) / "proxy.json"
-            config.write_text(json.dumps(POLICY))
-            with patch.object(remote, "POLICY", config):
-                config.chmod(0o644)
-                with self.assertRaisesRegex(remote.Refused, "proxy-policy"), remote.proxy_policy():
-                    self.fail("World readable password")
-                config.chmod(0o600)
-                with remote.proxy_policy() as (_, policy):
-                    self.assertEqual(policy, POLICY)
-                with_ssl = {**POLICY, "ssl": {"verify": False, "verify_hostname": False}}
-                config.write_text(json.dumps(with_ssl))
-                with remote.proxy_policy() as (_, policy):
-                    self.assertEqual(policy, with_ssl)
-                target = config.with_name("other.json")
-                config.rename(target)
-                config.symlink_to(target)
-                with self.assertRaisesRegex(remote.Refused, "proxy-policy"), remote.proxy_policy():
-                    self.fail("Symlinked password")
+            lock = Path(directory) / "private"
+            lock.mkdir(mode=0o700)
+            with patch.object(remote, "LOCK_DIRECTORY", lock):
+                lock.chmod(0o755)
+                with self.assertRaisesRegex(remote.Refused, "proxy-policy"), remote.proxy_lock():
+                    self.fail("Public lock directory")
+                lock.chmod(0o700)
+                with remote.proxy_lock() as fd:
+                    self.assertGreaterEqual(fd, 0)
+                target = lock.with_name("target")
+                lock.rename(target)
+                lock.symlink_to(target, target_is_directory=True)
+                with self.assertRaisesRegex(remote.Refused, "proxy-policy"), remote.proxy_lock():
+                    self.fail("Symlinked lock directory")
 
 
 @unittest.skipUnless(shutil.which("openssl") and shutil.which("curl"), "TLS fixture needs openssl and curl")
@@ -143,6 +142,9 @@ class TLSLoopbackTests(unittest.TestCase):
                             (upstream if source is sock else sock).sendall(chunk)
 
         class TestSession:
+            def live(inner):
+                pass
+
             def command(inner, argv, *, timeout, env=remote.ENV, **_):
                 p = subprocess.run(argv, capture_output=True, env=env, timeout=timeout, check=False)
                 return p.returncode, p.stdout, p.stderr
@@ -169,7 +171,7 @@ class TLSLoopbackTests(unittest.TestCase):
                     remote.tls_entry(TestSession(), {**config, "sni": "entry.example.invalid"})
                     self.assertEqual(server_names, ["entry.example.invalid"])
                     remote.probe(TestSession(), None, socks.server_address[1], config)
-                    with patch.object(remote, "TRACE", f"https://127.0.0.1:{target.server_port}/trace"):
+                    with patch.object(remote, "GITHUB", f"https://127.0.0.1:{target.server_port}/git"):
                         # The SOCKS server denies non-domain requests, proving no direct fallback.
                         with self.assertRaisesRegex(remote.Refused, "probe-network"):
                             remote.probe(TestSession(), None, socks.server_address[1], config)
@@ -218,7 +220,7 @@ class DeployTests(unittest.TestCase):
             return next(statuses)
 
         error = None
-        with patch.object(remote, "proxy", proxy), patch.object(remote, "probe"), patch.object(remote, "check_git_processes"), \
+        with patch.object(remote, "proxy", proxy), patch.object(remote, "probe", return_value={"status": "unavailable"}), patch.object(remote, "check_git_processes"), \
              patch.object(remote, "owned_listener", return_value=True), patch.object(remote, "installer_command", installer), \
              patch.object(remote, "status", status), patch.object(remote, "services", return_value=STATES):
             if internal:
@@ -397,6 +399,14 @@ class LinuxProcessTests(unittest.TestCase):
             pid = int(marker.read_text())
             with self.assertRaises(ProcessLookupError):
                 os.kill(pid, 0)
+
+
+def load_tests(loader, tests, pattern):
+    # Keep the existing Ubuntu CI command covering both implementation boundaries.
+    if pattern == "test_release_remote.py":
+        tests.addTests(loader.loadTestsFromName("test_release_probe"))
+        tests.addTests(loader.loadTestsFromName("test_read_node"))
+    return tests
 
 
 if __name__ == "__main__":
