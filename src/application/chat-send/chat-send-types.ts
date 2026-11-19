@@ -132,6 +132,8 @@ export type ChatSendState = ChatSendStateBase & {
   readonly executionConversationId?: string;
   readonly serverExecution?: MainChatExecution;
   readonly discovering?: boolean;
+  /** Read-only recovery operations are still in flight; not a submission gate. */
+  readonly checking?: boolean;
   readonly discoveryUnknown?: boolean;
   readonly cancelling?: boolean;
   readonly controlError?: string;

@@ -98,6 +98,8 @@ type ActiveExecutionBase = {
   terminalFailure: boolean;
   recoveryReadSucceeded: boolean;
   abortController: AbortController;
+  /** Includes POST/header waiting. Silence is not evidence that the relay ended. */
+  transportPending: boolean;
   finalization: Promise<void> | null;
 };
 
@@ -132,6 +134,7 @@ export function createChatSendController(
   let serverExecution: MainChatExecution | undefined;
   let conversationOwner: string | undefined;
   let discovering = false, discoveryUnknown = false, cancelling = false;
+  let checking = 0;
   let controlError: string | undefined;
   let discovery: Promise<void> | null = null;
   let resultsRecovery: Promise<void> | null = null;
@@ -156,11 +159,12 @@ export function createChatSendController(
       if ("targetMessageId" in nextState) aliasChatTrace(nextState.targetMessageId, nextState);
       traceChat("session.publish", nextState, { phase: nextState.kind, size: assistant?.content.length ?? 0 });
     } else if (active) traceChat("session.publish", active, { phase: nextState.kind });
-    const { recoveries: _previousRecoveries, serverExecution: _previousServer, discovering: _discovering, discoveryUnknown: _unknown, cancelling: _cancelling, controlError: _controlError, resultsError: _resultsError, ...current } = nextState;
+    const { recoveries: _previousRecoveries, serverExecution: _previousServer, discovering: _discovering, checking: _checking, discoveryUnknown: _unknown, cancelling: _cancelling, controlError: _controlError, resultsError: _resultsError, ...current } = nextState;
     state = { ...current,
       ...(conversationOwner ? { executionConversationId: conversationOwner } : {}),
       ...(serverExecution ? { serverExecution } : {}),
       ...(discovering ? { discovering } : {}), ...(discoveryUnknown ? { discoveryUnknown } : {}),
+      ...(checking || discovering ? { checking: true } : {}),
       ...(cancelling ? { cancelling } : {}), ...(controlError ? { controlError } : {}),
       ...(resultsError ? { resultsError } : {}),
       ...(stoppedExecutions.length ? { stoppedExecutions: [...stoppedExecutions] } : {}),
@@ -257,7 +261,12 @@ export function createChatSendController(
     if (execution.status?.terminal) return;
     execution.status = value;
     rememberStopped(value, execution.accumulator.message.createdAt);
-    if (active === execution) { serverExecution = value; controlError = undefined; }
+    if (active === execution) {
+      serverExecution = value; controlError = undefined;
+      // A concurrent terminal control/result response must not wait behind an
+      // older status GET before closing the relay or releasing the send gate.
+      if (value.terminal) { execution.abortController.abort(); publish(state); }
+    }
   };
 
   const uncertainState = (execution: ActiveExecution): ChatExecutionRecovery => ({
@@ -270,15 +279,23 @@ export function createChatSendController(
   const performFinalization = async (execution: ActiveExecution) => {
     if (!isCurrent(execution)) return;
     execution.recoveryReadSucceeded = false;
-    publishFinalization(execution, activeAssistantState("finalizing", execution));
+    if (!execution.transportPending) publishFinalization(execution, activeAssistantState("finalizing", execution));
     let reconciliation: ChatHistoryReconciliationResult | null = null;
     try {
-      if (!execution.status?.terminal) acceptStatus(execution, await readExecution(execution.conversationId, execution.executionId));
+      if (!execution.status?.terminal) {
+        const result = await readExecution(execution.conversationId, execution.executionId);
+        if (!isCurrent(execution)) return;
+        acceptStatus(execution, result);
+      }
     } catch { /* A missing/unavailable execution is unknown, never stopped. */ }
-    if (active === execution && execution.status?.terminal) {
-      execution.abortController.abort();
-      publish(state);
+    if (!isCurrent(execution)) return;
+    // Background/manual GETs observe a live POST/SSE; they do not own its
+    // presentation or reader. Recheck after await: EOF may have arrived meanwhile.
+    if (execution.transportPending && !execution.status?.terminal) {
+      if (active === execution) publish(state);
+      return;
     }
+    publishFinalization(execution, activeAssistantState("finalizing", execution));
     try {
       if (execution.kind === "send" && !execution.status?.terminal && !execution.optimisticUser.persistedMessageId && execution.receiptLookup === null) {
         try { await lookupReceipt(execution); } catch { /* Exact execution GET survives message deletion. */ }
@@ -420,6 +437,7 @@ export function createChatSendController(
       );
     }
 
+    execution.transportPending = false;
     execution.accumulator = flushAssistantAccumulator(execution.accumulator);
     if (
       execution.kind === "regenerate" &&
@@ -465,6 +483,7 @@ export function createChatSendController(
         if (result) serverExecution = stoppedExecutions.find(item => item.execution.executionId === result.executionId)?.execution ?? result;
         discoveryUnknown = false; controlError = undefined;
       } catch {
+        if (disposed || active) return;
         discoveryUnknown = true; controlError = "尚未确认会话的执行状态；请重新核对。";
       } finally { discovering = false; discovery = null; publish(state); }
     })();
@@ -475,6 +494,7 @@ export function createChatSendController(
     if (disposed || conversationOwner && conversationOwner !== conversationId) return Promise.resolve();
     conversationOwner = conversationId;
     if (resultsRecovery) return resultsRecovery;
+    checking++; publish(state);
     // A finite traversal of bounded pages, only on entry/read-only recovery.
     // Merge successful pages immediately, retaining them if a later GET fails.
     resultsRecovery = (async () => {
@@ -505,7 +525,7 @@ export function createChatSendController(
         resultsError = undefined;
       } catch {
         resultsError = "已停止回复暂时无法完整读取；已显示的内容已保留，可重新核对。";
-      } finally { resultsRecovery = null; publish(state); }
+      } finally { resultsRecovery = null; checking--; publish(state); }
     })();
     return resultsRecovery;
   }
@@ -581,6 +601,7 @@ export function createChatSendController(
         duplicateUserMessageId: null,
         receiptLookup: null,
         abortController: new AbortController(),
+        transportPending: true,
         finalization: null,
       };
       active = execution;
@@ -607,6 +628,7 @@ export function createChatSendController(
           { signal: execution.abortController.signal },
         );
       } catch (error) {
+        execution.transportPending = false;
         if (!isCurrent(execution)) return false;
         execution.executionError = toSafeChatExecutionError(error);
         if (await reconcileConflict(error, execution)) return false;
@@ -622,6 +644,7 @@ export function createChatSendController(
 
       if (!isCurrent(execution) || execution.status?.terminal) return false;
       if (result.kind === "duplicate") {
+        execution.transportPending = false;
         execution.duplicateUserMessageId = result.userMessageId;
         execution.optimisticUser = { ...execution.optimisticUser, persistedMessageId: result.userMessageId };
         void finalize(execution);
@@ -678,6 +701,7 @@ export function createChatSendController(
         recoveryReadSucceeded: false,
         sawTargetStart: false,
         abortController: new AbortController(),
+        transportPending: true,
         finalization: null,
       };
       active = execution;
@@ -696,6 +720,7 @@ export function createChatSendController(
           { signal: execution.abortController.signal, headers: { "X-Chat-Execution-Id": requestId } },
         );
       } catch (error) {
+        execution.transportPending = false;
         if (!isCurrent(execution)) return false;
         execution.executionError = toSafeChatExecutionError(error, "regenerate");
         if (await reconcileConflict(error, execution)) return false;
@@ -718,27 +743,33 @@ export function createChatSendController(
     reconcileUserPersistence,
 
     async retryFinalization() {
-      if (discovery) { await discovery; return; }
       if (disposed) return;
-      if (active) { await finalize(active); return; }
-      for (const { execution } of [...recoveries.values()]) await finalize(execution);
-      if (serverExecution && !serverExecution.terminal) {
-        const original = serverExecution;
-        try {
-          const result = await readExecution(original.conversationId, original.executionId);
-          if (serverExecution !== original) return;
-          serverExecution = result; controlError = undefined;
-          if (result.terminal) await settleDiscovered(result); else publish(state);
-        } catch { controlError = "执行状态暂时无法读取；尚未确认终结。"; publish(state); }
-        return;
-      }
-      if (conversationOwner) {
-        if (discoveryUnknown) await discoverActive(conversationOwner);
-        else {
-          try { await dependencies.reconcileHistory(conversationOwner); controlError = undefined; publish(state); }
-          catch { controlError = "历史暂时无法读取；当前展示已保留，可重新核对。"; publish(state); }
+      checking++; publish(state);
+      try {
+        if (discovery) { await discovery; return; }
+        if (active) { await finalize(active); return; }
+        for (const { execution } of [...recoveries.values()]) await finalize(execution);
+        if (serverExecution && !serverExecution.terminal) {
+          const original = serverExecution;
+          try {
+            const result = await readExecution(original.conversationId, original.executionId);
+            if (disposed || serverExecution !== original) return;
+            serverExecution = result; controlError = undefined;
+            if (result.terminal) await settleDiscovered(result); else publish(state);
+          } catch {
+            if (disposed || serverExecution !== original) return;
+            controlError = "执行状态暂时无法读取；尚未确认终结。"; publish(state);
+          }
+          return;
         }
-      }
+        if (conversationOwner) {
+          if (discoveryUnknown) await discoverActive(conversationOwner);
+          else {
+            try { await dependencies.reconcileHistory(conversationOwner); controlError = undefined; publish(state); }
+            catch { controlError = "历史暂时无法读取；当前展示已保留，可重新核对。"; publish(state); }
+          }
+        }
+      } finally { checking--; publish(state); }
     },
 
     resetError() {

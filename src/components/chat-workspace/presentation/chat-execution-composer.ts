@@ -12,11 +12,23 @@ export function composeVisibleChatMessages(
   projectMessages: ChatMessageProjector = presentChatMessages,
 ): readonly ChatMessageViewModel[] {
   let visible = [...projectMessages(persistentMessages)];
+  // Only the current attempt may mask its target. A retained older execution
+  // cannot hide authoritative rows belonging to a later execution's result.
+  const current = "executionId" in execution ? execution : execution.recoveries?.find(
+    recovery => recovery.executionId === execution.serverExecution?.executionId,
+  );
+  const regenerate = current && regenerateOverlay(current, conversationId);
+  if (current && regenerate && !(current.serverExecution?.terminal && current.serverExecution.outcome === "cancelled") &&
+      !(current.kind === "regenerate-finalization-uncertain" && current.recoveryReadSucceeded)) {
+    // Transport/execution failure does not prove the canonical replacement
+    // failed. Keep the cached target hidden until this history read succeeds.
+    visible = visible.filter(message => message.id !== regenerate.targetMessageId);
+  }
   const stoppedIds = new Set((execution.stoppedExecutions ?? [])
     .filter(item => item.execution.conversationId === conversationId).map(item => item.execution.executionId));
   for (const recovery of execution.recoveries ?? []) {
     if (stoppedIds.has(recovery.executionId)) continue;
-    visible = [...composeExecutionMessages(persistentMessages, recovery, conversationId, visible, true)];
+    visible = [...composeExecutionMessages(persistentMessages, { ...recovery, checking: execution.checking }, conversationId, visible, true)];
   }
   if (!("executionId" in execution && stoppedIds.has(execution.executionId))) {
     visible = [...composeExecutionMessages(persistentMessages, execution, conversationId, visible)];
@@ -74,7 +86,7 @@ function composeExecutionMessages(
         kind: "assistant", id: execution.assistant.overlayId,
         content: execution.assistant.content, createdAt: execution.assistant.createdAt,
         thinking: execution.assistant.thinking, simpleThink: execution.assistant.simpleThink,
-        error: execution.assistant.error, attachments: [], executionStatus: "unconfirmed",
+        error: execution.assistant.error, attachments: [], executionStatus: execution.checking ? "finalizing" : "unconfirmed",
       });
       return visible;
     }
@@ -86,13 +98,11 @@ function composeExecutionMessages(
       thinking: execution.assistant.thinking, simpleThink: execution.assistant.simpleThink,
       toolPending: execution.assistant.toolPending,
       error: execution.assistant.error ?? execution.executionError?.message,
-      attachments: [], executionStatus: "unconfirmed" });
+      attachments: [], executionStatus: execution.checking ? "finalizing" : "unconfirmed" });
     return visible;
   }
   const regenerate = regenerateOverlay(execution, conversationId);
   if (regenerate !== null) {
-    // The durable target always keeps its own body/actions. An attempt has its
-    // own row, so edits/deletes can never be hidden or resurrected by old SSE.
     visible.push({
       kind: "assistant",
       id: regenerate.assistant.overlayId,
@@ -188,7 +198,7 @@ function executionOverlay(
     assistant: execution.assistant,
     status: execution.kind === "streaming"
       ? "streaming" as const
-      : execution.kind === "finalizing"
+      : execution.kind === "finalizing" || execution.checking
         ? "finalizing" as const
         : "unconfirmed" as const,
   };
@@ -212,7 +222,7 @@ function regenerateOverlay(
     assistant: execution.assistant,
     status: execution.kind === "regenerate-streaming"
       ? "streaming" as const
-      : execution.kind === "regenerate-finalizing"
+      : execution.kind === "regenerate-finalizing" || execution.checking
         ? "finalizing" as const
         : "unconfirmed" as const,
   };

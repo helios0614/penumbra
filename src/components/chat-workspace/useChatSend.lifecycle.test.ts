@@ -2,6 +2,7 @@ import * as React from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useChatSend } from "./useChatSend";
 import { useChatWorkspace } from "./useChatWorkspace";
+import { createChatRealtimeCoordinator } from "@/application/chat-realtime";
 import { hookSession } from "@/components/chat/test-utils/hook-session";
 
 vi.mock("react", async original => {
@@ -104,4 +105,88 @@ it("reads paginated stopped results on entry/remount and GET-only focus/manual r
   await vi.waitFor(() => expect(fetch.mock.calls.filter(([path]) => String(path).includes("/executions/results"))).toHaveLength(3));
   expect(hooks.render().state.stoppedExecutions).toHaveLength(1);
   expect(hooks.render().isExecutionActive()).toBe(false); hooks.dispose();
+});
+
+it.each(["send", "regenerate"] as const)("keeps %s waiting for headers/start/Thinking through automatic reads without any user review", async kind => {
+  vi.useFakeTimers(); vi.stubGlobal("window", new EventTarget());
+  const conv = `live-auto-${kind}`;
+  let releaseHeaders!: () => void, relay!: ReadableStreamDefaultController<Uint8Array>, signal!: AbortSignal;
+  let executionId = "", requestId = "", terminal = false;
+  let releaseRead: (() => void) | undefined, holdRead = false;
+  const fact = () => ({ conv_id: conv, execution_id: executionId, kind, request_id: requestId,
+    phase: terminal ? "terminal" : "generating", terminal, outcome: terminal ? "completed" : null, reason: null,
+    cancel_requested: false, user_message_id: kind === "send" ? "saved-user" : null,
+    target_message_id: kind === "regenerate" ? "target" : null, assistant_message_id: terminal ? "target" : null,
+    partial_text: "", owner_available: !terminal, cancelable: !terminal });
+  const fetch = vi.fn<typeof globalThis.fetch>(async (url, init) => {
+    const path = String(url);
+    if (path.includes("/debug/")) return Response.json({}, { status: 403 });
+    if (!path.includes(`/conversations/${conv}/`)) return Response.json({}, { status: 404 });
+    if (init?.method === "POST") {
+      requestId = kind === "send" ? JSON.parse(String(init.body)).client_msg_id : new Headers(init.headers).get("X-Chat-Execution-Id")!;
+      executionId = `${kind}.${btoa(requestId).replace(/=+$/, "")}`;
+      signal = init.signal!;
+      await new Promise<void>(resolve => { releaseHeaders = resolve; });
+      return new Response(new ReadableStream<Uint8Array>({ start(controller) { relay = controller; } }), { headers: { "content-type": "text/event-stream" } });
+    }
+    if (path.endsWith("/executions/active")) return Response.json({ execution: null });
+    if (path.includes("/executions/results")) return Response.json({ results: [], next_cursor: null });
+    if (path.includes("/send-results/")) return Response.json({ conv_id: conv, client_msg_id: requestId,
+      user_message_id: "saved-user", assistant_message_id: null, execution: fact() });
+    if (path.includes("/executions/")) {
+      const snapshot = fact();
+      if (holdRead) await new Promise<void>(resolve => { releaseRead = resolve; });
+      return Response.json({ execution: snapshot });
+    }
+    throw new Error(`Unexpected route ${path}`);
+  });
+  vi.stubGlobal("fetch", fetch);
+  const reconcileHistory = vi.fn(async () => ({ persistedMessageIds: [], regenerateTarget: null }));
+  const hooks = hookSession(() => useChatSend(reconcileHistory, conv));
+  hooks.render(); hooks.commit(); await vi.advanceTimersByTimeAsync(0);
+  const current = hooks.render();
+  const opening = kind === "send" ? current.send({ conversationId: conv, content: "question" })
+    : current.regenerate({ conversationId: conv, targetMessageId: "target", targetCreatedAt: 1 });
+  await vi.advanceTimersByTimeAsync(300_000);
+  // The real WS message notification path refreshes lists even before SSE start.
+  // It must not turn that automatic refresh into settlement or manual intervention.
+  const realtime = createChatRealtimeCoordinator({
+    getContext: () => ({ workspaceAvailable: true, authenticated: true, selectedConversationId: conv,
+      execution: { kind: "active", executionKind: kind, conversationId: conv, userMessageId: "saved-user",
+        targetMessageId: kind === "regenerate" ? "target" : null, assistantMessageId: null } }),
+    reconcileEvent: async () => {}, reconcileAfterReconnect: async () => {},
+    refreshConversationList: current.reconcilePending,
+  });
+  await realtime.handleEvent({ type: "message-created", conversationId: conv, messageId: "saved-user" });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(fetch.mock.calls.some(([url]) => String(url).includes(`/executions/${executionId}`))).toBe(true);
+  expect(current.getState().kind).toBe(kind === "send" ? "sending-user" : "regenerate-streaming");
+  releaseHeaders(); await opening; await vi.advanceTimersByTimeAsync(0);
+  await current.reconcilePending(); // SSE connected, before start or first model output.
+  expect(current.getState().kind).toBe(kind === "send" ? "streaming" : "regenerate-streaming");
+  const emit = (value: object) => relay.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(value)}\n\n`));
+  await vi.advanceTimersByTimeAsync(119_000);
+  emit({ type: "start", id: "target" });
+  emit({ type: "chunk", content: "[THINKING_START]reason[THINKING_END]" });
+  await vi.advanceTimersByTimeAsync(0);
+  for (const event of ["focus", "online"]) {
+    window.dispatchEvent(new Event(event)); await vi.advanceTimersByTimeAsync(0);
+    expect(current.getState()).toMatchObject({ kind: kind === "send" ? "streaming" : "regenerate-streaming", assistant: { thinking: "reason", content: "" } });
+  }
+  await vi.advanceTimersByTimeAsync(119_000);
+  holdRead = true;
+  const checking = current.reconcilePending(); await vi.advanceTimersByTimeAsync(0);
+  emit({ type: "chunk", content: "first body" }); await vi.advanceTimersByTimeAsync(0);
+  holdRead = false; releaseRead!(); await checking;
+  expect(current.getState()).toMatchObject({ kind: kind === "send" ? "streaming" : "regenerate-streaming", assistant: { content: "first body" } });
+  expect(signal.aborted).toBe(false);
+  expect(reconcileHistory).not.toHaveBeenCalled();
+  // A genuine idle timeout ends only the local reader. A running server stays locked.
+  await vi.advanceTimersByTimeAsync(120_000);
+  expect(current.getState().kind).toContain("finalization-uncertain");
+  expect(current.isExecutionActive()).toBe(true);
+  terminal = true; await current.retryFinalization({ manual: true });
+  expect(current.isExecutionActive()).toBe(false);
+  expect(fetch.mock.calls.filter(([url, init]) => init?.method === "POST" && !String(url).includes("/debug/"))).toHaveLength(1);
+  hooks.dispose();
 });

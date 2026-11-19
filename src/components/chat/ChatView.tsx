@@ -745,8 +745,13 @@ function ChatExecutionNotice({ state, onRetryFinalization }: {
   readonly state: ChatSendState;
   readonly onRetryFinalization?: () => void | Promise<void>;
 }) {
+  // Discovery and settlement are automatic work, not requests for intervention.
+  if (state.checking || state.discovering || state.kind === "finalizing" || state.kind === "regenerate-finalizing") return null;
   const error = executionNoticeError(state);
   const waiting = getChatComposerAction(state) === "waiting";
+  if (waiting && !state.controlError && state.serverExecution?.ownerAvailable && state.serverExecution.phase === "finalizing") {
+    return <p role="status" className="mx-auto mb-2 max-w-[720px] text-xs text-muted-strong">正在完成收尾，请等待。</p>;
+  }
   if (state.controlError || waiting) return <div data-chat-execution-feedback className="mx-auto mb-2 flex max-w-[720px] items-center gap-2 text-xs text-muted-strong">
     <span role="status">{state.controlError ?? (state.serverExecution?.phase === "finalizing" ? "正在完成收尾，请等待或重新核对。" : "执行状态待确认，请重新核对。")}</span>
     {onRetryFinalization && <Button variant="ghost" size="compact" disabled={state.discovering} onClick={() => void onRetryFinalization()}>重新核对</Button>}
@@ -758,10 +763,9 @@ function ChatExecutionNotice({ state, onRetryFinalization }: {
   if (state.kind === "error" && state.confirmedFailure && state.failedMessageId) return null;
   if (state.kind === "error" && state.rejectedSubmission) return <p data-chat-execution-feedback role="alert" className="mx-auto mb-2 max-w-[720px] text-xs text-muted-strong">{error.message}</p>;
   const uncertain = state.kind === "finalization-uncertain" || state.kind === "regenerate-finalization-uncertain";
-  const checking = state.kind === "finalizing" || state.kind === "regenerate-finalizing";
-  if (uncertain || checking) return <div data-chat-execution-feedback className="mx-auto mb-2 flex max-w-[720px] items-center gap-2 text-xs text-muted-strong">
+  if (uncertain) return <div data-chat-execution-feedback className="mx-auto mb-2 flex max-w-[720px] items-center gap-2 text-xs text-muted-strong">
     <span role="status" title={error.message}>回复结果待确认</span>
-    {onRetryFinalization && <Button variant="ghost" size="compact" disabled={checking} onClick={() => void onRetryFinalization()}>重新核对</Button>}
+    {onRetryFinalization && <Button variant="ghost" size="compact" onClick={() => void onRetryFinalization()}>重新核对</Button>}
   </div>;
   // Streamed provider errors are already displayed next to their partial body.
   if (state.kind !== "error") return null;

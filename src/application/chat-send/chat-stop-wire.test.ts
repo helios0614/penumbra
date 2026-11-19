@@ -50,6 +50,31 @@ function server(kind: "send" | "regenerate" = "send", conv = "A") {
 }
 afterEach(() => vi.unstubAllGlobals());
 describe("S6E2-C real adapters → controller → presentation (Mock HTTP only)", () => {
+  it.each(["unchanged", "edited", "deleted"] as const)("restores only current regenerate authority after Stop: %s", async mutation => {
+    const s = server("regenerate");
+    const target = mapMessage(messageWire({ id: "target", conversation_id: "A", content: "original", thinking: null, drift: null }));
+    let history = [target];
+    const c = createChatSendController({ createUuid: () => attempt,
+      reconcileHistory: async () => ({ persistedMessageIds: history.map(row => row.id), regenerateTarget: history[0] ?? null, assistants: history }) });
+    await c.regenerate({ conversationId: "A", targetMessageId: "target", targetCreatedAt: 1 });
+    s.start(); s.chunk("safe body");
+    await vi.waitFor(() => expect(c.getState()).toMatchObject({ assistant: { content: "safe body" } }));
+    expect(composeVisibleChatMessages(history, c.getState(), "A").some(row => row.id === target.id)).toBe(false);
+    if (mutation === "edited") history = [{ ...target, content: "edited authority" }];
+    if (mutation === "deleted") history = [];
+    await c.cancel(); s.fact.partial_text = "safe stopped body"; s.terminal(); await c.retryFinalization();
+    const visible = composeVisibleChatMessages(history, c.getState(), "A");
+    if (mutation === "deleted") expect(visible.some(row => row.id === target.id)).toBe(false);
+    else {
+      const restored = visible.find(row => row.id === target.id)!;
+      expect(restored.content).toBe(mutation === "edited" ? "edited authority" : "original");
+      expect(restored).not.toHaveProperty("executionStatus"); // retains normal persisted-message actions
+    }
+    expect(visible.filter(row => row.executionStatus === "stopped")).toMatchObject([{ content: "safe stopped body" }]);
+    expect(target.content).toBe("original");
+    expect(s.calls.filter(call => call.method === "POST" && !call.path.endsWith("/cancel") && !call.path.includes("/debug/"))).toHaveLength(1);
+    c.dispose();
+  });
   it.each(["send", "regenerate"] as const)("carries the exact %s identity and settles only durable cancellation", async kind => {
     const s = server(kind), target = mapMessage(messageWire({ id: "target", conversation_id: "A", content: "original", thinking: null, drift: null }));
     let history = [target];
@@ -64,7 +89,10 @@ describe("S6E2-C real adapters → controller → presentation (Mock HTTP only)"
     await vi.waitFor(() => expect(JSON.stringify(controller.getState())).toContain("safe body"));
     // Editing/deleting the target never lets this stream replace the durable body.
     history = [{ ...target, content: "edited" }];
-    expect(composeVisibleChatMessages(history, controller.getState(), "A")[0].content).toBe("edited");
+    const during = composeVisibleChatMessages(history, controller.getState(), "A");
+    if (kind === "send") expect(during[0].content).toBe("edited");
+    else expect(during.some(row => row.id === "target")).toBe(false);
+    expect(history[0].content).toBe("edited");
     history = []; expect(composeVisibleChatMessages(history, controller.getState(), "A").some(m => m.id === "target")).toBe(false);
     s.disconnect(); await vi.waitFor(() => expect(controller.getState().kind).toContain("uncertain"));
     await controller.cancel(); expect(getChatComposerAction(controller.getState())).toBe("stopping");

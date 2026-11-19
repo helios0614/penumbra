@@ -696,6 +696,50 @@ C 可直接使用：稳定 execution_id（沿用 A 的 kind + base64url request_
 
 本轮不 commit、push、deploy；完成后停止，等待人工审查。
 
+## 18. S6E2 人工验收修复：自动核对、生成状态与 Regenerate（2026-11-19）
+
+本轮仅修复 Penumbra 前端。已复核两仓 AGENTS / engineering-principles、相关 UI 规范、§13–17、CHAT-B1、streaming state audit 与既有 SSE 结论。保留开工时已有的未跟踪文件 `docs/s6e2-deployment-preflight-2026-11-18.md`；AionHome 工作区未改动。没有重开完整生命周期审计，没有 commit、push、deploy。
+
+### 实际原因与行为修复
+
+1. **查询中被当成人工介入。** `discovering → waiting` 直接显示“执行状态待确认 / 重新核对”；`finalizing` 携带先前传输错误时也显示“回复结果待确认”。`ChatView.tsx` 现在区分正在读取与读取结束后仍无法确认。controller/types 增加仅用于展示的 `checking` 操作标志，覆盖重叠的 active / results / 精确读取与手动核对；仍在自动处理时不显示人工提示，完成后仍未知则保留入口。composer 在核对期间把临时 unknown 行显示为“正在确认保存”，查询失败不会无限隐藏 unknown。没有固定延时或新增轮询。
+2. **自动 GET 抢占仍存活的 POST/SSE。** `sessions.reconcilePending → retryFinalization → performFinalization` 原来不区分传输生命周期：在等待响应头、start、Thinking 或正文时，只要精确 GET 尚非 `terminal:true`，就经过 history 转成 uncertain；下一个 SSE 事件又发布 streaming。这条路径不需要切标签：WS `message-created` 会先触发列表刷新，ChatView 的刷新回调也调用 `reconcilePending`。受控合同已复现“同页等待 → 待确认 → 后续 SSE 恢复生成”的本地转换；不能据此断言每次真实故障都没有网络中断。
+   `chat-send-controller.ts` 用 execution 自有 `transportPending` 标志覆盖响应头前与 SSE 消费期。此时 GET 只更新执行事实，非终态或 GET 暂时失败均不接管展示、不读 history、不清空/重启原流。真正 EOF、读取异常、既有 120 秒 idle timeout、POST 未知失败或 duplicate 才进入结算；await 后再次检查传输状态与请求归属，保留断流后的 partial 和门禁。终态响应现在立即公开并关闭本地 relay，不再等待更早的 GET；迟到非终态不能降级终态，旧发现执行的迟到 GET 错误也不能污染下一次发送。手动核对原先看似无效，是因为 generating 再次被结算成 uncertain；现在活跃流核对后保持正常生成。
+3. **Regenerate 一直并排展示原 target 与新尝试。** `presentation/chat-execution-composer.ts` 现在仅在新尝试生成/结算期间隐藏 target 的展示行；新尝试独立呈现思考中、Thinking 与正文。成功后显示当前 HTTP 消息；明确失败、冲突、停止或进入无法确认的恢复状态时恢复当前权威 target。没有保存正文快照、修改消息或复活缺失行。停止安全 partial 仍独立展示，恢复的持久消息不带临时 executionStatus，保留原操作资格。
+
+**安全边界：** `terminal:true` 仍是已接受执行释放发送/regenerate 资格的唯一依据；generating 不算完成，SSE 断开不算 Provider 停止。202、非终态 200、404/409/503 和网络错误均不解锁。Stop 服务端契约、canonical 原 ID 原子替换、快照冲突保护、现有 header/idle 超时策略、SSE parser 和后端代码均未修改；没有自动 POST 恢复。本轮未确认需要扩大的后端契约缺陷。
+
+### 合同与验证
+
+- 先补失败合同再改实现。新增 `chat-live-reconciliation.test.ts`，扩展 `useChatSend.lifecycle.test.ts`、`chat-stop-wire.test.ts`、composer、ChatView 与 generation-flow 合同。覆盖真实前端 HTTP/SSE adapter、实际 WS coordinator 消息事件、不切标签的响应头前/首个输出前自动 GET、119 秒静默/Thinking、focus/online、迟到 GET 与正文交错、真实 idle 中断、人工 unknown 恢复、终态竞争、A/B 隔离，以及 Regenerate 停止后原文/编辑正文/删除 target 与安全 partial。
+- 相关 Chat 测试先通过 83 文件 / 963 项；随后补充的停止恢复及迟到错误合同通过 2 文件 / 26 项，WS 接线合同通过 4 项。最终完整 `npm test`：**232 文件、3115 passed**，包括草稿、附件、IME、发送/停止按钮与停止 partial 刷新去重回归。
+- `npm run build`（含 TypeScript）通过，仅有既有 Vite >500 kB chunk 提示；两仓 `git diff --check` 通过。日志：`/private/tmp/s6e2-manual-full-tests.log`、`/private/tmp/s6e2-manual-build.log`；首次失败证据见 `/private/tmp/s6e2-manual-red.log`，其余定向日志同目录 `s6e2-*`。
+
+**真实浏览器待复核：** 实际 Main send/regenerate 首个输出延迟及长 Thinking；浏览器切出/返回与后台节流；断网、Stop 响应丢失后 GET 核对；Regenerate 成功/失败/提交冲突后正文与操作恢复、生成期间 target 编辑/删除；停止 partial 跨刷新恢复；桌面/手机中文 IME 与软键盘。本轮未连接生产服务或执行真实浏览器/手机验收。修复停在本地，等待审查后再决定是否发布前端补丁。
+
+## 19. S6E2 后续修复：Regenerate 旧 target 提前恢复（2026-11-19）
+
+本轮只修复已复现的第一条路径：canonical replacement 已提交，随后 SSE 异常，历史 GET 尚未返回时旧 target 被提前显示。遵循两仓 AGENTS / engineering-principles 和 Penumbra UI 规范；保留此前记录、两仓工作区与原暂存区。未修改 AionHome、controller、历史导航、SSE parser、依赖或超时策略，没有 commit、push、deploy。
+
+### 实施范围与行为
+
+- 唯一业务源码改动为 `presentation/chat-execution-composer.ts`。移除以 `executionError` 或 `outcome=failed` 解除 target 隐藏的条件；复用现有 `recoveryReadSucceeded`，不新增状态、网络请求或恢复流程。生成/结算期间继续隐藏缓存 target；历史确认后显示当前权威消息，可能是新正文、仍有效的原正文或编辑后的正文；缺失 target 不构造恢复行。
+- 历史读取失败时，当前 unknown 或终态 presentation recovery 继续隐藏可能过时的 target，保留本次临时输出、既有结果待确认/错误反馈及人工重新核对。人工核对成功后恢复当前权威展示；没有新增 loading 提示、延时或自动读取。
+- 隐藏规则在当前执行作用域内统一计算。终态恢复快照仅在其 execution ID 仍对应当前服务器结果时遮盖 target；旧执行的恢复记录不能遮盖后续执行已经核对的权威正文。
+- `terminal:true` 门禁、Stop 的 cancelled 分支、安全 partial、canonical 原 ID 替换及错误结算完全沿用既有流程。终态取消不受新规则延后。已打开的消息编辑器保留独立草稿；展示过滤不修改消息对象或写回正文。未处理“failed execution 与已保存正文的错误展示不一致”，也未处理历史导航和迟到 GET 的竞争。
+
+### 合同与验证
+
+先扩展既有 `chat-generation-flow.test.tsx` 的受控 SSE 与历史 barrier，观察 **7 项新合同失败**，再修改展示实现。覆盖提交/receipt 后 SSE 异常，精确 GET 为 completed 或 failed、历史延迟；历史确认新正文/原正文/编辑正文/删除；终态与非终态历史失败后的人工恢复；旧执行历史成功/失败晚于后续执行完成。订阅每次发布，断言旧正文没有任何短暂回显；核对既有请求次数，未增加生成 POST 或历史读取。
+
+同步调整 composer / ChatView 合同中“历史未成功即可恢复 target”的旧预期；扩展 `MessageEditDialog.test.tsx`，实际编辑器输入经 target 隐藏与权威正文更新后仍保留未保存草稿。原 Stop / partial、草稿、附件、IME、会话隔离合同由完整测试回归。
+
+- 定向 wire 合同：**15 passed**；最终完整前端 `npm test`：**232 文件、3126 passed**。
+- `npm run build`（`tsc -b` + Vite 生产构建）通过，仅有既有 >500 kB chunk 提示；两仓 `git diff --check` 通过。
+- 日志：`/private/tmp/s6e2-regenerate-restore/red.log`、`wire-final.log`、`full-tests.log`、`build.log`。构建缓存恢复到开工内容；原暂存内容保持不变。
+
+本轮使用 Fake SSE / 受控历史，没有调用真实 Provider 或部署。真实浏览器待复核：提交后的断流与较慢历史读取、历史读取失败后的人工核对、失败后的旧消息恢复与打开中的编辑稿。修复完成后停止，等待人工审查。
+
 ## 源码索引
 
 行号对应本报告开头两个 HEAD 的当前工作树。链接采用绝对路径，定位函数入口或关键分支；相邻实现细节见正文说明。

@@ -11,6 +11,8 @@ import { elements, find, hookSession } from "./test-utils/hook-session";
 import { mapMessage } from "@/domain/message";
 import { messageWire } from "@/test-fixtures/main-chat-wire";
 import { presentChatMessage } from "@/components/chat-workspace/presentation/chat-message-presenter";
+import { composeVisibleChatMessages } from "@/components/chat-workspace/presentation/chat-execution-composer";
+import type { ChatSendState } from "@/application/chat-send";
 
 vi.mock("react", async original => {
   const actual = await original<typeof React>();
@@ -27,6 +29,29 @@ function session() {
   return { ...hooks, original, save, close, input, submit, lock: () => { unavailableReason = "正在生成"; } };
 }
 describe("whole-message editor", () => {
+  it("keeps an open Assistant edit draft while regenerate hides the target and history restores current authority", () => {
+    const original = mapMessage(messageWire({ content: "original saved body", thinking: null, drift: null }));
+    let message = original, execution: ChatSendState = { kind: "idle" };
+    const save = vi.fn(async () => {}), close = vi.fn();
+    const hooks = hookSession(() => ({
+      rows: composeVisibleChatMessages([message], execution, "conv_a"),
+      editor: MessageEditDialog({ message, unavailableReason: null, onSave: save, onClose: close }),
+    }));
+    const input = () => find(hooks.render().editor, Textarea).props;
+    input().onChange?.({ target: { value: "unsaved editor draft" } } as never);
+    execution = { kind: "regenerate-finalizing", conversationId: "conv_a", executionId: "attempt", targetMessageId: original.id,
+      assistant: { overlayId: "attempt:assistant", assistantMessageId: original.id, content: "new attempt", thinking: null, simpleThink: null, usage: null, createdAt: 10 },
+      executionError: { code: "network", message: "relay lost", field: null, providerFailure: null } };
+    expect(hooks.render().rows.some(row => row.id === original.id)).toBe(false);
+    expect(input().value).toBe("unsaved editor draft");
+    message = { ...original, content: "latest saved edit" };
+    execution = { kind: "error", conversationId: "conv_a", confirmedFailure: true, failedMessageId: original.id,
+      failedTargetContent: message.content, error: { code: "regenerate-conflict", message: "conflict", field: null, providerFailure: null } };
+    expect(hooks.render().rows.find(row => row.id === original.id)?.content).toBe(message.content);
+    expect(input().value).toBe("unsaved editor draft");
+    expect(original.content).toBe("original saved body");
+    expect(save).not.toHaveBeenCalled(); expect(close).not.toHaveBeenCalled(); hooks.dispose();
+  });
   it("opens exact full source and cancels without mutation or Sender key handlers", () => {
     const s = session(); expect(s.input().value).toBe(s.original.content); expect(s.input().onKeyDown).toBeUndefined();
     s.input().onChange?.({ target: { value: "draft" } } as never);

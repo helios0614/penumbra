@@ -322,7 +322,7 @@ describe("ChatWorkspaceView ready states", () => {
     });
 
     expect(html).toContain("临时新回复");
-    expect(html).toContain("原回复");
+    expect(html).not.toContain("原回复");
     expect(html).not.toContain("正在输入");
     expect(html).not.toContain("chat-generation");
     expect(html).not.toMatch(/<textarea[^>]*disabled/);
@@ -376,7 +376,8 @@ describe("ChatWorkspaceView ready states", () => {
     expect(html).not.toContain("返回编辑");
     expect(html.indexOf("data-chat-execution-feedback")).toBeGreaterThan(html.indexOf("</header>"));
     expect(html).toContain("临时新回复");
-    expect(html).toContain("原回复");
+    if (recoveryReadSucceeded) expect(html).toContain("原回复");
+    else expect(html).not.toContain("原回复");
   });
 
   it("does not expose raw workspace payload fields or unsafe unknown role labels", () => {
@@ -436,6 +437,38 @@ it("keeps stopped-result recovery errors light, read-only and independent of the
   expect(html).toContain("重新核对");
   expect(html).not.toContain("返回编辑");
   expect(html).toContain('aria-label="发送消息"');
+});
+
+it.each([
+  { kind: "idle", discovering: true },
+  { kind: "idle", discovering: true, discoveryUnknown: true, controlError: "尚未确认会话的执行状态；请重新核对。" },
+  { kind: "idle", checking: true, discoveryUnknown: true, controlError: "尚未确认会话的执行状态；请重新核对。" },
+  { kind: "idle", checking: true, resultsError: "已停止回复暂时无法完整读取；可重新核对。" },
+  { kind: "regenerate-finalizing", executionId: "attempt", conversationId: "conv_a", targetMessageId: "target",
+    assistant: { overlayId: "attempt:assistant", assistantMessageId: "target", content: "partial", thinking: null, simpleThink: null, usage: null, createdAt: 1 },
+    executionError: { code: "network", message: "transport ended", field: null, providerFailure: null } },
+  ...[false, true].map(recoveryReadSucceeded => ({ kind: "regenerate-finalization-uncertain" as const, checking: true,
+    recoveryReadSucceeded, executionId: "attempt", conversationId: "conv_a", targetMessageId: "target",
+    assistant: { overlayId: "attempt:assistant", assistantMessageId: "target", content: "partial", thinking: null, simpleThink: null, usage: null, createdAt: 1 },
+    executionError: null, error: { code: "service" as const, message: "unconfirmed", field: null, providerFailure: null } })),
+] satisfies ChatSendState[])("does not present an in-flight automatic read as manual intervention: %j", sendState => {
+  const selected = conversation("conv_a", "会话 A");
+  const html = render(ready(snapshot([selected], selected, history("conv_a", []))), undefined, {
+    sendState, onRetryFinalization: async () => {}, onSend: async () => true,
+  });
+  expect(html).not.toContain("执行状态待确认");
+  expect(html).not.toContain("结果待确认");
+  expect(html).not.toContain(">重新核对<");
+});
+
+it("preserves manual intervention once active discovery has actually failed", () => {
+  const selected = conversation("conv_a", "会话 A");
+  const html = render(ready(snapshot([selected], selected, history("conv_a", []))), undefined, {
+    sendState: { kind: "idle", discoveryUnknown: true, controlError: "尚未确认会话的执行状态；请重新核对。" },
+    onRetryFinalization: async () => {},
+  });
+  expect(html).toContain("尚未确认会话的执行状态");
+  expect(html).toContain(">重新核对<");
 });
 
 function render(

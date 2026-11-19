@@ -146,7 +146,7 @@ describe("chat execution presentation composition", () => {
     ["regenerate-streaming", "streaming", ""],
     ["regenerate-finalizing", "finalizing", "partial"],
     ["regenerate-finalization-uncertain", "unconfirmed", "partial"],
-  ] as const)("keeps the persistent target separate from %s", (
+  ] as const)("hides only the persistent target during an active %s attempt", (
     kind,
     executionStatus,
     content,
@@ -162,10 +162,9 @@ describe("chat execution presentation composition", () => {
 
     const visible = composeVisibleChatMessages(persistent, state, "conv-a");
 
-    expect(visible).toHaveLength(3);
-    expect(visible.slice(0, 2).map(({ id }) => id)).toEqual(["persisted-user", "assistant-target"]);
-    expect(visible[1].content).toBe("original persisted content");
-    expect(visible[2]).toMatchObject({
+    expect(visible).toHaveLength(2);
+    expect(visible.some(row => row.id === "assistant-target")).toBe(false);
+    expect(visible[visible.length - 1]).toMatchObject({
       kind: "assistant",
       content,
       thinking: content ? "thinking" : null,
@@ -199,14 +198,21 @@ describe("chat execution presentation composition", () => {
       "conv-a",
     );
 
-    expect(during).toHaveLength(2);
-    expect(during[0].content).toBe("original persisted content");
-    expect(during[1]).toMatchObject({ content: "temporary content" });
+    expect(during).toHaveLength(1);
+    expect(during[0]).toMatchObject({ content: "temporary content" });
     expect(after).toHaveLength(1);
     expect(after[0]).toMatchObject({
       id: "assistant-target",
       content: "authoritative regenerated content",
     });
+  });
+
+  it("restores the target in uncertainty only after this history read succeeds", () => {
+    const state = regenerateState("regenerate-finalization-uncertain", "partial");
+    const edited = message("assistant-target", "assistant", "current authority");
+    const visible = composeVisibleChatMessages([edited], { ...state, recoveryReadSucceeded: true } as ChatSendState, "conv-a");
+    expect(visible.map(row => row.content)).toEqual([edited.content, "partial"]);
+    expect(visible[0]).not.toHaveProperty("executionStatus");
   });
 
   it("does not replace a missing target or a target in another conversation", () => {
@@ -225,6 +231,22 @@ describe("chat execution presentation composition", () => {
       regenerateState("regenerate-streaming", "temporary"),
       "conv-b",
     )).toHaveLength(1);
+  });
+
+  it.each(["failed", "cancelled", "conflict"] as const)("restores current authority and actions after %s, never a snapshot", outcome => {
+    const edited = message("assistant-target", "assistant", "edited during generation");
+    const running = regenerateState("regenerate-streaming", "new attempt");
+    expect(composeVisibleChatMessages([edited], running, "conv-a").map(row => row.id)).not.toContain(edited.id);
+    const settled: ChatSendState = outcome === "cancelled" ? { kind: "idle" }
+      : { kind: "error", conversationId: "conv-a", error: safeError(), confirmedFailure: true,
+        failedMessageId: edited.id, failedTargetContent: "old snapshot" };
+    const visible = composeVisibleChatMessages([edited], settled, "conv-a");
+    expect(visible).toHaveLength(1);
+    expect(visible[0]).toMatchObject({ id: edited.id, content: edited.content });
+    expect(visible[0]).not.toHaveProperty("executionStatus");
+    expect(visible[0]).not.toHaveProperty("error");
+    expect(composeVisibleChatMessages([], running, "conv-a").some(row => row.id === edited.id)).toBe(false);
+    expect(composeVisibleChatMessages([], settled, "conv-a")).toEqual([]);
   });
 });
 
