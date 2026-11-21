@@ -18,7 +18,9 @@ export function AppearanceAvatar({ kind, size = "sm", className }: {
       className={cn("overflow-hidden bg-transparent shadow-none after:border-border/55 after:mix-blend-normal dark:after:mix-blend-normal", className)}
       data-avatar-kind={kind}
     >
-      <AvatarImage src={customImage ?? (isUser ? userAvatarPlaceholder : aiAvatarPlaceholder)} alt="" />
+      {customImage !== undefined && (
+        <AvatarImage src={customImage ?? (isUser ? userAvatarPlaceholder : aiAvatarPlaceholder)} alt="" />
+      )}
       <AvatarFallback className="bg-surface-secondary/45">
         {isUser ? <User className="size-3.5 text-muted-foreground" aria-hidden="true" />
           : <Bot className="size-3.5 text-ai" aria-hidden="true" />}

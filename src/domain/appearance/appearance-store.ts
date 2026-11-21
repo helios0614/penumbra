@@ -52,8 +52,14 @@ export function useAppearance(): AppearanceState {
   return useSyncExternalStore(subscribe, () => state, () => initialState);
 }
 
-export function useAvatarImage(kind: "user" | "assistant"): string | null {
-  const filename = useSyncExternalStore(subscribe, () => state.config.avatars[kind], () => null);
+/** Undefined means configuration is unavailable. Null means no usable custom image. */
+export function useAvatarImage(kind: "user" | "assistant"): string | null | undefined {
+  const filename = useSyncExternalStore(
+    subscribe,
+    () => state.status === "ready" ? (state.config.avatars[kind] ?? null) : undefined,
+    () => undefined,
+  );
+  if (filename === undefined) return undefined;
   return appearanceImageUrl(kind === "user" ? "user-avatar" : "assistant-avatar", filename);
 }
 
