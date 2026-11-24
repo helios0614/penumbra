@@ -88,6 +88,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
   const chatSettings = useChatSettings(workspace, send);
   const realtime = useChatRealtime(workspace.state, send.state, {
     reconcileEvent: async event => {
+      if (event.type === "message-deleted") send.recordMessageDeletion(event.conversationId, event.messageId);
       // Apply mutation invalidation first so an older recovery read cannot revive it.
       await workspace.reconcileSelectedConversationRealtimeEvent(event);
       const current = send.getState();
@@ -181,6 +182,7 @@ export function ChatView({ onBack }: { readonly onBack?: () => void }) {
     editSaving.current = true;
     try {
       await deleteMessage(original);
+      send.recordMessageDeletion(original.conversationId, original.id);
       await workspace.reconcileSelectedConversationRealtimeEvent({ type: "message-deleted", conversationId: original.conversationId, messageId: original.id });
     } finally { editSaving.current = false; }
   };

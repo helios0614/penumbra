@@ -19,6 +19,8 @@ export type OptimisticUserMessage = {
   readonly clientMessageId: string;
   /** Exact server identity from this submission's validated receipt/duplicate ACK. */
   readonly persistedMessageId?: string;
+  /** The server confirmed deletion while this submission still had a local row. */
+  readonly deleted?: true;
   readonly content: string;
   readonly createdAt: number;
   readonly attachments?: readonly string[];
@@ -123,10 +125,14 @@ type ChatSendStateBase =
       readonly error: SafeChatExecutionError;
     });
 
-/** Temporary presentation retained after a confirmed terminal whose history read failed. */
+/** Temporary presentation retained independently of the execution gate. */
 export type ChatExecutionRecovery = Extract<ChatSendStateBase, {
   readonly kind: "finalization-uncertain" | "regenerate-finalization-uncertain";
-}> & { readonly serverExecution?: MainChatExecution };
+}> & {
+  readonly serverExecution?: MainChatExecution;
+  /** Completion of each row's handoff to the selected Workspace, or confirmed deletion. */
+  readonly historyHandoff?: { readonly userApplied: boolean; readonly assistantApplied: boolean };
+};
 
 export type ChatSendState = ChatSendStateBase & {
   readonly executionConversationId?: string;

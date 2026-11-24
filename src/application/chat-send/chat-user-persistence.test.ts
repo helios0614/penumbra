@@ -138,3 +138,116 @@ describe("user acceptance is independent of assistant completion", () => {
     expect(opens).toBe(3); // Only the three explicit user actions.
   });
 });
+
+function completedSend(outcome: "completed" | "failed" | "cancelled" = "completed") {
+  const stream = channel();
+  const history = deferred<void>();
+  const reply = deferred<ChatSendResult>();
+  const previous = saved("previous-assistant", "assistant");
+  const user = saved("A-user");
+  const assistant = saved("A-assistant", "assistant");
+  let rows = [previous];
+  const openExecution = vi.fn(async () => ({ kind: "stream" as const, events: stream.events() }));
+  const reconcileHistory = vi.fn(async () => {
+    await history.promise;
+    return { persistedMessageIds: rows.map(row => row.id), regenerateTarget: null,
+      assistants: rows.filter(row => row.roleKind === "assistant") };
+  });
+  const controller = createChatSendController({
+    createUuid: () => "client-A", openExecution, lookupSendResult: () => reply.promise, reconcileHistory,
+    readExecution: executionReader({ userMessageId: user.id, assistantMessageId: outcome === "cancelled" ? null : assistant.id, outcome }),
+  });
+  controllers.push(controller);
+  const visible = () => composeVisibleChatMessages(rows, controller.getState(), "A").map(row => row.id);
+  const start = async () => {
+    await controller.send({ conversationId: "A", content: "question" });
+    stream.emit({ type: "start", assistantMessageId: assistant.id });
+    stream.emit({ type: "chunk", content: "partial" });
+    await settle(() => {
+      const state = controller.getState();
+      return state.kind === "streaming" && state.assistant.content === "partial";
+    });
+    if (outcome === "failed") stream.emit({ type: "failure", messageId: assistant.id, code: "provider_execution_failed" });
+  };
+  const finishStream = async () => {
+    stream.close();
+    await settle(() => reconcileHistory.mock.calls.length > 0);
+  };
+  return { controller, openExecution, reconcileHistory, history, reply, previous, user, assistant, visible,
+    setRows: (...messages: typeof rows) => { rows = messages; }, start, finishStream };
+}
+
+describe("ordinary send history handoff", () => {
+  const optimisticUser = "send.Y2xpZW50LUE:user";
+  const optimisticAssistant = "send.Y2xpZW50LUE:assistant";
+
+  it.each(["receipt-first", "history-first"] as const)("keeps exactly one ordered user through terminal publication with %s", async order => {
+    const f = completedSend();
+    await f.start();
+    if (order === "receipt-first") {
+      f.reply.resolve(receipt());
+      await f.controller.reconcileUserPersistence();
+    }
+    const snapshots: string[][] = [];
+    const unsubscribe = f.controller.subscribe(() => snapshots.push(f.visible()));
+    await f.finishStream();
+    expect(f.controller.getState()).toMatchObject({ kind: "finalizing", serverExecution: { terminal: true } });
+    expect(snapshots.length).toBeGreaterThan(0);
+    for (const ids of snapshots) expect(ids).toEqual([f.previous.id, optimisticUser, optimisticAssistant]);
+    f.setRows(f.previous, f.user);
+    // The exact execution also identifies the user while the receipt is still in flight.
+    expect(f.visible()).toEqual([f.previous.id, f.user.id, optimisticAssistant]);
+    if (order === "history-first") {
+      f.reply.resolve(receipt());
+      await f.controller.reconcileUserPersistence();
+      expect(f.visible()).toEqual([f.previous.id, f.user.id, optimisticAssistant]);
+    }
+    f.setRows(f.previous, f.user, f.assistant);
+    expect(f.visible()).toEqual([f.previous.id, f.user.id, f.assistant.id]);
+    unsubscribe();
+    f.history.resolve();
+    await settle(() => f.controller.getState().kind === "idle");
+    expect(f.visible()).toEqual([f.previous.id, f.user.id, f.assistant.id]);
+    expect(f.openExecution).toHaveBeenCalledOnce();
+  });
+
+  it.each(["saved", "deleted"] as const)("retains the pair after a failed history read until recovery confirms a %s user", async outcome => {
+    const f = completedSend();
+    f.reconcileHistory.mockRejectedValueOnce(new Error("history unavailable"));
+    f.reply.resolve(receipt());
+    await f.start();
+    await f.finishStream();
+    await settle(() => f.controller.getState().recoveries?.length === 1);
+    expect(f.visible()).toEqual([f.previous.id, optimisticUser, optimisticAssistant]);
+    if (outcome === "deleted") {
+      f.setRows(f.previous, f.user);
+      expect(f.visible()).toEqual([f.previous.id, f.user.id, optimisticAssistant]);
+      f.controller.recordMessageDeletion(f.user.id);
+      f.setRows(f.previous);
+      expect(f.visible()).toEqual([f.previous.id, optimisticAssistant]);
+    }
+    f.setRows(f.previous, ...(outcome === "saved" ? [f.user] : []), f.assistant);
+    f.history.resolve();
+    await f.controller.retryFinalization();
+    expect(f.visible()).toEqual([f.previous.id, ...(outcome === "saved" ? [f.user.id] : []), f.assistant.id]);
+    expect(f.controller.getState().recoveries).toBeUndefined();
+  });
+
+  it.each(["completed", "failed", "cancelled"] as const)("preserves cleanup for an exact deletion while %s history is in flight", async outcome => {
+    const f = completedSend(outcome);
+    f.reply.resolve(receipt());
+    await f.start();
+    await f.finishStream();
+    if (outcome === "completed") {
+      expect(f.visible()).toContain(optimisticUser);
+      f.controller.recordMessageDeletion("unrelated");
+      expect(f.visible()).toContain(optimisticUser);
+      f.controller.recordMessageDeletion(f.user.id);
+      expect(f.visible()).toContain(optimisticAssistant);
+    }
+    expect(f.visible()).not.toContain(optimisticUser);
+    f.history.resolve();
+    await settle(() => f.controller.getState().kind === (outcome === "failed" ? "error" : "idle"));
+    expect(f.visible()).not.toContain(optimisticUser);
+  });
+});

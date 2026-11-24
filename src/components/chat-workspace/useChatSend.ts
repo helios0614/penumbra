@@ -11,6 +11,7 @@ export type UseChatSendResult = {
   readonly state: ChatSendState;
   readonly send: (input: ChatSendInput) => Promise<boolean>;
   readonly regenerate: (input: ChatRegenerateInput) => Promise<boolean>;
+  readonly recordMessageDeletion: (conversationId: string, messageId: string) => void;
   readonly retryFinalization: (options?: { readonly manual?: boolean }) => Promise<void>;
   readonly reconcilePending: () => Promise<void>;
   readonly resetError: () => void;
@@ -21,11 +22,12 @@ let selectedOwner: string | null = null;
 let lastVisited: string | undefined;
 let selectedReconciler: ChatHistoryReconciler | null = null;
 const sessions = createChatExecutionSessions({
+  observeVisibleHistory: true,
   lookupSendResult: readChatSendResult,
   reconcileHistory: async (owner, target) => {
     if (owner === selectedOwner && selectedReconciler) {
       try { return await selectedReconciler(owner, target); }
-      catch { /* A switched/disposed Workspace cannot own this execution's read. */ }
+      catch { /* Detached reads can confirm persistence without applying visible history. */ }
     }
     return reconcileBackgroundChat(owner, target);
   },
@@ -50,7 +52,10 @@ export function useChatSend(reconcileHistory: ChatHistoryReconciler, conversatio
   }, [state, executionId, conversationId]);
   useEffect(() => {
     if (conversationId && history) void sessions.reconcileUserPersistence(conversationId);
-  }, [conversationId, history, executionId]);
+  }, [conversationId, history]);
+  useEffect(() => {
+    if (conversationId && history && state.recoveries) sessions.acceptVisibleHistory(conversationId, history);
+  }, [conversationId, history, state.recoveries]);
   useEffect(() => {
     if (conversationId) {
       void sessions.get(conversationId).discoverActive(conversationId);
@@ -72,6 +77,7 @@ export function useChatSend(reconcileHistory: ChatHistoryReconciler, conversatio
   const getState = useCallback((id?: string) => sessions.state(id ?? owner.current), []);
   const send = useCallback((input: ChatSendInput) => sessions.get(input.conversationId).send(input), []);
   const regenerate = useCallback((input: ChatRegenerateInput) => sessions.get(input.conversationId).regenerate(input), []);
+  const recordMessageDeletion = useCallback((id: string, messageId: string) => sessions.get(id).recordMessageDeletion(messageId), []);
   const retryFinalization = useCallback(async (options?: { readonly manual?: boolean }) => {
     const id = owner.current;
     if (id) await Promise.all([sessions.get(id).retryFinalization(options), sessions.get(id).recoverStoppedResults(id)]);
@@ -80,5 +86,5 @@ export function useChatSend(reconcileHistory: ChatHistoryReconciler, conversatio
   const resetError = useCallback(() => { if (owner.current) sessions.get(owner.current).resetError(); }, []);
   const cancel = useCallback(async () => { if (owner.current) await sessions.get(owner.current).cancel(); }, []);
   const isExecutionActive = useCallback((id?: string) => { const current = id ?? owner.current; return !!current && sessions.active(current); }, []);
-  return { state, getState, send, regenerate, retryFinalization, reconcilePending, resetError, cancel, isExecutionActive };
+  return { state, getState, send, regenerate, recordMessageDeletion, retryFinalization, reconcilePending, resetError, cancel, isExecutionActive };
 }

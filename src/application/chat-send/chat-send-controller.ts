@@ -17,6 +17,7 @@ import {
   type StreamingAssistantAccumulator,
 } from "@/application/chat-send/chat-send-accumulator";
 import type { ChatHistoryReconciliationResult } from "@/application/chat-send/chat-regenerate-persistence";
+import type { Message } from "@/domain/message";
 import {
   finalizationUncertainError,
   providerFailureError,
@@ -63,6 +64,8 @@ export type ChatHistoryReconciler = (
 ) => Promise<ChatHistoryReconciliationResult>;
 
 export type ChatSendControllerDependencies = {
+  /** The Workspace will acknowledge rows from its applied history snapshot. */
+  readonly observeVisibleHistory?: boolean;
   readonly readExecutionResults?: typeof readChatExecutionResults;
   readonly readExecution?: typeof readChatExecution;
   readonly readActiveExecution?: typeof readActiveChatExecution;
@@ -80,6 +83,9 @@ export interface ChatSendController {
   send(input: ChatSendInput): Promise<boolean>;
   regenerate(input: ChatRegenerateInput): Promise<boolean>;
   reconcileUserPersistence(): Promise<void>;
+  recordMessageDeletion(messageId: string): void;
+  /** The selected Workspace applied this history; it may take over retained rows. */
+  acceptVisibleHistory(messages: readonly Message[]): void;
   retryFinalization(options?: { readonly manual?: boolean }): Promise<void>;
   resetError(): void;
   cancel(): Promise<void>;
@@ -106,6 +112,7 @@ type ActiveExecutionBase = {
 type ActiveSendExecution = ActiveExecutionBase & {
   readonly kind: "send";
   optimisticUser: OptimisticUserMessage;
+  persistedAssistantMessageId?: string;
   duplicateUserMessageId: string | null;
   receiptLookup: Promise<ChatSendResult | null> | null;
 };
@@ -193,6 +200,13 @@ export function createChatSendController(
     publish({ ...state, ...(reconciledSend ? { reconciledSend } : {}) });
   };
 
+  const sendAssistant = (execution: ActiveSendExecution) => {
+    const message = execution.accumulator.message;
+    const id = (execution.status?.terminal ? execution.status.assistantMessageId : null)
+      ?? execution.persistedAssistantMessageId ?? message.assistantMessageId;
+    return id === message.assistantMessageId ? message : { ...message, assistantMessageId: id };
+  };
+
   const activeAssistantState = (
     kind: "streaming" | "finalizing",
     execution: ActiveExecution,
@@ -202,7 +216,7 @@ export function createChatSendController(
         executionId: execution.executionId,
         conversationId: execution.conversationId,
         optimisticUser: execution.optimisticUser,
-        assistant: execution.accumulator.message,
+        assistant: sendAssistant(execution),
         executionError: execution.executionError,
       }
     : {
@@ -231,6 +245,7 @@ export function createChatSendController(
       if (execution.optimisticUser.persistedMessageId === undefined) {
         execution.optimisticUser = { ...execution.optimisticUser, persistedMessageId: receipt.userMessageId };
       }
+      if (receipt.assistantMessageId) execution.persistedAssistantMessageId = receipt.assistantMessageId;
       if (receipt.execution) acceptStatus(execution, receipt.execution);
       if (receipt.assistantMessageId) aliasChatTrace(receipt.assistantMessageId, execution);
       traceChat("receipt.read", execution, { phase: receipt.assistantMessageId ? "assistant" : "user" });
@@ -244,12 +259,21 @@ export function createChatSendController(
     if (disposed || execution?.kind !== "send" || execution.optimisticUser.persistedMessageId !== undefined) return;
     try {
       const receipt = await lookupReceipt(execution);
-      if (receipt && isCurrent(execution) && "executionId" in state && state.executionId === execution.executionId &&
-          "optimisticUser" in state && state.optimisticUser !== execution.optimisticUser) {
-        // User acceptance changes only its projection, never the assistant/unknown state.
-        publish({ ...state, optimisticUser: execution.optimisticUser });
+      if (receipt && isCurrent(execution)) {
+        const recovery = recoveries.get(execution.executionId);
+        const assistant = sendAssistant(execution);
+        if (recovery?.snapshot.kind === "finalization-uncertain" && recovery.snapshot.historyHandoff) {
+          if (recovery.snapshot.optimisticUser !== execution.optimisticUser || recovery.snapshot.assistant.assistantMessageId !== assistant.assistantMessageId) {
+            recovery.snapshot = { ...recovery.snapshot, optimisticUser: execution.optimisticUser, assistant };
+            publish(state);
+          }
+        } else if ("executionId" in state && state.executionId === execution.executionId && "optimisticUser" in state &&
+            (state.optimisticUser !== execution.optimisticUser || ("assistant" in state && state.assistant.assistantMessageId !== assistant.assistantMessageId))) {
+          publish({ ...state, optimisticUser: execution.optimisticUser,
+            ...("assistant" in state ? { assistant } : {}) });
+        }
+        if (execution.status?.terminal && (active === execution || recovery?.snapshot.historyHandoff)) void finalize(execution);
       }
-      if (execution.status?.terminal && active === execution) void finalize(execution);
     } catch { /* Missing, stale or unavailable receipts cannot authorize a merge/retry. */ }
   };
 
@@ -265,7 +289,13 @@ export function createChatSendController(
       serverExecution = value; controlError = undefined;
       // A concurrent terminal control/result response must not wait behind an
       // older status GET before closing the relay or releasing the send gate.
-      if (value.terminal) { execution.abortController.abort(); publish(state); }
+      if (value.terminal) {
+        execution.abortController.abort();
+        if (dependencies.observeVisibleHistory && execution.kind === "send" && value.outcome === "completed" &&
+            !execution.terminalFailure && execution.executionError?.code !== "provider-failure") {
+          retainCompletedSend(execution, value);
+        } else publish(state);
+      }
     }
   };
 
@@ -275,6 +305,32 @@ export function createChatSendController(
     recoveryReadSucceeded: execution.recoveryReadSucceeded,
     error: finalizationUncertainError(),
   } as ChatExecutionRecovery);
+
+  const retainCompletedSend = (execution: ActiveSendExecution, result: MainChatExecution) => {
+    execution.accumulator = flushAssistantAccumulator(execution.accumulator);
+    const assistant = sendAssistant(execution);
+    recoveries.set(execution.executionId, { execution, snapshot: {
+      kind: "finalization-uncertain", executionId: execution.executionId, conversationId: execution.conversationId,
+      optimisticUser: execution.optimisticUser, assistant, executionError: null,
+      error: finalizationUncertainError(), serverExecution: result,
+      historyHandoff: {
+        userApplied: !!execution.optimisticUser.deleted,
+        assistantApplied: !(assistant.assistantMessageId || assistant.content || assistant.thinking || assistant.simpleThink),
+      },
+    } });
+    // Release generation independently of the Workspace refresh below.
+    active = null;
+    publish({ kind: "idle", confirmedSend: { conversationId: execution.conversationId, clientMessageId: execution.optimisticUser.clientMessageId } });
+  };
+
+  const refreshCompletedSend = async (conversationId: string) => {
+    checking++;
+    publish(state);
+    try {
+      await dependencies.reconcileHistory(conversationId);
+    } catch { /* The visible rows remain available for recovery. */ }
+    finally { checking--; publish(state); }
+  };
 
   const performFinalization = async (execution: ActiveExecution) => {
     if (!isCurrent(execution)) return;
@@ -295,6 +351,10 @@ export function createChatSendController(
       if (active === execution) publish(state);
       return;
     }
+    if (recoveries.get(execution.executionId)?.snapshot.historyHandoff) {
+      await refreshCompletedSend(execution.conversationId);
+      return;
+    }
     publishFinalization(execution, activeAssistantState("finalizing", execution));
     try {
       if (execution.kind === "send" && !execution.status?.terminal && !execution.optimisticUser.persistedMessageId && execution.receiptLookup === null) {
@@ -306,7 +366,8 @@ export function createChatSendController(
       if (!isCurrent(execution)) return;
       execution.recoveryReadSucceeded = true;
     } catch { /* Keep the temporary presentation when HTTP history is unavailable. */ }
-    if (!isCurrent(execution)) return;
+    // A receipt can establish terminal while the history request is in flight.
+    if (!isCurrent(execution) || recoveries.get(execution.executionId)?.snapshot.historyHandoff) return;
     const result = execution.status;
     if (!result?.terminal) {
       publishFinalization(execution, uncertainState(execution));
@@ -742,13 +803,68 @@ export function createChatSendController(
 
     reconcileUserPersistence,
 
+    acceptVisibleHistory(messages) {
+      let changed = false;
+      for (const recovery of recoveries.values()) {
+        const { snapshot } = recovery;
+        const handoff = snapshot.historyHandoff;
+        if (snapshot.kind !== "finalization-uncertain" || !handoff) continue;
+        const userId = snapshot.optimisticUser.persistedMessageId ?? snapshot.serverExecution?.userMessageId;
+        const assistantId = snapshot.assistant.assistantMessageId;
+        const userApplied = handoff.userApplied || messages.some(row =>
+          row.conversationId === snapshot.conversationId && row.roleKind === "user" && row.id === userId);
+        const assistantApplied = handoff.assistantApplied || messages.some(row =>
+          row.conversationId === snapshot.conversationId && row.roleKind === "assistant" && row.id === assistantId);
+        if (userApplied && assistantApplied) recoveries.delete(snapshot.executionId);
+        else if (userApplied !== handoff.userApplied || assistantApplied !== handoff.assistantApplied) {
+          recovery.snapshot = { ...snapshot, historyHandoff: { userApplied, assistantApplied } };
+        } else continue;
+        changed = true;
+      }
+      if (changed) publish(state);
+    },
+
+    recordMessageDeletion(messageId) {
+      const markDeleted = (execution: ActiveExecution) => {
+        if (execution.kind !== "send" || execution.optimisticUser.deleted ||
+            (execution.optimisticUser.persistedMessageId ?? execution.status?.userMessageId) !== messageId) return;
+        execution.optimisticUser = { ...execution.optimisticUser, deleted: true };
+        return execution.optimisticUser;
+      };
+      const currentUser = active && markDeleted(active);
+      let changed = !!currentUser;
+      for (const recovery of recoveries.values()) {
+        if (recovery.snapshot.kind !== "finalization-uncertain") continue;
+        const user = markDeleted(recovery.execution);
+        const { snapshot } = recovery;
+        const handoff = snapshot.historyHandoff;
+        const assistantDeleted = handoff && !handoff.assistantApplied && snapshot.assistant.assistantMessageId === messageId;
+        if (!user && !assistantDeleted) continue;
+        if (handoff) {
+          const userApplied = handoff.userApplied || !!user;
+          const assistantApplied = handoff.assistantApplied || !!assistantDeleted;
+          if (userApplied && assistantApplied) recoveries.delete(snapshot.executionId);
+          else recovery.snapshot = { ...snapshot, optimisticUser: user ?? snapshot.optimisticUser,
+            historyHandoff: { userApplied, assistantApplied } };
+        } else if (user) {
+          recovery.snapshot = { ...snapshot, optimisticUser: user };
+        }
+        changed = true;
+      }
+      if (changed) publish(currentUser && "optimisticUser" in state ? { ...state, optimisticUser: currentUser } : state);
+    },
+
     async retryFinalization() {
       if (disposed) return;
       checking++; publish(state);
       try {
         if (discovery) { await discovery; return; }
         if (active) { await finalize(active); return; }
-        for (const { execution } of [...recoveries.values()]) await finalize(execution);
+        let handoff: ActiveExecution | undefined;
+        for (const { execution, snapshot } of [...recoveries.values()]) {
+          if (snapshot.historyHandoff) handoff = execution;
+          else await finalize(execution);
+        }
         if (serverExecution && !serverExecution.terminal) {
           const original = serverExecution;
           try {
@@ -762,7 +878,8 @@ export function createChatSendController(
           }
           return;
         }
-        if (conversationOwner) {
+        if (handoff) await finalize(handoff);
+        else if (conversationOwner) {
           if (discoveryUnknown) await discoverActive(conversationOwner);
           else {
             try { await dependencies.reconcileHistory(conversationOwner); controlError = undefined; publish(state); }

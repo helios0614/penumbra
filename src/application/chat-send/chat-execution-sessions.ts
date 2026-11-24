@@ -1,5 +1,6 @@
 import { createChatSendController, isChatExecutionActive, type ChatSendControllerDependencies } from "./chat-send-controller";
 import { INITIAL_CHAT_SEND_STATE } from "./chat-send-types";
+import type { Message } from "@/domain/message";
 
 /** Each conversation owns its requests. Navigation never disposes an execution. */
 export function createChatExecutionSessions(dependencies: ChatSendControllerDependencies) {
@@ -18,6 +19,7 @@ export function createChatExecutionSessions(dependencies: ChatSendControllerDepe
     state(conversationId: string | null | undefined) { return conversationId ? controllers.get(conversationId)?.getState() ?? INITIAL_CHAT_SEND_STATE : INITIAL_CHAT_SEND_STATE; },
     active(conversationId: string) { return isChatExecutionActive(this.state(conversationId)); },
     async reconcileUserPersistence(conversationId: string) { await controllers.get(conversationId)?.reconcileUserPersistence(); },
+    acceptVisibleHistory(conversationId: string, messages: readonly Message[]) { controllers.get(conversationId)?.acceptVisibleHistory(messages); },
     async reconcilePending() {
       await Promise.all([...controllers.values()].map(controller => {
         const state = controller.getState();

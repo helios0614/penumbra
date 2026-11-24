@@ -1,4 +1,4 @@
-import type { ChatSendState } from "@/application/chat-send";
+import type { ChatExecutionRecovery, ChatSendState } from "@/application/chat-send";
 import type { Message } from "@/domain/message";
 import { mapMediaAttachments } from "@/domain/media/media-mappers";
 
@@ -51,7 +51,8 @@ export function composeVisibleChatMessages(
 }
 
 function composeExecutionMessages(
-  persistentMessages: readonly Message[], execution: ChatSendState,
+  persistentMessages: readonly Message[],
+  execution: ChatSendState & Pick<ChatExecutionRecovery, "historyHandoff">,
   conversationId: string, visible: ChatMessageViewModel[], reviewed = false,
 ): readonly ChatMessageViewModel[] {
   // Once cancellation is durable, only its server-projected public body belongs
@@ -75,9 +76,36 @@ function composeExecutionMessages(
     });
     return result;
   }
-  if ((execution.kind === "streaming" || execution.kind === "finalizing" || execution.kind === "finalization-uncertain") &&
-      execution.conversationId === conversationId && visible.some(message => message.id === execution.assistant.assistantMessageId)) return visible;
   const recovered = (execution.kind === "finalization-uncertain" || execution.kind === "regenerate-finalization-uncertain") && (execution.recoveryReadSucceeded || reviewed);
+  const overlay = executionOverlay(execution, conversationId);
+  const handoff = execution.historyHandoff;
+  const serverSend = "executionId" in execution && execution.serverExecution?.kind === "send" &&
+    execution.serverExecution.executionId === execution.executionId && execution.serverExecution.conversationId === conversationId
+    ? execution.serverExecution : undefined;
+  const userId = overlay?.optimisticUser.persistedMessageId ?? serverSend?.userMessageId;
+  const persistedUser = userId != null && persistentMessages.some(message =>
+    message.conversationId === conversationId && message.roleKind === "user" && message.id === userId);
+  const assistantId = overlay?.assistant?.assistantMessageId;
+  const persistedAssistant = assistantId != null && persistentMessages.some(message =>
+    message.conversationId === conversationId && message.roleKind === "assistant" && message.id === assistantId);
+  // A replaced streaming overlay without a bound user may be a stale attempt.
+  if (persistedAssistant && !handoff && userId == null &&
+      (execution.kind === "streaming" || execution.kind === "finalizing" || execution.kind === "finalization-uncertain")) return visible;
+  // A successful execution can settle before the history containing its user.
+  const awaitingUserHistory = serverSend?.terminal && serverSend.outcome === "completed" &&
+    (execution.kind !== "finalization-uncertain" || !execution.recoveryReadSucceeded);
+  if (overlay && !persistedUser && !handoff?.userApplied && !overlay.optimisticUser.deleted &&
+      (handoff || awaitingUserHistory || (!recovered && !execution.serverExecution?.terminal))) {
+    const assistantIndex = persistedAssistant ? visible.findIndex(message => message.id === assistantId) : -1;
+    visible.splice(assistantIndex < 0 ? visible.length : assistantIndex, 0, {
+      kind: "user",
+      id: overlay.optimisticUser.overlayId,
+      content: overlay.optimisticUser.content,
+      createdAt: overlay.optimisticUser.createdAt,
+      attachments: mapMediaAttachments(overlay.optimisticUser.attachments ?? [], "user"),
+      executionStatus: overlay.status === "unconfirmed" ? "unconfirmed" : awaitingUserHistory ? "finalizing" : "optimistic",
+    });
+  }
   if (recovered && execution.conversationId === conversationId) {
     if (execution.kind === "regenerate-finalization-uncertain") {
       // The old target remains authoritative. Keep this attempt's partial in
@@ -90,15 +118,15 @@ function composeExecutionMessages(
       });
       return visible;
     }
-    if (visible.some(message => message.id === execution.assistant.assistantMessageId)) return visible;
-    // HTTP authority replaces optimistic rows. Uncommitted SSE text/error may
-    // still be shown explicitly as temporary, never as a saved Message.
-    visible.push({ kind: "assistant", id: execution.assistant.overlayId,
+    if (persistedAssistant || handoff?.assistantApplied) return visible;
+    const row: ChatMessageViewModel = { kind: "assistant", id: execution.assistant.overlayId,
       content: execution.assistant.content, createdAt: execution.assistant.createdAt,
       thinking: execution.assistant.thinking, simpleThink: execution.assistant.simpleThink,
       toolPending: execution.assistant.toolPending,
       error: execution.assistant.error ?? execution.executionError?.message,
-      attachments: [], executionStatus: execution.checking ? "finalizing" : "unconfirmed" });
+      attachments: [], executionStatus: execution.checking ? "finalizing" : "unconfirmed" };
+    const userIndex = handoff && persistedUser ? visible.findIndex(message => message.id === userId) : -1;
+    visible.splice(userIndex < 0 ? visible.length : userIndex + 1, 0, row);
     return visible;
   }
   const regenerate = regenerateOverlay(execution, conversationId);
@@ -118,23 +146,9 @@ function composeExecutionMessages(
     return visible;
   }
 
-  const overlay = executionOverlay(execution, conversationId);
   if (overlay === null) {
     return visible;
   }
-
-  const persistedUser = persistentMessages.some(message => message.conversationId === conversationId &&
-    message.roleKind === "user" && message.id === overlay.optimisticUser.persistedMessageId);
-  if (!persistedUser && !execution.serverExecution?.terminal) visible.push({
-    kind: "user",
-    id: overlay.optimisticUser.overlayId,
-    content: overlay.optimisticUser.content,
-    createdAt: overlay.optimisticUser.createdAt,
-    attachments: mapMediaAttachments(overlay.optimisticUser.attachments ?? [], "user"),
-    executionStatus: overlay.status === "unconfirmed"
-      ? "unconfirmed"
-      : "optimistic",
-  });
 
   if (persistedUser && execution.kind === "sending-user") visible.push({
     kind: "assistant", id: `${execution.executionId}:assistant`, content: "",
@@ -142,7 +156,7 @@ function composeExecutionMessages(
     attachments: [], executionStatus: "streaming",
   });
 
-  if (overlay.assistant !== null && (overlay.status !== "unconfirmed" || hasAssistantPresentation(overlay.assistant))) {
+  if (!persistedAssistant && overlay.assistant !== null && (overlay.status !== "unconfirmed" || hasAssistantPresentation(overlay.assistant))) {
     visible.push({
       kind: "assistant",
       id: overlay.assistant.overlayId,

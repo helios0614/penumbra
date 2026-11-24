@@ -4,6 +4,8 @@ import { useChatSend } from "./useChatSend";
 import { useChatWorkspace } from "./useChatWorkspace";
 import { createChatRealtimeCoordinator } from "@/application/chat-realtime";
 import { hookSession } from "@/components/chat/test-utils/hook-session";
+import { mapMessage, type Message } from "@/domain/message";
+import { messageWire } from "@/test-fixtures/main-chat-wire";
 
 vi.mock("react", async original => {
   const actual = await original<typeof React>();
@@ -14,6 +16,114 @@ vi.mock("@/application/chat-system-log/request-snapshot-drain", () => ({
   createRequestSnapshotDrain: () => ({ start: () => () => {}, request: () => {}, drain: async () => {}, resume: () => {}, hasDemand: () => false }),
 }));
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+it.each(["ordinary send", "history refresh", "remount", "conversation switch"] as const)("checks the user receipt at the right time on %s", async scenario => {
+  vi.useFakeTimers();
+  vi.stubGlobal("window", new EventTarget());
+  const conversationId = `receipt-${scenario.replace(" ", "-")}`;
+  const user = mapMessage(messageWire({ conv_id: conversationId, id: "saved-user", role: "user" }));
+  const assistant = mapMessage(messageWire({ conv_id: conversationId, id: "saved-assistant" }));
+  let history: readonly Message[] = [];
+  let selectedConversation = conversationId;
+  let requestId = "", executionId = "", committed = false, terminal = false;
+  let releaseHeaders!: () => void, relay!: ReadableStreamDefaultController<Uint8Array>;
+  let releaseHistory: (() => void) | undefined;
+  const receiptStatuses: number[] = [];
+  const execution = () => ({
+    conv_id: conversationId, execution_id: executionId, kind: "send", request_id: requestId,
+    phase: terminal ? "terminal" : "generating", terminal, outcome: terminal ? "completed" : null,
+    reason: null, cancel_requested: false, user_message_id: user.id, target_message_id: null,
+    assistant_message_id: terminal ? assistant.id : null, partial_text: "", owner_available: !terminal, cancelable: !terminal,
+  });
+  const fetch = vi.fn<typeof globalThis.fetch>(async (url, init) => {
+    const path = String(url);
+    if (path.endsWith("/send") && init?.method === "POST") {
+      requestId = JSON.parse(String(init.body)).client_msg_id;
+      executionId = `send.${btoa(requestId).replace(/=+$/, "")}`;
+      await new Promise<void>(resolve => { releaseHeaders = resolve; });
+      return new Response(new ReadableStream<Uint8Array>({ start(controller) { relay = controller; } }),
+        { headers: { "content-type": "text/event-stream" } });
+    }
+    if (path.endsWith("/executions/active")) return Response.json({ execution: null });
+    if (path.endsWith("/executions/results")) return Response.json({ results: [], next_cursor: null });
+    if (path.endsWith(`/send-results/${requestId}`)) {
+      receiptStatuses.push(committed ? 200 : 404);
+      if (!committed) return Response.json({ detail: { code: "send_result_not_found" } }, { status: 404 });
+      return Response.json({ conv_id: conversationId, client_msg_id: requestId, user_message_id: user.id,
+        assistant_message_id: null, execution: execution() });
+    }
+    if (path.endsWith(`/executions/${executionId}`)) return Response.json({ execution: execution() });
+    return Response.json({}, { status: 404 });
+  });
+  vi.stubGlobal("fetch", fetch);
+  const reconcileHistory = vi.fn(async (owner: string) => {
+    if (scenario === "conversation switch") await new Promise<void>(resolve => { releaseHistory = resolve; });
+    if (selectedConversation === owner) history = [user, assistant];
+    return { persistedMessageIds: [user.id, assistant.id], regenerateTarget: null, assistants: [assistant] };
+  });
+  const probe = () => useChatSend(reconcileHistory, selectedConversation, history);
+  let hooks = hookSession(probe);
+  const render = () => { const current = hooks.render(); hooks.commit(); return current; };
+  render();
+  await vi.advanceTimersByTimeAsync(0);
+  const opening = render().send({ conversationId, content: "question" });
+  expect(render().state.kind).toBe("sending-user");
+  await vi.advanceTimersByTimeAsync(0);
+  expect(receiptStatuses).toEqual([]);
+
+  if (scenario === "history refresh") {
+    history = [mapMessage(messageWire({ conv_id: conversationId, id: "older-reply" }))];
+    render();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(receiptStatuses).toEqual([404]);
+    expect(render().state.kind).toBe("sending-user");
+  }
+  committed = true;
+  if (scenario === "remount") {
+    hooks.dispose();
+    hooks = hookSession(probe);
+    history = [user];
+    render();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(receiptStatuses).toEqual([200]);
+    expect(render().state).toMatchObject({ kind: "sending-user", optimisticUser: { persistedMessageId: user.id } });
+  }
+
+  releaseHeaders();
+  expect(await opening).toBe(true);
+  await vi.advanceTimersByTimeAsync(0);
+  const expectedReceipts = scenario === "history refresh" ? [404, 200] : [200];
+  expect(receiptStatuses).toEqual(expectedReceipts);
+  expect(render().state).toMatchObject({ kind: "streaming", optimisticUser: { persistedMessageId: user.id },
+    serverExecution: { terminal: false, assistantMessageId: null } });
+  const emit = (event: object) => relay.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
+  emit({ type: "start", id: assistant.id });
+  emit({ type: "chunk", content: "reply" });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(render().state).toMatchObject({ kind: "streaming", assistant: { assistantMessageId: assistant.id, content: "reply" } });
+  terminal = true;
+  relay.close();
+  await vi.advanceTimersByTimeAsync(0);
+  if (scenario === "conversation switch") {
+    expect(render().state).toMatchObject({ kind: "idle", serverExecution: { terminal: true } });
+    selectedConversation = "receipt-next-conversation";
+    history = [];
+    expect(render().state.kind).toBe("idle");
+    expect(releaseHistory).toBeTypeOf("function");
+    releaseHistory!();
+    await vi.advanceTimersByTimeAsync(0);
+    const selectedState = render().state;
+    expect(selectedState).toMatchObject({ kind: "idle", executionConversationId: selectedConversation });
+    expect(selectedState.serverExecution).toBeUndefined();
+    expect(history).toEqual([]);
+  }
+  expect(render().getState(conversationId)).toMatchObject({ kind: "idle", confirmedSend: { conversationId, clientMessageId: requestId },
+    serverExecution: { terminal: true, userMessageId: user.id, assistantMessageId: assistant.id } });
+  expect(receiptStatuses).toEqual(expectedReceipts);
+  expect(reconcileHistory).toHaveBeenCalledOnce();
+  expect(fetch.mock.calls.filter(([url, init]) => String(url).endsWith("/send") && init?.method === "POST")).toHaveLength(1);
+  hooks.dispose();
+});
 
 it("keeps the send caller and fetch alive across history/list refresh, rerenders, A/B, and cleanup/remount", async () => {
   vi.useFakeTimers(); vi.stubGlobal("window", new EventTarget());
