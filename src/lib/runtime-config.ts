@@ -1,6 +1,6 @@
 const DEFAULT_UPLOAD_PATH = "/api/upload";
 const DEFAULT_WEBSOCKET_PATH = "/ws";
-const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
 export interface RuntimeEnvironment {
   readonly [key: string]: string | boolean | undefined;

@@ -1,9 +1,29 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseDiarySendEvent, sendDiaryMessage } from "./diary-chat-send-client";
+import { parseDiarySendEvent, regenerateDiaryMessage, sendDiaryMessage } from "./diary-chat-send-client";
 import { startDiaryFeed } from "./diary-feed-client";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 const dto = { id: "ai", entry_id: "entry/a", role: "assistant", content: "cleaned", created_at: 123, drift: "d", thinking: "t" };
+
+function waitForResponseHeaders() {
+  let respond!: (response: Response) => void;
+  const fetcher = vi.fn<typeof fetch>((_url, init) => new Promise((resolve, reject) => {
+    respond = resolve;
+    const signal = init!.signal!;
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+  }));
+  vi.stubGlobal("fetch", fetcher);
+  return {
+    fetcher,
+    respond(body: BodyInit) {
+      respond(new Response(body, { headers: { "Content-Type": "text/event-stream" } }));
+    },
+  };
+}
+
 describe("Diary send and feed wire contracts", () => {
   it("reads fragmented UTF-8 SSE through shared transport, posting only MsgCreate content/role", async () => {
     const bytes = new TextEncoder().encode([{ type: "start", entry_id: "entry/a", id: "ai", user_message_id: "user" }, { type: "chunk", content: "中文" },
@@ -15,6 +35,55 @@ describe("Diary send and feed wire contracts", () => {
     expect(JSON.stringify(result)).not.toContain("private");
     const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("/api/diary/entries/entry%2Fa/messages"); expect(init.method).toBe("POST"); expect(JSON.parse(init.body as string)).toEqual({ content: "question", role: "user" });
+  });
+  it.each([
+    { operation: "send", open: sendDiaryMessage, start: { user_message_id: "user" } },
+    { operation: "regenerate", open: regenerateDiaryMessage, start: { replaced_message_ids: ["original"] } },
+  ])("reads the $operation reply after a slow server preparation", async ({ open, start }) => {
+    vi.useFakeTimers();
+    const wire = waitForResponseHeaders();
+    const caller = new AbortController();
+    const stream = open("entry/a", "original", caller.signal);
+    const first = stream.next();
+    const received = expect(first).resolves.toMatchObject({
+      value: { type: "start", entryId: "entry/a", assistantId: "ai" },
+    });
+    const signal = wire.fetcher.mock.calls[0][1]!.signal!;
+    const delayedResponse = vi.advanceTimersByTimeAsync(45_000).then(() => {
+      wire.respond([
+        { type: "start", entry_id: "entry/a", id: "ai", ...start },
+        { type: "done", message: dto },
+      ].map(event => `data: ${JSON.stringify(event)}\n\n`).join(""));
+    });
+    await Promise.all([received, delayedResponse]);
+    expect(signal.aborted).toBe(false);
+    await expect(stream.next()).resolves.toMatchObject({ value: { type: "done", message: { id: "ai" } } });
+    await expect(stream.next()).resolves.toMatchObject({ done: true });
+    expect(wire.fetcher).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("can still cancel a Diary send while waiting for headers", async () => {
+    const wire = waitForResponseHeaders();
+    const caller = new AbortController();
+    const pending = sendDiaryMessage("entry/a", "question", caller.signal).next();
+    caller.abort();
+    await expect(pending).rejects.toMatchObject({ code: "ABORTED" });
+    expect(wire.fetcher.mock.calls[0][1]!.signal!.aborted).toBe(true);
+    expect(wire.fetcher).toHaveBeenCalledOnce();
+  });
+  it("still times out after 120 seconds without stream data", async () => {
+    vi.useFakeTimers();
+    const wire = waitForResponseHeaders();
+    const body = new ReadableStream<Uint8Array>();
+    const pending = sendDiaryMessage("entry/a", "question", new AbortController().signal).next();
+    const rejected = expect(pending).rejects.toMatchObject({ code: "TIMEOUT" });
+    wire.respond(body);
+    await vi.advanceTimersByTimeAsync(119_999);
+    expect(wire.fetcher.mock.calls[0][1]!.signal!.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await rejected;
+    expect(body.locked).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
   });
   it("distinguishes reserved identity, saved receipt and explicit null without accepting cross-Entry/invalid objects", () => {
     expect(parseDiarySendEvent({ type: "done", message: null }, "entry/a")).toMatchObject({ type: "done", message: null });

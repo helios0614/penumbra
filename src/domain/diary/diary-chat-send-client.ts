@@ -63,7 +63,8 @@ export async function* regenerateDiaryMessage(entryId: string, messageId: string
 async function* readDiaryStream<T>(path: string, body: { content: string; role: string } | undefined, entryId: string, signal: AbortSignal, parse: (input: unknown, entryId: string) => T | null) {
   const stream = await openApiStream(path, {
     method: "POST", body, signal,
-    timeoutMs: 30_000, streamIdleTimeoutMs: 120_000,
+    // AionHome assembles the prompt and recalls memories before opening the stream.
+    timeoutMs: 0, streamIdleTimeoutMs: 120_000,
   });
   if (!stream.contentType.includes("text/event-stream")) {
     await stream.body.cancel();

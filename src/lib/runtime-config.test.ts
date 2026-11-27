@@ -79,6 +79,6 @@ describe("runtime config URL resolution", () => {
     expect(config.apiBaseUrl).toBe("/backend");
     expect(config.uploadUrl).toBe("/backend/api/upload");
     expect(config.websocketUrl).toBe("ws://app.example.com/backend/ws");
-    expect(config.requestTimeoutMs).toBe(30_000);
+    expect(config.requestTimeoutMs).toBe(60_000);
   });
 });
